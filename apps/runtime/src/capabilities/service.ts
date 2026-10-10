@@ -6,8 +6,8 @@ import type { CapabilityScope, Exclusion, PiTools } from './profiles.ts'
 
 /**
  * What each conversation switched off (ADR 0010): the one gate every MCP, skills, subagent and app tool asks. It only
- * narrows the owner's grants, which the MCP connections still check. Times are read inside, in seconds. Until the
- * native layer lands (wave 3), `layers/mcp.ts` builds it over the legacy `CapabilityProfiles`.
+ * narrows the owner's grants, which the MCP connections still check. Times are read inside, in seconds.
+ * `layers/capabilities.ts` builds it over the agent's one `CapabilityProfiles`.
  */
 export class Capabilities extends Context.Service<
   Capabilities,

@@ -1,21 +1,17 @@
 import * as Layer from 'effect/Layer'
 import type { AgentInputs } from '../runtime/input.ts'
 import { AppRegistryLive, AppsLive } from './apps.ts'
+import { ModelBudgetLive } from './budget.ts'
+import { CapabilitiesLive, ProfilesLive, RetoolLive } from './capabilities.ts'
 import { ChatDirectoryLive, ConversationLive, ConversationRegistryLive, MoverLive } from './conversation.ts'
 import { CoreLive, MigrationsLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { HttpLive } from './http.ts'
-import {
-  ActivateMemoriesLive,
-  CheapModelsLive,
-  KnowledgeLive,
-  MemoryEngineLive,
-  SkillsLive,
-  TranscriptsLive,
-} from './knowledge.ts'
-import { McpEventsLive, McpHostLive, McpLive, ProfilesLive, RetoolLive } from './mcp.ts'
+import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive, TranscriptsLive } from './knowledge.ts'
+import { McpEventsLive, McpHostLive, McpLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
-import { ChannelLive, ModelBudgetLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
+import { ChannelLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
+import { SkillsLive } from './skills.ts'
 
 /** `step`, built after and over everything `built` provides; the result provides both. */
 const then =
@@ -34,16 +30,16 @@ const start = (input: AgentInputs) =>
     then(CheapModelsLive), // 3 knowledge
     then(ChatDirectoryLive), // 4 conversation
     then(MemoryEngineLive), // 5 knowledge
-    then(ProfilesLive), // 6 mcp
+    then(ProfilesLive), // 6 capabilities
     then(HelperExecutionLive), // 7 delegation: await
-    then(RetoolLive), // 8 mcp: await
+    then(RetoolLive), // 8 capabilities: await
     then(RoutineUsageLive), // 9 routines: await
     then(ConversationRegistryLive), // 10 conversation: main registered
     then(AppRegistryLive), // 11 apps
     then(TranscriptsLive), // 12 knowledge
     then(MoverLive), // 13 conversation: reconcile, not awaited
     then(ActivateMemoriesLive), // 14 knowledge: await
-    then(SkillsLive), // 15 knowledge
+    then(SkillsLive), // 15 skills
     then(ChannelLive), // 16 routines
     then(McpEventsLive), // 17 mcp: await the hook token, then the consumers
   )
@@ -59,6 +55,7 @@ export const AgentLive = (input: AgentInputs) =>
     then(ConversationLive),
     then(DelegationLive),
     then(McpLive),
+    then(CapabilitiesLive),
     then(KnowledgeLive),
     then(RoutinesLive),
     then(ObservabilityLive),

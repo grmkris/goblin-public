@@ -1,16 +1,12 @@
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import type { CapabilityTarget, HelperExclusion, ServerSource } from '@goblin/contracts'
-import type { PiHarness } from 'agents/harness/pi'
+import type { ServerSource } from '@goblin/contracts'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Clock from 'effect/Clock'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import { CapabilityProfiles, type PiTools, ProfilesInstance } from '../capabilities/profiles.ts'
-import { Capabilities } from '../capabilities/service.ts'
 import { Channel } from '../channel/service.ts'
-import { ChatsInstance } from '../chats/directory.ts'
 import { nowMillis } from '../clock.ts'
 import { Forbidden, GrantDenied, ResidentInactive, toAppError } from '../http/errors.ts'
 import { type HeldCall, McpApprovalStore } from '../mcp/approvals.ts'
@@ -31,7 +27,6 @@ import { AddedServerStore } from '../mcp/servers.ts'
 import { Approvals, Events, McpConnections, McpGrants, McpServers, Resident, requireResident } from '../mcp/service.ts'
 import { type Stage, suggestions } from '../mcp/suggested.ts'
 import type { McpCallOptions, McpRequestOptions } from '../mcp/types.ts'
-import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { enableResident, renewResident, residentStatus, revokeResident } from '../resident.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
@@ -39,11 +34,10 @@ import { SqliteSkillState } from '../skills/store.ts'
 import { Skills } from '../skills/service.ts'
 import { mcpReporter } from '../telemetry/report.ts'
 
-// Lane M's layers. Four are steps of the agent's start, in its order (layers/index.ts): the MCP host (step 2), the
-// capability profiles (6), their one retool (8) and Events with their consumers (17). Each makes its stateful object
-// once and shares it by its instance tag (`McpHostInstance`, `Cipher`, `ProfilesInstance`) with the steps and layers
-// that wire it; `Events` is the service itself. The services after the start (`McpLive`) read those instances, and
-// resident authority, held calls and the registry catalog are built over the agent's database.
+// The MCP layers. Two are steps of the agent's start, in its order (layers/index.ts): the MCP host (step 2) and Events
+// with their consumers (17). The host is made once and shared by its instance tags (`McpHostInstance`, `Cipher`) with
+// the steps and layers that wire it; `Events` is the service itself. The services after the start (`McpLive`) read
+// those instances, and resident authority, held calls and the registry catalog are built over the agent's database.
 
 /** Wall-clock seconds, the unit resident authority and grants are kept in. */
 const nowSeconds = Effect.map(Clock.currentTimeMillis, (millis) => Math.floor(millis / 1000))
@@ -120,30 +114,6 @@ export const McpHostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInpu
     const db = yield* Db
     const { host, cipher } = yield* Effect.promise(() => makeHost(input, db))
     return Context.mergeAll(McpHostInstance.context(host), Cipher.context(cipher))
-  }),
-)
-
-/** Sets a conversation's Pi tool filter (where subagents are switched off), leaving its extensions as they are. */
-const retool = (harness: PiHarness) => async (session: string, tools: PiTools) => {
-  const conversation = await (await harness.pi()).conversation(conversationId(session), BACKGROUND)
-  await conversation?.configure({ tools }, BACKGROUND)
-}
-
-/** Start step 6: each conversation's switches, the one profile store, over the chat directory. */
-export const ProfilesLive: Layer.Layer<ProfilesInstance, never, AgentInput | Db | ChatsInstance> = Layer.effect(
-  ProfilesInstance,
-  Effect.gen(function* () {
-    const input = yield* AgentInput
-    return new CapabilityProfiles(yield* Db, input.subagentTools, retool(input.harness), yield* ChatsInstance)
-  }),
-)
-
-/** Start step 8: the current complete delegation tool set is applied to the retained Pi filters, once. */
-export const RetoolLive: Layer.Layer<never, never, ProfilesInstance> = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const profiles = yield* ProfilesInstance
-    const now = yield* nowSeconds
-    yield* Effect.promise(() => profiles.retoolOnce('retool:subagent-config', now))
   }),
 )
 
@@ -451,64 +421,12 @@ export const ApprovalsLive = Layer.effect(
   }),
 )
 
-/** Each conversation's switches, over the one profile store the conversations, Topics and the mover share. */
-export const CapabilitiesLive = Layer.effect(
-  Capabilities,
-  Effect.gen(function* () {
-    const profiles = yield* ProfilesInstance
-    return Capabilities.of({
-      scope: Effect.fn('Capabilities.scope')(function* (session: string) {
-        return yield* Effect.sync(() => profiles.scope(session))
-      }),
-      app: Effect.fn('Capabilities.app')(function* (session: string, app: string) {
-        return yield* Effect.sync(() => profiles.app(session, app))
-      }),
-      own: Effect.fn('Capabilities.own')(function* (session: string) {
-        return yield* Effect.sync(() => profiles.own(session))
-      }),
-      inherited: Effect.fn('Capabilities.inherited')(function* (thread: string) {
-        return yield* Effect.sync(() => profiles.inherited(thread))
-      }),
-      set: Effect.fn('Capabilities.set')(function* (session: string, target: CapabilityTarget, on: boolean) {
-        const now = yield* nowSeconds
-        yield* Effect.sync(() => profiles.set(session, target, on, now))
-      }),
-      narrow: Effect.fn('Capabilities.narrow')(function* (session: string, exclusions: readonly HelperExclusion[]) {
-        const now = yield* nowSeconds
-        yield* Effect.sync(() => profiles.narrow(session, exclusions, now))
-      }),
-      copy: Effect.fn('Capabilities.copy')(function* (from: string, to: string) {
-        const now = yield* nowSeconds
-        yield* Effect.sync(() => profiles.copy(from, to, now))
-      }),
-      reset: Effect.fn('Capabilities.reset')(function* (thread: string) {
-        const now = yield* nowSeconds
-        yield* fromPromise(() => profiles.reset(thread, now))
-      }),
-      configureHelper: Effect.fn('Capabilities.configureHelper')(function* (
-        parent: string,
-        session: string,
-        exclusions: readonly HelperExclusion[],
-      ) {
-        const now = yield* nowSeconds
-        yield* fromPromise(() => profiles.configureHelper(parent, session, exclusions, now))
-      }),
-      piTools: Effect.fn('Capabilities.piTools')(function* (session: string) {
-        return yield* Effect.sync(() => profiles.piTools(session))
-      }),
-      syncPi: Effect.fn('Capabilities.syncPi')(function* (session: string) {
-        yield* fromPromise(() => profiles.syncPi(session))
-      }),
-    })
-  }),
-)
-
 /**
- * Lane M's services after the start: resident authority, the MCP servers, grants, connections and held calls, and each
- * conversation's capabilities (`Events` is start step 17's).
+ * Lane M's services after the start: resident authority, the MCP servers, grants, connections and held calls (`Events`
+ * is start step 17's).
  */
 export const McpLive: Layer.Layer<
-  Resident | McpServers | McpGrants | McpConnections | Approvals | Capabilities,
+  Resident | McpServers | McpGrants | McpConnections | Approvals,
   never,
-  AgentInput | Db | McpHostInstance | Cipher | ProfilesInstance
-> = Layer.mergeAll(ResidentLive, McpServersLive, McpGrantsLive, McpConnectionsLive, ApprovalsLive, CapabilitiesLive)
+  AgentInput | Db | McpHostInstance | Cipher
+> = Layer.mergeAll(ResidentLive, McpServersLive, McpGrantsLive, McpConnectionsLive, ApprovalsLive)

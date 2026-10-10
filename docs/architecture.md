@@ -195,7 +195,7 @@ record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, ea
 - **One layer per area** after the start, in order: the plan, model budget and picker (`Entitlements`, `Budget`,
   `Models`, which a send's admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`),
   delegation (`Topics`, `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`Resident`, `McpServers`,
-  `McpGrants`, `McpConnections`, `Approvals`, `Capabilities`), knowledge (`Memories`, `Retrieval`), routines
+  `McpGrants`, `McpConnections`, `Approvals`), capabilities (`Capabilities`), knowledge (`Memories`, `Retrieval`), routines
   (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`, `AppEngine`, `Files`)
   and HTTP (`OwnerHttp`). `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel` are served by their start steps.
 

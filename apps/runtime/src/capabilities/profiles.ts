@@ -373,7 +373,7 @@ export class CapabilityProfiles {
 }
 
 /**
- * The agent's one profile store, made at the start (`layers/mcp.ts`): the conversations, Topics and the mover change
+ * The agent's one profile store, made at the start (`layers/capabilities.ts`): the conversations, Topics and the mover change
  * switches through it inside their own synchronous writes. Programs use the `Capabilities` service.
  */
 export class ProfilesInstance extends Context.Service<ProfilesInstance, CapabilityProfiles>()(

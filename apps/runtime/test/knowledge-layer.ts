@@ -3,7 +3,8 @@ import * as Layer from 'effect/Layer'
 import type { ChatDirectory } from '../src/chats/directory.ts'
 import { ChatOperations, Chats } from '../src/chats/service.ts'
 import { toAppError } from '../src/http/errors.ts'
-import { KnowledgeLive, learnerOver, skillsOver } from '../src/layers/knowledge.ts'
+import { KnowledgeLive } from '../src/layers/knowledge.ts'
+import { learnerOver, skillsOver } from '../src/layers/skills.ts'
 import { type ChatMemories, MemoriesInstance } from '../src/memory/memory.ts'
 import { CheapModels } from '../src/memory/model.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
@@ -28,8 +29,8 @@ type Given = {
 }
 
 /**
- * Lane K's services (layers/knowledge.ts: Memories, Retrieval, Skills, Learner) over what `given` holds, with a
- * KeyedLock of their own. Retrieval's index and cheap model are never read here.
+ * The knowledge services (Memories and Retrieval, layers/knowledge.ts; Skills and Learner, layers/skills.ts) over what
+ * `given` holds, with a KeyedLock of their own. Retrieval's index and cheap model are never read here.
  */
 export const knowledgeOver = (given: Given) => {
   // SAFETY: a layer only holds what it is given until one of its methods runs; a test reaches only the ones it gave.
