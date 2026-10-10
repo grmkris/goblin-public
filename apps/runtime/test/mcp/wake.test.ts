@@ -5,24 +5,28 @@ import { Internal, ResidentInactive } from '../../src/http/errors.ts'
 import { mcpEventsWake } from '../../src/mcp/wake.ts'
 import { Events } from '../../src/mcp/service.ts'
 import { ReporterLive } from '../../src/observability/report.ts'
-import type { RunProgram } from '../../src/runtime/bridge.ts'
-import { stub } from '../http/api/fixture.ts'
+import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
+import { plans, stub } from '../http/api/fixture.ts'
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** The wake over Events whose sweep ends with `sweep`, run as the bridge runs it: failures reject. */
-const wakeWith = async (sweep: Effect.Effect<void, Internal | ResidentInactive>) => {
+/** The wake over Events whose sweep ends with `sweep`, on an account whose plan is `active`. */
+const wakeWith = async (sweep: Effect.Effect<void, Internal | ResidentInactive>, active = true) => {
   const lines: string[] = []
   vi.spyOn(console, 'error').mockImplementation((line: string) => void lines.push(line))
   vi.spyOn(console, 'warn').mockImplementation((line: string) => void lines.push(line))
-  const events = stub(Events, { maintain: () => sweep })
-  // SAFETY: the wake's program needs only Events, which `events` provides; the cast stands in for the agent's services.
-  const run = ((program: Effect.Effect<unknown, Internal | ResidentInactive, Events>) =>
-    Effect.runPromise(program.pipe(Effect.provide(Layer.merge(events, ReporterLive))))) as RunProgram
   const scheduled: number[] = []
-  await mcpEventsWake(run, async (at) => void scheduled.push(at))
+  // SAFETY: the wake reads only `scheduleEvents` from the agent's inputs.
+  const input = { scheduleEvents: async (at: number) => void scheduled.push(at) } as AgentInputs
+  const services = Layer.mergeAll(
+    stub(Events, { maintain: () => sweep }),
+    ReporterLive,
+    plans(active),
+    Layer.succeed(AgentInput, input),
+  )
+  await Effect.runPromise(mcpEventsWake.pipe(Effect.provide(services)))
   return { scheduled, failures: lines.map((line): unknown => JSON.parse(line)) }
 }
 
@@ -43,5 +47,15 @@ describe('the Events alarm (unit)', () => {
     expect(revoked.scheduled).toHaveLength(1)
     expect(revoked.failures).toEqual([])
     expect(await wakeWith(Effect.void)).toEqual({ scheduled: [], failures: [] })
+  })
+
+  it('sweeps nothing without an active plan, and tries again in a minute', async () => {
+    const swept: number[] = []
+    const lapsed = await wakeWith(
+      Effect.sync(() => void swept.push(1)),
+      false,
+    )
+    expect(swept).toEqual([])
+    expect(lapsed).toMatchObject({ scheduled: [expect.any(Number)], failures: [] })
   })
 })

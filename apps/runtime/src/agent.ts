@@ -207,7 +207,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   }
   // The schedule callbacks: the Agents SDK calls them by name; each body lives in its area's wake.ts.
   async mcpEventsWake(): Promise<void> {
-    await mcpEventsWake(this.#bridge.run, (at) => this.#scheduleWake('mcpEventsWake', at))
+    await this.#bridge.local(mcpEventsWake)
   }
   async routinesWake(): Promise<void> {
     await routinesWake(this.#routines, (at) => this.#scheduleWake('routinesWake', at))
