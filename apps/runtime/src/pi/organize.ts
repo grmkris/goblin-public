@@ -97,7 +97,7 @@ const topicTools = (run: RunProgram) => [
   typedTool({
     name: 'topic_create',
     description:
-      "Create a Topic with its own Conversation, only on the owner's direct request. A name another active Topic has is refused. `brief` (optional) says in a few sentences what the Topic is for, from this discussion; the new Conversation starts with it and a frozen excerpt of the owner's latest message here. `setup` (optional) is what its chats work with; without it, everything the owner allows.",
+      "Create a Topic with its own Conversation, only on the owner's direct request. A name another active Topic has is refused. `brief` (optional) says in a few sentences what the Topic is for, from this discussion; the new Conversation starts with it and a frozen excerpt of the owner's latest message here. `setup` (optional) is what its chats work with; without it, everything the owner allows. In a setup each of mcpServers, skills and apps is 'all' or a list: a server is {serverId, tools: 'all' or [tool names]}, a skill {serverId} (its whole library) or {serverId, name}, an app its name.",
     input: Schema.Struct({
       name: TopicName,
       brief: Schema.optionalKey(Text(4000)),
@@ -172,7 +172,7 @@ const setupTools = (run: RunProgram) => [
   typedTool({
     name: 'topic_setup',
     description:
-      "Change what the active Topic called `topic` works with, only on the owner's direct request: `add` or `remove` items (an MCP server, one of its tools, a skills library, one skill by name, an app, or subagents), or `set` a whole setup (each of mcpServers, skills and apps `all` or a list). You can add only what the owner has granted or turned on. Never use it to get past something refused as not in the Topic: tell the owner instead.",
+      "Change what the active Topic called `topic` works with, only on the owner's direct request: `add` or `remove` items (an MCP server, one of its tools, a skills library, one skill by name, an app, or subagents), or `set` a whole setup. In a setup each of mcpServers, skills and apps is 'all' or a list: a server is {serverId, tools: 'all' or [tool names]}, a skill {serverId} (its whole library) or {serverId, name}, an app its name. You can add only what the owner has granted or turned on. Never use it to get past something refused as not in the Topic: tell the owner instead.",
     input: Schema.Struct({
       topic: TopicName,
       set: Schema.optionalKey(TopicSetup),
@@ -228,7 +228,7 @@ const personaTools = (run: RunProgram) => [
   typedTool({
     name: 'persona_create',
     description:
-      "Create a Persona the owner can tag with @name, only on the owner's direct request: a name, a one-line role, instructions, optionally a model from the offered list and a setup: the MCP servers, skills and apps it adds to the Topic it answers in (only what the owner has granted or turned on).",
+      "Create a Persona the owner can tag with @name, only on the owner's direct request: a name, a one-line role, instructions, optionally a model from the offered list and a setup: the MCP servers, skills and apps it adds to the Topic it answers in (only what the owner has granted or turned on). In a setup each of mcpServers, skills and apps is 'all' or a list: a server is {serverId, tools: 'all' or [tool names]}, a skill {serverId} (its whole library) or {serverId, name}, an app its name.",
     input: Schema.Struct({
       name: PersonaName,
       role: Text(120),
