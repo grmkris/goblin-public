@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon } from 'lucide-react'
-import type { ToolView } from '@goblin/contracts'
+import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, Settings2Icon } from 'lucide-react'
+import { type ToolView, itemLabel } from '@goblin/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -27,12 +27,14 @@ import { toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
 import { useAddAndConnect } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
+import { setWorkspaceTopicSetupMutation } from '../lib/workspace/mutations.ts'
 import { ApprovalCard } from './approval-card.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
 type Answer = (input: string, operationId: string) => Promise<boolean>
 type Question = Extract<Interaction, { kind: 'question' }>
 type Grant = Extract<Interaction, { kind: 'grant' }>
+type Setup = Extract<Interaction, { kind: 'setup' }>
 
 /** The server's own description and hints for a tool, shown as its claims; nothing while they cannot be read. */
 function useToolClaims(serverId: string, name: string): ToolView | undefined {
@@ -166,6 +168,40 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
 }
 
 /**
+ * Something the chat's Topic's setup does not hold that the agent tried to use (ADR 0040). Adding it changes what every
+ * chat of the Topic works with, never a grant (a tool still needs the owner's grant), then tells the agent to continue.
+ */
+function AddToTopicCard({ interaction, onAnswer }: { readonly interaction: Setup; readonly onAnswer: Answer }) {
+  const { target, topic } = interaction
+  const label = itemLabel(target)
+  const { busy, error, replying } = useReplying()
+  const add = useMutation(setWorkspaceTopicSetupMutation).mutateAsync
+  const reply = (yes: boolean) =>
+    void replying(async () => {
+      if (yes) await add({ id: topic.id, edit: { add: [target] } })
+      await onAnswer(
+        yes ? `Added ${label} to #${topic.name}. Continue.` : 'Not now.',
+        interactionOperation(interaction),
+      )
+    })
+  return (
+    <AskCard aria-label="Not in this Topic">
+      <AskCardHeader>
+        <Settings2Icon aria-hidden />
+        <p>
+          Your agent wants to use <strong className="font-medium">{label}</strong>
+        </p>
+      </AskCardHeader>
+      <AskCardDescription>
+        It is not in #{topic.name}'s MCP servers & skills. Adding it changes what every chat of #{topic.name} works
+        with.
+      </AskCardDescription>
+      <CardReplies busy={busy} error={error} yes={`Add to #${topic.name}`} onReply={reply} />
+    </AskCard>
+  )
+}
+
+/**
  * The agent's questions, one at a time with number shortcuts; the answers go back as one message, once: Send turns
  * busy until they are on their way, like every other card's replies.
  */
@@ -242,6 +278,8 @@ export function InteractionCards({
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'server')
       return <ServerRequestCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
+    if (interaction.kind === 'setup')
+      return <AddToTopicCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     return <QuestionCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
   })
 }

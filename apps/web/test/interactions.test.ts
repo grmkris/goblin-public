@@ -92,6 +92,26 @@ describe('what the agent waits on the owner for', () => {
     expect(interactionOf(mcpCall(off({ kind: 'server', serverId: 'myplan' })))).toBeUndefined()
     expect(interactionOf(switchedOff('subagent_spawn', {}, off({ kind: 'subagents' })))).toBeUndefined()
   })
+  it("asks to add to the Topic only what the call asked for, and only from goblin's own result", () => {
+    const topic = { id: 2, name: 'Work' }
+    const outside = (target: unknown) => ({ kind: 'not-in-topic', target, topic })
+    const server = { kind: 'server', serverId: 'myplan' } as const
+    const tool = { kind: 'tool', serverId: 'myplan', name: 'document_edit' } as const
+    expect(interactionOf(mcpCall(outside(server)))).toEqual({ kind: 'setup', callId: 'g1', target: server, topic })
+    expect(interactionOf(mcpCall(outside(tool)))).toEqual({ kind: 'setup', callId: 'g1', target: tool, topic })
+    expect(interactionOf(mcpCall(outside({ kind: 'tool', serverId: 'myplan', name: 'delete_all' })))).toBeUndefined()
+    expect(interactionOf(mcpCall({ ...outside(server), origin: { serverId: 'myplan' } }))).toBeUndefined()
+    const skill = { kind: 'skill', serverId: 'lib', name: 'review' } as const
+    expect(interactionOf(switchedOff('skill_activate', { skill: 'lib:review~2' }, outside(skill)))).toMatchObject({
+      kind: 'setup',
+      target: skill,
+    })
+    expect(interactionOf(switchedOff('skill_activate', { skill: 'lib:plan' }, outside(skill)))).toBeUndefined()
+    expect(interactionOf(switchedOff('subagent_spawn', {}, outside({ kind: 'subagents' })))).toMatchObject({
+      kind: 'setup',
+    })
+    expect(interactionOperation({ kind: 'setup', callId: 'c1', target: server, topic })).toBe('setup:c1')
+  })
   it('gives each reply a stable submission id', () => {
     expect(interactionOperation({ kind: 'question', callId: 'q1', questions: [] })).toBe('answer:q1')
     expect(interactionOperation({ kind: 'grant', callId: 'g1', serverId: 's', name: 'n' })).toBe('grant:g1')

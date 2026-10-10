@@ -1,5 +1,13 @@
 import { type ReactNode, memo, useMemo } from 'react'
-import { CircleAlertIcon, CircleStopIcon, KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon } from 'lucide-react'
+import {
+  CircleAlertIcon,
+  CircleStopIcon,
+  KeyRoundIcon,
+  MessageCircleQuestionIcon,
+  PlugIcon,
+  Settings2Icon,
+} from 'lucide-react'
+import { itemLabel } from '@goblin/contracts'
 import {
   Duration,
   Reasoning,
@@ -59,6 +67,15 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
       <Receipt>
         <PlugIcon aria-hidden />
         <span>Asked you to add {interaction.name}</span>
+      </Receipt>
+    )
+  if (interaction.kind === 'setup')
+    return (
+      <Receipt>
+        <Settings2Icon aria-hidden />
+        <span>
+          Asked to add {itemLabel(interaction.target)} to #{interaction.topic.name}
+        </span>
       </Receipt>
     )
   return (
