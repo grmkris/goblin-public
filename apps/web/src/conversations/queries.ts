@@ -1,6 +1,5 @@
-import type { MoveToThread, QueueRemoval, SendMessage, UpdateConversation } from '@goblin/contracts'
+import type { MoveToThread, QueueRemoval, SendMessage, StartThread, UpdateConversation } from '@goblin/contracts'
 import { infiniteQueryOptions, queryOptions, skipToken } from '@tanstack/react-query'
-import type { ThreadStart } from '@goblin/contracts/api'
 import { owner } from '../lib/api.ts'
 import { isNumber, record } from '../lib/values.ts'
 import { withOperation } from '../lib/query/api-query.ts'
@@ -84,7 +83,7 @@ export const sendMessage = ({ id, message }: Submission) =>
  * entry, "+" empty, Start thread at the chat's newest settled entry) and sends its first message, answered there.
  */
 export const startThreadMutation = owner.apiMutation({
-  mutationFn: (api, { id, start }: { readonly id: string; readonly start: ThreadStart }) =>
+  mutationFn: (api, { id, start }: { readonly id: string; readonly start: StartThread }) =>
     api.conversations.startThread({ params: { id }, payload: start }).pipe(withOperation(start.operationId)),
 })
 

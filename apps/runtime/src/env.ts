@@ -1,13 +1,8 @@
-import type { PiReceipt } from 'agents/harness/pi'
 import type { RpcResult } from './http/rpc.ts'
-import type { ConversationView } from '@goblin/contracts'
 import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
 import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
 import type { Doorbell } from './channel/doorbell.ts'
-
-/** What starting a Thread returns (ADR 0034): the Thread as it is now and the receipt of the owner's message in it. */
-export type StartedThread = { readonly thread: ConversationView; readonly receipt: PiReceipt }
 
 /**
  * The Agent DO's RPC, what is left of it: the owner reaches the agent through its typed API (`onRequest`, forwarded by

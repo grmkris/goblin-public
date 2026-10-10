@@ -1,13 +1,9 @@
 import { expect } from 'vitest'
 import * as Schema from 'effect/Schema'
-import { ConversationView, ThreadHeadData, TopicView } from '@goblin/contracts'
+import { StartedThread, ThreadHeadData, TopicView } from '@goblin/contracts'
 import { call, ownerFetch, person, waitFor, workspaceOf, type Person } from './owner-requests.ts'
 
-const Started = Schema.Struct({
-  thread: ConversationView,
-  receipt: Schema.Struct({ operationId: Schema.String, session: Schema.String, accepted: Schema.Boolean }),
-})
-const decodeStarted = Schema.decodeUnknownSync(Started)
+const decodeStarted = Schema.decodeUnknownSync(StartedThread)
 const decodeTopic = Schema.decodeUnknownSync(TopicView)
 const Snapshot = Schema.Struct({
   entries: Schema.optional(

@@ -45,23 +45,6 @@ export const ConversationView = Schema.Struct({
 })
 export type ConversationView = typeof ConversationView.Type
 
-/**
- * A thread from an entry of any open conversation, or (without `from`) an empty one under a Topic's Conversation:
- * `topic`'s, else Personal's.
- */
-export const CreateConversation = Schema.Struct({
-  /** Makes the create idempotent: the same id finds the same Thread. */
-  operationId: Schema.optional(OperationId),
-  topic: Schema.optional(TopicId),
-  from: Schema.optional(
-    Schema.Struct({
-      conversation: ChatId,
-      entry: EntryId,
-    }),
-  ),
-})
-export type CreateConversation = typeof CreateConversation.Type
-
 /** Rename, close or reopen (with everything under it), or pin a subagent open. */
 export const UpdateConversation = Schema.Struct({
   title: Schema.optional(NonEmptyString(120)),
@@ -126,13 +109,40 @@ export const SendMessage = Schema.Struct({
 export type SendMessage = typeof SendMessage.Type
 
 /**
- * One idempotent thread operation for reply, "+" and Start thread: fork the Thread at `anchor.entry` of the chat (or
- * start it `empty`), then send `message` as its first message. The same `operationId` finds the same Thread, so a
- * double click or a retry never makes two. The first message's own operation id derives from `operationId`.
+ * Pi's receipt for the owner's message: the session it went to, its operation id, and whether this call admitted it
+ * (`false` when the operation id was already submitted).
+ */
+export const MessageReceipt = Schema.Struct({
+  operationId: Schema.String,
+  session: Schema.String,
+  accepted: Schema.Boolean,
+})
+export type MessageReceipt = typeof MessageReceipt.Type
+
+/** `POST …/stop`: the owner's Stop, optionally naming the one operation to stop. */
+export const StopConversation = Schema.Struct({ operationId: Schema.optional(OperationId) })
+export type StopConversation = typeof StopConversation.Type
+
+/** A thread operation's anchor at an entry of the chat (Reply). */
+const EntryAnchor = Schema.Struct({ entry: EntryId })
+
+/**
+ * Where a thread operation starts its Thread in the chat: at an entry (Reply), `empty` ("+"), or `latest` (the
+ * composer's Start thread: the chat's newest settled entry, or empty when it has none, with the message posted as the
+ * Thread's head in the chat).
+ */
+export const ThreadAnchor = Schema.Union([EntryAnchor, Schema.Literals(['empty', 'latest'])])
+export type ThreadAnchor = typeof ThreadAnchor.Type
+
+/**
+ * The thread operation (ADR 0034), `POST /api/conversations/:id/threads`, for Reply, "+" and Start thread: start the
+ * Thread at `anchor` of the chat, then send `message` as its first message, answered there. The same `operationId`
+ * finds the same Thread, so a double click or a retry never makes two. The first message's own operation id derives
+ * from `operationId`.
  */
 export const StartThread = Schema.Struct({
   operationId: OperationId,
-  anchor: Schema.Union([Schema.Struct({ entry: EntryId }), Schema.Literal('empty')]),
+  anchor: ThreadAnchor,
   message: Schema.Struct({
     input: SendMessage.fields.input,
     appContext: SendMessage.fields.appContext,
@@ -143,6 +153,21 @@ export const StartThread = Schema.Struct({
 })
 export type StartThread = typeof StartThread.Type
 
+/** What a thread operation returns: the Thread as it is now and the receipt of the owner's message in it. */
+export const StartedThread = Schema.Struct({ thread: ConversationView, receipt: MessageReceipt })
+export type StartedThread = typeof StartedThread.Type
+
+/**
+ * `POST /api/conversations`: the thread operation without a message. With `from`, the Thread starts at that entry of
+ * an open chat (in its Topic); without it, empty under `topic`'s Conversation, else Personal's. With an `operationId`
+ * it is that chat's thread operation, so the same id finds the same Thread; without one, each call makes a new Thread.
+ */
+export const CreateConversation = Schema.Struct({
+  operationId: Schema.optional(OperationId),
+  topic: Schema.optional(TopicId),
+  from: Schema.optional(Schema.Struct({ conversation: ChatId, ...EntryAnchor.fields })),
+})
+export type CreateConversation = typeof CreateConversation.Type
 const AUTHOR_TAG = /^\[from ([^\]\n]{1,80})\]$/u
 
 /**

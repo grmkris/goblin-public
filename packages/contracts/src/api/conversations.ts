@@ -2,10 +2,19 @@ import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
-import { ChatId, OperationId } from '../ids.ts'
+import { ChatId } from '../ids.ts'
 import { CapabilityChange, ConversationCapabilities } from '../capabilities.ts'
 import { ComposerOptions } from '../composer.ts'
-import { ConversationView, CreateConversation, SendMessage, StartThread, UpdateConversation } from '../conversations.ts'
+import {
+  ConversationView,
+  CreateConversation,
+  MessageReceipt,
+  SendMessage,
+  StartThread,
+  StartedThread,
+  StopConversation,
+  UpdateConversation,
+} from '../conversations.ts'
 import { ConversationQueue, QueueRemoval, QueueRemovalResult } from '../queue.ts'
 import { SourceUse } from '../retrieval.ts'
 import { MoveReceipt, MoveToThread } from '../threads.ts'
@@ -13,31 +22,6 @@ import { ApiErrors } from './errors.ts'
 
 /** The chat a path names, as the routes have always taken it: a logical chat id of 1 to 12 digits. */
 const params = { id: ChatId }
-
-/**
- * Pi's receipt for the owner's message: the session it went to, its operation id, and whether this call admitted it
- * (`false` when the operation id was already submitted).
- */
-const MessageReceipt = Schema.Struct({ operationId: Schema.String, session: Schema.String, accepted: Schema.Boolean })
-
-/** What starting a Thread returns (ADR 0034): the Thread as it is now and the receipt of the owner's message in it. */
-const StartedThread = Schema.Struct({ thread: ConversationView, receipt: MessageReceipt })
-
-/**
- * `POST …/:id/threads`: the unified thread operation (`StartThread`) from chat `:id`. Besides an entry (Reply) or
- * `empty` ("+"), the chat composer's Start thread anchors at `latest`: the chat's newest settled entry, or empty when
- * it has none, with the message posted as the Thread's head in the chat.
- */
-export const ThreadStart = Schema.Struct({
-  ...StartThread.fields,
-  anchor: Schema.Union([StartThread.fields.anchor, Schema.Literal('latest')]),
-})
-export type ThreadStart = typeof ThreadStart.Type
-
-/** `POST …/stop`: the owner's Stop, optionally naming the one operation to stop. */
-const StopConversation = Schema.Struct({
-  operationId: Schema.optional(OperationId),
-})
 
 /**
  * A page of a chat's history before entry `before`, oldest first, and whether older entries remain. The entries are
@@ -59,12 +43,12 @@ const HistoryQuery = {
  * are relative to the API's `/api` prefix; every endpoint can also answer owner admission's failures (`OwnerAdmission` in
  * `owner.ts`), and `error` names the ones the endpoint itself produces.
  *
- * - `create`: `POST /api/conversations`, 201: a Thread branched from an entry of an open chat, or an empty one; with an
- *   `operationId` it is that chat's thread operation, so the same id finds the same Thread.
+ * - `create`: `POST /api/conversations`, 201: the thread operation without a message (`CreateConversation`), a Thread
+ *   branched from an entry of an open chat or an empty one.
  * - `update`: `PATCH /api/conversations/:id` renames, closes or reopens, or pins a subagent open.
  * - `submit`: `POST …/:id/messages`, 202 with Pi's receipt: the owner's message, or an ask of the Personas it tags.
- * - `startThread`: `POST …/:id/threads`, 201: the unified thread operation (`ThreadStart`): one call makes the Thread
- *   once per operation id and sends the message as its first, answered there.
+ * - `startThread`: `POST …/:id/threads`, 201: the thread operation (`StartThread`): one call makes the Thread once per
+ *   operation id and sends the message as its first, answered there.
  * - `move`: `POST …/:id/move`: Move to thread, as its receipt. The same operation id finds the same move.
  * - `stop`: `POST …/:id/stop`: Stop in the chat; `stopped` says whether anything was running.
  * - `queue` / `removeQueued`: `GET` and `DELETE …/:id/queue`: the owner's queued inputs, and withdrawing one.
@@ -97,7 +81,7 @@ export class ConversationsGroup extends HttpApiGroup.make('conversations').add(
   }),
   HttpApiEndpoint.post('startThread', '/conversations/:id/threads', {
     params,
-    payload: ThreadStart,
+    payload: StartThread,
     success: StartedThread.pipe(HttpApiSchema.status(201)),
     error: [ApiErrors.notFound, ApiErrors.conflict, ApiErrors.invalidInput, ApiErrors.budgetExhausted],
   }),

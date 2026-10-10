@@ -84,9 +84,10 @@ describe('thread operations', () => {
     expect(Schema.is(CreateConversation)({ topic: 2 })).toBe(true)
     expect(Schema.is(CreateConversation)({ operationId: 'op-1', from: { conversation: '3', entry: 9 } })).toBe(true)
   })
-  it('starts a thread from an entry or empty, with the message fields of a send', () => {
+  it('starts a thread from an entry, empty or the latest entry, with the message fields of a send', () => {
     const message = { input: 'hi', selections: [{ kind: 'persona', personaId: 3 }] }
     expect(Schema.is(StartThread)({ operationId: 'op-1', anchor: { entry: 9 }, message })).toBe(true)
+    expect(Schema.is(StartThread)({ operationId: 'op-1', anchor: 'latest', message })).toBe(true)
     expect(Schema.is(StartThread)({ operationId: 'op-1', anchor: 'empty', message, personaOrder: 'sequence' })).toBe(
       true,
     )

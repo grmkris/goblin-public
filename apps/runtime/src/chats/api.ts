@@ -4,9 +4,11 @@ import type {
   MoveToThread,
   QueueRemoval,
   SendMessage,
+  StartThread,
+  StopConversation,
   UpdateConversation,
 } from '@goblin/contracts'
-import { OwnerApi, type ThreadStart } from '@goblin/contracts/api'
+import { OwnerApi } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import {
@@ -55,7 +57,7 @@ const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
  * newest settled entry, the first message answered in the Thread, its Personas in the order it asks (the Worker's old
  * route dropped `personaOrder`, H1).
  */
-const threadStart = ({ params, payload }: ChatWrite<ThreadStart>) =>
+const threadStart = ({ params, payload }: ChatWrite<StartThread>) =>
   AgentInput.use((input) =>
     startThread({
       ...ownerRuntime(input),
@@ -71,7 +73,7 @@ const create = ({ payload }: { readonly payload: CreateConversation }) => create
 const update = ({ params, payload }: ChatWrite<UpdateConversation>) =>
   AgentInput.use(({ routines }) => updateOwnerConversation(routines, params.id, payload))
 const move = ({ params, payload }: ChatWrite<MoveToThread>) => moveToThread(params.id, payload)
-const stop = ({ params, payload }: ChatWrite<{ readonly operationId?: string | undefined }>) =>
+const stop = ({ params, payload }: ChatWrite<StopConversation>) =>
   Effect.map(stopChat(params.id, payload.operationId), (stopped) => ({ stopped }))
 const queue = ({ params }: ChatRequest) => AgentInput.use(({ harness }) => ownerQueue(harness, params.id))
 const removeQueued = ({ params, payload }: ChatWrite<QueueRemoval>) =>

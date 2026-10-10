@@ -1,3 +1,4 @@
+import { MessageReceipt } from '@goblin/contracts'
 import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
@@ -59,7 +60,6 @@ const NativeResult = Schema.Struct({
   after: Schema.Array(Table),
   metadata: Schema.String,
 })
-const Receipt = Schema.Struct({ operationId: Schema.String, session: Schema.String, accepted: Schema.Boolean })
 const Operation = Schema.Struct({
   operationId: Schema.String,
   session: Schema.String,
@@ -908,9 +908,9 @@ harness.test(
     const operationId = String(yield* nextInt)
     const get = lifecycleClient(url, name, operationId)
     expect(yield* get('', Sessions)).toEqual({ sessions: [{ id: '1', busy: false }] })
-    const receipt = yield* get('/submit', Receipt)
+    const receipt = yield* get('/submit', MessageReceipt)
     expect(receipt).toEqual({ operationId, session: '1', accepted: true })
-    expect(yield* get('/submit', Receipt)).toEqual({
+    expect(yield* get('/submit', MessageReceipt)).toEqual({
       operationId,
       session: '1',
       accepted: false,
@@ -934,7 +934,7 @@ harness.test(
     const reopened = yield* get('/reopen', Reopen)
     expect(reopened.replacedPiInstance).toBe(true)
     expect(reopened.messages).toEqual(read.messages)
-    expect(yield* get('/submit', Receipt)).toEqual({ operationId, session: '1', accepted: false })
+    expect(yield* get('/submit', MessageReceipt)).toEqual({ operationId, session: '1', accepted: false })
     expect(yield* get('/wait', Operation)).toEqual(result)
     expect((yield* get('/read', LifecycleRead)).messages).toEqual(read.messages)
     if (phase === 'write') {
@@ -966,7 +966,7 @@ if (phase === 'read')
       const fresh = yield* get('/read', LifecycleRead)
       expect(fresh.instance).not.toBe(evidence.instance)
       expect(fresh.messages).toEqual(evidence.messages)
-      expect(yield* get('/submit', Receipt)).toEqual({
+      expect(yield* get('/submit', MessageReceipt)).toEqual({
         operationId: evidence.operationId,
         session: '1',
         accepted: false,

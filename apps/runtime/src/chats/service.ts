@@ -6,6 +6,7 @@ import type {
   HelperExclusion,
   MoveReceipt,
   MoveToThread,
+  ThreadAnchor,
   UpdateConversation,
 } from '@goblin/contracts'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
@@ -155,7 +156,7 @@ export class ChatOperations extends Context.Service<
  * Where a thread operation starts its Thread (ADR 0034): forked at an entry of the chat (Reply), empty under the
  * Conversation the chat sits under ("+"), or forked at the chat's newest settled entry (Start thread, `latest`).
  */
-export type ThreadAnchor = { readonly entry: number } | 'empty' | 'latest'
+export type { ThreadAnchor }
 
 /** A thread operation's Thread, and whether an earlier run of the same operation made it. */
 export type StartedOnce = { readonly view: ConversationView; readonly existing: boolean }
