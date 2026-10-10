@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { ChatId, EntryId, NonEmptyString, OperationId, TopicId } from './ids.ts'
-import { TopicSetup } from './setup.ts'
+import { SetupItems, TopicSetup } from './setup.ts'
 
 export const TopicName = NonEmptyString(80)
 
@@ -45,6 +45,30 @@ export const UpdateTopic = Schema.Struct({
 export type UpdateTopic = typeof UpdateTopic.Type
 
 /**
+ * `PATCH /api/topics/:id/setup` (ADR 0040): a whole new setup (`expectedRevision` must be the Topic's revision now, so
+ * two edits never silently overwrite each other), or items added to or removed from it. Removing from a category that
+ * holds everything lists what the owner allows now, less the item.
+ */
+export const TopicSetupEdit = Schema.Union([
+  Schema.Struct({ set: TopicSetup, expectedRevision: Schema.Int }),
+  Schema.Struct({ add: SetupItems }),
+  Schema.Struct({ remove: SetupItems }),
+])
+export type TopicSetupEdit = typeof TopicSetupEdit.Type
+
+/** A routine of the Topic whose allowed tools the setup now leaves out: those tools are refused when it runs. */
+export const RoutineOutsideSetup = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  outside: Schema.Array(Schema.Struct({ serverId: Schema.String, name: Schema.String })),
+})
+export type RoutineOutsideSetup = typeof RoutineOutsideSetup.Type
+
+/** What a setup edit answers: the Topic as it is now, and the routines it leaves without some of their tools. */
+export const TopicSetupSaved = Schema.Struct({ topic: TopicView, routines: Schema.Array(RoutineOutsideSetup) })
+export type TopicSetupSaved = typeof TopicSetupSaved.Type
+
+/**
  * What organizing changed, shown in Activity with Undo: who did it (`actor`), to what (`target`, a Topic or Persona
  * id), a one-line `summary`, and the chat whose run did it. `undoable` is false once a later edit touched the target.
  */
@@ -55,6 +79,7 @@ export const OrganizeReceipt = Schema.Struct({
     'topic.rename',
     'topic.archive',
     'topic.restore',
+    'topic.setup',
     'persona.create',
     'persona.update',
   ]),

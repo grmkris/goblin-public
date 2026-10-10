@@ -198,4 +198,23 @@ export class TopicRegistry<RunResult = unknown> {
     })
     return view(updated)
   }
+
+  /**
+   * A new setup (ADR 0040) as one new revision, compare-and-set on `expectedRevision` when it is given (else `Conflict`
+   * `revision`). The same setup is no write.
+   */
+  setSetup(id: number, setup: TopicSetup, expectedRevision: number | undefined, now: number): TopicView {
+    const row = this.#row(id)
+    if (expectedRevision !== undefined && row.revision !== expectedRevision) throw new Conflict({ reason: 'revision' })
+    const stored = storedSetup(setup)
+    if (stored === row.setup) return view(row)
+    const [next] = this.#db
+      .update(appTopics)
+      .set({ setup: stored, revision: row.revision + 1, updatedAt: now })
+      .where(and(eq(appTopics.id, id), eq(appTopics.revision, row.revision)))
+      .returning()
+      .all()
+    if (next === undefined) throw new Conflict({ reason: 'revision' })
+    return view(next)
+  }
 }

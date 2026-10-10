@@ -83,6 +83,32 @@ export const NotInTopic = Schema.Struct({
 })
 export type NotInTopic = typeof NotInTopic.Type
 
+/**
+ * What a setup can be chosen from (ADR 0040), as `GET /api/setup/catalog` answers it: each MCP server with the tools the
+ * owner granted that the model may call, each skill server the owner turned skills on for with the skills it lists now
+ * (`available: false` when its listing cannot be read), and the agent's apps. It is `Allowed` with labels.
+ */
+export const SetupCatalog = Schema.Struct({
+  servers: Schema.Array(
+    Schema.Struct({
+      serverId: Schema.String,
+      label: Schema.String,
+      status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
+      tools: Schema.Array(Schema.Struct({ name: Schema.String, title: Schema.optional(Schema.String) })),
+    }),
+  ),
+  libraries: Schema.Array(
+    Schema.Struct({
+      serverId: Schema.String,
+      label: Schema.String,
+      available: Schema.Boolean,
+      skills: Schema.Array(Schema.Struct({ name: Schema.String, uri: Schema.String, description: Schema.String })),
+    }),
+  ),
+  apps: Schema.Array(Schema.Struct({ name: Schema.String, title: Schema.String })),
+})
+export type SetupCatalog = typeof SetupCatalog.Type
+
 /** What the owner allows now, by identity: what `withoutItems` lists when it narrows a category that was `all`. */
 export type Allowed = {
   readonly servers: readonly { readonly serverId: string; readonly tools: readonly { readonly name: string }[] }[]
@@ -203,13 +229,17 @@ const toolsOf = (server: SetupServer, allowed: Allowed): readonly string[] => {
 type ServerItem = Extract<SetupItem, { kind: 'server' | 'tool' }>
 type SkillItem = Extract<SetupItem, { kind: 'skill' }>
 
-/** The servers without a server, or without one tool of it (the server stays with its other tools). */
+/**
+ * The servers without a server, or without one tool of it: the server stays with its other tools, and goes when none
+ * is left.
+ */
 function serversWithout(setup: Setup, item: ServerItem, allowed: Allowed): readonly SetupServer[] {
   const servers = serverList(setup, allowed)
   const rest = servers.filter((server) => server.serverId !== item.serverId)
   const held = servers.find((server) => server.serverId === item.serverId)
   if (held === undefined || item.kind === 'server') return rest
-  return [...rest, { serverId: item.serverId, tools: toolsOf(held, allowed).filter((name) => name !== item.name) }]
+  const tools = toolsOf(held, allowed).filter((name) => name !== item.name)
+  return tools.length === 0 ? rest : [...rest, { serverId: item.serverId, tools }]
 }
 
 /**

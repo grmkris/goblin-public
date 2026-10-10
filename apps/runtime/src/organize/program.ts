@@ -3,13 +3,14 @@ import {
   type PersonaDefinition,
   PersonaDefinition as PersonaDefinitionSchema,
   PersonaSetup,
+  TopicSetup,
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { Conflict, InvalidInput } from '../http/errors.ts'
 import { updatePersona } from '../personas/program.ts'
 import { Personas } from '../personas/service.ts'
-import { updateTopic } from '../topics/program.ts'
+import { editTopicSetup, updateTopic } from '../topics/program.ts'
 import { Topics } from '../topics/service.ts'
 import { withFlow } from '../observability/flows.ts'
 import { Receipts } from './service.ts'
@@ -23,12 +24,16 @@ const PersonaBefore = Schema.NullOr(
     archived: Schema.Boolean,
   }),
 )
+/** A Topic's setup as a `topic.setup` receipt kept it (ADR 0040). */
+const SetupBefore = Schema.Struct({ setup: TopicSetup })
 const decodeTopic = Schema.decodeUnknownEffect(TopicBefore)
+const decodeSetup = Schema.decodeUnknownEffect(SetupBefore)
 const decodePersona = Schema.decodeUnknownEffect(PersonaBefore)
 
 /** What Undo of each kind does to the target, as the change that restores `before`. */
 type Plan =
   | { readonly target: 'topic'; readonly id: number; readonly name?: string; readonly archived: boolean }
+  | { readonly target: 'setup'; readonly id: number; readonly setup: TopicSetup }
   | {
       readonly target: 'persona'
       readonly id: number
@@ -53,8 +58,10 @@ export const undoReceipt = (id: string) => {
     const isTopic = stored.kind.startsWith('topic.')
     const revision = (isTopic ? yield* topics.get(target) : yield* personas.get(target)).revision
     if (revision !== stored.afterRevision) return yield* new Conflict({ reason: 'touched' })
-    const plan = yield* planOf(isTopic, target, stored.before)
-    if (plan.target === 'topic') {
+    const plan = yield* planOf(stored.kind, target, stored.before)
+    if (plan.target === 'setup') {
+      yield* editTopicSetup(plan.id, { set: plan.setup, expectedRevision: revision }, { actor: 'owner' })
+    } else if (plan.target === 'topic') {
       yield* updateTopic(
         plan.id,
         { ...(plan.name === undefined ? {} : { name: plan.name }), archived: plan.archived },
@@ -82,16 +89,18 @@ export const undoReceipt = (id: string) => {
  * The change that restores a receipt's `before`. A snapshot that does not decode is refused as the synchronous decode
  * was (`InvalidInput`).
  */
-const planOf = (isTopic: boolean, target: number, before: unknown): Effect.Effect<Plan, InvalidInput> =>
-  (isTopic
-    ? Effect.map(decodeTopic(before), (topic): Plan =>
-        topic === null
-          ? { target: 'topic', id: target, archived: true }
-          : { target: 'topic', id: target, name: topic.name, archived: topic.archived },
-      )
-    : Effect.map(decodePersona(before), (persona): Plan => {
-        if (persona === null) return { target: 'persona', id: target, archived: true }
-        const { archived, ...definition } = persona
-        return { target: 'persona', id: target, definition, archived }
-      })
+const planOf = (kind: OrganizeReceipt['kind'], target: number, before: unknown): Effect.Effect<Plan, InvalidInput> =>
+  (kind === 'topic.setup'
+    ? Effect.map(decodeSetup(before), ({ setup }): Plan => ({ target: 'setup', id: target, setup }))
+    : kind.startsWith('topic.')
+      ? Effect.map(decodeTopic(before), (topic): Plan =>
+          topic === null
+            ? { target: 'topic', id: target, archived: true }
+            : { target: 'topic', id: target, name: topic.name, archived: topic.archived },
+        )
+      : Effect.map(decodePersona(before), (persona): Plan => {
+          if (persona === null) return { target: 'persona', id: target, archived: true }
+          const { archived, ...definition } = persona
+          return { target: 'persona', id: target, definition, archived }
+        })
   ).pipe(Effect.mapError(() => new InvalidInput({ reason: 'schema' })))

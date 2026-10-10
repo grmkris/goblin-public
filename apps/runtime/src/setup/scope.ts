@@ -14,7 +14,7 @@ import {
   holds,
   NOTHING,
 } from '@goblin/contracts'
-import { eq, inArray, notInArray } from 'drizzle-orm'
+import { and, eq, inArray, notInArray } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import {
   appHelperExclusions,
@@ -24,7 +24,7 @@ import {
   appMetadata,
   appTelegramChannel,
 } from '../storage/schema.ts'
-import { appRoutineRuns } from '../storage/routines.ts'
+import { appRoutineRuns, appRoutines } from '../storage/routines.ts'
 import { appPersonaForks } from '../storage/personas.ts'
 import { appTopics } from '../storage/topics.ts'
 import { personaSetupOf } from '../personas/registry.ts'
@@ -402,6 +402,41 @@ export const retoolOnce = async (retooling: Retooling, marker: string, now: numb
     .onConflictDoNothing()
     .run()
 }
+
+/**
+ * Applies the Pi filter again to every chat of `topic` whose filter follows its scope, after its setup's subagents
+ * changed (ADR 0040). One that fails to apply is left as it was; the next change applies it again.
+ */
+export const retoolTopic = async (retooling: Retooling, topic: number): Promise<void> => {
+  const { db, subagentTools, retool } = retooling
+  const inTopic = new Set(
+    db
+      .select({ chat: appConversations.chatId })
+      .from(appConversations)
+      .where(eq(appConversations.topicId, topic))
+      .all()
+      .map(({ chat }) => chat),
+  )
+  for (const chat of filteredChats(db).filter((each) => inTopic.has(each)))
+    await retool(chatSession(db, chat), piToolsFor(db, subagentTools, chat))
+}
+
+/** The routines a setup would leave without some of their allowed tools: the ones not done, of `topic`. */
+export const routinesOutside = (db: Db, topic: number, setup: TopicSetup) =>
+  db
+    .select()
+    .from(appRoutines)
+    .where(
+      and(eq(appRoutines.topicId, topic), inArray(appRoutines.state, ['proposed', 'activating', 'active', 'paused'])),
+    )
+    .all()
+    .flatMap((routine) => {
+      const definition = definitionOf(routine)
+      const outside = definition.allowedTools
+        .filter((tool) => !hasTool(setup, tool.serverId, tool.name))
+        .map(({ serverId, name }) => ({ serverId, name }))
+      return outside.length === 0 ? [] : [{ id: routine.id, title: definition.title, outside }]
+    })
 
 /** How many switch rows `dropSwitchesOnce` deleted: servers, tools, libraries and subagents, and apps. */
 export type DroppedSwitches = { readonly switches: number; readonly apps: number }

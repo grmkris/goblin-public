@@ -17,6 +17,7 @@ import { OrganizeHandlers } from '../../organize/api.ts'
 import { PersonasHandlers } from '../../personas/api.ts'
 import { AgentHandlers } from '../../routines/agent-api.ts'
 import { RoutinesHandlers } from '../../routines/api.ts'
+import { SetupHandlers } from '../../setup/api.ts'
 import { TopicsHandlers } from '../../topics/api.ts'
 import { WorkspaceHandlers } from '../../workspace/api.ts'
 import { InternalGateLive, OwnerAdmissionLive } from './middleware.ts'
@@ -26,6 +27,7 @@ const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
   Layer.provide([
     ConversationsHandlers,
     TopicsHandlers,
+    SetupHandlers,
     PersonasHandlers,
     OrganizeHandlers,
     McpHandlers,

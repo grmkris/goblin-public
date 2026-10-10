@@ -1,4 +1,4 @@
-import type { HelperExclusion } from '@goblin/contracts'
+import type { HelperExclusion, RoutineOutsideSetup, TopicSetup } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
@@ -27,5 +27,9 @@ export class Setups extends Context.Service<
     readonly piTools: (session: string) => Effect.Effect<PiTools>
     /** Applies `session`'s tool filter to its Pi conversation. */
     readonly syncPi: (session: string) => Effect.Effect<void, AppError>
+    /** Applies the tool filter again to every chat of a Topic, after its setup's subagents changed. */
+    readonly retoolTopic: (topic: number) => Effect.Effect<void, AppError>
+    /** The routines of a Topic that `setup` would leave without some of their allowed tools. */
+    readonly routinesOutside: (topic: number, setup: TopicSetup) => Effect.Effect<readonly RoutineOutsideSetup[]>
   }
 >()('goblin/setup/Setups') {}

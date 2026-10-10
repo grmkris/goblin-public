@@ -75,7 +75,8 @@ event streams, the files group and the OAuth callback). It annotates the request
 | --- | --- | --- |
 | `conversations` | `/conversations`, `/conversations/:id`, and under it `messages`, `threads`, `move`, `stop`, `queue`, `read`, `composer`, `snapshot`, `history`, `sources`, `events` (SSE) | `chats/api.ts` |
 | `inspect` | `GET /conversations/:id/details` | `inspect/api.ts` |
-| `topics` | `/topics`, `/topics/:id` | `topics/api.ts` |
+| `topics` | `/topics`, `/topics/:id`, `/topics/:id/setup` | `topics/api.ts` |
+| `setup` | `GET /setup/catalog` | `setup/api.ts` |
 | `personas` | `/personas`, `/personas/:id` | `personas/api.ts` |
 | `organize` | `/organize/:id/undo` | `organize/api.ts` |
 | `mcp` | `/mcp/servers`, `/mcp/suggested`, `/mcp/catalog`, `/mcp/registries`, `/mcp/registries/remove`, `/mcp/grants`, `/mcp/ask-first`, `/mcp/skills`, `/mcp/app-grants`, `/mcp/approvals/:id`, `/mcp/oauth/callback`, and `/mcp/:id/` `tools`, `connect`, `disconnect`, `remove`, `tools/call`, `resources/read` | `mcp/api.ts` |
@@ -840,7 +841,12 @@ Each Topic has a **setup** ([ADR 0040](adr/0040-topic-and-persona-setup.md)): it
 each `all` or a list, and whether its chats may start subagents (`TopicSetup`, `packages/contracts/src/setup.ts`).
 `app_topics.setup` stores it as JSON; the additive `20261028000000_topic_setup` migration gave every existing Topic,
 Personal included, everything. A row that cannot be decoded reads as nothing chosen (`topics/setup.ts`), never as
-everything.
+everything. `editTopicSetup` (`topics/program.ts`) changes it as one new revision: a whole setup compare-and-set, or
+items added or removed (`withItems`/`withoutItems`; removing from a category that holds everything lists what
+`setupCatalog`, `setup/catalog.ts`, says the owner allows now). The agent may add only what the owner allows now; the
+owner may keep or restore an item that is gone, which stays listed. A real change leaves a `topic.setup` receipt whose
+Undo restores the setup before it, applies the Pi filter again to the Topic's chats when subagents changed
+(`retoolTopic`), and answers the routines it leaves without some of their allowed tools (`routinesOutside`).
 
 `TopicRegistry` (`topics/registry.ts`, a store behind the `Topics` service in `topics/service.ts`) creates a Topic
 with a new Pi session as its Conversation, not forked from Personal's: its tool filter follows its setup's subagents,
@@ -856,6 +862,8 @@ chat's work through the owner's Stop (runs, queued inputs, subagents and routine
 | --- | --- |
 | `POST /api/topics` | `CreateTopic` (`{ name, operationId, setup? }`): a new Topic and Conversation, with that setup or everything, or the one that operation made; 201. |
 | `PATCH /api/topics/:id` | `UpdateTopic`: rename, archive or restore, and the automatic-search opt-out; one new revision per change. |
+| `PATCH /api/topics/:id/setup` | `TopicSetupEdit`: a whole setup (409 unless `expectedRevision` is current) or items added or removed; answers `TopicSetupSaved`, the Topic and the routines it leaves without some of their tools. |
+| `GET /api/setup/catalog` | `SetupCatalog`: the servers with the tools the owner granted the model, the skill servers they turned on with the skills each lists, and the agent's apps. |
 
 They are the owner API's `topics` group (`topics/api.ts`); the web reads the Topics, archived ones included, from the
 workspace feed. Its snapshot lists `topics`, a change is

@@ -2,6 +2,7 @@ import { OrganizeGroup, PersonasGroup, TopicsGroup } from '@goblin/contracts/api
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import type { AgentApps } from '../../../src/agent-apps/engine.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
@@ -12,7 +13,10 @@ import { HomeService } from '../../../src/home/service.ts'
 import { delegationServices } from '../../../src/layers/delegation.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
 import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
-import { McpConnections, Resident } from '../../../src/mcp/service.ts'
+import { McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
+import { AppEngine } from '../../../src/agent-apps/service.ts'
+import { Setups } from '../../../src/setup/service.ts'
+import { Skills } from '../../../src/skills/service.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { OrganizeHandlers } from '../../../src/organize/api.ts'
 import { PersonasHandlers } from '../../../src/personas/api.ts'
@@ -23,6 +27,27 @@ import { TopicsHandlers } from '../../../src/topics/api.ts'
 import { TopicRegistry } from '../../../src/topics/registry.ts'
 import { currentResident, database, plans, serve, served, stub } from './fixture.ts'
 import { unread } from '../../fake.ts'
+
+/**
+ * What a Topic's setup is chosen from here: one server `notes` with its granted tool `read`, no skills and no apps. A
+ * change of a setup's subagents is counted in `retooled`, and no routine lives in any Topic.
+ */
+const setupServices = (retooled: number[]) =>
+  Layer.mergeAll(
+    stub(McpServers, {
+      list: () =>
+        Effect.succeed([
+          { serverId: 'notes', endpoint: 'https://notes.test/mcp', status: 'connected', live: true, source: 'config' },
+        ]),
+    }),
+    stub(McpGrants, { list: () => Effect.succeed([{ serverId: 'notes', capability: 'tool', name: 'read' }]) }),
+    stub(Skills, { sources: () => Effect.succeed([]), catalog: () => Effect.succeed({ skills: [], unavailable: [] }) }),
+    stub(AppEngine, { summaries: Effect.succeed([]) }),
+    stub(Setups, {
+      retoolTopic: (topic) => Effect.sync(() => void retooled.push(topic)),
+      routinesOutside: () => Effect.succeed([]),
+    }),
+  )
 
 /**
  * The organizing groups (topics, personas, organize) as the agent serves them: lane D's services over real Topic,
@@ -66,6 +91,8 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   // A Topic created here has no open chat, so an archive (an Undo of its creation) reads only `openIn`.
   const conversations = stub(Conversations, { openIn: () => Effect.succeed([]) })
   const flows: FlowEvent[] = []
+  const retooled: number[] = []
+  const catalog = setupServices(retooled)
   const lane = delegationServices({ topics, personas, invocations: unread, receipts, home }).pipe(
     Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))),
   )
@@ -83,7 +110,8 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           stub(RoutineRuns),
           stub(RoutineControl),
           stub(Apps),
-          stub(McpConnections),
+          stub(McpConnections, { snapshot: () => Effect.succeed(Option.none()) }),
+          catalog,
           Layer.succeed(Resident, resident.service),
           plans(options.active),
           FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
@@ -91,5 +119,5 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
       ),
     ),
   )
-  return { fetch, resident, topics, personas, receipts, home, flows }
+  return { fetch, resident, topics, personas, receipts, home, flows, retooled }
 }

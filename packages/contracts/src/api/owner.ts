@@ -16,6 +16,7 @@ import { OrganizeGroup } from './organize.ts'
 import { PersonasGroup } from './personas.ts'
 import { ResidentGroup } from './resident.ts'
 import { RoutinesGroup } from './routines.ts'
+import { SetupGroup } from './setup.ts'
 import { TopicsGroup } from './topics.ts'
 import { WorkspaceGroup } from './workspace.ts'
 
@@ -36,6 +37,7 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
   .add(
     ConversationsGroup,
     TopicsGroup,
+    SetupGroup,
     PersonasGroup,
     OrganizeGroup,
     McpGroup,

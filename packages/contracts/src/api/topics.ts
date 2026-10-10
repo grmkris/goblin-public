@@ -2,7 +2,7 @@ import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
 import * as HttpApiSchema from 'effect/http-api/HttpApiSchema'
-import { CreateTopic, TopicView, UpdateTopic } from '../topics.ts'
+import { CreateTopic, TopicSetupEdit, TopicSetupSaved, TopicView, UpdateTopic } from '../topics.ts'
 import { ApiErrors } from './errors.ts'
 
 /** A Topic's id in a path: 1 to 999999999. */
@@ -16,6 +16,8 @@ const TopicParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 999_
  * - `create`: `POST /api/topics`, 201 with the Topic as it is now. The same operation id finds the same Topic.
  * - `update`: `PATCH /api/topics/:id` renames, archives, restores or changes the search opt-out. A name another active
  *   Topic has is a conflict; archiving Personal is invalid input.
+ * - `setSetup`: `PATCH /api/topics/:id/setup` changes what the Topic's chats work with (ADR 0040), and answers the
+ *   routines it leaves without some of their tools. A stale `expectedRevision` is a conflict.
  */
 export class TopicsGroup extends HttpApiGroup.make('topics').add(
   HttpApiEndpoint.post('create', '/topics', {
@@ -27,6 +29,12 @@ export class TopicsGroup extends HttpApiGroup.make('topics').add(
     params: { id: TopicParam },
     payload: UpdateTopic,
     success: TopicView,
+    error: [ApiErrors.notFound, ApiErrors.conflict, ApiErrors.invalidInput],
+  }),
+  HttpApiEndpoint.patch('setSetup', '/topics/:id/setup', {
+    params: { id: TopicParam },
+    payload: TopicSetupEdit,
+    success: TopicSetupSaved,
     error: [ApiErrors.notFound, ApiErrors.conflict, ApiErrors.invalidInput],
   }),
 ) {}

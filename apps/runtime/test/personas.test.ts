@@ -18,6 +18,10 @@ import { logMessage } from '../src/memory/log.ts'
 import { PersonaRegistry, defaultAvatar } from '../src/personas/registry.ts'
 import { PERSONA_DENIED_TOOLS, personaSelection, personaText } from '../src/pi/persona-turn.ts'
 import { Receipts } from '../src/organize/service.ts'
+import { AppEngine } from '../src/agent-apps/service.ts'
+import { McpConnections, McpGrants, McpServers } from '../src/mcp/service.ts'
+import { Setups } from '../src/setup/service.ts'
+import { Skills } from '../src/skills/service.ts'
 import { Invocations, Personas } from '../src/personas/service.ts'
 import { Topics } from '../src/topics/service.ts'
 import { appConversations } from '../src/storage/schema.ts'
@@ -304,6 +308,12 @@ type Provided =
   | RoutineRuns
   | RoutineControl
   | Invocations
+  | Setups
+  | McpServers
+  | McpGrants
+  | McpConnections
+  | Skills
+  | AppEngine
   | PiSessions
   | FlowEvents
 const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
@@ -342,6 +352,13 @@ describe('organize receipts and Undo', () => {
       Layer.succeed(RoutineControl, unread),
       Layer.succeed(Invocations, unread),
       Layer.succeed(PiSessions, unread),
+      // A setup is never edited here: only a `topic.setup` receipt's Undo reaches these.
+      Layer.succeed(Setups, unread),
+      Layer.succeed(McpServers, unread),
+      Layer.succeed(McpGrants, unread),
+      Layer.succeed(McpConnections, unread),
+      Layer.succeed(Skills, unread),
+      Layer.succeed(AppEngine, unread),
       FlowEvents.noop,
     ).pipe(Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))))
     return { ...parts, layer }

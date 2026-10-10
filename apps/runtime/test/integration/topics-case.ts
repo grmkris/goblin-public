@@ -43,6 +43,9 @@ async function createOnce(url: string, owner: Person): Promise<TopicView> {
   expect(second).toEqual(topic)
   expect(await createTopic(me, 'Garden', operationId)).toEqual(topic)
   expect(topic).toMatchObject({ name: 'Garden', createdBy: 'owner', searchExcluded: false, revision: 1 })
+  // A Topic starts with everything (ADR 0040); the catalog it is chosen from has no server, skill or app yet.
+  expect(topic?.setup).toEqual({ mcpServers: 'all', skills: 'all', apps: 'all', subagents: true })
+  expect(await callOwner(me, (api) => api.setup.catalog())).toEqual({ servers: [], libraries: [], apps: [] })
   const clash = await answerOf(me, (api) =>
     api.topics.create({ payload: { name: 'GARDEN', operationId: crypto.randomUUID() } }),
   )

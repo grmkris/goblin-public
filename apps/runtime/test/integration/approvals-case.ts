@@ -100,6 +100,20 @@ export async function approvalsCase(base: string): Promise<void> {
   expect((await decide(me, revoked.id, true)).state).toBe('failed')
   expect(await calls(base, owner)).toHaveLength(1)
 
+  // A held call whose tool Personal's setup no longer holds is refused when approved (ADR 0040); then it holds it again.
+  const scoped = await hold(me, { operationKey: 'op-scoped' })
+  const narrowed = await callOwner(me, (api) =>
+    api.topics.setSetup({ params: { id: 1 }, payload: { remove: [{ kind: 'tool', serverId: SERVER, name: TOOL }] } }),
+  )
+  expect((await decide(me, scoped.id, true)).state).toBe('failed')
+  expect(await calls(base, owner)).toHaveLength(1)
+  await callOwner(me, (api) =>
+    api.topics.setSetup({
+      params: { id: 1 },
+      payload: { set: { ...narrowed.topic.setup, mcpServers: 'all' }, expectedRevision: narrowed.topic.revision },
+    }),
+  )
+
   // App and alternate model dispatches must stop at the central seam even without the Pi hook.
   const app = await answerOf(me, (api) =>
     api.mcp.callTool({

@@ -8,6 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { undoRefusal } from '../src/components/shell/organize.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
+import { unusedHandlers } from './query/unused-handlers.ts'
 import { undoMutation } from '../src/organize/queries.ts'
 import { createTopicMutation, updateTopicMutation } from '../src/topics/queries.ts'
 
@@ -39,7 +40,8 @@ const fakeOwner = () => {
       .handle('update', ({ params, payload }) => {
         const topic = state.topics.find((each) => each.id === params.id) ?? PERSONAL
         return Effect.succeed({ ...topic, ...(payload.name !== undefined && { name: payload.name }) })
-      }),
+      })
+      .handle('setSetup', unusedHandlers(OwnerApi.groups.topics).setSetup),
   )
   const Organize = HttpApiBuilder.group(OwnerApi, 'organize', (handlers) =>
     handlers.handle('undo', ({ params }) => {

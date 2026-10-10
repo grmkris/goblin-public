@@ -1,4 +1,4 @@
-import type { CreateTopic, TopicSeedData, TopicView, UpdateTopic } from '@goblin/contracts'
+import type { CreateTopic, TopicSeedData, TopicSetup, TopicView, UpdateTopic } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import { type AppError, attemptSync } from '../http/errors.ts'
@@ -43,6 +43,15 @@ export class Topics extends Context.Service<
      * changes), and answers it before and after.
      */
     readonly update: (id: number, change: UpdateTopic) => Effect.Effect<TopicChange, AppError>
+    /**
+     * A new setup (ADR 0040) as one new revision (none when it is the same), compare-and-set on `expectedRevision`
+     * when given, answered before and after.
+     */
+    readonly setSetup: (
+      id: number,
+      setup: TopicSetup,
+      expectedRevision?: number,
+    ) => Effect.Effect<TopicChange, AppError>
   }
 >()('goblin/topics/Topics') {
   /**
@@ -73,6 +82,15 @@ export class Topics extends Context.Service<
             return { before, after: store.update(id, change, now) }
           })
           if (result.after.name !== result.before.name) yield* store.retitled(result.after.conversation)
+          if (result.after.revision !== result.before.revision) yield* changed(id)
+          return result
+        }),
+        setSetup: Effect.fn('Topics.setSetup')(function* (id: number, setup: TopicSetup, expectedRevision?: number) {
+          const now = yield* epochSeconds
+          const result = yield* attemptSync(() => {
+            const before = store.get(id)
+            return { before, after: store.setSetup(id, setup, expectedRevision, now) }
+          })
           if (result.after.revision !== result.before.revision) yield* changed(id)
           return result
         }),

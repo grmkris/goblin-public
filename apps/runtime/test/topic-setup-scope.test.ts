@@ -2,10 +2,10 @@ import { EVERYTHING, type TopicSetup } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import { openAsks } from '../src/attention.ts'
-import { sessionScope, chatScope, piToolsFor } from '../src/setup/scope.ts'
+import { chatScope, piToolsFor, routinesOutside, sessionScope } from '../src/setup/scope.ts'
 import { outsideScopeResult } from '../src/pi/setup.ts'
 import { appPersonaForks } from '../src/storage/personas.ts'
-import { appRoutineRuns } from '../src/storage/routines.ts'
+import { appRoutineRuns, appRoutines } from '../src/storage/routines.ts'
 import { appHelperExclusions, appConversations, appExecutionExclusions } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
 import { storedSetup } from '../src/topics/setup.ts'
@@ -279,6 +279,40 @@ describe('a call outside the setup', () => {
     expect(openAsks([entry as never])).toEqual([
       { kind: 'setup', since: 9, entry: 5, label: 'Add notes · write to #Work' },
     ])
+  })
+})
+
+describe('the routines a setup leaves out', () => {
+  it('names each live routine of the Topic with the allowed tools the setup does not hold', () => {
+    const { db, raw } = fixture()
+    const routine = (id: string, state: 'active' | 'archived', topicId: number) =>
+      raw
+        .insert(appRoutines)
+        .values({
+          id,
+          revision: 1,
+          state,
+          definitionJson: DEFINITION,
+          proposerUserId: 'u',
+          createdAt: 1,
+          updatedAt: 1,
+          topicId,
+        })
+        .run()
+    routine('r_live', 'active', 2)
+    routine('r_done', 'archived', 2)
+    routine('r_elsewhere', 'active', 1)
+    expect(routinesOutside(db, 2, WORK)).toEqual([
+      {
+        id: 'r_live',
+        title: 'Daily',
+        outside: [
+          { serverId: 'notes', name: 'write' },
+          { serverId: 'mail', name: 'send' },
+        ],
+      },
+    ])
+    expect(routinesOutside(db, 2, EVERYTHING)).toEqual([])
   })
 })
 

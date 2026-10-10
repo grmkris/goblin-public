@@ -1,4 +1,4 @@
-import type { HelperExclusion } from '@goblin/contracts'
+import type { HelperExclusion, TopicSetup } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -11,6 +11,8 @@ import {
   dropSwitchesOnce,
   piToolsFor,
   retoolOnce,
+  retoolTopic,
+  routinesOutside,
   syncPi,
 } from '../setup/scope.ts'
 import { Setups } from '../setup/service.ts'
@@ -77,6 +79,12 @@ export const SetupsLive: Layer.Layer<Setups, never, AgentInput | Db> = Layer.eff
       }),
       syncPi: Effect.fn('Setups.syncPi')(function* (session: string) {
         yield* attempt(() => syncPi(pi, session))
+      }),
+      retoolTopic: Effect.fn('Setups.retoolTopic')(function* (topic: number) {
+        yield* attempt(() => retoolTopic(pi, topic))
+      }),
+      routinesOutside: Effect.fn('Setups.routinesOutside')(function* (topic: number, setup: TopicSetup) {
+        return yield* Effect.sync(() => routinesOutside(db, topic, setup))
       }),
     })
   }),

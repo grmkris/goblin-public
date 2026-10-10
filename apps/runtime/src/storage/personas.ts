@@ -71,6 +71,7 @@ export const ORGANIZE_KINDS = [
   'topic.rename',
   'topic.archive',
   'topic.restore',
+  'topic.setup',
   'persona.create',
   'persona.update',
 ] as const

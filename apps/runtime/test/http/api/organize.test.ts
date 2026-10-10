@@ -16,6 +16,10 @@ const scout = {
 
 const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)
 
+/** `PATCH /api/topics/2/setup` with `body`. */
+const setup = (fetch: (request: Request) => Promise<Response>, body: unknown) =>
+  fetch(json('PATCH', '/api/topics/2/setup', body))
+
 describe('the organize group', () => {
   it('undoes a change once, with the body the web sends, and refuses it again as undone', async () => {
     const { fetch, personas, receipts } = organizing()
@@ -80,5 +84,42 @@ describe('the organize group', () => {
       ['topic_create', 'op-1', 'replayed', undefined],
       ['topic_create', 'op-2', 'refused', 'Conflict'],
     ])
+  })
+
+  describe("a Topic's setup (ADR 0040)", () => {
+    it('narrows from everything, adds back, and answers the routines it affects', async () => {
+      const { fetch, topics } = organizing()
+      await fetch(post('/api/topics', { name: 'Work', operationId: 'topic-1' }))
+      const narrowed = await setup(fetch, { remove: [{ kind: 'tool', serverId: 'notes', name: 'read' }] })
+      expect(narrowed.status).toBe(200)
+      expect(await narrowed.json()).toMatchObject({ topic: { id: 2, setup: { mcpServers: [] } }, routines: [] })
+      await setup(fetch, { add: [{ kind: 'server', serverId: 'notes' }] })
+      expect(topics.get(2).setup).toMatchObject({ mcpServers: [{ serverId: 'notes', tools: 'all' }], skills: 'all' })
+    })
+
+    it('refuses a whole setup over a stale revision, and writes nothing for the same one', async () => {
+      const { fetch, topics } = organizing()
+      await fetch(post('/api/topics', { name: 'Work', operationId: 'topic-1' }))
+      const { revision, setup: current } = topics.get(2)
+      const stale = await setup(fetch, { set: { ...current, apps: [] }, expectedRevision: revision - 1 })
+      expect(stale.status).toBe(409)
+      expect(await stale.json()).toMatchObject({ error: { code: 'conflict', reason: 'revision' } })
+      await setup(fetch, { set: current, expectedRevision: revision })
+      expect(topics.get(2).revision).toBe(revision)
+    })
+
+    it('leaves a receipt Undo restores, and applies Pi filters again when subagents change', async () => {
+      const { fetch, topics, receipts, retooled } = organizing()
+      await fetch(post('/api/topics', { name: 'Work', operationId: 'topic-1' }))
+      const before = topics.get(2)
+      await setup(fetch, { remove: [{ kind: 'subagents' }] })
+      expect(retooled).toEqual([2])
+      const [changed] = receipts.list()
+      expect(changed).toMatchObject({ kind: 'topic.setup', target: '2', actor: 'owner', undoable: true })
+      const undone = await fetch(post(`/api/organize/${changed?.id ?? ''}/undo`, {}))
+      expect(undone.status).toBe(200)
+      expect(topics.get(2).setup).toEqual(before.setup)
+      expect(retooled).toEqual([2, 2])
+    })
   })
 })

@@ -1,6 +1,6 @@
 import { OwnerApi } from '@goblin/contracts/api'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import { createTopic, updateTopic } from './program.ts'
+import { createTopic, editTopicSetup, updateTopic } from './program.ts'
 
 /**
  * The `topics` group (ADR 0032), the reference the other groups copy: each handler runs its program. Owner admission
@@ -10,5 +10,6 @@ import { createTopic, updateTopic } from './program.ts'
 export const TopicsHandlers = HttpApiBuilder.group(OwnerApi, 'topics', (handlers) =>
   handlers
     .handle('create', ({ payload }) => createTopic(payload, { actor: 'owner' }))
-    .handle('update', ({ params, payload }) => updateTopic(params.id, payload)),
+    .handle('update', ({ params, payload }) => updateTopic(params.id, payload))
+    .handle('setSetup', ({ params, payload }) => editTopicSetup(params.id, payload)),
 )
