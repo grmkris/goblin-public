@@ -1,6 +1,16 @@
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ChatDirectory, registerChat } from '../src/chats/directory.ts'
+import {
+  chatOfSession,
+  chatSession,
+  conversationAbove,
+  conversationOfTopic,
+  isConversationChat,
+  operationSession,
+  primaryChat,
+  registerChat,
+  topicOfChat,
+} from '../src/chats/directory.ts'
 import { admitReceipt } from '../src/chats/receipts.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { appTopics } from '../src/storage/topics.ts'
@@ -19,23 +29,23 @@ const fixture = () => {
       { chatId: '2', piSession: '42', kind: 'thread', parentSession: '1', createdAt: 1 },
     ])
     .run()
-  return { chats: new ChatDirectory(db), db }
+  return { db }
 }
 
 describe('logical chat directory', () => {
   it('resolves both directions and refuses unregistered chats', () => {
-    const { chats } = fixture()
-    expect(chats.primary()).toBe('1')
-    expect(chats.session(chats.primary())).toBe('41')
-    expect(chats.chatOf('41')).toBe('1')
-    expect(chats.chatOf('1')).toBeUndefined()
-    expect(() => chats.session('99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+    const { db } = fixture()
+    expect(primaryChat).toBe('1')
+    expect(chatSession(db, primaryChat)).toBe('41')
+    expect(chatOfSession(db, '41')).toBe('1')
+    expect(chatOfSession(db, '1')).toBeUndefined()
+    expect(() => chatSession(db, '99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
   })
 
   it('registers every chat row through one inserter: its own session unless given, kept or refused when there', () => {
-    const { chats, db } = fixture()
+    const { db } = fixture()
     expect(registerChat(db, { chatId: '7', kind: 'thread', parentSession: '1', createdAt: 3 })).toBe(true)
-    expect(chats.session('7')).toBe('7')
+    expect(chatSession(db, '7')).toBe('7')
     expect(registerChat(db, { chatId: '7', kind: 'thread', title: 'again', createdAt: 4 }, 'keep')).toBe(false)
     expect(db.select().from(appConversations).where(eq(appConversations.chatId, '7')).get()).toMatchObject({
       title: null,
@@ -45,16 +55,16 @@ describe('logical chat directory', () => {
   })
 
   it('finds the session an operation was admitted to from its receipt', () => {
-    const { chats, db } = fixture()
+    const { db } = fixture()
     const receipt = { kind: 'send', origin: 'owner' } as const
-    admitReceipt(db, { chat: '1', operationId: 'owner:1', receipt, session: () => chats.session('1'), now: 10 })
+    admitReceipt(db, { chat: '1', operationId: 'owner:1', receipt, session: () => chatSession(db, '1'), now: 10 })
     db.update(appConversations).set({ piSession: '43' }).where(eq(appConversations.chatId, '1')).run()
-    expect(chats.operation('1', 'owner:1')).toBe('41')
-    expect(chats.operation('2', 'owner:1')).toBeUndefined()
+    expect(operationSession(db, '1', 'owner:1')).toBe('41')
+    expect(operationSession(db, '2', 'owner:1')).toBeUndefined()
   })
 
   it("tells a Topic's Conversation from its threads and finds the Conversation above any chat", () => {
-    const { chats, db } = fixture()
+    const { db } = fixture()
     db.insert(appTopics)
       .values({ id: 7, name: 'Work', chatId: '70', createdBy: 'owner', createdAt: 1, updatedAt: 1 })
       .run()
@@ -67,21 +77,21 @@ describe('logical chat directory', () => {
         { chatId: '74', piSession: '74', kind: 'thread', parentSession: '73', topicId: 7, createdAt: 2 },
       ])
       .run()
-    expect(['1', '2', '70', '71', '72'].map((chat) => chats.isConversation(chat))).toEqual([
+    expect(['1', '2', '70', '71', '72'].map((chat) => isConversationChat(db, chat))).toEqual([
       true,
       false,
       true,
       false,
       false,
     ])
-    expect(chats.topicOf('2')).toBe(1)
-    expect(chats.topicOf('72')).toBe(7)
-    expect(chats.conversationOf(1)).toBe('1')
-    expect(chats.conversationOf(7)).toBe('70')
-    expect(['1', '2', '70', '72'].map((chat) => chats.conversationAbove(chat))).toEqual(['1', '1', '70', '70'])
+    expect(topicOfChat(db, '2')).toBe(1)
+    expect(topicOfChat(db, '72')).toBe(7)
+    expect(conversationOfTopic(db, 1)).toBe('1')
+    expect(conversationOfTopic(db, 7)).toBe('70')
+    expect(['1', '2', '70', '72'].map((chat) => conversationAbove(db, chat))).toEqual(['1', '1', '70', '70'])
     // Stored parents that loop end at the Topic's Conversation instead of looping.
-    expect(chats.conversationAbove('73')).toBe('70')
-    expect(() => chats.conversationOf(9)).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
-    expect(() => chats.isConversation('99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+    expect(conversationAbove(db, '73')).toBe('70')
+    expect(() => conversationOfTopic(db, 9)).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
+    expect(() => isConversationChat(db, '99')).toThrow(expect.objectContaining({ _tag: 'NotFound' }))
   })
 })

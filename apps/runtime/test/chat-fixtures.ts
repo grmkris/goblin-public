@@ -2,7 +2,6 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Budget, type ModelBudget } from '../src/budget.ts'
-import type { ChatDirectory } from '../src/chats/directory.ts'
 import { attempt, attemptSync } from '../src/http/errors.ts'
 import { makeChatOperations } from '../src/chats/operations.ts'
 import { ChatOperations } from '../src/chats/service.ts'
@@ -17,7 +16,6 @@ import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 /** A probe's own instances, which the Telegram ports' programs read (channel/turns.ts). */
 type PortInstances = {
   readonly db: Db['Service']
-  readonly chats: ChatDirectory
   readonly harness: PiHarness
   readonly budget: ModelBudget
   readonly models: ModelPicker
@@ -26,11 +24,11 @@ type PortInstances = {
 }
 
 /**
- * The services the Telegram ports' programs read, over a probe's own instances: lane C's chat directory and admission
- * over its database (each chat's lock in `KeyedLock`), its budget and model picker as the routines
- * lane's services wrap them, and Pi as its sessions. Flows go to `flows`, else nowhere.
+ * The services the Telegram ports' programs read, over a probe's own instances: the chat directory and admission over
+ * its database (each chat's lock in `KeyedLock`), its budget and model picker as their services wrap them, and Pi as
+ * its sessions. Flows go to `flows`, else nowhere.
  */
-export const portServices = ({ db, chats, harness, budget, models, flows = FlowEvents.noop }: PortInstances) => {
+export const portServices = ({ db, harness, budget, models, flows = FlowEvents.noop }: PortInstances) => {
   // SAFETY: admission reads only Pi's harness and the models it applied from the instance input; no routine answers.
   const input = Layer.succeed(AgentInput, { harness, applied: new Map() } as AgentInputs)
   const plans = Layer.mergeAll(
@@ -53,7 +51,7 @@ export const portServices = ({ db, chats, harness, budget, models, flows = FlowE
   )
   const pi = PiSessions.layer.pipe(Layer.provide(input))
   const core = Layer.mergeAll(Layer.succeed(Db, db), KeyedLock.layer, pi, flows, plans, input)
-  const operations = Layer.effect(ChatOperations, makeChatOperations(chats))
+  const operations = Layer.effect(ChatOperations, makeChatOperations)
   return Layer.mergeAll(
     ChatsLive.pipe(Layer.provide(Layer.succeed(Db, db))),
     operations.pipe(Layer.provide(core)),

@@ -6,7 +6,19 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import type { CapabilityProfiles } from './capabilities/profiles.ts'
 import { writeHelperExclusions } from './capabilities/profiles.ts'
-import { type ChatDirectory, type ChatRow, registerChat, registerPrimary } from './chats/directory.ts'
+import {
+  type ChatRow,
+  chatOfSession,
+  chatRow,
+  chatSession,
+  conversationAbove,
+  isChannel,
+  openChatSession,
+  primaryChat,
+  registerChat,
+  registerPrimary,
+  topicOfChat,
+} from './chats/directory.ts'
 import { ChatStops } from './chats/stops.ts'
 import { Conflict, InvalidInput, NotFound } from './http/errors.ts'
 import type { ChatMemories } from './memory/memory.ts'
@@ -47,9 +59,6 @@ const cleanTitle = (raw: string): string =>
     .trim()
     .slice(0, 60)
 
-/** A Topic's one Conversation (ADR 0032): Personal's (`primary`) or another Topic's. */
-const isChannel = (row: Row): boolean => row.role === 'primary' || row.role === 'conversation'
-
 /** Why a Topic's Conversation refuses a rename or Close: Personal's is Main; another's follows its Topic. */
 const channelRefusal = (row: Row) =>
   new InvalidInput({ reason: row.role === 'primary' ? 'main_thread' : 'topic_conversation' })
@@ -68,7 +77,6 @@ export type ThreadKit = {
   readonly memories: ChatMemories
   readonly namer: CheapModel
   readonly capabilities: CapabilityProfiles
-  readonly chats: ChatDirectory
 }
 
 /**
@@ -100,7 +108,7 @@ export class ConversationRegistry {
     this.#harness = harness
     this.#kit = kit
     this.#tell = tell
-    this.#stops = new ChatStops(db, harness, kit.chats)
+    this.#stops = new ChatStops(db, harness)
     registerPrimary(db, now)
   }
 
@@ -109,7 +117,7 @@ export class ConversationRegistry {
   }
 
   #row(id: string): Row | undefined {
-    return this.#db.select().from(appConversations).where(eq(appConversations.chatId, id)).get()
+    return chatRow(this.#db, id)
   }
 
   /** A registered conversation's row; anything else is `NotFound`. */
@@ -122,12 +130,12 @@ export class ConversationRegistry {
   /** The Pi session of a registered conversation; anything else is `NotFound`. */
   require(id: string): string {
     this.#registered(id)
-    return this.#kit.chats.session(id)
+    return chatSession(this.#db, id)
   }
 
   /** The Pi session of a registered conversation that is open: a closed one is read, never written to. */
   requireOpen(id: string): string {
-    return this.#kit.chats.requireOpen(id)
+    return openChatSession(this.#db, id)
   }
 
   /** Whether a registered conversation is main, a thread or a subagent; anything else is `NotFound`. */
@@ -254,7 +262,7 @@ export class ConversationRegistry {
   }
 
   async #startOnce(parent: string, op: string, anchor: ThreadAnchor, now: number): Promise<StartedOnce> {
-    const home = anchor === 'empty' ? this.#kit.chats.conversationAbove(parent) : parent
+    const home = anchor === 'empty' ? conversationAbove(this.#db, parent) : parent
     const existing = this.#db.select().from(appConversations).where(eq(appConversations.originOp, op)).get()
     if (existing !== undefined) {
       if (existing.parentSession !== home) throw new Conflict({ reason: 'operation_used' })
@@ -267,7 +275,7 @@ export class ConversationRegistry {
     const from = this.#registered(parent)
     if (from.kind === 'subagent') throw new InvalidInput({ reason: 'start_thread' })
     const source = await this.#conversation(parent)
-    const at = await settledEnd(await this.#harness.pi(), this.#kit.chats.session(parent), source)
+    const at = await settledEnd(await this.#harness.pi(), chatSession(this.#db, parent), source)
     if (at !== undefined) return { view: await this.#forkThread(from, source, at, now, origin), existing: false }
     const session = await this.#session([this.#kit.thread], parent)
     const view = await this.#insert(
@@ -288,7 +296,7 @@ export class ConversationRegistry {
    * one (a subagent, a "+" thread).
    */
   #recallAt(from: Row, entry: number): number | null {
-    const memory = this.#kit.memories.of(this.#kit.chats.conversationAbove(from.chatId))
+    const memory = this.#kit.memories.of(conversationAbove(this.#db, from.chatId))
     if (isChannel(from)) return memory.sizeAt(entry)
     return from.recallThrough === null ? null : Math.min(from.recallThrough, memory.sizeAt(entry))
   }
@@ -322,7 +330,7 @@ export class ConversationRegistry {
    * fork, so it starts with none of Personal's transcript. `topics/ports.ts` lists it once its Topic exists.
    */
   async openConversation(): Promise<string> {
-    return this.#session([], this.#kit.chats.primary())
+    return this.#session([], primaryChat)
   }
 
   /** Tells the listeners about chats another registry wrote (a Topic's Conversation, `topics/ports.ts`). */
@@ -352,7 +360,7 @@ export class ConversationRegistry {
    * from that Conversation, up to its fork from a thread.
    */
   recallLimit(session: string, size: number): number {
-    const row = this.#row(this.#kit.chats.chatOf(session) ?? '')
+    const row = this.#row(chatOfSession(this.#db, session) ?? '')
     if (row === undefined) return 0
     return isChannel(row) ? size : (row.recallThrough ?? 0)
   }
@@ -366,9 +374,9 @@ export class ConversationRegistry {
     exclusions: readonly HelperExclusion[] = [],
   ): void {
     if (this.#row(session) !== undefined) return
-    const parentChat = this.#kit.chats.chatOf(parent)
+    const parentChat = chatOfSession(this.#db, parent)
     if (parentChat === undefined) throw new NotFound({ what: 'spawner chat' })
-    const topicId = this.#kit.chats.topicOf(parentChat)
+    const topicId = topicOfChat(this.#db, parentChat)
     this.#db.transaction(() => {
       registerChat(this.#db, {
         chatId: session,
@@ -390,7 +398,7 @@ export class ConversationRegistry {
    */
   async registerPersona(session: string, parentChat: string, name: string, now: number): Promise<void> {
     if (this.#row(session) !== undefined) return
-    const topicId = this.#kit.chats.topicOf(parentChat)
+    const topicId = topicOfChat(this.#db, parentChat)
     await this.#insert(
       { chatId: session, role: 'persona', kind: 'thread', title: name, parentSession: parentChat, topicId },
       now,
@@ -404,7 +412,7 @@ export class ConversationRegistry {
   #routineHome(topic: number): { readonly chat: string; readonly topic: number } {
     const row = this.#db.select().from(appTopics).where(eq(appTopics.id, topic)).get()
     return row === undefined || row.archivedAt !== null
-      ? { chat: this.#kit.chats.primary(), topic: PERSONAL_TOPIC }
+      ? { chat: primaryChat, topic: PERSONAL_TOPIC }
       : { chat: row.chatId, topic }
   }
 
@@ -469,7 +477,7 @@ export class ConversationRegistry {
     if (row?.kind !== 'thread' || row.mainNote !== 'owed' || row.title === null) return undefined
     const model = [{ role: 'user' as const, content: threadStartedContent(row.title), timestamp: at }]
     const entry = { kind: 'app.thread_started', data: { thread }, model }
-    return { chat: this.#kit.chats.conversationAbove(thread), write: { requestId: `thread-started:${thread}`, entry } }
+    return { chat: conversationAbove(this.#db, thread), write: { requestId: `thread-started:${thread}`, entry } }
   }
 
   /** Marks a thread's announcement written: true only for the call that marked it. */
@@ -520,7 +528,7 @@ export class ConversationRegistry {
   }
 
   async #conversation(session: string): Promise<Conversation> {
-    const piSession = this.#kit.chats.session(session)
+    const piSession = chatSession(this.#db, session)
     const conversation = await (await this.#harness.pi()).conversation(conversationId(piSession), BACKGROUND)
     if (conversation === undefined) throw new NotFound({ what: 'conversation' })
     return conversation
@@ -605,7 +613,7 @@ export class ConversationRegistry {
    * conversation is gone still lists, with no replies, so it never takes the whole list down.
    */
   async #describe(row: Row): Promise<ConversationView> {
-    const session = this.#kit.chats.session(row.chatId)
+    const session = chatSession(this.#db, row.chatId)
     const pi = await (await this.#harness.pi()).conversation(conversationId(session), BACKGROUND)
     const activity: ChatActivity =
       pi === undefined ? { replies: 0, asks: [] } : await this.#replies.stats(session, pi, row.forkEntry ?? 0)

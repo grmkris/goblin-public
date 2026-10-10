@@ -13,7 +13,21 @@ import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
 import * as Clock from 'effect/Clock'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
-import { ChatDirectory, type ChatRow, ChatsInstance, registerChat } from '../chats/directory.ts'
+import {
+  ChatDirectory,
+  type ChatDb,
+  type ChatRow,
+  ChatsInstance,
+  chatOfSession,
+  chatSession,
+  conversationAbove,
+  conversationOfTopic,
+  isConversationChat,
+  isHiddenChat,
+  primaryChat,
+  registerChat,
+  topicOfChat,
+} from '../chats/directory.ts'
 import { ChatMover, MovesInstance } from '../chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
 import { ProfilesInstance } from '../capabilities/profiles.ts'
@@ -34,7 +48,7 @@ import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import type { FoundationServices } from './core.ts'
 
-/** Start step 4: the chat directory, every chat id and its current Pi session, made once. */
+/** Start step 4: the chat directory's reads as one object, for the synchronous code that takes one. */
 export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.effect(
   ChatsInstance,
   Db.useSync((db) => new ChatDirectory(db)),
@@ -47,7 +61,7 @@ export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.ef
 export const ConversationRegistryLive: Layer.Layer<
   ConversationsInstance,
   never,
-  AgentInput | Db | Changes | ChatsInstance | MemoriesInstance | ProfilesInstance | CheapModels
+  AgentInput | Db | Changes | MemoriesInstance | ProfilesInstance | CheapModels
 > = Layer.effect(
   ConversationsInstance,
   Effect.gen(function* () {
@@ -59,7 +73,6 @@ export const ConversationRegistryLive: Layer.Layer<
       memories: yield* MemoriesInstance,
       namer: cheap('naming'),
       capabilities: yield* ProfilesInstance,
-      chats: yield* ChatsInstance,
     }
     // The registry is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
     const changes = yield* Changes
@@ -76,7 +89,7 @@ export const ConversationRegistryLive: Layer.Layer<
 export const MoverLive: Layer.Layer<
   MovesInstance,
   never,
-  AgentInput | Db | ChatsInstance | ConversationsInstance | ProfilesInstance | MemoriesInstance | TranscriptsInstance
+  AgentInput | Db | ConversationsInstance | ProfilesInstance | MemoriesInstance | TranscriptsInstance
 > = Layer.effect(
   MovesInstance,
   Effect.gen(function* () {
@@ -85,7 +98,6 @@ export const MoverLive: Layer.Layer<
     const moves = new ChatMover({
       db: yield* Db,
       harness: input.harness,
-      chats: yield* ChatsInstance,
       // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
       withChat: (chat, run) => input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
       conversations: yield* ConversationsInstance,
@@ -103,47 +115,39 @@ export const MoverLive: Layer.Layer<
   }),
 )
 
+/** One of the directory's reads (chats/directory.ts). */
+type Lookup<Args extends readonly unknown[], A> = (db: ChatDb, ...args: Args) => A
+
+/** A directory read as a `Chats` method: its typed failures as `AppError`, anything else `Internal`. */
+const read = <Args extends readonly unknown[], A>(db: ChatDb, name: string, lookup: Lookup<Args, A>) =>
+  Effect.fn(name)(function* (...args: Args) {
+    return yield* attemptSync(() => lookup(db, ...args))
+  })
+
 /** The chat directory natively: reads over the agent's SQLite (it keeps no state) and the one row inserter. */
 export const ChatsLive = Layer.effect(
   Chats,
   Effect.gen(function* () {
     const db = yield* Db
-    const chats = new ChatDirectory(db)
+    const chatOf = read(db, 'Chats.chatOf', chatOfSession)
     return Chats.of({
-      primary: chats.primary(),
-      session: Effect.fn('Chats.session')(function* (chat: string) {
-        return yield* attemptSync(() => chats.session(chat))
-      }),
-      chatOf: Effect.fn('Chats.chatOf')(function* (session: string) {
-        return Option.fromNullishOr(yield* attemptSync(() => chats.chatOf(session)))
-      }),
-      topicOf: Effect.fn('Chats.topicOf')(function* (chat: string) {
-        return yield* attemptSync(() => chats.topicOf(chat))
-      }),
-      conversationOf: Effect.fn('Chats.conversationOf')(function* (topic: number) {
-        return yield* attemptSync(() => chats.conversationOf(topic))
-      }),
-      conversationAbove: Effect.fn('Chats.conversationAbove')(function* (chat: string) {
-        return yield* attemptSync(() => chats.conversationAbove(chat))
-      }),
-      isConversation: Effect.fn('Chats.isConversation')(function* (chat: string) {
-        return yield* attemptSync(() => chats.isConversation(chat))
-      }),
-      isHidden: Effect.fn('Chats.isHidden')(function* (chat: string) {
-        return yield* attemptSync(() => chats.isHidden(chat))
-      }),
-      register: Effect.fn('Chats.register')(function* (row: ChatRow, again: 'fail' | 'keep' = 'fail') {
-        return yield* attemptSync(() => registerChat(db, row, again))
-      }),
+      primary: primaryChat,
+      session: read(db, 'Chats.session', chatSession),
+      chatOf: (session: string) => Effect.map(chatOf(session), Option.fromNullishOr),
+      topicOf: read(db, 'Chats.topicOf', topicOfChat),
+      conversationOf: read(db, 'Chats.conversationOf', conversationOfTopic),
+      conversationAbove: read(db, 'Chats.conversationAbove', conversationAbove),
+      isConversation: read(db, 'Chats.isConversation', isConversationChat),
+      isHidden: read(db, 'Chats.isHidden', isHiddenChat),
+      register: read(db, 'Chats.register', (database, row: ChatRow, again: 'fail' | 'keep' = 'fail') =>
+        registerChat(database, row, again),
+      ),
     })
   }),
 )
 
-/** The chat operations natively (chats/operations.ts), over the agent's directory. */
-export const ChatOperationsLive = Layer.effect(
-  ChatOperations,
-  ChatsInstance.use((chats) => makeChatOperations(chats)),
-)
+/** The chat operations natively (chats/operations.ts), over the agent's database. */
+export const ChatOperationsLive = Layer.effect(ChatOperations, makeChatOperations)
 
 /** The registry's reads over the agent's one `ConversationRegistry`. */
 const registryReads = (conversations: ConversationRegistry) => ({
@@ -230,7 +234,7 @@ const threadFlow = (anchor: ThreadAnchor) => (anchor === 'latest' ? 'start' : an
  */
 const threadStarts = (
   conversations: ConversationRegistry,
-  chats: ChatDirectory,
+  db: ChatDb,
   operations: ChatOperations['Service'],
   flows: FlowEvents['Service'],
 ) => {
@@ -261,12 +265,12 @@ const threadStarts = (
     const { from, topic, operationId } = input
     if (operationId !== undefined) {
       if (from !== undefined) return yield* startThread(from.conversation, operationId, { entry: from.entry })
-      const channel = yield* attemptSync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
+      const channel = yield* attemptSync(() => conversationOfTopic(db, topic ?? PERSONAL_TOPIC))
       return yield* startThread(channel, operationId, 'empty')
     }
     const now = yield* epochSeconds
     if (from !== undefined) return yield* attempt(() => conversations.branch(from.conversation, from.entry, now))
-    const channel = yield* attemptSync(() => chats.conversationOf(topic ?? PERSONAL_TOPIC))
+    const channel = yield* attemptSync(() => conversationOfTopic(db, topic ?? PERSONAL_TOPIC))
     return yield* attempt(() => conversations.createIn(channel, now))
   })
   return { startThread, create }
@@ -385,13 +389,13 @@ const ConversationsAdapter = Layer.effect(
   Conversations,
   Effect.gen(function* () {
     const conversations = yield* ConversationsInstance
-    const chats = yield* ChatsInstance
+    const db = yield* Db
     const operations = yield* ChatOperations
     const flows = yield* FlowEvents
     return Conversations.of({
       ...registryReads(conversations),
       ...registryChats(conversations),
-      ...threadStarts(conversations, chats, operations, flows),
+      ...threadStarts(conversations, db, operations, flows),
       ...registryWrites(conversations, operations, flows),
     })
   }),

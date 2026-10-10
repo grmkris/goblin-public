@@ -19,18 +19,17 @@ import { framesOf, safeErrorType } from '../observability/report.ts'
 import { Moves } from './service.ts'
 import * as Context from 'effect/Context'
 import { appMcpApprovals } from '../storage/mcp-approvals.ts'
-import type { ChatDirectory } from './directory.ts'
+import { chatSession, isConversationChat, topicOfChat } from './directory.ts'
 import { type MoveRow, MoveStore, moveReceipt } from './moves.ts'
 import { submitThreadHead } from './thread-heads.ts'
 
 /** The boundaries a move commits at, where a test may stop the object to prove a restart finishes the move. */
 export type MovePhase = 'fork' | 'head'
 
-/** What the mover works with: the shared directory and registry, Pi, and the thread's own extensions. */
+/** What the mover works with: the agent's database and registry, Pi, and the thread's own extensions. */
 export type MoverPorts = {
   readonly db: DrizzleSqliteDODatabase
   readonly harness: PiHarness
-  readonly chats: ChatDirectory
   /** Runs `run` while `chat`'s admission lock is held: `ChatOperations.withChat`, the one lock per chat. */
   readonly withChat: <A>(chat: string, run: () => Promise<A>) => Promise<A>
   readonly conversations: ConversationRegistry
@@ -121,10 +120,10 @@ export class ChatMover {
    * its newest turn still shown (not one moved already), with no approval waiting on the owner. A reason when not.
    */
   async #plan(chat: string, entry: number): Promise<Plan | string> {
-    const { chats, conversations } = this.#ports
-    if (!chats.isConversation(chat)) return 'not_conversation'
+    const { db, conversations } = this.#ports
+    if (!isConversationChat(db, chat)) return 'not_conversation'
     conversations.requireOpen(chat)
-    const source = chats.session(chat)
+    const source = chatSession(db, chat)
     const pi = await this.#pi()
     const conversation = await pi.conversation(conversationId(source), BACKGROUND)
     if (conversation === undefined) throw new NotFound({ what: 'conversation' })
@@ -233,7 +232,7 @@ export class ChatMover {
 
   /** The moved Thread's rows and switches: in the chat's Topic, showing its replies from the moved message on. */
   async #register(row: MoveRow, conversation: Conversation, text: string): Promise<void> {
-    const { chats, conversations, capabilities } = this.#ports
+    const { db, conversations, capabilities } = this.#ports
     const { fork } = required(row)
     const before = { maxEntryId: entryId(row.messageEntry - 1) }
     const [previous] = (await conversation.entries(before, 1, undefined, BACKGROUND)).items
@@ -241,7 +240,7 @@ export class ChatMover {
     const thread = {
       chat: fork,
       title: titleOf(text),
-      topic: chats.topicOf(row.chatId),
+      topic: topicOfChat(db, row.chatId),
       before: previous?.id ?? null,
       recallThrough: conversations.recallAt(row.chatId, row.messageEntry - 1),
     }

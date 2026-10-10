@@ -8,7 +8,7 @@ import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
 import { ModelBudget, UsageStore } from '../../src/budget.ts'
 import { channelPorts } from '../../src/channel/turns.ts'
-import { ChatDirectory, registerPrimary } from '../../src/chats/directory.ts'
+import { registerPrimary } from '../../src/chats/directory.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts'
 import { FlowEvents } from '../../src/observability/flows.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
@@ -91,7 +91,6 @@ export async function telegramFlowsProbe(storage: DurableObjectStorage, harness:
   const recorded: FlowEvent[] = []
   const services = portServices({
     db,
-    chats: new ChatDirectory(db),
     harness,
     budget: new ModelBudget(new UsageStore(db), 300_000),
     models: new ModelPicker(new ModelChoiceStore(db), modelOptions(undefined, 'storage-only')),

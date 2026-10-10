@@ -15,7 +15,7 @@ import { safeErrorType } from '../observability/report.ts'
 import { type PiFailure, PiSessions } from '../pi/sessions.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
-import { type ChatDirectory, SessionId } from './directory.ts'
+import { SessionId, chatSession, openChatSession } from './directory.ts'
 import { epochSeconds } from '../clock.ts'
 import {
   type ReceiptChange,
@@ -37,11 +37,11 @@ const chatLock =
     locks.withLock(`chat:${chat}`)(effect).pipe(Effect.withSpan('ChatOperations.withChat'))
 
 /** The receipts in the agent's SQLite (chats/receipts.ts), each read or write with the Clock's time. */
-const receiptsOf = (db: Db['Service'], chats: ChatDirectory) => ({
+const receiptsOf = (db: Db['Service']) => ({
   record: Effect.fn('ChatOperations.record')(function* (chat: string, operationId: string, receipt: ReceiptInput) {
     const now = yield* epochSeconds
     const admitted = yield* attemptSync(() =>
-      admitReceipt(db, { chat, operationId, receipt, session: () => chats.session(chat), now }),
+      admitReceipt(db, { chat, operationId, receipt, session: () => chatSession(db, chat), now }),
     )
     return { session: SessionId(admitted.session), existing: admitted.existing } satisfies Admitted
   }),
@@ -174,27 +174,26 @@ const sendWith =
     }).pipe(Effect.withSpan('ChatOperations.send'))
 
 /**
- * The chat operations natively over `chats`, the agent's directory: receipts in the agent's SQLite, the chat's lock in
- * `KeyedLock`, Pi through `PiSessions`, flows through `FlowEvents`.
+ * The chat operations natively: receipts and the chat directory in the agent's SQLite, the chat's lock in `KeyedLock`,
+ * Pi through `PiSessions`, flows through `FlowEvents`.
  */
-export const makeChatOperations = (chats: ChatDirectory) =>
-  Effect.gen(function* () {
-    const db = yield* Db
-    const pi = yield* PiSessions
-    const flows = yield* FlowEvents
-    const { harness, applied } = yield* AgentInput
-    const withChat = chatLock(yield* KeyedLock)
-    const receipts = receiptsOf(db, chats)
-    const written = writeHeld(receipts, pi)
-    const tracked = trackedWith(receipts)
-    const admit = admitWith({ withChat, tracked, flows, requireOpen: (chat) => chats.requireOpen(chat) })
-    const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied }
-    return ChatOperations.of({
-      ...receipts,
-      tracked,
-      withChat,
-      passiveWrite: (chat, write) => withChat(chat, written(chat, write)),
-      admit,
-      send: sendWith(sending),
-    })
+export const makeChatOperations = Effect.gen(function* () {
+  const db = yield* Db
+  const pi = yield* PiSessions
+  const flows = yield* FlowEvents
+  const { harness, applied } = yield* AgentInput
+  const withChat = chatLock(yield* KeyedLock)
+  const receipts = receiptsOf(db)
+  const written = writeHeld(receipts, pi)
+  const tracked = trackedWith(receipts)
+  const admit = admitWith({ withChat, tracked, flows, requireOpen: (chat) => openChatSession(db, chat) })
+  const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied }
+  return ChatOperations.of({
+    ...receipts,
+    tracked,
+    withChat,
+    passiveWrite: (chat, write) => withChat(chat, written(chat, write)),
+    admit,
+    send: sendWith(sending),
   })
+})

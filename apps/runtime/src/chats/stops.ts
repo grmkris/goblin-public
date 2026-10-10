@@ -1,10 +1,9 @@
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { eq, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import type { PiHarness } from 'agents/harness/pi'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { dropRelaysTo } from '../pi/subagent-relay.ts'
-import { appConversations } from '../storage/schema.ts'
-import type { ChatDirectory } from './directory.ts'
+import { chatRow, chatSession } from './directory.ts'
 
 /**
  * `tree`: `id` and every conversation under it, as a recursive CTE. `UNION` drops repeats, so even a cycle in stored
@@ -20,17 +19,15 @@ const tree = (id: string) =>
 
 /**
  * Close and Stop over the chat tree (ADRs 0017, 0018): which chats a Close reaches, which subagents a Stop reaches,
- * and stopping their Pi work. Chats resolve to their current Pi sessions through the shared directory.
+ * and stopping their Pi work. Chats resolve to their current Pi sessions through the directory.
  */
 export class ChatStops {
   readonly #db: DrizzleSqliteDODatabase
   readonly #harness: PiHarness
-  readonly #chats: ChatDirectory
 
-  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness, chats: ChatDirectory) {
+  constructor(db: DrizzleSqliteDODatabase, harness: PiHarness) {
     this.#db = db
     this.#harness = harness
-    this.#chats = chats
   }
 
   /** `id` and every conversation under it, any depth, closed ones included. */
@@ -70,12 +67,12 @@ export class ChatStops {
   async dropRelays(chats: readonly string[]): Promise<void> {
     const pi = await this.#harness.pi()
     for (const chat of chats) {
-      const row = this.#db.select().from(appConversations).where(eq(appConversations.chatId, chat)).get()
+      const row = chatRow(this.#db, chat)
       if (row?.kind === 'subagent' && row.parentSession !== null)
         await dropRelaysTo(
           pi,
-          conversationId(row.spawnerSession ?? this.#chats.session(row.parentSession)),
-          conversationId(this.#chats.session(chat)),
+          conversationId(row.spawnerSession ?? chatSession(this.#db, row.parentSession)),
+          conversationId(chatSession(this.#db, chat)),
         )
     }
   }
@@ -85,7 +82,7 @@ export class ChatStops {
     const pi = await this.#harness.pi()
     for (const chat of chats)
       await (
-        await pi.conversation(conversationId(this.#chats.session(chat)), BACKGROUND)
+        await pi.conversation(conversationId(chatSession(this.#db, chat)), BACKGROUND)
       )?.abort(BACKGROUND, { background: true })
   }
 }
