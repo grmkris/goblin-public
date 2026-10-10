@@ -1,7 +1,5 @@
-import { RoutineDefinition } from '@goblin/contracts'
 import * as Match from 'effect/Match'
 import * as Option from 'effect/Option'
-import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { Conflict, NotFound, isAppError } from '../http/errors.ts'
 import { writeLine } from '../observability/logger.ts'
@@ -12,12 +10,11 @@ import { redactSecretFields } from '../mcp/redaction.ts'
 import type { Events } from '../mcp/service.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { canonicalArguments } from '../mcp/events/store.ts'
-import { RoutineStore } from './store.ts'
+import { RoutineStore, definitionOf } from './store.ts'
 import type { RoutineRunner, RoutineWake } from './runner.ts'
 import type { Firing } from './runs.ts'
 import { routineSummary } from './summary.ts'
 
-const decode = (json: string) => Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(json))
 const consumerId = (id: string) => `routine:${id}`
 
 /**
@@ -71,7 +68,7 @@ export class RoutineEventBindings {
   async confirm(id: string, revision: number): Promise<void> {
     const row = this.#store.get(id)
     if (row.revision !== revision || row.state !== 'activating' || row.confirmedAt === null) return
-    const trigger = decode(row.definitionJson).trigger
+    const trigger = definitionOf(row).trigger
     if (trigger.kind !== 'event') return
     await this.#run(this.#events.grant(trigger.serverId, trigger.name, trigger.arguments, true))
     await this.#run(
@@ -92,7 +89,7 @@ export class RoutineEventBindings {
   }
   async #repair(row: ReturnType<RoutineStore['get']>): Promise<void> {
     const binding = Option.getOrUndefined(await this.#run(this.#events.activeConsumer(consumerId(row.id))))
-    const definition = decode(row.definitionJson)
+    const definition = definitionOf(row)
     if (binding !== undefined && (binding.revision !== row.revision || !['active', 'activating'].includes(row.state)))
       await this.#run(this.#events.unsubscribe(binding))
     if (
@@ -156,7 +153,7 @@ export class RoutineEventBindings {
       if (error instanceof NotFound) return
       throw error
     }
-    const trigger = decode(row.definitionJson).trigger
+    const trigger = definitionOf(row).trigger
     if (
       row.state !== 'active' ||
       row.revision !== context.consumer.revision ||

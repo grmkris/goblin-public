@@ -4,7 +4,7 @@ import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { BudgetExhausted, Forbidden } from '../http/errors.ts'
 import { requireResident } from '../mcp/service.ts'
-import { definitionOf } from './runs.ts'
+import { definitionOf } from './store.ts'
 import { RoutineRuns, RoutineUsage } from './service.ts'
 
 /** The dedicated routine provider resolves this before every model dispatch, including recovery and compaction. */

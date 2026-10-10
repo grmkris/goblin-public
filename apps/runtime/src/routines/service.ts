@@ -4,13 +4,11 @@ import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
-import type { appRoutineSettings, appRoutines } from '../storage/routines.ts'
+import type { appRoutineSettings } from '../storage/routines.ts'
 import type { Firing, RoutineRun } from './runs.ts'
 import type { RoutineSlot } from './scheduler.ts'
-import type { RoutineOperationResult } from './store.ts'
+import type { RoutineOperationResult, RoutineRow } from './store.ts'
 
-/** A routine as stored: its definition still as JSON, and the scheduling fields only the runtime reads. */
-type RoutineRow = typeof appRoutines.$inferSelect
 /** The owner's routine caps and timezone, as stored (one row). */
 type RoutineSettingsRow = typeof appRoutineSettings.$inferSelect
 /** A cron or one-off slot that fired: which one was expected, the next one, and how many were missed between. */

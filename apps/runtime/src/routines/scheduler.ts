@@ -3,7 +3,7 @@ import * as Schema from 'effect/Schema'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { Conflict } from '../http/errors.ts'
 import { CredentialCipher } from '../mcp/cipher.ts'
-import { RoutineStore } from './store.ts'
+import { RoutineStore, definitionOf } from './store.ts'
 import type { RoutineRunner } from './runner.ts'
 import type { Firing } from './runs.ts'
 import { cronSlots, nextFire } from './time.ts'
@@ -84,7 +84,7 @@ export class RoutineScheduler {
   async #repair(row: ReturnType<RoutineStore['get']>, jobs: readonly Schedule[]): Promise<void> {
     if ((row.state !== 'activating' && row.state !== 'active') || row.confirmedAt === null) return
     if (row.pendingTrigger !== null) await this.drain(row.id, row.revision, row.pendingTrigger)
-    const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(row.definitionJson))
+    const definition = definitionOf(row)
     if (definition.trigger.kind === 'event' || row.nextFireAt === null) return
     if (row.state === 'active' && row.nextFireAt <= Date.now()) {
       await this.fire({ routineId: row.id, revision: row.revision, firedAt: row.nextFireAt })
@@ -126,7 +126,7 @@ export class RoutineScheduler {
       slot.firedAt > Date.now()
     )
       return
-    const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(row.definitionJson))
+    const definition = definitionOf(row)
     if (definition.trigger.kind === 'event') return
     const due = dueSlot(definition, slot.firedAt, Date.now())
     const firing: Firing = {

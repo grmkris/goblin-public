@@ -13,7 +13,7 @@ import {
 import { appRoutineRuns } from '../storage/routines.ts'
 import { chatOfSession, chatSession, primaryChat } from '../chats/directory.ts'
 import { InvalidInput } from '../http/errors.ts'
-import { definitionOf } from '../routines/runs.ts'
+import { definitionOf } from '../routines/store.ts'
 
 type Kind = CapabilityTarget['kind']
 type Db = DrizzleSqliteDODatabase

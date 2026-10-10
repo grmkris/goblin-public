@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
-import { RoutineDefinition, RoutineRunView } from '@goblin/contracts'
+import { RoutineRunView } from '@goblin/contracts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import {
   appRoutines,
@@ -14,7 +14,7 @@ import {
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { QuestionSpec } from '@goblin/contracts'
 import { appUsageDaily } from '../storage/schema.ts'
-import { RoutineStore } from './store.ts'
+import { RoutineStore, definitionOf } from './store.ts'
 import { routineSummary } from './summary.ts'
 import { sha256Hex } from '../runtime/digest.ts'
 
@@ -35,8 +35,6 @@ export type Firing = {
       }
     | undefined
 }
-export const definitionOf = (run: RoutineRun): RoutineDefinition =>
-  Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(run.definitionJson))
 export const runView = (run: RoutineRun): RoutineRunView => Schema.decodeUnknownSync(RoutineRunView)(run)
 const LIVE = ['admitted', 'running', 'waiting_owner'] as const
 
@@ -56,7 +54,7 @@ function requireSameFiring(previous: RoutineRun, firing: Firing): void {
 }
 
 function newRun(firing: Firing, id: string, skip: string | undefined, at: number, definitionJson: string): RoutineRun {
-  const definition = Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(definitionJson))
+  const definition = definitionOf({ definitionJson })
   return {
     id,
     routineId: firing.routineId,

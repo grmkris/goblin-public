@@ -8,9 +8,13 @@ import { appRoutineOperations, appRoutines, appRoutineSettings } from '../storag
 import { nextFire, timezoneValid } from './time.ts'
 
 type Db = DrizzleSqliteDODatabase
-type Row = typeof appRoutines.$inferSelect
+/** A routine as stored: its definition still as JSON, and the scheduling fields only the runtime reads. */
+export type RoutineRow = typeof appRoutines.$inferSelect
 const json = (value: unknown) => JSON.stringify(value)
-const decode = (value: string): RoutineDefinition => Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(value))
+
+/** The definition a routine or one of its runs was stored with, as the owner confirmed it. */
+export const definitionOf = (stored: { readonly definitionJson: string }): RoutineDefinition =>
+  Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(stored.definitionJson))
 
 const OperationResult = Schema.Struct({ routine: RoutineView, operationId: Schema.String })
 export type RoutineOperationResult = typeof OperationResult.Type
@@ -47,12 +51,12 @@ export class RoutineStore {
     )
   }
 
-  #view(row: Row): RoutineView {
+  #view(row: RoutineRow): RoutineView {
     return {
       id: row.id,
       revision: row.revision,
       state: row.state,
-      definition: decode(row.definitionJson),
+      definition: definitionOf(row),
       confirmedAt: row.confirmedAt,
       nextFireAt: row.nextFireAt,
       lastFireAt: row.lastFireAt,
@@ -67,7 +71,7 @@ export class RoutineStore {
     const rows = this.#db.select().from(appRoutines).orderBy(desc(appRoutines.updatedAt)).all()
     return rows.filter((row) => includeArchived || row.state !== 'archived').map((row) => this.#view(row))
   }
-  get(routineId: string): Row {
+  get(routineId: string): RoutineRow {
     const row = this.#db.select().from(appRoutines).where(eq(appRoutines.id, routineId)).get()
     if (row === undefined || row.proposerUserId !== this.#user) throw new NotFound({ what: 'routine' })
     return row
@@ -112,7 +116,7 @@ export class RoutineStore {
       const valid = validate(definition, at)
       if (this.list().filter((routine) => routine.state !== 'archived').length >= 100)
         throw new Conflict({ reason: 'routine draft limit' })
-      const routine: Row = {
+      const routine: RoutineRow = {
         id: routineId,
         revision: 1,
         state: 'proposed',
@@ -182,7 +186,7 @@ export class RoutineStore {
         throw new Conflict({ reason: 'routine is not confirmable' })
       const active = this.list().filter((routine) => routine.state === 'active' || routine.state === 'activating')
       if (active.length >= this.settings().maxActive) throw new Conflict({ reason: 'active routine limit' })
-      const definition = decode(current.definitionJson)
+      const definition = definitionOf(current)
       const next = nextFire(definition, at)
       this.#db
         .update(appRoutines)
@@ -222,7 +226,7 @@ export class RoutineStore {
         .set({
           state: 'paused',
           // A retired Events consumer revision must never be revived by Resume.
-          revision: decode(current.definitionJson).trigger.kind === 'event' ? revision + 1 : revision,
+          revision: definitionOf(current).trigger.kind === 'event' ? revision + 1 : revision,
           scheduleId: null,
           nextFireAt: null,
           pendingTrigger: null,
@@ -270,7 +274,7 @@ export class RoutineStore {
       .run()
   }
 
-  scheduling(): Row[] {
+  scheduling(): RoutineRow[] {
     return this.#db.select().from(appRoutines).all()
   }
   eventHealth(id: string, revision: number, health: string | null, at: number): void {
@@ -328,7 +332,7 @@ export class RoutineStore {
       .set({
         pendingTrigger: null,
         state:
-          row.state === 'active' && row.nextFireAt === null && decode(row.definitionJson).trigger.kind !== 'event'
+          row.state === 'active' && row.nextFireAt === null && definitionOf(row).trigger.kind !== 'event'
             ? 'completed'
             : row.state,
         updatedAt: at,
