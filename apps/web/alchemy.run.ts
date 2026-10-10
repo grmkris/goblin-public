@@ -39,6 +39,7 @@ export default Alchemy.Stack(
     const domain = yield* Config.String('GOBLIN_DOMAIN').pipe(Config.withDefault(''))
     const zoneId = domain === '' ? '' : yield* Config.String('GOBLIN_ZONE_ID')
     const signupMode = yield* Config.String('GOBLIN_SIGNUP_MODE').pipe(Config.withDefault('closed'))
+    const build = yield* Config.String('VITE_GOBLIN_BUILD').pipe(Config.withDefault(''))
     // An address on a domain onboarded for Cloudflare Email Sending; local uses its mail simulator.
     const mailSender = yield* Config.String('GOBLIN_MAIL_SENDER').pipe(
       Config.withDefault(stage.local ? 'hello@goblin.test' : ''),
@@ -107,6 +108,10 @@ export default Alchemy.Stack(
         ),
         DODO_PRODUCT_ID: Config.Redacted('DODO_PRODUCT_ID').pipe(Config.withDefault(Redacted.make(''))),
         STAGE: runtimeStage(stage.name),
+        // The release SHA stage.ts sets: as a prop it changes every release, which forces the rebuild that bakes it
+        // into the client bundle (the build's input hash covers files only). Unset (the local stack), crash reports
+        // say `dev`.
+        ...(build === '' ? {} : { VITE_GOBLIN_BUILD: build }),
       },
     })
     return { url: web.url, authDatabase: db.databaseId }

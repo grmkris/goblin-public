@@ -13,6 +13,7 @@ import { DevClient, type Step } from './smoke-client.ts'
 import { edgeChecks } from './smoke-edge.ts'
 import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
+import { clientBuild } from './smoke-release.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
@@ -434,6 +435,8 @@ type Receipt = {
   readonly files: FileCheck['files']
   readonly edge: Awaited<ReturnType<typeof edgeChecks>>['edge']
   readonly app: 'ok'
+  /** The commit the deployed client bundle names, or why it was not checked. */
+  readonly build: string
 }
 
 /** Signed in: resident authority is active and main has a snapshot. */
@@ -454,7 +457,9 @@ async function serverReports(dev: DevClient): Promise<readonly ServerReport[]> {
 
 async function smokeDev(
   steps: Step[],
-): Promise<Receipt | { readonly stage: string; readonly signup: string; readonly mode: 'read-only' }> {
+): Promise<
+  Receipt | { readonly stage: string; readonly signup: string; readonly mode: 'read-only'; readonly build: string }
+> {
   const config = await Effect.runPromise(settings)
   if ((await stat(new URL(`../.local/${config.stage}.env`, import.meta.url))).mode & 0o077)
     throw new Error('private_stage_env_required')
@@ -462,9 +467,10 @@ async function smokeDev(
   const health = await dev.json('/health', { owner: false })
   if (health['stage'] !== config.stage || health['service'] !== 'goblin') throw new Error('stage_health_mismatch')
   const signup = string(health['signup'])
+  const build = await clientBuild(dev, config.stage)
   if (config.stage === 'prod' && (Redacted.value(config.email) === '' || config.sessionFile === '')) {
     await publicSmoke(dev, health, signup, steps, () => refusedSignup(dev, steps))
-    return { stage: config.stage, signup, mode: 'read-only' }
+    return { stage: config.stage, signup, mode: 'read-only', build }
   }
   if (signup !== 'open') await refusedSignup(dev, steps)
   await dev.useSession(config.sessionFile, config.email)
@@ -483,7 +489,7 @@ async function smokeDev(
       return { inbound, ...thread, ...subagent, ...memory, ...app }
     })
     const model = config.smokeModel ?? 'owner pick'
-    return { stage: config.stage, model, signup, resident, servers, files, edge, ...checks }
+    return { stage: config.stage, model, signup, resident, servers, files, edge, build, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
     // expected: the step list records the revoke's answer; a refusal here must not hide the failure above
