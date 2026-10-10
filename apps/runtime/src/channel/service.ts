@@ -6,7 +6,7 @@ import type { ChannelCall, ChannelPorts, DeliveredReply } from './channel.ts'
 
 /**
  * The Telegram channel (ADR 0009): the one connection the owner chose to carry Telegram, its inbox cursor, the doorbell
- * secret, and the answers still to send. Instants are epoch seconds. Built once, by start step 16 (`telegramChannel`).
+ * secret, and the answers still to send. Instants are epoch seconds. Built once, by start step 11 (`telegramChannel`).
  */
 export class Channel extends Context.Service<
   Channel,

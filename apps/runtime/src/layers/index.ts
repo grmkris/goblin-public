@@ -21,22 +21,41 @@ const then =
     Layer.provideMerge(step, built)
 
 /**
- * The agent's start over the core services, step by step in its one fixed order (the boot contract): each step is a
- * layer built after and over every step before it, so each await holds up the steps after it.
+ * The agent's start: the core services (step 1, `layers/core.ts`), then each step in its one fixed order (the boot
+ * contract). A step is a layer built after and over every step before it, so its await holds up the steps after it.
+ *
+ * 2. The MCP host. Awaits the credential cipher's key, which every stored credential and held call is sealed with;
+ *    each server's endpoint binding is checked and the held calls a restart cut off are recovered before anything
+ *    can connect or decide one.
+ * 3. The cheap models, which the memories (9) and the skill learner (10) are built over.
+ * 4. Helper execution. Awaits Pi: every registered helper goes on with the execution extensions the agent has now,
+ *    also after the object was rebuilt.
+ * 5. Retooling. Awaits Pi: every conversation's stored tool filter is applied to Pi again, once (a marker records it),
+ *    so a filter stored before the delegation tools changed names them as they are now.
+ * 6. Routine runs. Awaits the usage projection's subscription to Pi's commits, made after a snapshot of each live
+ *    run, so nothing after it can commit to Pi unseen.
+ * 7. Main registered, before anything reads the chat directory for it.
+ * 8. The App registry, which follows `conversations.changed` and `agent-apps.changed` from the first write on.
+ * 9. Memories. Awaits every Topic Conversation without memory being given it (a fresh agent's Personal, registered
+ *    at 7, or a Topic whose activation a crash cut short).
+ * 10. Skills and the learner, over the host's connections.
+ * 11. The Telegram channel.
+ * 12. Events. Awaits the hook token, then registers the Telegram and skills consumers (10, 11) before any delivery
+ *     can reach the engine.
  */
 const start = (input: AgentInputs) =>
   CoreLive(input).pipe(
-    then(McpHostLive), // 2 mcp: endpoint bindings, cipher, held calls recovered, the host and its services
-    then(CheapModelsLive), // 3 knowledge
-    then(HelperExecutionLive), // 7 delegation: await
-    then(RetoolLive), // 8 capabilities: await
-    then(RoutineRunsLive), // 9 routines: runs and their usage projection, await
-    then(PrimaryChatLive), // 10 conversation: main registered
-    then(AppRegistryLive), // 11 apps
-    then(ActivateMemoriesLive), // 14 knowledge: await
-    then(SkillsLive), // 15 skills
-    then(ChannelLive), // 16 routines
-    then(McpEventsLive), // 17 mcp: await the hook token, then the consumers
+    then(McpHostLive), // 2
+    then(CheapModelsLive), // 3
+    then(HelperExecutionLive), // 4
+    then(RetoolLive), // 5
+    then(RoutineRunsLive), // 6
+    then(PrimaryChatLive), // 7
+    then(AppRegistryLive), // 8
+    then(ActivateMemoriesLive), // 9
+    then(SkillsLive), // 10
+    then(ChannelLive), // 11
+    then(McpEventsLive), // 12
   )
 
 /**

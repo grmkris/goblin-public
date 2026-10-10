@@ -80,7 +80,7 @@ export const routineRunsOf = (store: RoutineRunStore) =>
   })
 
 /**
- * Start step 9: routine runs over the agent's SQLite, and their usage projection subscribed to Pi's commits once,
+ * Start step 6: routine runs over the agent's SQLite, and their usage projection subscribed to Pi's commits once,
  * after a snapshot of each live run, before anything after it in the start can commit to Pi. The run store is built
  * once, here, for both.
  */
@@ -100,7 +100,7 @@ export const RoutineRunsLive: Layer.Layer<RoutineRuns | RoutineUsage, never, Age
 )
 
 /**
- * Start step 16: the Telegram channel, the one instance, over the agent's database and the credential cipher, with its
+ * Start step 11: the Telegram channel, the one instance, over the agent's database and the credential cipher, with its
  * pull's own semaphore.
  */
 export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher> = Layer.effect(
@@ -120,7 +120,7 @@ export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher> 
 /**
  * The owner's routines and their runtime, after the start: the routine store, built once here over the agent's SQLite
  * and wrapped as `Routines`, and the native `RoutineControl` over it, which registers the routine trigger with Events.
- * Routine runs (start step 9) and the Telegram channel (16) are start steps above.
+ * Routine runs (start step 6) and the Telegram channel (11) are start steps above.
  */
 export const RoutinesLive: Layer.Layer<
   Routines | RoutineControl,

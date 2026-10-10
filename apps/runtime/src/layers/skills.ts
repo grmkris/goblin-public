@@ -12,7 +12,7 @@ import { Learner, Skills } from '../skills/service.ts'
 import { SqliteDraftLog, SqliteSkillState } from '../skills/store.ts'
 
 /**
- * Start step 15: skills from the owner's MCP libraries over the host's connections, and the learner that proposes new
+ * Start step 10: skills from the owner's MCP libraries over the host's connections, and the learner that proposes new
  * ones, each made once over the skills state in the agent's database.
  */
 export const SkillsLive: Layer.Layer<

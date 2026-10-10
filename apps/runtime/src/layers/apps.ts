@@ -92,7 +92,7 @@ export const appsOver = (
 }
 
 /**
- * Start step 11: the owner's Apps, over the agent's database. Closing a conversation (`conversations.changed`) closes
+ * Start step 8: the owner's Apps, over the agent's database. Closing a conversation (`conversations.changed`) closes
  * its MCP Apps, and an agent app's change (`agent-apps.changed`: a build, a rollback, a new revision) updates its App,
  * each written at once and told to the change bus.
  */

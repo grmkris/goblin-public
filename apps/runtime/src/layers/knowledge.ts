@@ -19,7 +19,7 @@ import { AgentInput } from '../runtime/input.ts'
 import { auxReporter } from '../telemetry/report.ts'
 
 // The knowledge layers. Two are steps of the agent's start, in its order (layers/index.ts): the cheap models (step 3)
-// and the memory's activation of every Topic Conversation (14). After the start, `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its
+// and the memory's activation of every Topic Conversation (9). After the start, `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its
 // view reaches and what a Move forgets over the agent's database, a view placed through the chat's passive write, and
 // the transcript index over the agent's database, every catch-up on its session's turn of the agent's KeyedLock.
 
@@ -61,7 +61,7 @@ const memoryEngine: Effect.Effect<MemoryEngine, never, AgentInput | Db | CheapMo
   }
 })
 
-/** Start step 14: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
+/** Start step 9: every Topic Conversation without memory yet is given it, after main is registered (step 7). */
 export const ActivateMemoriesLive: Layer.Layer<never, never, AgentInput | Db | CheapModels> = Layer.effectDiscard(
   Effect.flatMap(memoryEngine, (engine) => Effect.promise(() => activateConversations(engine))),
 )

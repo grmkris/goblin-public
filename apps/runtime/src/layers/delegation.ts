@@ -89,7 +89,7 @@ export const DelegationLive: Layer.Layer<
   AgentInput | Db | KeyedLock | Changes | Conversations | Memories
 > = Layer.unwrap(Effect.map(stores, delegationServices))
 
-/** Start step 7: each helper conversation runs with the execution extensions the agent has now. */
+/** Start step 4: each helper conversation runs with the execution extensions the agent has now. */
 export const HelperExecutionLive: Layer.Layer<never, never, AgentInput | Db> = Layer.effectDiscard(
   Effect.gen(function* () {
     const { harness, helperExtensions } = yield* AgentInput

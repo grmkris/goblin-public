@@ -40,7 +40,7 @@ const retooling: Effect.Effect<Retooling, never, AgentInput | Db> = Effect.gen(f
   return { db: yield* Db, subagentTools, retool: retool(harness) }
 })
 
-/** Start step 8: the current complete delegation tool set is applied to the retained Pi filters, once. */
+/** Start step 5: the current complete delegation tool set is applied to the retained Pi filters, once. */
 export const RetoolLive: Layer.Layer<never, never, AgentInput | Db> = Layer.effectDiscard(
   Effect.gen(function* () {
     const pi = yield* retooling

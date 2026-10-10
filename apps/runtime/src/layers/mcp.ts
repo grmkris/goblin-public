@@ -39,7 +39,7 @@ import { Skills } from '../skills/service.ts'
 import { mcpReporter } from '../telemetry/report.ts'
 
 // The MCP layers, both steps of the agent's start in its order (layers/index.ts): the MCP host (step 2) and Events
-// with their consumers (17). Every store is made once, here, and every MCP service once over them.
+// with their consumers (12). Every store is made once, here, and every MCP service once over them.
 
 /**
  * The plan the agent keeps, then current resident authority: what Events check before a subscription, a sweep, a
@@ -152,7 +152,7 @@ export const McpHostLive: Layer.Layer<
 
 /**
  * What the Telegram and skills consumers reach, read when an event arrives: the channel and skills services of the
- * start (steps 15 and 16, before Events), and the agent's Telegram pull, scheduled as a doorbell schedules it.
+ * start (steps 10 and 11, before Events), and the agent's Telegram pull, scheduled as a doorbell schedules it.
  */
 const consumerPorts = (
   { schedulePull }: AgentInputs,
@@ -168,7 +168,7 @@ const consumerPorts = (
 })
 
 /**
- * Start step 17: the one Events engine over the host's connections and its event store, with the Telegram and skills
+ * Start step 12: the one Events engine over the host's connections and its event store, with the Telegram and skills
  * consumers registered before any delivery can reach it (the routine trigger is registered by `RoutinesLive`, before
  * the agent runs anything).
  */
