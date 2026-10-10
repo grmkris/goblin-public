@@ -1,7 +1,7 @@
 import type { Tx } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import { UsageStore, recordUse } from '../budget.ts'
+import { recordUse, usageLedger } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
 import { nowSeconds } from '../clock.ts'
@@ -41,7 +41,7 @@ export const CheapModelsLive: Layer.Layer<CheapModels, never, AgentInput | Db> =
   CheapModels,
   Effect.gen(function* () {
     const { env, pi, telemetry } = yield* AgentInput
-    const ledger = new UsageStore(yield* Db)
+    const ledger = usageLedger(yield* Db)
     const rates = creditRates(env.MODEL_CREDIT_RATES)
     const id = memoryModelId(env.MEMORY_MODEL, modelOptions(env.MODELS, env.MODEL_ID))
     return (purpose) =>

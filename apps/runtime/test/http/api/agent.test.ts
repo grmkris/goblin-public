@@ -7,7 +7,7 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import type { Applied } from '../../../src/agent-model.ts'
 import type { EntitlementPolicy } from '../../../src/billing/gates.ts'
-import { ModelBudget, UsageStore } from '../../../src/budget.ts'
+import { ModelBudget, usageLedger } from '../../../src/budget.ts'
 import { TelegramChannel } from '../../../src/channel/channel.ts'
 import { Channel } from '../../../src/channel/service.ts'
 import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
@@ -28,7 +28,7 @@ const fixture = () => {
   const sqlite = db as never
   registerPrimary(db, 1)
   const chats = new ChatDirectory(db)
-  const budget = new ModelBudget(new UsageStore(sqlite), 100)
+  const budget = new ModelBudget(usageLedger(sqlite), 100)
   // SAFETY: the channel's status and disable read and clear its tables only; the cipher and telemetry stay unused.
   const channel = new TelegramChannel(sqlite, undefined as never, () => undefined, undefined, chats)
   const pinned: string[] = []

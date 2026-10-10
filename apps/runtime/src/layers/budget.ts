@@ -1,7 +1,7 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { Entitlements } from '../billing/gates.ts'
-import { Budget, UsageStore, recordUse, utcDay } from '../budget.ts'
+import { Budget, recordUse, usageLedger, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
 import { BudgetExhausted, attemptSync } from '../http/errors.ts'
 import { ModelChoiceStore, ModelPicker, Models, modelOptions } from '../models.ts'
@@ -29,7 +29,7 @@ const sync = <Args extends readonly unknown[], A>(name: string, method: Method<A
 const BudgetLive: Layer.Layer<Budget, never, AgentInput | Db | Entitlements> = Layer.effect(
   Budget,
   Effect.gen(function* () {
-    const ledger = new UsageStore(yield* Db)
+    const ledger = usageLedger(yield* Db)
     const plans = yield* Entitlements
     const { env } = yield* AgentInput
     const rates = creditRates(env.MODEL_CREDIT_RATES)

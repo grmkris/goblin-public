@@ -18,7 +18,7 @@ import { offersEvents } from '../../src/mcp/remote.ts'
 import { McpConnections } from '../../src/mcp/service.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { channelPorts } from '../../src/channel/turns.ts'
-import { ModelBudget, UsageStore } from '../../src/budget.ts'
+import { ModelBudget, usageLedger } from '../../src/budget.ts'
 import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appEventDeliveries } from '../../src/storage/schema.ts'
@@ -101,7 +101,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     return new Response(exit.value.response ?? null, { status: exit.value.status })
   }
   const operations: string[] = []
-  const budget = new ModelBudget(new UsageStore(db), 300_000)
+  const budget = new ModelBudget(usageLedger(db), 300_000)
   const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(undefined, 'storage-only'))
   const portRun: Parameters<typeof channelPorts>[1] = (program) =>
     Effect.runPromise(program.pipe(Effect.provide(portServices({ db, harness, budget, models }))))

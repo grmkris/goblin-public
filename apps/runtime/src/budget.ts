@@ -22,31 +22,36 @@ export interface UsageLedger {
   add(day: string, tokens: number, milli: number, now: number): void
 }
 
-export class UsageStore implements UsageLedger {
-  readonly #db: DrizzleSqliteDODatabase
-  constructor(db: DrizzleSqliteDODatabase) {
-    this.#db = db
-  }
+/** Thousandths of a Credit the agent spent on `day`. */
+export const usageMilliCredits = (db: DrizzleSqliteDODatabase, day: string): number =>
+  db.select().from(appUsageDaily).where(eq(appUsageDaily.day, day)).get()?.milliCredits ?? 0
 
-  milliCredits(day: string): number {
-    return this.#db.select().from(appUsageDaily).where(eq(appUsageDaily.day, day)).get()?.milliCredits ?? 0
-  }
-
-  add(day: string, tokens: number, milli: number, now: number): void {
-    this.#db
-      .insert(appUsageDaily)
-      .values({ day, tokens, milliCredits: milli, updatedAt: now })
-      .onConflictDoUpdate({
-        target: appUsageDaily.day,
-        set: {
-          tokens: sql`${appUsageDaily.tokens} + ${tokens}`,
-          milliCredits: sql`${appUsageDaily.milliCredits} + ${milli}`,
-          updatedAt: now,
-        },
-      })
-      .run()
-  }
+/** Adds one response's tokens and thousandths of a Credit to `day`. */
+export const addUsage = (
+  db: DrizzleSqliteDODatabase,
+  day: string,
+  tokens: number,
+  milli: number,
+  now: number,
+): void => {
+  db.insert(appUsageDaily)
+    .values({ day, tokens, milliCredits: milli, updatedAt: now })
+    .onConflictDoUpdate({
+      target: appUsageDaily.day,
+      set: {
+        tokens: sql`${appUsageDaily.tokens} + ${tokens}`,
+        milliCredits: sql`${appUsageDaily.milliCredits} + ${milli}`,
+        updatedAt: now,
+      },
+    })
+    .run()
 }
+
+/** The agent's usage ledger: the daily table in its database. */
+export const usageLedger = (db: DrizzleSqliteDODatabase): UsageLedger => ({
+  milliCredits: (day) => usageMilliCredits(db, day),
+  add: (day, tokens, milli, now) => addUsage(db, day, tokens, milli, now),
+})
 
 /** Counts one model response's tokens in `ledger`, priced at `model`'s rate: what the daily budget sums. */
 export function recordUse(ledger: UsageLedger, rates: CreditRates, use: TokenUse, now: number, model?: string): void {
