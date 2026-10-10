@@ -147,6 +147,54 @@ async function styles(browser: Browser, origin: string, label: string, options: 
   await page.close()
 }
 
+/**
+ * Real React renders for feed changes: a conversation's change renders no App reader, and one conversation's activity
+ * renders only that conversation's reader (`lib/workspace/hooks.ts`).
+ */
+async function feedRenders(browser: Browser, origin: string) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  page.on('pageerror', (error) => errors.push(`feed: ${error.message}`))
+  await page.goto(`${origin}feed.html`)
+  const readers = ['Apps reader 1', 'Apps reader 2', 'Activity of 5', 'Activity of 6', 'Conversations']
+  const read = async () =>
+    Object.fromEntries(
+      await Promise.all(
+        readers.map(async (label) => {
+          const [renders = '', value = ''] = (await page.getByLabel(label).innerText()).split(':')
+          return [label, { renders: Number(renders), value }] as const
+        }),
+      ),
+    )
+  await page.getByLabel('Conversations').waitFor()
+  const start = await read()
+  await page.getByRole('button', { name: 'Rename five' }).click()
+  await page.getByLabel('Conversations').filter({ hasText: 'Five renamed' }).waitFor()
+  const renamed = await read()
+  await page.getByRole('button', { name: 'Work in five' }).click()
+  await page.getByLabel('Activity of 5').filter({ hasText: 'working' }).waitFor()
+  const working = await read()
+  const delta = (from: typeof start, to: typeof start) =>
+    Object.fromEntries(readers.map((label) => [label, (to[label]?.renders ?? 0) - (from[label]?.renders ?? 0)]))
+  const afterRename = delta(start, renamed)
+  const afterWork = delta(renamed, working)
+  assert.deepEqual(afterRename, {
+    'Apps reader 1': 0,
+    'Apps reader 2': 0,
+    'Activity of 5': 0,
+    'Activity of 6': 0,
+    Conversations: 1,
+  })
+  assert.deepEqual(afterWork, {
+    'Apps reader 1': 0,
+    'Apps reader 2': 0,
+    'Activity of 5': 1,
+    'Activity of 6': 0,
+    Conversations: 0,
+  })
+  results.push({ name: 'feed.renders', detail: { afterRename, afterWork } })
+  await page.close()
+}
+
 async function main() {
   const server = await createServer({ configFile: path.join(import.meta.dirname, 'browser/vite.config.ts') })
   await server.listen()
@@ -178,6 +226,7 @@ async function main() {
     await styles(browser, origin, 'desk', { viewport: { width: 1440, height: 900 } })
     await styles(browser, origin, 'phone', { viewport: { width: 390, height: 844 }, hasTouch: true })
     await styles(hybrid, origin, 'hybrid', { viewport: { width: 820, height: 1180 } })
+    await feedRenders(browser, origin)
     assert.deepEqual(errors, [], 'browser page errors')
   } finally {
     writeFileSync(
