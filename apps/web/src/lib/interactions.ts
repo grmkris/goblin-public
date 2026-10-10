@@ -129,13 +129,24 @@ function serverOf(part: ToolPart, details: Record<string, unknown>): Interaction
   return { kind: 'server', callId: part.call.id, endpoint, name: name.slice(0, 80), reason: reason.slice(0, 300) }
 }
 
-/** The interactions still waiting: those after the owner's last message. Any later message settles them. */
+/** One ask to add an item to a Topic per item: the agent may be refused the same thing twice in a turn. */
+const setupKey = (interaction: Interaction): string | undefined =>
+  interaction.kind === 'setup' ? `${String(interaction.topic.id)}:${JSON.stringify(interaction.target)}` : undefined
+
+/**
+ * The interactions still waiting: those after the owner's last message. Any later message settles them. Asks to add
+ * the same item to the Topic show once, as the latest.
+ */
 export function openInteractions(parts: readonly Part[]): Interaction[] {
   const lastUser = parts.findLastIndex((part) => part.kind === 'user')
-  return parts.flatMap((part, index) => {
+  const open = parts.flatMap((part, index) => {
     if (part.kind !== 'tool') return []
     const interaction = interactionOf(part)
     return interaction === undefined || (interaction.kind !== 'approval' && index <= lastUser) ? [] : [interaction]
+  })
+  return open.filter((interaction, index) => {
+    const key = setupKey(interaction)
+    return key === undefined || !open.slice(index + 1).some((later) => setupKey(later) === key)
   })
 }
 

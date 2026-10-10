@@ -111,6 +111,12 @@ describe('what the agent waits on the owner for', () => {
       kind: 'setup',
     })
     expect(interactionOperation({ kind: 'setup', callId: 'c1', target: server, topic })).toBe('setup:c1')
+    const twice = (id: string): ToolPart => ({
+      ...mcpCall(outside(server)),
+      id: `tool:${id}`,
+      call: { ...mcpCall(outside(server)).call, id },
+    })
+    expect(openInteractions([twice('a'), twice('b')]).map(({ callId }) => callId)).toEqual(['b'])
   })
   it('gives each reply a stable submission id', () => {
     expect(interactionOperation({ kind: 'question', callId: 'q1', questions: [] })).toBe('answer:q1')

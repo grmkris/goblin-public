@@ -1167,7 +1167,8 @@ a.list-row:focus-visible {
   .model-icon {
     display: inline;
   }
-  .model-name {
+  .model-name,
+  .setup-summary {
     display: none;
   }
 }
