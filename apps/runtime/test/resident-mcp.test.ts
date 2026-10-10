@@ -8,6 +8,7 @@ import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabiliti
 import { Capabilities } from '../src/capabilities/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
 import { Resident } from '../src/mcp/service.ts'
+import { RoutineRuns } from '../src/routines/service.ts'
 import { SingleFlight } from '../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import type { AgentServices } from '../src/layers/index.ts'
@@ -71,6 +72,8 @@ const layer = host.pipe(
     Layer.mergeAll(
       SingleFlight.layer,
       stub(Capabilities, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
+      // No conversation here is a routine run's.
+      stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
     ),

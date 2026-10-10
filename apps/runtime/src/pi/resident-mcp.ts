@@ -7,36 +7,30 @@ import * as Option from 'effect/Option'
 import { Apps } from '../apps/service.ts'
 import type { CapabilityScope } from '../capabilities/profiles.ts'
 import { Capabilities } from '../capabilities/service.ts'
-import { type GrantDenied, NotFound, attempt } from '../http/errors.ts'
+import { type GrantDenied, NotFound } from '../http/errors.ts'
 import { toolAppResource, toolOffered } from '../mcp/remote.ts'
 import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
 import { McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
 import type { McpRequestOptions } from '../mcp/types.ts'
 import { requirePlan } from '../billing/gates.ts'
+import { requireRoutineSession } from '../routines/authority.ts'
 import { bound } from '../runtime/boundary.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { capabilityOffResult, mcpOff } from './capabilities.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-request.ts'
 
-const executionAuthority = (session: string, authorize?: (session: string) => Promise<void>) =>
-  Effect.gen(function* () {
-    yield* requireResident
-    if (authorize !== undefined) yield* attempt(() => authorize(session))
-  })
+/** What a model's MCP tool checks before it runs: resident authority, then a routine run's own, when it is one. */
+const executionAuthority = (session: string) => Effect.andThen(requireResident, requireRoutineSession(session))
 
 /** Runs a program on the Agent DO's services; failures reject with the typed `AppError` (the bridge's `run`). */
 export type { RunProgram }
 
 /** What the manager checks again right before a model's call leaves: the plan, then the call's execution scope. */
-const dispatchAuthority = (
-  session: string,
-  input: { serverId: string; name: string },
-  authorize?: (session: string) => Promise<void>,
-) =>
+const dispatchAuthority = (session: string, input: { serverId: string; name: string }) =>
   Effect.gen(function* () {
     yield* requirePlan()
-    yield* executionAuthority(session, authorize)
+    yield* executionAuthority(session)
     if (!(yield* (yield* Capabilities).scope(session)).tool(input.serverId, input.name))
       return yield* new NotFound({ what: 'tool scope' })
   })
@@ -132,7 +126,7 @@ const approvalHooks = (run: RunProgram) => [
  * The resident agent's MCP tools. Each execution checks resident authority and the owner's exact grant; nothing is
  * resolved at wake. Remote descriptions, schemas and results are untrusted data.
  */
-export function residentMcpExtension(run: RunProgram, authorize?: (session: string) => Promise<void>) {
+export function residentMcpExtension(run: RunProgram) {
   return defineExtension({
     name: 'goblin.mcp',
     hooks: approvalHooks(run),
@@ -148,7 +142,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
         execute: async ({ serverId }, api, context) =>
           run(
             Effect.gen(function* () {
-              yield* executionAuthority(String(api.conversationId), authorize)
+              yield* executionAuthority(String(api.conversationId))
               const capabilities = yield* Capabilities
               const scope = yield* capabilities.scope(String(api.conversationId))
               if (serverId === undefined)
@@ -159,7 +153,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
                 }
               if (!scope.server(serverId)) return yield* new NotFound({ what: `server ${serverId}` })
               const snapshot = yield* (yield* McpConnections).connect(serverId, requestFor(api, context.abortSignal))
-              yield* executionAuthority(String(api.conversationId), authorize)
+              yield* executionAuthority(String(api.conversationId))
               const current = yield* capabilities.scope(String(api.conversationId))
               const tools = offered(snapshot.tools, yield* (yield* McpGrants).list(), current, serverId)
               return { origin: serverId, trusted: false as const, tools }
@@ -179,7 +173,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
         execute: async (input, api, context) =>
           run(
             Effect.gen(function* () {
-              yield* executionAuthority(String(api.conversationId), authorize)
+              yield* executionAuthority(String(api.conversationId))
               const scope = yield* (yield* Capabilities).scope(String(api.conversationId))
               const off = mcpOff(scope, input.serverId, input.name)
               const session = String(api.conversationId)
@@ -187,7 +181,7 @@ export function residentMcpExtension(run: RunProgram, authorize?: (session: stri
               const held = yield* holdModelCall(session, api.callId, String(api.taskId), input)
               if (held !== undefined) return new ReadyResult(yield* approvalResult(session, api.callId, held.id, input))
               const connections = yield* McpConnections
-              const recheck = yield* bound(dispatchAuthority(session, input, authorize))
+              const recheck = yield* bound(dispatchAuthority(session, input))
               return yield* connections
                 .callTool(input.serverId, input.name, input.arguments, {
                   caller: 'model',

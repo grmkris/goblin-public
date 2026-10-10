@@ -43,7 +43,7 @@ import { budgetExtension } from './pi/budget.ts'
 import { retrievalExtension } from './pi/retrieval.ts'
 import { type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
-import { requireRoutine, requireRoutineSession } from './routines/authority.ts'
+import { requireRoutine } from './routines/authority.ts'
 import type { RoutineSlot } from './routines/scheduler.ts'
 import { routineExtensions } from './routines/kit.ts'
 import type { StartRoutine } from './pi/routine-run.ts'
@@ -82,7 +82,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#bridge = makeBridge(() => this.#services(), { instrument })
     const { run, local: routineRun } = this.#bridge
     this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
-    const residentTools = residentMcpExtension(run, (session) => routineRun(requireRoutineSession(session)))
+    const residentTools = residentMcpExtension(run)
     const tools = [residentTools, budgetExtension(routineRun)]
     this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
