@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react'
+import { type ReactNode, useMemo, useRef } from 'react'
 import { type PersonaView, selectionKey } from '@goblin/contracts'
 import {
   Button,
@@ -215,12 +215,13 @@ export function MessageComposer({
   personas,
   ...props
 }: Props) {
-  const state = useComposer({ ...props, onStop })
+  const form = useRef<HTMLFormElement>(null)
+  const state = useComposer({ ...props, onStop }, form)
   const offered = useMemo(() => activePersonas(personas ?? []), [personas])
   const picker = useComposerPicker(props.conversation, state.selected, state.choose)
   return (
     <Composer
-      ref={state.form}
+      ref={form}
       className="relative"
       onSubmit={(event) => {
         event.preventDefault()

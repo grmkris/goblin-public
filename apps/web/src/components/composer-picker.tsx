@@ -26,7 +26,6 @@ export function useComposerPicker(
   const [trigger, setTrigger] = useState<Trigger>()
   const [active, setActive] = useState(0)
   const id = useId()
-  const list = useRef<HTMLDivElement>(null)
   const open = trigger !== undefined
   const { catalog, loading, error } = useCatalog(conversation, open)
   const items = useMemo(() => {
@@ -34,9 +33,6 @@ export function useComposerPicker(
     return pickerItems(trigger, catalog.options, selected)
   }, [trigger, catalog.options, selected])
   const index = Math.min(active, Math.max(0, items.length - 1))
-  useEffect(() => {
-    list.current?.children[index]?.scrollIntoView({ block: 'nearest' })
-  }, [index])
   const update = (field: HTMLTextAreaElement) => {
     setTrigger(composerTrigger(field.value, field.selectionStart, field.selectionEnd))
     setActive(0)
@@ -67,7 +63,6 @@ export function useComposerPicker(
   }
   return {
     id,
-    list,
     items,
     index,
     open,
@@ -81,7 +76,13 @@ export function useComposerPicker(
   }
 }
 
+/** The picker's list of what can be tagged; the active option scrolls into view as the keys move it. */
 export function ComposerPicker({ picker }: { readonly picker: ReturnType<typeof useComposerPicker> }) {
+  const list = useRef<HTMLDivElement>(null)
+  const { open, index: active } = picker
+  useEffect(() => {
+    if (open) list.current?.children[active]?.scrollIntoView({ block: 'nearest' })
+  }, [open, active])
   if (!picker.open) return null
   return (
     <div className="composer-picker" onPointerDown={(event) => event.preventDefault()}>
@@ -90,7 +91,7 @@ export function ComposerPicker({ picker }: { readonly picker: ReturnType<typeof 
         id={picker.id}
         role="listbox"
         aria-label="Commands and references"
-        ref={picker.list}
+        ref={list}
       >
         {picker.items.map((item, index) => (
           <button

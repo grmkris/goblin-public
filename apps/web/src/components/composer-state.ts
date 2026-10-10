@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from 'react'
+import { type RefObject, useEffect, useState } from 'react'
 import { type ComposerOption, type ComposerSelection, selectionKey } from '@goblin/contracts'
 import { taggedPersonas } from '../lib/personas.ts'
 import {
@@ -98,7 +98,11 @@ function useDraft(
   }, [draft, setInput, setSelected, form])
 }
 
-export function useComposer(props: ComposerProps) {
+/**
+ * A composer's state. `form` is the composer's own form, which the caller renders: it is passed in rather than kept
+ * here, so the state the composer reads while rendering holds no ref.
+ */
+export function useComposer(props: ComposerProps, form: RefObject<HTMLFormElement | null>) {
   const [input, setInput] = useState(props.draft?.text ?? '')
   const [selected, setSelected] = useState<readonly ComposerOption[]>(props.draft?.selections ?? [])
   const [pending, setPending] = useState(false)
@@ -106,7 +110,6 @@ export function useComposer(props: ComposerProps) {
   const [error, setError] = useState('')
   const [failed, setFailed] = useState<string>()
   const { order, setOrder, thread, setThread, extras } = useSendModes(selected)
-  const form = useRef<HTMLFormElement>(null)
   const attachments = useAttachments(props.draft?.attachments)
   useDraft(props.draft, setInput, setSelected, form)
   const clear = () => {
@@ -165,7 +168,6 @@ export function useComposer(props: ComposerProps) {
     setHelp,
     error,
     failed,
-    form,
     attachments,
     submit,
     choose,
