@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Schema from 'effect/Schema'
 import { expect } from 'vitest'
+import { chatSession } from '../../src/chats/directory.ts'
 import { SetupScopes } from '../../src/setup/scope.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appHelperExclusions, appConversations } from '../../src/storage/schema.ts'
@@ -12,7 +13,7 @@ import { appTopics } from '../../src/storage/topics.ts'
 import { type NativeCase, probeOf } from './native-case.ts'
 import { type Probes, inAgent } from './probe.ts'
 
-/** Work's setup: the notes server's `read` only, the whole `myskills` library, every app, subagents. */
+/** The probe Topic's setup: the notes server's `read` only, the whole `myskills` library, every app, subagents. */
 const WORK = {
   mcpServers: [{ serverId: 'notes', tools: ['read'] }],
   skills: [{ serverId: 'myskills' }],
@@ -21,7 +22,7 @@ const WORK = {
 } as const
 
 /**
- * Topic setups on the real SQLite store (ADR 0040): Personal holds everything; a thread of "Work" holds Work's setup,
+ * Topic setups on the real SQLite store (ADR 0040): Personal holds everything; a thread of the Topic "Scopes" holds its setup,
  * read live; a subagent two levels down is bounded by it and by its spawner's exclusions; one whose spawner is
  * unknown (or an unknown session, or a cycle) may use nothing. Then the owner's old switches are dropped once.
  */
@@ -30,8 +31,8 @@ async function scopeProbe(storage: DurableObjectStorage) {
   const db = drizzle(storage)
   db.insert(appTopics)
     .values({
-      id: 2,
-      name: 'Work',
+      id: 90,
+      name: 'Scopes',
       chatId: '800',
       setup: JSON.stringify(WORK),
       createdBy: 'owner',
@@ -40,7 +41,7 @@ async function scopeProbe(storage: DurableObjectStorage) {
     })
     .onConflictDoNothing()
     .run()
-  const work = { topicId: 2, createdAt: 1 }
+  const work = { topicId: 90, createdAt: 1 }
   db.insert(appConversations)
     .values([
       { chatId: PRIMARY_CHAT, piSession: PRIMARY_CHAT, kind: 'main', createdAt: 1 },
@@ -91,7 +92,8 @@ async function scopeProbe(storage: DurableObjectStorage) {
     ])
     .run()
   const before = {
-    main: view(PRIMARY_CHAT),
+    // Main is read through its Pi session, which a permuted primary binding does not name `1`.
+    main: view(String(chatSession(db, PRIMARY_CHAT))),
     thread: view('900'),
     deep: view('902'),
     orphan: view('903'),
@@ -100,12 +102,12 @@ async function scopeProbe(storage: DurableObjectStorage) {
     cycle: view('950'),
     fromSubagent: view('960'),
   }
-  // The setup is read live: Work takes every server, then stops allowing subagents.
+  // The setup is read live: the Topic takes every server, then stops allowing subagents.
   const setup = (next: object) =>
     db
       .update(appTopics)
       .set({ setup: JSON.stringify(next) })
-      .where(eq(appTopics.id, 2))
+      .where(eq(appTopics.id, 90))
       .run()
   setup({ ...WORK, mcpServers: 'all' })
   const allServers = view('900')
