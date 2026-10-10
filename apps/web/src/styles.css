@@ -3,6 +3,8 @@
 @import '@goblin/kit/kit.css' layer(components);
 @import './attachments.css' layer(app);
 @import './shell.css' layer(app);
+/* Streamdown's word fade-in while a reply streams (components/parts/markdown.tsx): its keyframes only. */
+@import 'streamdown/styles.css' layer(app);
 
 /* Layout follows shared components; explicit utilities remain the final choice. */
 @layer app {
@@ -774,6 +776,16 @@
   .message-text {
     margin: 0;
     white-space: pre-wrap;
+  }
+  /*
+   * The caret at the end of a reply still streaming: after its last paragraph, heading or list item, where text is
+   * being written, and not after a code block, table or figure, which carry their own end.
+   */
+  .typeset[data-live] > * > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+  .typeset[data-live] > * > :is(ul, ol):last-child > li:last-child::after {
+    content: '\258B';
+    margin-inline-start: 0.125em;
+    color: var(--muted-foreground);
   }
   /*
    * A code block and a table in a reply (components/parts/code-block.tsx, reply-table.tsx): typeset's own, with an

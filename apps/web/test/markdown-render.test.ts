@@ -166,8 +166,16 @@ describe('chat Markdown through Streamdown', () => {
     expect(html).not.toContain('<img')
     expect(html).not.toContain('<button')
   })
+  it('marks a reply still streaming for its caret, and fades its words in; a settled one is plain', () => {
+    const live = chat('Writing this now', true)
+    expect(live).toMatch(/^<div class="typeset typeset-chat" data-live="">/u)
+    expect(live).toContain('data-sd-animate')
+    const settled = chat('Writing this now', false)
+    expect(settled).not.toContain('data-live')
+    expect(settled).not.toContain('data-sd-animate')
+  })
   it('keeps an unfinished reply readable while it streams', () => {
-    expect(chat('Hello **wor', true)).toContain('<strong>wor</strong>')
+    expect(chat('Hello **wor', true)).toMatch(/<strong[^>]*>(?:<span[^>]*>)?wor(?:<\/span>)?<\/strong>/u)
     expect(chat('Hello **wor', false)).toContain('**wor')
   })
 })

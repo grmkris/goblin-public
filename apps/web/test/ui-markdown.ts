@@ -53,6 +53,26 @@ async function image(page: Page, fetched: { url: string; referer: string | undef
   checks.push('an image loads only on request, once, with no referrer')
 }
 
+/** The caret after the text being written, and whether its words fade in; both end when the reply settles. */
+const streaming = (page: Page) =>
+  page.getByLabel('Streaming reply').evaluate((section) => {
+    const last = section.querySelector('.typeset > * > p:last-child')
+    return {
+      caret: last === null ? '' : getComputedStyle(last, '::after').content,
+      fading: section.querySelectorAll('[data-sd-animate]').length,
+    }
+  })
+
+/** With motion, a streaming reply's words fade in behind a caret; settling ends both and keeps its blocks. */
+async function motion(page: Page) {
+  const live = await streaming(page)
+  assert(live.caret.includes('\u258B'), `caret: ${live.caret}`)
+  assert(live.fading > 0, 'words fade in while the reply streams')
+  await settling(page)
+  assert.deepEqual(await streaming(page), { caret: 'none', fading: 0 })
+  checks.push('with motion, a streaming reply fades its words in behind a caret; settling ends both, blocks kept')
+}
+
 /** Code highlights once Shiki loads, and its copy button copies exactly the code. */
 async function code(page: Page, label: string) {
   const block = page.getByLabel('Reply with code').locator('.code-block')
@@ -162,6 +182,7 @@ try {
       await route.fulfill({ body: PIXEL, contentType: 'image/png' })
     })
     await page.goto(`${origin}markdown.html`)
+    assert.equal((await streaming(page)).fading, 0, 'with less motion, words appear without fading')
     await settling(page)
     await code(page, String(width))
     await table(page)
@@ -170,6 +191,11 @@ try {
     await image(page, fetched)
     await context.close()
   }
+  const moving = await browser.newPage({ viewport: { width: 1280, height: 900 }, reducedMotion: 'no-preference' })
+  moving.on('pageerror', (error) => errors.push(error.message))
+  await moving.goto(`${origin}markdown.html`)
+  await motion(moving)
+  await moving.close()
   assert.deepEqual(errors, [])
 } finally {
   mkdirSync(out, { recursive: true, mode: 0o700 })

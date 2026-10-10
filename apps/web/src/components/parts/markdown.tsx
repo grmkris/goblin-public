@@ -1,6 +1,14 @@
 import { type MouseEvent, type ReactNode, use, useState } from 'react'
-import { type Components, type ExtraProps, type PluginConfig, Streamdown, useIsCodeFenceIncomplete } from 'streamdown'
+import {
+  type AnimateOptions,
+  type Components,
+  type ExtraProps,
+  type PluginConfig,
+  Streamdown,
+  useIsCodeFenceIncomplete,
+} from 'streamdown'
 import remarkGfm from 'remark-gfm'
+import { useMediaQuery } from '@goblin/ui'
 import { ImageIcon } from 'lucide-react'
 import { blockKind } from '../../lib/fences.ts'
 import { REPLY_HTML, replyUrl } from '../../lib/reply-html.ts'
@@ -150,6 +158,8 @@ function ChatImage({
 /** Prose as typeset sets it, Goblin's own code blocks, tables and figures, and the reply's links and images. */
 const CHAT: Components = { ...PROSE, a: ChatLink, img: ChatImage, table: ReplyTable, code: Code }
 
+/** The words of a reply still streaming fade in, briefly; with less motion asked for, they just appear. */
+const FADE_IN: AnimateOptions = { animation: 'fadeIn', duration: 150, sep: 'word' }
 const NO_PLUGINS: PluginConfig = {}
 let withMath: PluginConfig | undefined
 /** The plugins once math has loaded, made once so every message gets the same object and its blocks stay memoised. */
@@ -168,8 +178,9 @@ export const NO_REHYPE: [] = []
  */
 export function ChatMarkdown({ text, live }: { readonly text: string; readonly live: boolean }) {
   const math = useMath(mayHoldMath(text))
+  const still = useMediaQuery('(prefers-reduced-motion: reduce)')
   return (
-    <div className="typeset typeset-chat">
+    <div className="typeset typeset-chat" data-live={live ? '' : undefined}>
       <Streamdown
         mode="streaming"
         isAnimating={live}
@@ -179,6 +190,7 @@ export function ChatMarkdown({ text, live }: { readonly text: string; readonly l
         urlTransform={replyUrl}
         components={CHAT}
         plugins={mathPlugins(math)}
+        animated={still ? false : FADE_IN}
         controls={false}
       >
         {text}

@@ -32,6 +32,11 @@ controls are not used, for the same reasons as its code block. Tool tables stay 
 first time a reply holds `$$`. Single-dollar math stays off, so `$5 or $10` reads as prices. KaTeX runs after the
 sanitizer and sets only what remark-math marked (it does not run `\href` or other trusted commands).
 
+**A streaming reply shows it is being written**: a caret (our own CSS, after the last paragraph, heading or list item,
+not after code, tables or figures) and words fading in over 150 ms (Streamdown's `animated`, keyframes from its
+`styles.css`). With `prefers-reduced-motion`, words appear without fading. Both end when the reply settles, and its
+blocks stay mounted.
+
 **Images load when the owner asks.** An image in a reply is a button naming it and its host; a click fetches it once,
 without a referrer. Anything but an http(s) source stays a name.
 
