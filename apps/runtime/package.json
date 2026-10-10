@@ -7,7 +7,8 @@
     "./agent": "./src/agent.ts",
     "./worker": "./src/worker.ts",
     "./canonical": "./src/http/canonical.ts",
-    "./memory": "./src/memory/benchmark.ts"
+    "./memory": "./src/memory/benchmark.ts",
+    "./decisions": "./src/decisions/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

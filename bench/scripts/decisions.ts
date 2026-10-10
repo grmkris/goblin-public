@@ -42,8 +42,12 @@ const implementationHash = Effect.fn('decisions.sourceHash')(function* (fixtureF
   const source = (yield* fs.readDirectory(join(root, 'bench/src/decisions')))
     .filter((name) => name.endsWith('.ts'))
     .map((name) => 'bench/src/decisions/' + name)
-  const contents = yield* Effect.forEach([...scripts, ...source, fixtureFile, 'bun.lock'].toSorted(), (path) =>
-    fs.readFileString(join(root, path)).pipe(Effect.map((text) => [path, text])),
+  const runtime = ['schema.ts', 'questions.ts', 'wire.ts', 'rules.ts'].map(
+    (name) => 'apps/runtime/src/decisions/' + name,
+  )
+  const contents = yield* Effect.forEach(
+    [...scripts, ...source, ...runtime, fixtureFile, 'bun.lock'].toSorted(),
+    (path) => fs.readFileString(join(root, path)).pipe(Effect.map((text) => [path, text])),
   )
   return digest(contents)
 })
