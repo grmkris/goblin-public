@@ -452,7 +452,8 @@
   --message-scroller-inset-x: max(var(--chat-gutter), var(--safe-left), var(--safe-right));
   --message-scroller-inset-top: calc(var(--top-bar-height) + 0.75rem);
   --message-scroller-inset-bottom: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 1.5rem);
-  --message-scroller-end-offset: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) + 0.5rem);
+  /* The jump-to-end arrow sits in the dock's own top padding, half a rem above the composer, so it never covers the last row. */
+  --message-scroller-end-offset: calc(var(--dock-height, 8rem) + var(--keyboard-inset, 0px) - 1rem);
   position: relative;
   display: flex;
   flex: 1;
@@ -461,6 +462,21 @@
   min-width: 0;
   height: 100%;
   min-height: 0;
+}
+/*
+ * The composer's height moves the transcript's bottom padding, the arrow and the fade. Registered as a length so it can
+ * ease when the composer grows (a queued message, an attachment) or empties after a send, instead of stepping; the first
+ * measurement has nothing to ease from, so it waits for `data-dock-ready` (use-conversation.ts).
+ */
+@property --dock-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 8rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chat-view[data-dock-ready] {
+    transition: --dock-height 200ms var(--ease-out);
+  }
 }
 @media (min-width: 48rem) {
   .chat-view[data-place='channel'] {

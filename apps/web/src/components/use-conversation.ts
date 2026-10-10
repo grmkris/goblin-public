@@ -222,6 +222,8 @@ export function useDockInsets(view: RefObject<HTMLElement | null>, dock: RefObje
     const observer = new ResizeObserver(([entry]) => {
       const height = entry?.borderBoxSize[0]?.blockSize ?? element.offsetHeight
       root.style.setProperty('--dock-height', `${Math.round(height)}px`)
+      // From here on a change eases (shell.css); the first measurement has nothing to ease from.
+      requestAnimationFrame(() => root.setAttribute('data-dock-ready', ''))
     })
     observer.observe(element)
     return () => {

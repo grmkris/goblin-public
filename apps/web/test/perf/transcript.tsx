@@ -219,7 +219,7 @@ function Transcript({ expected }: { readonly expected: number }) {
       requestAnimationFrame(() => requestAnimationFrame(() => (perf.ready = performance.now())))
   }, [shown])
   return (
-    <section className="chat-view" data-place="channel" aria-label="Transcript" data-app-scope>
+    <section className="chat-view" data-place="channel" data-dock-ready="" aria-label="Transcript" data-app-scope>
       <AppsIn conversation="1">
         <Conversation
           parts={rows}

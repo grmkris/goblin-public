@@ -39,7 +39,7 @@ function ToolCallTrigger({ className, children, ...props }: CollapsiblePrimitive
   )
 }
 
-const statusVariants = cva('size-1.5 shrink-0 rounded-full', {
+const statusVariants = cva('size-1.5 shrink-0 rounded-full transition-colors duration-150', {
   variants: {
     state: {
       pending: 'bg-muted-foreground/40',
