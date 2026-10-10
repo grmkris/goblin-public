@@ -317,3 +317,26 @@ describe('the working row and the echo of a sent message', () => {
     expect(parts.map((part) => part.id)).toEqual(['1:0', '2:0:text', 'echo:op-2', 'working'])
   })
 })
+
+describe('a tool row’s time', () => {
+  const tool = (state: ReturnType<typeof snapshot>) =>
+    conversationParts(state).find((part): part is ToolPart => part.kind === 'tool')
+  it('keeps the start and end this browser saw after the run ends, not the asking message’s start and the server’s end', () => {
+    // The asking message began at 1_000 and the server stamped the result 4_500; the tool ran 10_000 to 19_500 here.
+    let state = snapshot([{ id: 1, model: [{ role: 'user', content: 'go' }] }], { run: {} })
+    state = projectBatch(state, [{ type: 'message_end', entry: asking(2, [call('c1')]) }], 5_000)
+    state = projectBatch(
+      state,
+      [{ type: 'tool_execution_start', toolCallId: 'c1', toolName: 'mcp_call', args: {} }],
+      10_000,
+    )
+    state = projectBatch(state, [{ type: 'tool_execution_end', toolCallId: 'c1', entry: result(3, 'c1') }], 19_500)
+    expect(tool(state)).toMatchObject({ state: 'done', startedAt: 10_000, endedAt: 19_500 })
+    const ended = projectBatch(state, [{ type: 'run_end' }], 20_000)
+    expect(tool(ended)).toMatchObject({ state: 'done', startedAt: 10_000, endedAt: 19_500 })
+  })
+  it('falls back to the asking message and the result’s own stamp for a tool this browser did not see run', () => {
+    const state = snapshot([asking(2, [call('c1')]), result(3, 'c1')])
+    expect(tool(state)).toMatchObject({ startedAt: 1_000, endedAt: 4_500 })
+  })
+})

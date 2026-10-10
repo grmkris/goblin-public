@@ -3,7 +3,7 @@
 import type { ChatMessage, ToolCallView } from './chat-messages.ts'
 import { type Echo, delivered } from './echo.ts'
 import { type AppBuilt, type McpTarget, type Part, type ToolPart, type ToolState, partKey } from './parts.ts'
-import type { ConversationProjection, LiveTool } from './projection.ts'
+import type { ConversationProjection, LiveTool, ToolTimes } from './projection.ts'
 import { isString, record } from './values.ts'
 
 type AssistantMessage = Extract<ChatMessage, { role: 'assistant' }>
@@ -37,6 +37,7 @@ function toolState(result: ToolResultMessage | undefined, live: LiveTool | undef
 type Context = {
   readonly results: ReadonlyMap<string, ToolResultMessage>
   readonly live: ReadonlyMap<string, LiveTool>
+  readonly times: ReadonlyMap<string, ToolTimes>
   readonly running: boolean
 }
 
@@ -44,7 +45,10 @@ function toolPart(call: ToolCallView, context: Context, askedAt: number | undefi
   const result = context.results.get(call.id)
   const live = context.live.get(call.id)
   const target = mcpTarget(call)
-  const startedAt = live?.startedAt ?? askedAt
+  // What this browser saw when it saw it, for the whole life of the row; else the live start, else the asking message's.
+  const times = context.times.get(call.id)
+  const startedAt = times?.startedAt ?? live?.startedAt ?? askedAt
+  const endedAt = times?.endedAt ?? result?.timestamp
   return {
     kind: 'tool',
     id: `tool:${call.id}`,
@@ -53,7 +57,7 @@ function toolPart(call: ToolCallView, context: Context, askedAt: number | undefi
     ...(result === undefined ? {} : { result }),
     state: toolState(result, live, context.running),
     ...(startedAt === undefined ? {} : { startedAt }),
-    ...(result?.timestamp === undefined ? {} : { endedAt: result.timestamp }),
+    ...(endedAt === undefined ? {} : { endedAt }),
   }
 }
 
@@ -184,6 +188,7 @@ export function conversationParts(projection: ConversationProjection, echo?: Ech
   const context: Context = {
     results,
     live: new Map(projection.tools.map((tool) => [tool.callId, tool])),
+    times: projection.toolTimes ?? new Map(),
     running: projection.running,
   }
   const seen = new Set<string>()

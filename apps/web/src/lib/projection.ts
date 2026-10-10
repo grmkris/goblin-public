@@ -15,10 +15,32 @@ export type LiveTool = {
   readonly args: Record<string, unknown>
   readonly startedAt?: number
 }
+/**
+ * When this browser saw a tool start and end, by call id. Kept after the run ends, when the live tools are cleared, so a
+ * row's time does not change then: without it the start fell back to when the asking message began (including the
+ * model's thinking) and every duration of the turn changed at once.
+ */
+export type ToolTimes = { readonly startedAt: number; readonly endedAt?: number }
+const TOOL_TIMES_KEPT = 200
+
+function withToolTime(
+  times: ReadonlyMap<string, ToolTimes> | undefined,
+  callId: string,
+  change: (before: ToolTimes | undefined) => ToolTimes,
+): ReadonlyMap<string, ToolTimes> {
+  const next = new Map(times)
+  next.set(callId, change(next.get(callId)))
+  // Oldest first: a map iterates in insertion order.
+  for (const old of [...next.keys()].slice(0, Math.max(0, next.size - TOOL_TIMES_KEPT))) next.delete(old)
+  return next
+}
+
 export type ConversationProjection = {
   readonly messages: readonly ChatMessage[]
   readonly entries: readonly Record<string, unknown>[]
   readonly tools: readonly LiveTool[]
+  /** What this browser saw of the tools' times (`ToolTimes`); none after a snapshot, which carries no times. */
+  readonly toolTimes?: ReadonlyMap<string, ToolTimes>
   readonly running: boolean
   readonly partial: string
   /** The in-flight message's thinking so far. */
@@ -212,6 +234,7 @@ function projectedEvent(
     case 'tool_execution_start':
       return {
         ...next,
+        toolTimes: withToolTime(next.toolTimes, identifier(event.toolCallId), () => ({ startedAt: now })),
         tools: [
           ...next.tools.filter((tool) => tool.callId !== event.toolCallId),
           {
@@ -229,6 +252,10 @@ function projectedEvent(
     case 'tool_execution_end':
       return {
         ...appended(next, event),
+        toolTimes: withToolTime(next.toolTimes, identifier(event.toolCallId), (before) => ({
+          startedAt: before?.startedAt ?? now,
+          endedAt: now,
+        })),
         tools: next.tools.map((tool) => (tool.callId === event.toolCallId ? { ...tool, status: 'done' } : tool)),
       }
     case 'auto_retry_start':
