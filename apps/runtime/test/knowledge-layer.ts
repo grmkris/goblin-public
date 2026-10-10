@@ -4,14 +4,11 @@ import type { ChatDirectory } from '../src/chats/directory.ts'
 import { ChatOperations, Chats } from '../src/chats/service.ts'
 import { attemptSync } from '../src/http/errors.ts'
 import { KnowledgeLive } from '../src/layers/knowledge.ts'
-import { learnerOver, skillsOver } from '../src/layers/skills.ts'
 import { CheapModels } from '../src/memory/model.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { Learner, Skills } from '../src/skills/service.ts'
-import type { SkillLearner } from '../src/skills/learner.ts'
-import type { SkillLibrary } from '../src/skills/library.ts'
 import type { chatDatabase } from './chats-sqlite.ts'
 
 /** The database and started instances the knowledge layer reads; a test gives the ones its programs reach. */
@@ -24,8 +21,8 @@ type Given = {
   readonly harness?: PiHarness
   /** The memory's fold threshold (`MEMORY_FOLD_TOKENS`), the deployment's by default. */
   readonly foldTokens?: number
-  readonly skills?: SkillLibrary
-  readonly learner?: SkillLearner
+  readonly skills?: Skills['Service']
+  readonly learner?: Learner['Service']
   /** The chat operations, where a memory's view is placed; none of its operations by default. */
   readonly operations?: Layer.Layer<ChatOperations>
 }
@@ -65,7 +62,7 @@ export const knowledgeOver = (given: Given) => {
   )
   return Layer.mergeAll(
     services,
-    Layer.succeed(Skills, given.skills === undefined ? unread : skillsOver(given.skills)),
-    Layer.succeed(Learner, given.learner === undefined ? unread : learnerOver(given.learner)),
+    Layer.succeed(Skills, given.skills ?? unread),
+    Layer.succeed(Learner, given.learner ?? unread),
   )
 }

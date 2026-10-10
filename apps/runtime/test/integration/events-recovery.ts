@@ -4,10 +4,11 @@ import { eventsOver } from '../../src/layers/mcp.ts'
 import { McpEvents } from '../../src/mcp/events.ts'
 import { installEventConsumers } from '../../src/mcp/events/consumers.ts'
 import { SqliteEventStore } from '../../src/mcp/events/store.ts'
-import { SkillLibrary } from '../../src/skills/library.ts'
+import { Skills } from '../../src/skills/service.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
 import { digestOf } from '../../src/skills/verify.ts'
 import type { EventsProbeState } from './events-probe.ts'
+import { skillsOver } from './skills-probe.ts'
 
 async function skillVersion(state: EventsProbeState, version: string) {
   const uri = `skill://skv_${version.repeat(24)}/events-test/SKILL.md`
@@ -26,20 +27,18 @@ async function skillVersion(state: EventsProbeState, version: string) {
 /** Signed Events drive the installed Skills consumer, persisted generations and immutable retained activations. */
 export async function eventsSkillsProbe(state: EventsProbeState) {
   const { manager, skillState, fixture, events, channel } = state
-  const library = new SkillLibrary(manager, skillState, () => fixture.now)
-  library.setEnabled('mygram', true)
+  const services = skillsOver(manager, skillState)
+  const library = await services.run(Skills)
+  await services.run(library.setEnabled('mygram', true))
   await Effect.runPromise(
     installEventConsumers(eventsOver(events), {
       channel: Effect.sync(() => channel.status()),
       pull: attempt(state.pull),
-      skills: {
-        enabled: (serverId) => Effect.sync(() => library.enabled(serverId)),
-        invalidate: (serverId, unavailable) => Effect.sync(() => library.invalidate(serverId, unavailable)),
-      },
+      skills: { enabled: library.enabled, invalidate: library.invalidate },
     }),
   )
   await skillVersion(state, '1')
-  const first = await library.activate('skills-old', 'mygram:events-test')
+  const first = await services.run(library.activate('skills-old', 'mygram:events-test'))
   events.grant('mygram', 'skills.updated', {}, true)
   await Effect.runPromise(
     events.subscribe({
@@ -64,12 +63,15 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
   await fixture.deliver('sub_skills.updated', envelope, envelope.eventId)
   await Effect.runPromise(events.dispatch())
   const replayDirty = skillState.catalogState('mygram').dirty
-  const reconstructed = new SkillLibrary(manager, new SqliteSkillState(state.db), () => fixture.now)
-  const second = await reconstructed.activate('skills-new', 'mygram:events-test')
-  const retained = await reconstructed.read('skills-old', 'mygram:events-test', 'SKILL.md')
+  const rebuilt = skillsOver(manager, new SqliteSkillState(state.db))
+  const reconstructed = await rebuilt.run(Skills)
+  const second = await rebuilt.run(reconstructed.activate('skills-new', 'mygram:events-test'))
+  const retained = await rebuilt.run(reconstructed.read('skills-old', 'mygram:events-test', 'SKILL.md'))
+  await rebuilt.dispose()
   const refreshed = skillState.catalogState('mygram').refreshed
   await fixture.deliver('sub_skills.updated', { type: 'terminated', error: { code: -32012 } }, 'msg_terminated_skills')
   await Effect.runPromise(events.dispatch())
+  await services.dispose()
   return {
     first: first.body.includes('Version 1'),
     second: second.body.includes('Version 2'),

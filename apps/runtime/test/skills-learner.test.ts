@@ -3,20 +3,27 @@ import type { ConversationId, GenerationHooks } from '@earendil-works/pi-durable
 import * as Schema from 'effect/Schema'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
+import * as TestClock from 'effect/testing/TestClock'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { connectionsOver } from '../src/layers/mcp.ts'
 import { McpHost } from '../src/mcp/host.ts'
-import { SkillLearner, type LearnOutcome, logLearnOutcome } from '../src/skills/learner.ts'
+import { type LearnOutcome, logLearnOutcome, makeLearner } from '../src/skills/learner.ts'
 import { skillLearningExtension } from '../src/pi/skills.ts'
 import type { RunProgram } from '../src/pi/resident-mcp.ts'
 import { Budget } from '../src/budget.ts'
-import { Resident } from '../src/mcp/service.ts'
+import { McpConnections, McpGrants, Resident } from '../src/mcp/service.ts'
 import type { AppError } from '../src/http/errors.ts'
+import { SingleFlight } from '../src/observability/single-flight.ts'
+import { PiSessions } from '../src/pi/sessions.ts'
 import { knowledgeOver } from './knowledge-layer.ts'
-import { SkillLibrary } from '../src/skills/library.ts'
+import { makeSkills } from '../src/skills/library.ts'
+import { Learner } from '../src/skills/service.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { MemoryDraftLog, MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
+import { servicesOf } from './mcp/runtime.ts'
 
 /** What the library fixture received and answers: drafts in order, and the status it reports for each. */
 const library: { drafts: Record<string, unknown>[]; status: 'open' | 'accepted' | 'rejected' } = {
@@ -51,26 +58,21 @@ const skills = createMcpHandler(() => {
 
 /** The latest exchange of the conversation, as Pi entries newest first. */
 let exchange: readonly { readonly role: 'user' | 'assistant'; readonly text: string }[] = []
-const harness = {
-  pi: async () => ({
-    conversation: async () => ({
-      entries: async () => ({
-        items: exchange
-          .map((message, at) => ({
-            id: at,
-            kind: message.role === 'user' ? 'pi.user' : 'pi.assistant',
-            model: [{ role: message.role, content: [{ type: 'text', text: message.text }] }],
-          }))
-          .toReversed(),
-        next: undefined,
-      }),
-    }),
+const piConversation = {
+  entries: async () => ({
+    items: exchange
+      .map((message, at) => ({
+        id: at,
+        kind: message.role === 'user' ? 'pi.user' : 'pi.assistant',
+        model: [{ role: message.role, content: [{ type: 'text', text: message.text }] }],
+      }))
+      .toReversed(),
+    next: undefined,
   }),
 }
 /** The cheap model's answer, and how many times it was asked. */
 const model = { answer: '{"action":"none"}', calls: 0 }
 
-let clock = 10_000_000
 const state = new MemorySkillState()
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('lib', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
@@ -84,24 +86,51 @@ const host = new McpHost({
   fetch: async (input, init) => skills.fetch(new Request(input, init)),
 })
 let drafts = new MemoryDraftLog()
-const learner = () =>
-  new SkillLearner({
-    drafts,
-    // SAFETY: the learner only reads `pi().conversation().entries()`, which this fixture answers.
-    harness: harness as never,
-    manager: host.manager,
-    library: new SkillLibrary(host.manager, state, () => clock),
-    state,
-    // SAFETY: the learner only calls `complete`, which this fixture answers.
-    model: {
-      complete: async () => {
-        model.calls += 1
-        return model.answer
-      },
-    } as never,
-    allows: (serverId, name) => grants.allows({ serverId, capability: 'tool', name }),
-    now: () => clock,
-  })
+/** The learner over the host's connections and the owner's grants, on a test clock at 10,000,000 ms. */
+const learnerAt = () => {
+  const services = servicesOf(
+    Layer.effect(
+      Learner,
+      Effect.gen(function* () {
+        const skillsService = yield* makeSkills(state)
+        return yield* makeLearner({
+          drafts,
+          state,
+          skills: skillsService,
+          // SAFETY: the learner only calls `complete`, which this fixture answers.
+          model: {
+            complete: async () => {
+              model.calls += 1
+              return model.answer
+            },
+          } as never,
+        })
+      }),
+    ).pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Layer.succeed(McpConnections, connectionsOver(host.manager)),
+          Layer.mock(McpGrants)({
+            policy: (serverId: string, name: string) =>
+              Effect.sync(() => Option.fromNullishOr(grants.policy({ serverId, capability: 'tool', name }))),
+          }),
+          Layer.mock(PiSessions)({
+            // SAFETY: the learner only reads `entries()` of the conversation, which this fixture answers.
+            conversation: () => Effect.succeed(Option.some(piConversation as never)),
+          }),
+          SingleFlight.layer,
+          TestClock.layer(),
+        ),
+      ),
+    ),
+  )
+  let learner: Promise<Learner['Service']> | undefined
+  const started = () => (learner ??= services.run(Effect.andThen(TestClock.setTime(10_000_000), Learner)))
+  return { ...services, learner: started }
+}
+let services: ReturnType<typeof learnerAt>
+const consider = async (id: ConversationId) => services.run((await services.learner()).consider(id))
+const later = (ms: number) => services.run(TestClock.adjust(ms))
 // SAFETY: Pi conversation ids are numbers; the fixture harness ignores which one is asked for.
 const MAIN = 0 as ConversationId
 
@@ -135,8 +164,10 @@ beforeEach(() => {
     { role: 'user', text: 'No, next time always start with the blocked tasks.' },
     { role: 'assistant', text: 'Understood, blocked tasks first.' },
   ]
+  services = learnerAt()
 })
 afterEach(async () => {
+  await services.dispose()
   await host.manager.closeAll()
 })
 
@@ -145,7 +176,7 @@ describe('the skill learner (unit)', () => {
     model.answer = 'private malformed model reply, with no decision JSON'
     const outcomes: LearnOutcome[] = []
     const layer = Layer.mergeAll(
-      knowledgeOver({ learner: learner() }),
+      knowledgeOver({ learner: await services.learner() }),
       Layer.mock(Resident)({ require: () => Effect.void }),
       Layer.mock(Budget)({ require: () => Effect.void }),
     )
@@ -193,19 +224,19 @@ describe('the skill learner (unit)', () => {
       { role: 'user', text: 'Thanks, that is great.' },
       { role: 'assistant', text: 'Glad it helped.' },
     ]
-    expect(await learner().consider(MAIN)).toBe('skipped')
+    expect(await consider(MAIN)).toBe('skipped')
     expect(model.calls).toBe(0)
   })
 
   it('drafts nothing when the model finds no procedure', async () => {
-    expect(await learner().consider(MAIN)).toBe('none')
+    expect(await consider(MAIN)).toBe('none')
     expect(model.calls).toBe(1)
     expect(library.drafts).toEqual([])
   })
 
   it('proposes a new skill draft without private details, and never the same draft twice', async () => {
     model.answer = `Sure. ${NEW_SKILL}`
-    expect(await learner().consider(MAIN)).toBe('drafted')
+    expect(await consider(MAIN)).toBe('drafted')
     expect(library.drafts).toHaveLength(1)
     // SAFETY: the learner sends these fields; the assertions below fail if it does not.
     const sent = library.drafts[0] as { files: { path: string; text: string }[]; name: string; operationId: string }
@@ -216,15 +247,15 @@ describe('the skill learner (unit)', () => {
     expect(text).toContain('List blocked tasks first.')
     expect(text).not.toContain('ana@example.com')
     // The same lesson again, while the first draft waits for review: no second draft.
-    expect(await learner().consider(MAIN)).toBe('duplicate')
+    expect(await consider(MAIN)).toBe('duplicate')
     expect(library.drafts).toHaveLength(1)
   })
 
   it('does not propose a rejected draft again', async () => {
     model.answer = NEW_SKILL
-    expect(await learner().consider(MAIN)).toBe('drafted')
+    expect(await consider(MAIN)).toBe('drafted')
     library.status = 'rejected'
-    expect(await learner().consider(MAIN)).toBe('duplicate')
+    expect(await consider(MAIN)).toBe('duplicate')
     expect([...drafts.rows.values()].map((row) => row.status)).toEqual(['rejected'])
     expect(library.drafts).toHaveLength(1)
   })
@@ -232,21 +263,21 @@ describe('the skill learner (unit)', () => {
   it('stays quiet when the owner has not allowed the draft tool, or skills are off', async () => {
     model.answer = NEW_SKILL
     grants.set({ serverId: 'lib', capability: 'tool', name: 'skill_draft' }, false)
-    expect(await learner().consider(MAIN)).toBe('skipped')
+    expect(await consider(MAIN)).toBe('skipped')
     grants.set({ serverId: 'lib', capability: 'tool', name: 'skill_draft' }, true)
     state.setEnabled('lib', false)
-    expect(await learner().consider(MAIN)).toBe('skipped')
+    expect(await consider(MAIN)).toBe('skipped')
     expect(model.calls).toBe(0)
   })
 
   it('proposes at most five drafts a day', async () => {
     for (let n = 0; n < 5; n++) {
       model.answer = NEW_SKILL.replace('weekly-review', `review-${n}`)
-      expect(await learner().consider(MAIN)).toBe('drafted')
+      expect(await consider(MAIN)).toBe('drafted')
     }
     model.answer = NEW_SKILL.replace('weekly-review', 'review-5')
-    expect(await learner().consider(MAIN)).toBe('skipped')
-    clock += 86_400_001
-    expect(await learner().consider(MAIN)).toBe('drafted')
+    expect(await consider(MAIN)).toBe('skipped')
+    await later(86_400_001)
+    expect(await consider(MAIN)).toBe('drafted')
   })
 })

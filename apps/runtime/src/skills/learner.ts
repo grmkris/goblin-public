@@ -4,15 +4,17 @@
 // a skill. Facts about the owner stay in memory and are not skills. Drafts are capped per day, never repeated, and a
 // rejected one is not proposed again.
 import type { ConversationId } from '@earendil-works/pi-durable'
-import type { PiHarness } from 'agents/harness/pi'
+import * as Clock from 'effect/Clock'
+import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import type { McpConnectionManager } from '../mcp/connection.ts'
+import { McpConnections, McpGrants } from '../mcp/service.ts'
 import type { CheapModel } from '../memory/model.ts'
 import { writeLine } from '../observability/logger.ts'
-import { BACKGROUND } from '../pi/context.ts'
+import { SingleFlight } from '../observability/single-flight.ts'
+import { PiSessions } from '../pi/sessions.ts'
 import { type TranscriptMessage, recentMessages } from '../pi/transcript.ts'
-import type { SkillLibrary } from './library.ts'
+import { Learner, type Skills } from './service.ts'
 import type { DraftLog, SkillState } from './store.ts'
 import { digestOf } from './verify.ts'
 
@@ -101,180 +103,197 @@ export const logLearnOutcome = (conversation: ConversationId, outcome: LearnOutc
   })
 }
 
-export class SkillLearner {
-  readonly #drafts: DraftLog
-  readonly #harness: PiHarness
-  readonly #manager: McpConnectionManager
-  readonly #library: SkillLibrary
-  readonly #state: SkillState
-  readonly #model: CheapModel
-  readonly #allows: (serverId: string, tool: string) => boolean
-  readonly #now: () => number
-  readonly #busy = new Set<string>()
+/** What the learner keeps and asks: its draft log, the skills state and library, and the cheap model. */
+export type LearnerDeps = {
+  readonly drafts: DraftLog
+  readonly state: SkillState
+  readonly skills: Skills['Service']
+  readonly model: CheapModel
+}
 
-  constructor(deps: {
-    readonly drafts: DraftLog
-    readonly harness: PiHarness
-    readonly manager: McpConnectionManager
-    readonly library: SkillLibrary
-    readonly state: SkillState
-    readonly model: CheapModel
-    /** The owner's grant for a library tool: the learner calls the draft tools like any other tool. */
-    readonly allows: (serverId: string, tool: string) => boolean
-    readonly now: () => number
-  }) {
-    this.#drafts = deps.drafts
-    this.#harness = deps.harness
-    this.#manager = deps.manager
-    this.#library = deps.library
-    this.#state = deps.state
-    this.#model = deps.model
-    this.#allows = deps.allows
-    this.#now = deps.now
-  }
+/** What the learner's steps share: its own parts, the connections and the owner's grants. */
+type Teacher = LearnerDeps & {
+  readonly connections: McpConnections['Service']
+  readonly grants: McpGrants['Service']
+}
 
-  /** A skill source that takes drafts and whose draft tool the owner allowed. */
-  async #draftServer(preferred: string | undefined, signal?: AbortSignal): Promise<string | undefined> {
-    const sources = this.#library.sources()
+const signalled = (signal: AbortSignal | undefined) => (signal === undefined ? {} : { signal })
+const allowed = (teacher: Teacher, serverId: string, tool: string) =>
+  Effect.map(teacher.grants.policy(serverId, tool), Option.isSome)
+
+/** A skill source that takes drafts and whose draft tool the owner allowed. */
+const draftServer = (teacher: Teacher, preferred: string | undefined, signal: AbortSignal | undefined) =>
+  Effect.gen(function* () {
+    const sources = yield* teacher.skills.sources()
     const ordered = preferred !== undefined && sources.includes(preferred) ? [preferred] : sources
     for (const serverId of ordered) {
-      if (!this.#allows(serverId, DRAFT_TOOL)) continue
-      try {
-        const snapshot = await this.#manager.connect(serverId, signal === undefined ? {} : { signal })
-        if (snapshot.tools.some((tool) => tool.name === DRAFT_TOOL)) return serverId
-      } catch {
+      if (!(yield* allowed(teacher, serverId, DRAFT_TOOL))) continue
+      const takes = yield* teacher.connections.connect(serverId, signalled(signal)).pipe(
+        Effect.map((snapshot) => snapshot.tools.some((tool) => tool.name === DRAFT_TOOL)),
         // expected: an unreachable server takes no draft now; the next answer asks it again
-      }
+        Effect.catch(() => Effect.succeed(false)),
+      )
+      if (takes) return serverId
     }
     return undefined
-  }
+  })
 
-  /** Refresh the status of open drafts from the library, so a decided draft no longer blocks the next one. */
-  async #refresh(signal?: AbortSignal): Promise<void> {
-    for (const row of this.#drafts.open(5)) {
-      if (row.draftId === undefined || !this.#allows(row.serverId, DRAFT_STATUS_TOOL)) continue
-      try {
-        const result = await this.#manager.callTool(
-          row.serverId,
-          DRAFT_STATUS_TOOL,
-          { draftId: row.draftId },
-          { caller: 'model', ...(signal === undefined ? {} : { signal }) },
+/** Refreshes the status of open drafts from the library, so a decided draft no longer blocks the next one. */
+const refresh = (teacher: Teacher, signal: AbortSignal | undefined) =>
+  Effect.gen(function* () {
+    for (const row of teacher.drafts.open(5)) {
+      const draftId = row.draftId
+      if (draftId === undefined || !(yield* allowed(teacher, row.serverId, DRAFT_STATUS_TOOL))) continue
+      const status = yield* teacher.connections
+        .callTool(row.serverId, DRAFT_STATUS_TOOL, { draftId }, { caller: 'model', ...signalled(signal) })
+        .pipe(
+          Effect.map((result) => Option.getOrUndefined(decodeAnswer(result.structuredContent))?.status),
+          // expected: a status that cannot be read now is checked again next time
+          Effect.catch(() => Effect.succeed(undefined)),
         )
-        const status = Option.getOrUndefined(decodeAnswer(result.structuredContent))?.status
-        if (status !== undefined && status !== 'open') this.#drafts.update(row.contentHash, { status }, this.#now())
-      } catch {
-        // expected: a status that cannot be read now is checked again next time
-      }
+      const now = yield* Clock.currentTimeMillis
+      if (status !== undefined && status !== 'open')
+        yield* Effect.sync(() => teacher.drafts.update(row.contentHash, { status }, now))
     }
-  }
+  })
 
-  /**
-   * Consider the newest exchange of a conversation. Cheap checks first: a signal in the owner's last message, a
-   * library that takes drafts, today's cap. Only then the model, and only an actual procedure becomes a draft.
-   */
-  async consider(conversation: ConversationId, signal?: AbortSignal): Promise<LearnOutcome> {
-    const sessionId = String(conversation)
-    if (this.#busy.has(sessionId)) return 'skipped'
-    this.#busy.add(sessionId)
-    try {
-      return await this.#consider(conversation, signal)
-    } catch {
-      // expected: any failure is the `failed` outcome, which the outcome line records
+/** Hands one draft to the library; `undefined` when it did not take it. */
+const submit = (teacher: Teacher, serverId: string, args: Record<string, unknown>, signal: AbortSignal | undefined) =>
+  teacher.connections.callTool(serverId, DRAFT_TOOL, args, { caller: 'model', ...signalled(signal) }).pipe(
+    Effect.map((result) =>
+      result.isError === true ? undefined : Option.getOrUndefined(decodeAnswer(result.structuredContent)),
+    ),
+    // expected: a draft the library did not take is forgotten, and the outcome is `failed`
+    Effect.catch(() => Effect.succeed(undefined)),
+  )
+
+/** The skill a draft improves and its name; `undefined` when an improvement names no skill this server served. */
+const targetOf = (
+  serverId: string,
+  decision: Exclude<Decision, { action: 'none' }>,
+  used: ReturnType<SkillState['activations']>,
+): { readonly name: string; readonly baseUri: string | undefined } | undefined => {
+  if (decision.action === 'new') return { name: decision.name, baseUri: undefined }
+  const base = used.find((item) => `${item.serverId}:${String(item.entry.frontmatter['name'])}` === decision.skill)
+  if (base === undefined || base.serverId !== serverId) return undefined
+  return { name: String(base.entry.frontmatter['name']), baseUri: base.entry.uri }
+}
+
+/** Proposes `decision` to `serverId`'s library as one draft, unless the same or a rejected one is known. */
+const draft = (
+  teacher: Teacher,
+  serverId: string,
+  decision: Exclude<Decision, { action: 'none' }>,
+  used: ReturnType<SkillState['activations']>,
+  signal: AbortSignal | undefined,
+) =>
+  Effect.gen(function* () {
+    const { drafts } = teacher
+    const target = targetOf(serverId, decision, used)
+    if (target === undefined) return 'failed'
+    const { name, baseUri } = target
+    if (drafts.blocked(serverId, name, baseUri)) return 'duplicate'
+    const text = `---\nname: ${name}\ndescription: ${yamlString(scrub(decision.description))}\n---\n\n${scrub(decision.body).trim()}\n`
+    const contentHash = yield* Effect.tryPromise(() =>
+      digestOf(new TextEncoder().encode(`${serverId}\n${baseUri ?? ''}\n${text}`)),
+    )
+    if (drafts.known(contentHash)) return 'duplicate'
+    const now = yield* Clock.currentTimeMillis
+    yield* Effect.sync(() =>
+      drafts.add({ contentHash, serverId, name, baseUri, draftId: undefined, status: 'open' }, now),
+    )
+    const args = {
+      operationId: `learn-${contentHash.slice('sha256:'.length, 'sha256:'.length + 32)}`,
+      name,
+      files: [{ path: 'SKILL.md', text }],
+      ...(baseUri === undefined ? {} : { base: baseUri }),
+      evidence: scrub(decision.evidence),
+    }
+    const taken = yield* submit(teacher, serverId, args, signal)
+    // A draft the library never took must not block the next one.
+    if (taken === undefined) {
+      yield* Effect.sync(() => drafts.forget(contentHash))
       return 'failed'
-    } finally {
-      this.#busy.delete(sessionId)
     }
-  }
+    const later = yield* Clock.currentTimeMillis
+    yield* Effect.sync(() => drafts.update(contentHash, { draftId: taken.draftId, status: taken.status }, later))
+    return 'drafted'
+  })
 
-  async #consider(id: ConversationId, signal?: AbortSignal): Promise<LearnOutcome> {
-    if (this.#library.sources().length === 0 || this.#drafts.countSince(this.#now() - DAY_MS) >= DRAFTS_PER_DAY)
-      return 'skipped'
-    const sessionId = String(id)
-    const conversation = await (await this.#harness.pi()).conversation(id, BACKGROUND)
-    if (conversation === undefined) return 'skipped'
-    const messages = await recentMessages(conversation, 8)
+/** The conversation's latest messages, when the owner's last one corrects or asks to keep something; else none. */
+const lesson = (sessionId: string) =>
+  Effect.gen(function* () {
+    const conversation = yield* PiSessions.use((sessions) => sessions.conversation(sessionId))
+    if (Option.isNone(conversation)) return undefined
+    const messages = yield* Effect.tryPromise(() => recentMessages(conversation.value, 8))
     const lastUser = messages.findLast((message) => message.role === 'user')
-    if (lastUser === undefined || !SIGNAL.test(lastUser.text)) return 'skipped'
-    const used = this.#state
+    return lastUser !== undefined && SIGNAL.test(lastUser.text) ? messages : undefined
+  })
+
+/** The cheap model's decision on the exchange, given the skills used; `undefined` when it answered no JSON. */
+const decide = (
+  teacher: Teacher,
+  messages: readonly TranscriptMessage[],
+  used: ReturnType<SkillState['activations']>,
+  signal: AbortSignal | undefined,
+) =>
+  Effect.gen(function* () {
+    const usedSkills = used
+      .map((item) => `- ${item.serverId}:${String(item.entry.frontmatter['name'])} (${item.entry.uri})`)
+      .join('\n')
+    const prompt = `Skills used in this conversation:\n${usedSkills || '(none)'}\n\nLatest exchange:\n${transcriptText(messages)}`
+    const answer = yield* Effect.tryPromise(() => teacher.model.complete(SYSTEM, prompt, 2000, signal))
+    const json = jsonObject(answer)
+    if (json === undefined) return undefined
+    return yield* Effect.try(() => decodeDecision(json))
+  })
+
+/**
+ * Considers the newest exchange of a conversation. Cheap checks first: a signal in the owner's last message, a
+ * library that takes drafts, today's cap. Only then the model, and only an actual procedure becomes a draft.
+ */
+const considered = (teacher: Teacher, id: ConversationId, signal: AbortSignal | undefined) =>
+  Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis
+    const capped = teacher.drafts.countSince(now - DAY_MS) >= DRAFTS_PER_DAY
+    if (capped || (yield* teacher.skills.sources()).length === 0) return 'skipped'
+    const sessionId = String(id)
+    const messages = yield* lesson(sessionId)
+    if (messages === undefined) return 'skipped'
+    const used = teacher.state
       .activations(sessionId)
       .toSorted((a, b) => b.activatedAt - a.activatedAt)
       .slice(0, 3)
-    const server = await this.#draftServer(used[0]?.serverId, signal)
+    const server = yield* draftServer(teacher, used[0]?.serverId, signal)
     if (server === undefined) return 'skipped'
-    await this.#refresh(signal)
-    const skills = used
-      .map((item) => `- ${item.serverId}:${String(item.entry.frontmatter['name'])} (${item.entry.uri})`)
-      .join('\n')
-    const answer = await this.#model.complete(
-      SYSTEM,
-      `Skills used in this conversation:\n${skills || '(none)'}\n\nLatest exchange:\n${transcriptText(messages)}`,
-      2000,
-      signal,
-    )
-    const json = jsonObject(answer)
-    if (json === undefined) return 'failed'
-    const decision: Decision = decodeDecision(json)
+    yield* refresh(teacher, signal)
+    const decision = yield* decide(teacher, messages, used, signal)
+    if (decision === undefined) return 'failed'
     if (decision.action === 'none') return 'none'
-    return this.#draft(server, decision, used, signal)
-  }
+    return yield* draft(teacher, server, decision, used, signal)
+  })
 
-  /** The skill a draft improves and its name; `undefined` when an improvement names no skill this server served. */
-  #target(
-    serverId: string,
-    decision: Exclude<Decision, { action: 'none' }>,
-    used: ReturnType<SkillState['activations']>,
-  ): { readonly name: string; readonly baseUri: string | undefined } | undefined {
-    if (decision.action === 'new') return { name: decision.name, baseUri: undefined }
-    const base = used.find((item) => `${item.serverId}:${String(item.entry.frontmatter['name'])}` === decision.skill)
-    if (base === undefined || base.serverId !== serverId) return undefined
-    return { name: String(base.entry.frontmatter['name']), baseUri: base.entry.uri }
-  }
-
-  async #draft(
-    serverId: string,
-    decision: Exclude<Decision, { action: 'none' }>,
-    used: ReturnType<SkillState['activations']>,
-    signal: AbortSignal | undefined,
-  ): Promise<LearnOutcome> {
-    const target = this.#target(serverId, decision, used)
-    if (target === undefined) return 'failed'
-    const { name, baseUri } = target
-    if (this.#drafts.blocked(serverId, name, baseUri)) return 'duplicate'
-    const text = `---\nname: ${name}\ndescription: ${yamlString(scrub(decision.description))}\n---\n\n${scrub(decision.body).trim()}\n`
-    const contentHash = await digestOf(new TextEncoder().encode(`${serverId}\n${baseUri ?? ''}\n${text}`))
-    if (this.#drafts.known(contentHash)) return 'duplicate'
-    this.#drafts.add({ contentHash, serverId, name, baseUri, draftId: undefined, status: 'open' }, this.#now())
-    const draft = await this.#submit(
-      serverId,
-      {
-        operationId: `learn-${contentHash.slice('sha256:'.length, 'sha256:'.length + 32)}`,
-        name,
-        files: [{ path: 'SKILL.md', text }],
-        ...(baseUri === undefined ? {} : { base: baseUri }),
-        evidence: scrub(decision.evidence),
-      },
-      signal,
-    )
-    if (draft === undefined) {
-      // A draft the library never took must not block the next one.
-      this.#drafts.forget(contentHash)
-      return 'failed'
-    }
-    this.#drafts.update(contentHash, { draftId: draft.draftId, status: draft.status }, this.#now())
-    return 'drafted'
-  }
-
-  /** Hand one draft to the library; `undefined` when it did not take it. */
-  async #submit(serverId: string, args: Record<string, unknown>, signal: AbortSignal | undefined) {
-    try {
-      const result = await this.#manager.callTool(serverId, DRAFT_TOOL, args, {
-        caller: 'model',
-        ...(signal === undefined ? {} : { signal }),
-      })
-      return result.isError === true ? undefined : Option.getOrUndefined(decodeAnswer(result.structuredContent))
-    } catch {
-      // expected: a draft the library did not take is forgotten, and the outcome is `failed`
-      return undefined
-    }
-  }
-}
+/**
+ * The skill learner over the agent's MCP connections and grants: it calls the library's draft tools like any other
+ * tool, only where the owner granted them. One consideration per conversation runs at a time; another asked meanwhile
+ * is `skipped`. Any failure is the `failed` outcome, which the outcome line records.
+ */
+export const makeLearner = Effect.fnUntraced(function* (deps: LearnerDeps) {
+  const teacher: Teacher = { ...deps, connections: yield* McpConnections, grants: yield* McpGrants }
+  const sessions = yield* PiSessions
+  const flights = yield* SingleFlight
+  return Learner.of({
+    consider: Effect.fn('Learner.consider')(function* (conversation: ConversationId, signal?: AbortSignal) {
+      const outcome = yield* flights.skip(
+        `skills.learn:${String(conversation)}`,
+        considered(teacher, conversation, signal).pipe(
+          Effect.map((done): LearnOutcome => done),
+          // expected: any failure is the `failed` outcome, which the outcome line records
+          Effect.catch(() => Effect.succeed<LearnOutcome>('failed')),
+          Effect.provideService(PiSessions, sessions),
+        ),
+      )
+      return Option.getOrElse(outcome, (): LearnOutcome => 'skipped')
+    }),
+  })
+})

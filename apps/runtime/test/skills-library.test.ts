@@ -4,13 +4,17 @@ import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { scopeOf } from '../src/capabilities/profiles.ts'
+import * as TestClock from 'effect/testing/TestClock'
 import type { AppError } from '../src/http/errors.ts'
+import { connectionsOver } from '../src/layers/mcp.ts'
 import { McpHost } from '../src/mcp/host.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
 import { Capabilities } from '../src/capabilities/service.ts'
-import { Resident } from '../src/mcp/service.ts'
+import { McpConnections, Resident } from '../src/mcp/service.ts'
 import type { AgentServices } from '../src/layers/index.ts'
-import { SkillLibrary } from '../src/skills/library.ts'
+import { SingleFlight } from '../src/observability/single-flight.ts'
+import { makeSkills } from '../src/skills/library.ts'
+import { Skills } from '../src/skills/service.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../src/skills/protocol.ts'
 import { digestOf } from '../src/skills/verify.ts'
 import { FixedProfiles } from './fixed-services.ts'
@@ -18,6 +22,7 @@ import { knowledgeOver } from './knowledge-layer.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
 import { MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
+import { servicesOf } from './mcp/runtime.ts'
 
 const bytes = (text: string) => new TextEncoder().encode(text)
 const skillMd = (version: string) =>
@@ -83,7 +88,6 @@ const skills = createMcpHandler(() => {
   return server
 })
 
-let clock = 1_000_000
 const state = new MemorySkillState()
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('lib', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
@@ -98,9 +102,28 @@ const host = new McpHost({
     return skills.fetch(new Request(input, init))
   },
 })
-const library = new SkillLibrary(host.manager, state, () => clock)
+/** The skills service over the host's connections, on a test clock that starts at 1,000,000 ms. */
+const skillsAt = () => {
+  const services = servicesOf(
+    Layer.effect(Skills, makeSkills(state)).pipe(
+      Layer.provideMerge(
+        Layer.mergeAll(
+          Layer.succeed(McpConnections, connectionsOver(host.manager)),
+          SingleFlight.layer,
+          TestClock.layer(),
+        ),
+      ),
+    ),
+  )
+  return { ...services, library: services.run(Effect.andThen(TestClock.setTime(1_000_000), Skills)) }
+}
+let services: ReturnType<typeof skillsAt>
+let library: Skills['Service']
+const later = (ms: number) => services.run(TestClock.adjust(ms))
 
 beforeEach(async () => {
+  services = skillsAt()
+  library = await services.library
   served.current = await version('v1')
   register(served.current)
   served.tamper = false
@@ -108,43 +131,48 @@ beforeEach(async () => {
   state.setEnabled('lib', true)
 })
 afterEach(async () => {
+  await services.dispose()
   await host.manager.closeAll()
 })
 
 describe('skills over MCP (unit)', () => {
+  const run = <A, E>(program: Effect.Effect<A, E>) => services.run(program)
+
   it('reads nothing from a server the owner has not turned skills on for', async () => {
-    library.setEnabled('lib', false)
-    expect(await library.catalog()).toEqual({ skills: [], unavailable: [] })
-    await expect(library.activate('s1', 'lib:code-review')).rejects.toMatchObject({ _tag: 'NotFound' })
+    await run(library.setEnabled('lib', false))
+    expect(await run(library.catalog())).toEqual({ skills: [], unavailable: [] })
+    await expect(run(library.activate('s1', 'lib:code-review'))).rejects.toMatchObject({ _tag: 'NotFound' })
   })
 
   it('shows the owner which servers offer skills and which are on', async () => {
-    await library.catalog()
+    await run(library.catalog())
     expect(host.servers()[0]).toMatchObject({ serverId: 'lib', skillsOffered: true, skillsEnabled: true })
-    library.setEnabled('lib', false)
+    await run(library.setEnabled('lib', false))
     expect(host.servers()[0]).toMatchObject({ skillsOffered: true, skillsEnabled: false })
   })
 
   it('lists skills under host handles and activates one with verified content', async () => {
-    const catalog = await library.catalog()
+    const catalog = await run(library.catalog())
     expect(catalog.skills.map((skill) => skill.handle)).toEqual(['lib:code-review'])
-    const loaded = await library.activate('s1', 'lib:code-review')
+    const loaded = await run(library.activate('s1', 'lib:code-review'))
     expect(loaded.body).toContain('# Code review v1')
     expect(loaded.files).toEqual([{ path: 'references/checklist.md', size: bytes(CHECKLIST).byteLength }])
-    expect(await library.read('s1', 'lib:code-review', 'references/checklist.md')).toEqual({
+    expect(await run(library.read('s1', 'lib:code-review', 'references/checklist.md'))).toEqual({
       kind: 'text',
       path: 'references/checklist.md',
       text: CHECKLIST,
     })
-    await expect(library.read('s1', 'lib:code-review', '../x/SKILL.md')).rejects.toMatchObject({
-      failure: 'not-in-manifest',
+    // A path outside the retained manifest fails its check, which the agent answers as Internal.
+    await expect(run(library.read('s1', 'lib:code-review', '../x/SKILL.md'))).rejects.toMatchObject({
+      _tag: 'Internal',
     })
   })
 
   it('refuses bytes that do not match the manifest', async () => {
     served.tamper = true
     state.files.clear()
-    await expect(library.activate('s2', 'lib:code-review')).rejects.toMatchObject({ failure: 'size-mismatch' })
+    await expect(run(library.activate('s2', 'lib:code-review'))).rejects.toMatchObject({ _tag: 'Internal' })
+    expect(state.activations('s2')).toEqual([])
   })
 
   it('resolves a selected stable URI and verifies its bytes before activating it', async () => {
@@ -153,54 +181,57 @@ describe('skills over MCP (unit)', () => {
       Effect.sync(() => {
         checks += 1
       })
-    const selected = await library.activateSelection('selected', 'lib', served.current.entry.uri, { authorize })
+    const selected = await run(library.activateSelection('selected', 'lib', served.current.entry.uri, { authorize }))
     expect(selected.skill.entry.uri).toBe(served.current.entry.uri)
     expect(selected.body).toContain('# Code review v1')
     expect(checks).toBeGreaterThanOrEqual(2)
     await expect(
-      library.activateSelection('selected', 'lib', 'skill://missing/SKILL.md', { authorize }),
+      run(library.activateSelection('selected', 'lib', 'skill://missing/SKILL.md', { authorize })),
     ).rejects.toMatchObject({ _tag: 'NotFound' })
     served.tamper = true
     state.files.clear()
     await expect(
-      library.activateSelection('corrupt', 'lib', served.current.entry.uri, { authorize }),
-    ).rejects.toMatchObject({ failure: 'size-mismatch' })
+      run(library.activateSelection('corrupt', 'lib', served.current.entry.uri, { authorize })),
+    ).rejects.toMatchObject({ _tag: 'Internal' })
     expect(state.activations('corrupt')).toEqual([])
   })
 
   it('ignores a cached file that no longer matches and fetches it again', async () => {
-    await library.activate('s3', 'lib:code-review')
+    await run(library.activate('s3', 'lib:code-review'))
     for (const [digest, cached] of state.files) state.files.set(digest, bytes(`${new TextDecoder().decode(cached)}x`))
-    expect((await library.activate('s3', 'lib:code-review')).body).toContain('# Code review v1')
+    expect((await run(library.activate('s3', 'lib:code-review'))).body).toContain('# Code review v1')
   })
 
   it('keeps a conversation on the version it activated until it activates again', async () => {
-    await library.activate('s4', 'lib:code-review')
+    await run(library.activate('s4', 'lib:code-review'))
     served.current = await version('v2')
     register(served.current)
-    clock += 120_000
-    expect((await library.catalog()).skills[0]?.entry.uri).toBe('skill://v2/code-review/SKILL.md')
+    await later(120_000)
+    expect((await run(library.catalog())).skills[0]?.entry.uri).toBe('skill://v2/code-review/SKILL.md')
     // The conversation still reads from v1's retained manifest.
-    expect((await library.read('s4', 'lib:code-review', 'references/checklist.md')).kind).toBe('text')
+    expect((await run(library.read('s4', 'lib:code-review', 'references/checklist.md'))).kind).toBe('text')
     expect(state.activations('s4').map((item) => item.entry.uri)).toEqual(['skill://v1/code-review/SKILL.md'])
-    expect((await library.activate('s5', 'lib:code-review')).body).toContain('# Code review v2')
+    expect((await run(library.activate('s5', 'lib:code-review'))).body).toContain('# Code review v2')
   })
 
   it('reports an unreachable server as unavailable rather than empty, and keeps a cached listing', async () => {
-    await library.catalog()
+    await run(library.catalog())
     await host.manager.closeAll()
     served.down = true
-    expect((await library.catalog()).skills).toHaveLength(1)
-    clock += 600_000
-    const fresh = new SkillLibrary(host.manager, state, () => clock)
-    expect(await fresh.catalog()).toEqual({ skills: [], unavailable: ['lib'] })
+    expect((await run(library.catalog())).skills).toHaveLength(1)
+    // A service made later has no listing of its own to keep.
+    await services.dispose()
+    services = skillsAt()
+    library = await services.library
+    await later(600_000)
+    expect(await run(library.catalog())).toEqual({ skills: [], unavailable: ['lib'] })
   })
 })
 
 describe('a skills library switched off in one conversation (unit)', () => {
   it('is left out of the catalog without being fetched', async () => {
     served.down = true
-    expect(await library.catalog({}, () => false)).toEqual({ skills: [], unavailable: [] })
+    expect(await services.run(library.catalog({}, () => false))).toEqual({ skills: [], unavailable: [] })
   })
 
   it('loads nothing when the model still asks for one of its skills, and offers to turn it on there', async () => {

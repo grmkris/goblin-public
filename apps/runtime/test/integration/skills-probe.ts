@@ -2,15 +2,25 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
 import { McpConnectionManager } from '../../src/mcp/connection.ts'
 import { createMcpHandler } from '@modelcontextprotocol/server'
+import * as Context from 'effect/Context'
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
+import { connectionsOver } from '../../src/layers/mcp.ts'
+import { McpConnections, McpGrants } from '../../src/mcp/service.ts'
+import { SingleFlight } from '../../src/observability/single-flight.ts'
+import { PiSessions } from '../../src/pi/sessions.ts'
+import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
 import { SKILLS_EXTENSION } from '../../src/skills/protocol.ts'
-import { SkillLibrary } from '../../src/skills/library.ts'
+import { makeSkills } from '../../src/skills/library.ts'
+import { Learner, Skills } from '../../src/skills/service.ts'
 import { SqliteSkillState } from '../../src/skills/store.ts'
 import { digestOf } from '../../src/skills/verify.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { appSkillFiles } from '../../src/storage/schema.ts'
 import { appSkillDrafts } from '../../src/storage/schema.ts'
-import { SkillLearner } from '../../src/skills/learner.ts'
+import { makeLearner } from '../../src/skills/learner.ts'
 import { SqliteDraftLog } from '../../src/skills/store.ts'
 import { CheapModel } from '../../src/memory/model.ts'
 import { scriptedStreams } from './model.ts'
@@ -18,8 +28,21 @@ import { makePiModels } from '../../src/pi/model.ts'
 import { conversationId } from '../../src/pi/context.ts'
 import type { PiHarness } from 'agents/harness/pi'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
+import { servicesOf } from '../mcp/runtime.ts'
 
-/** Real SkillLibrary and SQLite cache in workerd; the network boundary alone is injected. */
+/** The draft tools the learner probe's owner granted. */
+const draftTool = (serverId: string, name: string) =>
+  serverId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status')
+
+/** The skills service over `manager`'s connections, made as the agent's start makes it. */
+export const skillsOver = (manager: McpConnectionManager, state: SqliteSkillState) =>
+  servicesOf(
+    Layer.effect(Skills, makeSkills(state)).pipe(
+      Layer.provide(Layer.mergeAll(Layer.succeed(McpConnections, connectionsOver(manager)), SingleFlight.layer)),
+    ),
+  )
+
+/** The real skills service and SQLite cache in workerd; the network boundary alone is injected. */
 export async function skillsCacheProbe(storage: DurableObjectStorage) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
@@ -61,16 +84,18 @@ export async function skillsCacheProbe(storage: DurableObjectStorage) {
     fetch: (input, init) => handler.fetch(new Request(input, init)),
   })
   state.setEnabled('skills', true, 1)
-  const library = new SkillLibrary(manager, state, () => 1)
-  const first = await library.activate('cache-session', 'skills:cache-test')
+  const { run, dispose } = skillsOver(manager, state)
+  const library = await run(Skills)
+  const first = await run(library.activate('cache-session', 'skills:cache-test'))
   db.update(appSkillFiles)
     // Same size, different bytes: exercise digest verification rather than only a size mismatch.
     .set({ content: btoa(new TextDecoder().decode(body).replace('Cache test', 'False test')), storedAt: 2 })
     .where(eq(appSkillFiles.digest, digest))
     .run()
-  const second = await library.activate('cache-session', 'skills:cache-test')
+  const second = await run(library.activate('cache-session', 'skills:cache-test'))
   const repaired = state.file(digest)
-  await library.activate('cache-session', 'skills:cache-test')
+  await run(library.activate('cache-session', 'skills:cache-test'))
+  await dispose()
   await manager.closeAll()
   return {
     firstBody: first.body,
@@ -100,9 +125,12 @@ export async function skillsPersistedRead(storage: DurableObjectStorage) {
       throw new Error('restart read must use verified persisted bytes')
     },
   })
-  const library = new SkillLibrary(manager, state, () => 2)
-  const file = await library.read('cache-session', 'skills:cache-test', 'SKILL.md')
+  const { run, dispose } = skillsOver(manager, state)
+  const file = await run(
+    Effect.flatMap(Skills, (library) => library.read('cache-session', 'skills:cache-test', 'SKILL.md')),
+  )
   const cached = state.file(resource.digest)
+  await dispose()
   await manager.closeAll()
   return {
     activation,
@@ -173,12 +201,7 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
     operationId: 'checksum-procedure',
   })
   await harness.wait(receipt.operationId)
-  const library = new SkillLibrary(manager, state, () => 1)
-  await library.activate(receipt.session, 'myskills:rejection-proof')
-  const corrected = await harness.submit('No, next time verify the checksum before submitting.', {
-    operationId: 'checksum-correction',
-  })
-  await harness.wait(corrected.operationId)
+  const drafts = new SqliteDraftLog(db)
   const decision = JSON.stringify({
     action: 'improve',
     skill: 'myskills:rejection-proof',
@@ -193,24 +216,50 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
       () => [{ type: 'text', text: decision }],
     ),
   )
-  const drafts = new SqliteDraftLog(db)
-  const learner = new SkillLearner({
-    drafts,
-    harness,
-    manager,
-    library,
-    state,
-    model: new CheapModel(scripted.models, scripted.model.id, () => undefined),
-    allows: (serverId, name) => serverId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status'),
-    now: () => 1,
+  // SAFETY: PiSessions reads only the harness from the agent's inputs.
+  const input = Object.assign(Object.create(null), { harness }) as AgentInputs
+  const { run, dispose } = servicesOf(
+    Layer.effectContext(
+      Effect.gen(function* () {
+        const skills = yield* makeSkills(state)
+        const learner = yield* makeLearner({
+          drafts,
+          state,
+          skills,
+          model: new CheapModel(scripted.models, scripted.model.id, () => undefined),
+        })
+        return Context.merge(Skills.context(skills), Learner.context(learner))
+      }),
+    ).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(McpConnections, connectionsOver(manager)),
+          Layer.mock(McpGrants)({
+            policy: (serverId: string, name: string) =>
+              Effect.succeed(
+                draftTool(serverId, name) ? Option.some({ askFirst: false, version: 'fixture' }) : Option.none(),
+              ),
+          }),
+          PiSessions.layer.pipe(Layer.provide(Layer.succeed(AgentInput, input))),
+          SingleFlight.layer,
+        ),
+      ),
+    ),
+  )
+  await run(Effect.flatMap(Skills, (library) => library.activate(receipt.session, 'myskills:rejection-proof')))
+  const corrected = await harness.submit('No, next time verify the checksum before submitting.', {
+    operationId: 'checksum-correction',
   })
-  const first = await learner.consider(conversationId(receipt.session))
+  await harness.wait(corrected.operationId)
+  const learner = await run(Learner)
+  const first = await run(learner.consider(conversationId(receipt.session)))
   const repeated = await harness.submit('No, next time verify the checksum before submitting.', {
     operationId: 'checksum-correction-repeat',
   })
   await harness.wait(repeated.operationId)
-  const second = await learner.consider(conversationId(receipt.session))
+  const second = await run(learner.consider(conversationId(receipt.session)))
   const row = db.select({ status: appSkillDrafts.status }).from(appSkillDrafts).all()
+  await dispose()
   await manager.closeAll()
   return { first, second, submitted, statusCalls, row }
 }

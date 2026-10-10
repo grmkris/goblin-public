@@ -29,7 +29,9 @@ import type {
   McpRequestOptions,
   McpServerConfig,
   McpToolResult,
+  SkillRequestOptions,
 } from './types.ts'
+import type { SkillEntry } from '../skills/protocol.ts'
 
 // The MCP area's services (ADRs 0003, 0006, 0011, 0028). Each method is one Effect with the area's typed failures;
 // the instance clocks (seconds for authority and grants, milliseconds for approvals and Events) are read inside, so no
@@ -143,6 +145,20 @@ export class McpConnections extends Context.Service<
       serverId: string,
       uri: string,
       caller: 'human' | 'app',
+    ) => Effect.Effect<ReadResourceResult, AppError>
+    /**
+     * Every skill a server lists, when the owner uses skills from it and it declares the Skills extension, with the
+     * shortest `ttlMs` seen for the caller's cache.
+     */
+    readonly skills: (
+      serverId: string,
+      options?: SkillRequestOptions,
+    ) => Effect.Effect<{ readonly skills: readonly SkillEntry[]; readonly ttlMs: number | undefined }, AppError>
+    /** One skill file through `resources/read`, bounded; the caller verifies its bytes against the manifest. */
+    readonly skillFile: (
+      serverId: string,
+      uri: string,
+      options?: SkillRequestOptions,
     ) => Effect.Effect<ReadResourceResult, AppError>
     /** Closes every connection, when the agent's runtime goes. */
     readonly closeAll: () => Effect.Effect<void, AppError>

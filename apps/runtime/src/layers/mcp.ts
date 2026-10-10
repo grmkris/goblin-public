@@ -21,6 +21,7 @@ import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { eventsHookToken, eventsHookUrl } from '../mcp/events/route-token.ts'
 import { type Receipt, SqliteEventStore } from '../mcp/events/store.ts'
 import { GrantStore } from '../mcp/grants.ts'
+import type { McpConnectionManager } from '../mcp/connection.ts'
 import { McpHost, McpHostInstance } from '../mcp/host.ts'
 import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
@@ -36,7 +37,7 @@ import {
   requireResident,
 } from '../mcp/service.ts'
 import { type Stage, suggestions } from '../mcp/suggested.ts'
-import type { McpCallOptions, McpRequestOptions } from '../mcp/types.ts'
+import type { McpCallOptions, McpRequestOptions, SkillRequestOptions } from '../mcp/types.ts'
 import { promiseWith } from '../runtime/boundary.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
@@ -108,11 +109,8 @@ async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase, authori
   return { host, cipher }
 }
 
-/**
- * Start step 2: every server's endpoint binding is checked (a re-pointed server loses what it had), the credential
- * cipher is made, held calls a restart cut off are recovered, and the one MCP host is made.
- */
-export const McpHostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db | Entitlements | Resident> =
+/** The one MCP host, its stores and the credential cipher. */
+const HostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db | Entitlements | Resident> =
   Layer.effectContext(
     Effect.gen(function* () {
       const input = yield* AgentInput
@@ -318,45 +316,58 @@ export const McpGrantsLive = Layer.effect(
   }),
 )
 
-/** The connections, the host's manager: one cached client per server. */
+/** The connections over `manager`: one cached client per server. */
+export const connectionsOver = (manager: McpConnectionManager) =>
+  McpConnections.of({
+    servers: Effect.fn('McpConnections.servers')(function* () {
+      return yield* Effect.sync(() => manager.servers)
+    }),
+    server: Effect.fn('McpConnections.server')(function* (serverId: string) {
+      return yield* attemptSync(() => manager.server(serverId))
+    }),
+    snapshot: Effect.fn('McpConnections.snapshot')(function* (serverId: string) {
+      return yield* Effect.sync(() => Option.fromNullishOr(manager.snapshot(serverId)))
+    }),
+    connect: Effect.fn('McpConnections.connect')(function* (serverId: string, options?: McpRequestOptions) {
+      return yield* attempt(() => manager.connect(serverId, options))
+    }),
+    callTool: Effect.fn('McpConnections.callTool')(function* (
+      serverId: string,
+      name: string,
+      args: Record<string, unknown>,
+      options?: McpCallOptions,
+    ) {
+      return yield* attempt(() => manager.callTool(serverId, name, args, options))
+    }),
+    readResource: Effect.fn('McpConnections.readResource')(function* (
+      serverId: string,
+      uri: string,
+      caller: 'human' | 'app',
+    ) {
+      return yield* attempt(() =>
+        caller === 'app' ? manager.readAppResource(serverId, uri) : manager.readResource(serverId, uri),
+      )
+    }),
+    skills: Effect.fn('McpConnections.skills')(function* (serverId: string, options?: SkillRequestOptions) {
+      return yield* attempt(() => manager.listSkills(serverId, options))
+    }),
+    skillFile: Effect.fn('McpConnections.skillFile')(function* (
+      serverId: string,
+      uri: string,
+      options?: SkillRequestOptions,
+    ) {
+      return yield* attempt(() => manager.readSkillFile(serverId, uri, options))
+    }),
+    closeAll: Effect.fn('McpConnections.closeAll')(function* () {
+      yield* attempt(() => manager.closeAll())
+    }),
+  })
+
+/** The connections, the host's manager. */
 export const McpConnectionsLive = Layer.effect(
   McpConnections,
   Effect.gen(function* () {
-    const { manager } = yield* McpHostInstance
-    return McpConnections.of({
-      servers: Effect.fn('McpConnections.servers')(function* () {
-        return yield* Effect.sync(() => manager.servers)
-      }),
-      server: Effect.fn('McpConnections.server')(function* (serverId: string) {
-        return yield* attemptSync(() => manager.server(serverId))
-      }),
-      snapshot: Effect.fn('McpConnections.snapshot')(function* (serverId: string) {
-        return yield* Effect.sync(() => Option.fromNullishOr(manager.snapshot(serverId)))
-      }),
-      connect: Effect.fn('McpConnections.connect')(function* (serverId: string, options?: McpRequestOptions) {
-        return yield* attempt(() => manager.connect(serverId, options))
-      }),
-      callTool: Effect.fn('McpConnections.callTool')(function* (
-        serverId: string,
-        name: string,
-        args: Record<string, unknown>,
-        options?: McpCallOptions,
-      ) {
-        return yield* attempt(() => manager.callTool(serverId, name, args, options))
-      }),
-      readResource: Effect.fn('McpConnections.readResource')(function* (
-        serverId: string,
-        uri: string,
-        caller: 'human' | 'app',
-      ) {
-        return yield* attempt(() =>
-          caller === 'app' ? manager.readAppResource(serverId, uri) : manager.readResource(serverId, uri),
-        )
-      }),
-      closeAll: Effect.fn('McpConnections.closeAll')(function* () {
-        yield* attempt(() => manager.closeAll())
-      }),
-    })
+    return connectionsOver((yield* McpHostInstance).manager)
   }),
 )
 
@@ -405,11 +416,19 @@ export const ApprovalsLive = Layer.effect(
 )
 
 /**
- * The MCP services after the start: the servers, grants, connections and held calls (`Events` is start step 17's, and
- * resident authority the core layer's).
+ * Start step 2: every server's endpoint binding is checked (a re-pointed server loses what it had), the credential
+ * cipher is made, held calls a restart cut off are recovered, and the one MCP host is made, with its connections and
+ * grants, which the skills (step 15) and Events (step 17) use.
  */
-export const McpLive: Layer.Layer<
-  McpServers | McpGrants | McpConnections | Approvals,
+export const McpHostLive: Layer.Layer<
+  McpHostInstance | Cipher | McpConnections | McpGrants,
   never,
-  AgentInput | Db | McpHostInstance | Cipher
-> = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, ApprovalsLive)
+  AgentInput | Db | Entitlements | Resident
+> = Layer.mergeAll(McpConnectionsLive, McpGrantsLive).pipe(Layer.provideMerge(HostLive))
+
+/**
+ * The MCP services after the start: the servers and held calls (the connections and grants are start step 2's,
+ * `Events` is step 17's, and resident authority the core layer's).
+ */
+export const McpLive: Layer.Layer<McpServers | Approvals, never, AgentInput | Db | McpHostInstance | Cipher> =
+  Layer.mergeAll(McpServersLive, ApprovalsLive)
