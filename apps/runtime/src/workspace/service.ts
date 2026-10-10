@@ -13,7 +13,7 @@ export class Workspace extends Context.Service<
 >()('goblin/workspace/Workspace') {
   /**
    * The workspace over `feed`, the agent's one feed, which follows the change bus's `topics.changed`,
-   * `personas.changed`, `receipts.changed`, `home.changed`, `conversations.changed`, `apps.changed` and
+   * `personas.changed`, `invocations.changed`, `receipts.changed`, `home.changed`, `conversations.changed`, `apps.changed` and
    * `apps.removed`, each read as it is now.
    */
   static readonly make = (feed: WorkspaceFeed) =>
@@ -21,6 +21,7 @@ export class Workspace extends Context.Service<
       const changes = yield* Changes
       yield* changes.on('topics.changed', ({ ids }) => Effect.sync(() => feed.topicsChanged(ids)))
       yield* changes.on('personas.changed', ({ ids }) => Effect.sync(() => feed.personasChanged(ids)))
+      yield* changes.on('invocations.changed', ({ ids }) => Effect.sync(() => feed.invocationsChanged(ids)))
       yield* changes.on('receipts.changed', ({ ids }) => Effect.sync(() => feed.receiptsChanged(ids)))
       yield* changes.on('home.changed', () => Effect.sync(() => feed.homeChanged()))
       yield* changes.on('conversations.changed', ({ ids }) => Effect.sync(() => feed.conversationsChanged(ids)))

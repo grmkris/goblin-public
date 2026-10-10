@@ -30,28 +30,16 @@ export type NewInvocation = {
 }
 
 /**
- * Which Persona answers which owner message, and how far it got (ADR 0033). The row is the owner-visible state; the
- * `goblin.persona-turn` task in Pi does the work and reports into it. A settled row never moves again, so a replayed
- * step or a Stop after the answer changes nothing.
+ * Which Persona answers which owner message, and how far it got (ADR 0033), as rows: a store with no state of its own
+ * (the Invocations service tells the change bus). The row is the owner-visible state; the `goblin.persona-turn` task in
+ * Pi does the work and reports into it. A settled row never moves again, so a replayed step or a Stop after the answer
+ * changes nothing. Each write answers the invocations it changed.
  */
 export class PersonaInvocations<RunResult = unknown> {
   readonly #db: SQLiteAsyncDatabase<'sync', RunResult>
-  readonly #listeners = new Set<(invocations: readonly PersonaInvocationView[]) => void>()
 
   constructor(db: SQLiteAsyncDatabase<'sync', RunResult>) {
     this.#db = db
-  }
-
-  /** Calls `listener` with each invocation written; returns what unsubscribes it. */
-  onChange(listener: (invocations: readonly PersonaInvocationView[]) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-
-  #emit(rows: readonly Row[]): void {
-    if (rows.length === 0) return
-    const invocations = rows.map(view)
-    for (const listener of this.#listeners) listener(invocations)
   }
 
   /** Records the tagged Personas of one send, once per operation and Persona. */
@@ -74,7 +62,6 @@ export class PersonaInvocations<RunResult = unknown> {
           .all(),
       ),
     )
-    this.#emit(rows)
     return rows.map(view)
   }
 
@@ -110,8 +97,8 @@ export class PersonaInvocations<RunResult = unknown> {
   }
 
   /** The Persona started working. Only a pending invocation moves. */
-  running(operationId: string, persona: number): void {
-    const rows = this.#db
+  running(operationId: string, persona: number): readonly PersonaInvocationView[] {
+    return this.#db
       .update(appPersonaInvocations)
       .set({ state: 'running' })
       .where(
@@ -123,18 +110,18 @@ export class PersonaInvocations<RunResult = unknown> {
       )
       .returning()
       .all()
-    this.#emit(rows)
+      .map(view)
   }
 
-  /** Settles one invocation; a settled one stays as it is. Whether this call settled it. */
+  /** Settles one invocation; a settled one stays as it is. */
   settle(
     operationId: string,
     persona: number,
     state: 'answered' | 'failed' | 'stopped',
     now: number,
     answerEntry?: number,
-  ): boolean {
-    const rows = this.#db
+  ): readonly PersonaInvocationView[] {
+    return this.#db
       .update(appPersonaInvocations)
       .set({ state, settledAt: now, ...(answerEntry === undefined ? {} : { answerEntry }) })
       .where(
@@ -146,19 +133,17 @@ export class PersonaInvocations<RunResult = unknown> {
       )
       .returning()
       .all()
-    this.#emit(rows)
-    return rows.length > 0
+      .map(view)
   }
 
   /** Stops every unsettled invocation in `chat`: the owner's Stop. */
-  stopChat(chat: string, now: number): number {
-    const rows = this.#db
+  stopChat(chat: string, now: number): readonly PersonaInvocationView[] {
+    return this.#db
       .update(appPersonaInvocations)
       .set({ state: 'stopped', settledAt: now })
       .where(and(eq(appPersonaInvocations.chatId, chat), inArray(appPersonaInvocations.state, [...LIVE])))
       .returning()
       .all()
-    this.#emit(rows)
-    return rows.length
+      .map(view)
   }
 }

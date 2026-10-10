@@ -15,10 +15,15 @@ import { Changes } from '../runtime/changes.ts'
 import type { NewInvocation, PersonaInvocations } from './invocations.ts'
 import type { PersonaActor, PersonaRegistry } from './registry.ts'
 
+/** One invocation's key: the owner's send and the Persona tagged in it. */
+export type InvocationKey = { readonly operationId: string; readonly persona: number }
+
 declare module '../runtime/changes.ts' {
   interface ChangeTopics {
     /** Personas a write made or changed, by id (ADR 0033). */
     'personas.changed': { readonly ids: readonly number[] }
+    /** Invocations a write recorded, started or settled, by key (ADR 0033). */
+    'invocations.changed': { readonly ids: readonly InvocationKey[] }
   }
 }
 
@@ -133,35 +138,45 @@ export class Invocations extends Context.Service<
   }
 >()('goblin/personas/Invocations') {
   /**
-   * The invocations over `store`, the one per agent. Its own listeners still tell the workspace feed what changed:
-   * the Persona asks and Stop write through the same instance.
+   * The invocations over `store`, the one per agent: every write that changed one tells `invocations.changed` which,
+   * so a write that changed nothing (a repeat, a settled one) tells nothing.
    */
   static readonly make = (store: PersonaInvocations) =>
-    Invocations.of({
-      insert: Effect.fn('Invocations.insert')(function* (asked: readonly NewInvocation[], now: number) {
-        return yield* Effect.sync(() => store.insert(asked, now))
-      }),
-      get: Effect.fn('Invocations.get')(function* (operationId: string, persona: number) {
-        return yield* Effect.sync(() => Option.fromUndefinedOr(store.get(operationId, persona)))
-      }),
-      live: Effect.sync(() => store.live()).pipe(Effect.withSpan('Invocations.live')),
-      of: Effect.fn('Invocations.of')(function* (operationId: string) {
-        return yield* Effect.sync(() => store.of(operationId))
-      }),
-      running: Effect.fn('Invocations.running')(function* (operationId: string, persona: number) {
-        yield* Effect.sync(() => store.running(operationId, persona))
-      }),
-      settle: Effect.fn('Invocations.settle')(function* (
-        operationId: string,
-        persona: number,
-        state: 'answered' | 'failed' | 'stopped',
-        now: number,
-        answerEntry?: number,
-      ) {
-        return yield* Effect.sync(() => store.settle(operationId, persona, state, now, answerEntry))
-      }),
-      stopChat: Effect.fn('Invocations.stopChat')(function* (chat: string, now: number) {
-        return yield* Effect.sync(() => store.stopChat(chat, now))
-      }),
+    Effect.map(Changes, (changes) => {
+      const changed = (views: readonly PersonaInvocationView[]) =>
+        views.length === 0
+          ? Effect.void
+          : changes.publish('invocations.changed', {
+              ids: views.map(({ operationId, persona }) => ({ operationId, persona })),
+            })
+      const written = (write: () => readonly PersonaInvocationView[]) => Effect.sync(write).pipe(Effect.tap(changed))
+      return Invocations.of({
+        insert: Effect.fn('Invocations.insert')(function* (asked: readonly NewInvocation[], now: number) {
+          return yield* written(() => store.insert(asked, now))
+        }),
+        get: Effect.fn('Invocations.get')(function* (operationId: string, persona: number) {
+          return yield* Effect.sync(() => Option.fromUndefinedOr(store.get(operationId, persona)))
+        }),
+        live: Effect.sync(() => store.live()).pipe(Effect.withSpan('Invocations.live')),
+        of: Effect.fn('Invocations.of')(function* (operationId: string) {
+          return yield* Effect.sync(() => store.of(operationId))
+        }),
+        running: Effect.fn('Invocations.running')(function* (operationId: string, persona: number) {
+          yield* written(() => store.running(operationId, persona))
+        }),
+        settle: Effect.fn('Invocations.settle')(function* (
+          operationId: string,
+          persona: number,
+          state: 'answered' | 'failed' | 'stopped',
+          now: number,
+          answerEntry?: number,
+        ) {
+          const settled = yield* written(() => store.settle(operationId, persona, state, now, answerEntry))
+          return settled.length > 0
+        }),
+        stopChat: Effect.fn('Invocations.stopChat')(function* (chat: string, now: number) {
+          return (yield* written(() => store.stopChat(chat, now))).length
+        }),
+      })
     })
 }

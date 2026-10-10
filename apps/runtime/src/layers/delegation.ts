@@ -48,12 +48,13 @@ export const delegationServices = (
       const topics = yield* Topics.make(stores.topics)
       const personas = yield* Personas.make(stores.personas)
       const receipts = yield* Receipts.make(stores.receipts)
+      const invocations = yield* Invocations.make(stores.invocations)
       const home = yield* Home.make(stores.home)
       const workspace = yield* Workspace.make(stores.feed)
       return Context.mergeAll(
         Topics.context(topics),
         Personas.context(personas),
-        Invocations.context(Invocations.make(stores.invocations)),
+        Invocations.context(invocations),
         Receipts.context(receipts),
         Home.context(home),
         Workspace.context(workspace),
@@ -105,7 +106,6 @@ const stores: Effect.Effect<
     { conversations, apps, home, topics, personas, invocations, receipts },
     chats,
   )
-  feed.listen()
   return { topics, personas, invocations, receipts, home, feed } satisfies DelegationStores
 })
 

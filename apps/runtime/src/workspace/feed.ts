@@ -8,6 +8,7 @@ import type { ConversationRegistry } from '../conversations.ts'
 import type { TopicRegistry } from '../topics/registry.ts'
 import type { PersonaRegistry } from '../personas/registry.ts'
 import type { PersonaInvocations } from '../personas/invocations.ts'
+import type { InvocationKey } from '../personas/service.ts'
 import type { OrganizeReceipts } from '../organize/receipts.ts'
 import { sseResponse } from '../http/sse.ts'
 import { writeLine } from '../observability/logger.ts'
@@ -44,9 +45,8 @@ const reportFeedFailure = (where: string, error: unknown): void =>
   })
 
 /**
- * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. The invocations tell
- * it what changed through their own listener (`listen`); the conversations, Apps, Topics, Personas, receipts and Home
- * through the change bus (`workspace/service.ts`), which calls the methods below.
+ * What the feed shows: the conversations, Apps, Home, Topics, Personas, invocations and receipts. Each tells it what
+ * changed through the change bus (`workspace/service.ts`), which calls the methods below.
  */
 export type FeedSources = {
   readonly conversations: ConversationRegistry
@@ -60,8 +60,8 @@ export type FeedSources = {
 
 /**
  * The owner's workspace as one live feed: every conversation and what each is doing, so a client needs no polling and
- * no stream per conversation to draw the tree. It watches Pi's task graph while anyone listens, and the stores' writes
- * once `listen` is called; one feed per agent listens. Activity lives in this isolate; a client that reconnects starts
+ * no stream per conversation to draw the tree. It watches Pi's task graph while anyone listens; one feed per agent
+ * follows the stores' writes. Activity lives in this isolate; a client that reconnects starts
  * again from a fresh snapshot.
  */
 export class WorkspaceFeed {
@@ -94,10 +94,14 @@ export class WorkspaceFeed {
     this.#receipts = receipts
   }
 
-  /** Follows the invocations' own listener. Call it once, on the agent's one feed. */
-  listen(): void {
-    this.#invocations.onChange((changed) =>
-      this.#emit(changed.map((invocation) => ({ type: 'invocation' as const, invocation }))),
+  /** Invocations a write changed, each as it is now. */
+  invocationsChanged(keys: readonly InvocationKey[]): void {
+    if (this.#listeners.size === 0) return
+    this.#emit(
+      keys.flatMap(({ operationId, persona }) => {
+        const invocation = this.#invocations.get(operationId, persona)
+        return invocation === undefined ? [] : [{ type: 'invocation' as const, invocation }]
+      }),
     )
   }
 

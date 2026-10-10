@@ -184,19 +184,35 @@ describe('Personas (ADR 0033)', () => {
 })
 
 describe('Persona invocations', () => {
-  it('moves from pending to running to one settled state and never again', () => {
-    const { invocations } = fixture()
-    const seen: string[] = []
-    invocations.onChange((changed) => seen.push(...changed.map((each) => each.state)))
-    invocations.insert([{ operationId: 'op', persona: 1, revision: 1, chat: '1', order: 0 }], 10)
-    invocations.insert([{ operationId: 'op', persona: 1, revision: 5, chat: '1', order: 0 }], 11)
-    expect(invocations.live()).toHaveLength(1)
-    invocations.running('op', 1)
-    invocations.settle('op', 1, 'answered', 12, 77)
-    invocations.settle('op', 1, 'stopped', 13)
-    expect(invocations.get('op', 1)).toMatchObject({ state: 'answered', answerEntry: 77, settledAt: 12, revision: 1 })
-    expect(invocations.live()).toEqual([])
-    expect(seen).toEqual(['pending', 'running', 'answered'])
+  it('moves from pending to running to one settled state and never again, telling only real changes', async () => {
+    const { invocations: store } = fixture()
+    const changes = makeChanges()
+    const told: string[] = []
+    Effect.runSync(
+      changes.on('invocations.changed', ({ ids }) =>
+        Effect.sync(
+          () => void told.push(...ids.map(({ operationId, persona }) => `${operationId}/${String(persona)}`)),
+        ),
+      ),
+    )
+    const seen = await Effect.runPromise(
+      Effect.gen(function* () {
+        const invocations = yield* Invocations.make(store)
+        const asked = { operationId: 'op', persona: 1, revision: 1, chat: '1', order: 0 }
+        yield* invocations.insert([asked], 10)
+        yield* invocations.insert([{ ...asked, revision: 5 }], 11)
+        const live = yield* invocations.live
+        yield* invocations.running('op', 1)
+        const settled = yield* invocations.settle('op', 1, 'answered', 12, 77)
+        const again = yield* invocations.settle('op', 1, 'stopped', 13)
+        return { live, settled, again }
+      }).pipe(Effect.provideService(Changes, changes)),
+    )
+    expect(seen.live).toHaveLength(1)
+    expect([seen.settled, seen.again]).toEqual([true, false])
+    expect(store.get('op', 1)).toMatchObject({ state: 'answered', answerEntry: 77, settledAt: 12, revision: 1 })
+    expect(store.live()).toEqual([])
+    expect(told).toEqual(['op/1', 'op/1', 'op/1'])
   })
 
   it('stops what is still unsettled in a chat, and only there', () => {
@@ -210,7 +226,7 @@ describe('Persona invocations', () => {
       10,
     )
     invocations.settle('a', 2, 'answered', 11)
-    expect(invocations.stopChat('1', 12)).toBe(1)
+    expect(invocations.stopChat('1', 12)).toEqual([expect.objectContaining({ operationId: 'a', persona: 1 })])
     expect(invocations.get('a', 1)?.state).toBe('stopped')
     expect(invocations.get('a', 2)?.state).toBe('answered')
     expect(invocations.get('b', 1)?.state).toBe('pending')
