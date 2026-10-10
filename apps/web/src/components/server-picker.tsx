@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import type { ServerView } from '@goblin/contracts'
 import { Card, CardContent, Tabs, TabsContent, TabsList, TabsTrigger } from '@goblin/ui'
+import { QueryBoundary } from '../lib/query/query-boundary.tsx'
 import { AddByAddress, SuggestedServers } from './server-add.tsx'
 import { ServerSearch } from './server-search.tsx'
 
@@ -30,7 +31,12 @@ export function ServerPicker({
           </TabsList>
           <TabsContent value="suggested">
             <p className="server-note">Servers we have checked work from here. You still choose every tool.</p>
-            <SuggestedServers onChanged={onChanged} onMessage={onMessage} />
+            <QueryBoundary
+              action="list the suggested servers"
+              pending={<p className="server-note">Looking for suggestions…</p>}
+            >
+              <SuggestedServers onChanged={onChanged} onMessage={onMessage} />
+            </QueryBoundary>
           </TabsContent>
           <TabsContent value="search">
             <ServerSearch onChanged={onChanged} onMessage={onMessage} />

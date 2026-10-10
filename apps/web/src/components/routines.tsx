@@ -1,5 +1,5 @@
 import { type SubmitEvent, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQueries } from '@tanstack/react-query'
 import type { RoutineDefinition, RoutineSettings, RoutineView } from '@goblin/contracts'
 import {
   Alert,
@@ -25,7 +25,7 @@ import {
 } from '@goblin/ui'
 import { AlarmClockIcon, PlusIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
-import { QueryError } from '../lib/query/query-boundary.tsx'
+import { QueryBoundary } from '../lib/query/query-boundary.tsx'
 import {
   changeRoutineMutation,
   routineSettingsMutation,
@@ -261,22 +261,11 @@ function NoRoutines({ onNew }: { readonly onNew: () => void }) {
   )
 }
 
-/** The owner's routines, newest change first, with the timezone new ones use. */
-function useRoutines() {
-  const list = useQuery(routinesQuery)
-  const settings = useQuery(routineSettingsQuery)
-  return {
-    routines: list.data?.routines,
-    settings: settings.data,
-    error: list.error ?? settings.error,
-    retry: () => void Promise.all([list.refetch(), settings.refetch()]),
-  }
-}
-
-export function RoutinesSection() {
-  const { routines, settings, error, retry } = useRoutines()
+/** The owner's routines, newest change first, with the timezone new ones use; both read together. */
+function Routines() {
+  const [{ data: list }, { data: settings }] = useSuspenseQueries({ queries: [routinesQuery, routineSettingsQuery] })
   const [editing, setEditing] = useState<RoutineView | 'new'>()
-  const listed = routines ?? []
+  const listed = list.routines
   return (
     <PageSection
       id="routines"
@@ -290,15 +279,13 @@ export function RoutinesSection() {
           </Button>
         ) : undefined
       }
-      note={`Up to ${settings?.maxActive ?? 20} on at once, ${settings?.maxRunning ?? 2} running at a time.`}
+      note={`Up to ${settings.maxActive} on at once, ${settings.maxRunning} running at a time.`}
     >
-      {error !== null && <QueryError error={error} action="list your routines" onRetry={retry} />}
-      {routines === undefined && error === null && <Skeleton className="h-28 w-full" />}
-      {routines?.length === 0 && editing === undefined && <NoRoutines onNew={() => setEditing('new')} />}
+      {listed.length === 0 && editing === undefined && <NoRoutines onNew={() => setEditing('new')} />}
       {editing !== undefined && (
         <RoutineEditor
           key={editing === 'new' ? 'new' : editing.id}
-          timezone={settings === undefined || settings.timezone === 'UTC' ? browserZone() : settings.timezone}
+          timezone={settings.timezone === 'UTC' ? browserZone() : settings.timezone}
           {...(editing !== 'new' && { routine: editing })}
           onCancel={() => setEditing(undefined)}
           onSaved={() => setEditing(undefined)}
@@ -309,7 +296,22 @@ export function RoutinesSection() {
         .map((routine) => (
           <RoutineReview key={routine.id} routine={routine} onEdit={() => setEditing(routine)} />
         ))}
-      {settings && <RoutineTimezone settings={settings} />}
+      <RoutineTimezone settings={settings} />
     </PageSection>
+  )
+}
+
+export function RoutinesSection() {
+  return (
+    <QueryBoundary
+      action="list your routines"
+      pending={
+        <PageSection id="routines" title="Routines">
+          <Skeleton className="h-28 w-full" />
+        </PageSection>
+      }
+    >
+      <Routines />
+    </QueryBoundary>
   )
 }

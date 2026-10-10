@@ -1,10 +1,11 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { type ReactNode } from 'react'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import type { RoutineRunView } from '@goblin/contracts'
 import { Link } from '@tanstack/react-router'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { RefreshCwIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
-import { QueryError } from '../lib/query/query-boundary.tsx'
+import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
 import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../routines/queries.ts'
 import { runStatus, telegramReport } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
@@ -56,20 +57,23 @@ function RunRow({
   )
 }
 
-/** A routine's runs: Run now while it is on, then each run with where it stands, what it found and its reports. */
-export function RoutineHistory({
-  id,
-  revision,
-  active,
-}: {
-  readonly id: string
-  readonly revision: number
-  readonly active: boolean
-}) {
-  const read = useQuery(routineRunsQuery(id))
+/** The runs' heading, with `children` (Run now, Refresh) beside it once the runs are read. */
+function RunsHead({ children }: { readonly children?: ReactNode }) {
+  return (
+    <div className="server-part-head">
+      <h3 className="server-part-title">Runs</h3>
+      {children}
+    </div>
+  )
+}
+
+type HistoryProps = { readonly id: string; readonly revision: number; readonly active: boolean }
+
+function Runs({ id, revision, active }: HistoryProps) {
+  const read = useSuspenseQuery(routineRunsQuery(id))
   const running = useMutation(runRoutineMutation)
   const stopping = useMutation(stopRunMutation)
-  const runs = read.data?.runs
+  const { runs } = read.data
   const pending = running.isPending ? 'run' : stopping.isPending ? stopping.variables.run : undefined
   const error =
     (running.error !== null && messageOf(running.error, 'run it')) ||
@@ -79,9 +83,8 @@ export function RoutineHistory({
   const stop = (run: string, chat: string) => stopping.mutate({ routineId: id, chat, run })
   const reload = () => void read.refetch()
   return (
-    <section className="server-part" aria-label="Runs">
-      <div className="server-part-head">
-        <h3 className="server-part-title">Runs</h3>
+    <>
+      <RunsHead>
         {active && (
           <Button size="xs" variant="ghost" pending={pending === 'run'} onClick={runNow}>
             Run now
@@ -90,16 +93,15 @@ export function RoutineHistory({
         <Button size="icon-xs" variant="ghost" aria-label="Refresh runs" pending={read.isFetching} onClick={reload}>
           <RefreshCwIcon />
         </Button>
-      </div>
+      </RunsHead>
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {read.error !== null && <QueryError error={read.error} action="list its runs" onRetry={reload} />}
-      {runs === undefined && read.error === null && <Skeleton className="h-6 w-full" />}
-      {runs?.length === 0 && <p className="server-note">No runs yet.</p>}
-      {runs !== undefined && runs.length > 0 && (
+      {read.isRefetchError && <QueryError error={read.error} action="list its runs" onRetry={reload} />}
+      {runs.length === 0 && <p className="server-note">No runs yet.</p>}
+      {runs.length > 0 && (
         <ul className="grant-list">
           {runs.map((run) => (
             <RunRow
@@ -111,6 +113,25 @@ export function RoutineHistory({
           ))}
         </ul>
       )}
+    </>
+  )
+}
+
+/** A routine's runs: Run now while it is on, then each run with where it stands, what it found and its reports. */
+export function RoutineHistory(props: HistoryProps) {
+  return (
+    <section className="server-part" aria-label="Runs">
+      <QueryBoundary
+        action="list its runs"
+        pending={
+          <>
+            <RunsHead />
+            <Skeleton className="h-6 w-full" />
+          </>
+        }
+      >
+        <Runs {...props} />
+      </QueryBoundary>
     </section>
   )
 }

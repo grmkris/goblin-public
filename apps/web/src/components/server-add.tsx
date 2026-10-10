@@ -1,14 +1,13 @@
 // Adding the owner's own MCP servers, by URL or from the servers we suggest. A pasted URL is checked by the runtime (public https only) and
 // labelled from the server's card; it starts disconnected and is connected like any other.
 import { type SubmitEvent, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import type { ServerSuggestion, ServerView } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@goblin/ui'
 import { addServerMutation, suggestedQuery } from '../mcp/queries.ts'
 import { useAddAndConnect } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { QueryError } from '../lib/query/query-boundary.tsx'
 
 /** Why the runtime refused an endpoint, in words the owner can act on. */
 const REFUSED: Record<string, string> = {
@@ -71,7 +70,10 @@ export function AddByAddress({
   )
 }
 
-/** Servers we suggest, checked to work from here: one tap adds and connects; already added ones say so. */
+/**
+ * Servers we suggest, checked to work from here: one tap adds and connects; already added ones say so. It suspends
+ * until the suggestions are read.
+ */
 export function SuggestedServers({
   onChanged,
   onMessage,
@@ -79,10 +81,9 @@ export function SuggestedServers({
   readonly onChanged: (message: string) => void
   readonly onMessage: (message: string) => void
 }) {
-  const read = useQuery(suggestedQuery)
+  const items = useSuspenseQuery(suggestedQuery).data
   const connect = useAddAndConnect()
   const [busy, setBusy] = useState('')
-  const items = read.data ?? []
   async function add(item: ServerSuggestion): Promise<void> {
     setBusy(item.id)
     try {
@@ -93,9 +94,6 @@ export function SuggestedServers({
       setBusy('')
     }
   }
-  if (read.error !== null)
-    return <QueryError error={read.error} action="list the suggested servers" onRetry={() => void read.refetch()} />
-  if (read.data === undefined) return <p className="server-note">Looking for suggestions…</p>
   if (items.length === 0) return <p className="server-note">Nothing to suggest right now.</p>
   return (
     <ul className="pick-list">

@@ -1,5 +1,5 @@
-import { type SubmitEvent, useId, useState } from 'react'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { type ReactNode, type SubmitEvent, useId, useState } from 'react'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import {
   Alert,
   AlertDescription,
@@ -25,18 +25,41 @@ import { useBilling } from '../account/hooks.ts'
 import { PageSection } from './page-section.tsx'
 import { RoutinesSection } from './routines.tsx'
 import { StatusLabel } from './status-label.tsx'
-import { useUsageRead } from './use-usage.ts'
 import { clientsQuery, revokeClientMutation } from '../account/queries.ts'
-import { memoryQuery, residentQuery, setResidentMutation } from '../agent/queries.ts'
+import { memoryQuery, residentQuery, setResidentMutation, usageQuery } from '../agent/queries.ts'
 import { messageOf, withRef } from '../lib/query/app-error.ts'
-import { QueryError } from '../lib/query/query-boundary.tsx'
+import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
 
 const day = (seconds: number): string =>
   new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
 
-/** Today's model budget: Credits spent against the daily limit (ADR 0026), rolling as they change. */
+/**
+ * Today's spend against the daily limit, rolling as it changes. It is read again whenever a run ends, since that is
+ * when a turn's spend is recorded (`lib/workspace/invalidations.ts`); a failed re-read keeps the last value and says why.
+ */
+function UsageMeter() {
+  const read = useSuspenseQuery(usageQuery)
+  const usage = read.data
+  return (
+    <>
+      {read.isRefetchError && (
+        <QueryError error={read.error} action="read today's usage" onRetry={() => void read.refetch()} />
+      )}
+      <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
+        <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
+          <Count value={usage.used} size="display" />
+          <span>
+            of <Count value={usage.limit} /> Credits
+          </span>
+          <Count value={budgetFraction(usage)} percent className="ml-auto" />
+        </p>
+      </Meter>
+    </>
+  )
+}
+
+/** Today's model budget: Credits spent against the daily limit (ADR 0026). */
 function UsageCard() {
-  const { usage, error, retry } = useUsageRead()
   return (
     <Card>
       <CardHeader>
@@ -48,30 +71,29 @@ function UsageCard() {
       </CardHeader>
       <CardContent>
         <div className="card-body">
-          {error !== null && <QueryError error={error} action="read today's usage" onRetry={retry} />}
-          {usage === undefined ? (
-            error === null && <Skeleton className="h-10 w-full" />
-          ) : (
-            <Meter value={budgetFraction(usage) * 100} aria-label="Model budget used today">
-              <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
-                <Count value={usage.used} size="display" />
-                <span>
-                  of <Count value={usage.limit} /> Credits
-                </span>
-                <Count value={budgetFraction(usage)} percent className="ml-auto" />
-              </p>
-            </Meter>
-          )}
+          <QueryBoundary action="read today's usage" pending={<Skeleton className="h-10 w-full" />}>
+            <UsageMeter />
+          </QueryBoundary>
         </div>
       </CardContent>
     </Card>
   )
 }
 
+function MemoryCount() {
+  const status = useSuspenseQuery(memoryQuery()).data
+  return (
+    <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
+      <Count value={status.messages} size="display" />
+      <span>
+        messages remembered, <Count value={status.summarized} /> of them as summaries
+      </span>
+    </p>
+  )
+}
+
 /** Main's memory: what the agent remembers of the main conversation, and how much of it it reads as summaries. */
 function MemoryCard() {
-  const read = useQuery(memoryQuery())
-  const status = read.data
   return (
     <Card>
       <CardHeader>
@@ -82,20 +104,64 @@ function MemoryCard() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {read.error !== null ? (
-          <QueryError error={read.error} action="read what your agent remembers" onRetry={() => void read.refetch()} />
-        ) : status === undefined ? (
-          <Skeleton className="h-8 w-64" />
-        ) : (
-          <p className="flex items-baseline gap-1.5 text-sm text-muted-foreground">
-            <Count value={status.messages} size="display" />
-            <span>
-              messages remembered, <Count value={status.summarized} /> of them as summaries
-            </span>
-          </p>
-        )}
+        <QueryBoundary action="read what your agent remembers" pending={<Skeleton className="h-8 w-64" />}>
+          <MemoryCount />
+        </QueryBoundary>
       </CardContent>
     </Card>
+  )
+}
+
+/** The resident card's heading, with `action` (the switch, or its placeholder while the status loads) beside it. */
+function ResidentHeader({ id, action }: { readonly id: string; readonly action: ReactNode }) {
+  return (
+    <CardHeader>
+      <CardTitle id={id}>Work while you're away</CardTitle>
+      <CardDescription>
+        Lets your agent use the tools you allowed when you are not watching: for apps you connected, routines and
+        Telegram. It lasts 30 days from your last visit and renews whenever you use goblin.
+      </CardDescription>
+      <CardAction>{action}</CardAction>
+    </CardHeader>
+  )
+}
+
+function Resident({ id }: { readonly id: string }) {
+  const status = useSuspenseQuery(residentQuery).data
+  const change = useMutation(setResidentMutation)
+  const pending = change.isPending
+  const failure =
+    change.error === null ? '' : messageOf(change.error, 'change whether your agent may work while you are away')
+  return (
+    <>
+      <ResidentHeader
+        id={id}
+        action={
+          <Switch
+            checked={status.state === 'active'}
+            disabled={pending}
+            aria-busy={pending}
+            aria-labelledby={id}
+            onCheckedChange={(checked) => change.mutate(checked)}
+          />
+        }
+      />
+      {failure && (
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertDescription>{failure}</AlertDescription>
+          </Alert>
+        </CardContent>
+      )}
+      <CardContent>
+        <div className="card-line">
+          <StatusLabel label={residentStatus(status.state)} />
+          {status.state === 'active' && status.expiresAt !== undefined && (
+            <span className="card-line-meta">until {day(status.expiresAt)}</span>
+          )}
+        </div>
+      </CardContent>
+    </>
   )
 }
 
@@ -105,109 +171,64 @@ function MemoryCard() {
  */
 function ResidentCard() {
   const id = useId()
-  const read = useQuery(residentQuery)
-  const change = useMutation(setResidentMutation)
-  const status = read.data
-  const pending = change.isPending
-  const failure =
-    change.error === null ? '' : messageOf(change.error, 'change whether your agent may work while you are away')
   return (
     <Card>
-      <CardHeader>
-        <CardTitle id={id}>Work while you're away</CardTitle>
-        <CardDescription>
-          Lets your agent use the tools you allowed when you are not watching: for apps you connected, routines and
-          Telegram. It lasts 30 days from your last visit and renews whenever you use goblin.
-        </CardDescription>
-        <CardAction>
-          {status === undefined ? (
-            <Skeleton className="h-5 w-9" />
-          ) : (
-            <Switch
-              checked={status.state === 'active'}
-              disabled={pending}
-              aria-busy={pending}
-              aria-labelledby={id}
-              onCheckedChange={(checked) => change.mutate(checked)}
-            />
-          )}
-        </CardAction>
-      </CardHeader>
-      {(read.error !== null || failure) && (
-        <CardContent>
-          {read.error !== null && (
-            <QueryError
-              error={read.error}
-              action="read whether your agent may work while you are away"
-              onRetry={() => void read.refetch()}
-            />
-          )}
-          {failure && (
-            <Alert variant="destructive">
-              <AlertDescription>{failure}</AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      )}
-      {status !== undefined && (
-        <CardContent>
-          <div className="card-line">
-            <StatusLabel label={residentStatus(status.state)} />
-            {status.state === 'active' && status.expiresAt !== undefined && (
-              <span className="card-line-meta">until {day(status.expiresAt)}</span>
-            )}
-          </div>
-        </CardContent>
-      )}
+      <QueryBoundary
+        action="read whether your agent may work while you are away"
+        pending={<ResidentHeader id={id} action={<Skeleton className="h-5 w-9" />} />}
+      >
+        <Resident id={id} />
+      </QueryBoundary>
     </Card>
+  )
+}
+
+function Clients() {
+  const clients = useSuspenseQuery(clientsQuery).data
+  const revoke = useMutation(revokeClientMutation)
+  const revoking = revoke.isPending ? revoke.variables : ''
+  const failure = revoke.error === null ? '' : messageOf(revoke.error, 'revoke that app')
+  return (
+    <>
+      {failure && (
+        <Alert variant="destructive">
+          <AlertDescription>{failure}</AlertDescription>
+        </Alert>
+      )}
+      {clients.length === 0 && <p className="server-note">None yet.</p>}
+      {clients.length > 0 && (
+        <ul className="pick-list">
+          {clients.map((client) => (
+            <li className="pick-row" key={client.clientId}>
+              <span className="grant-text">
+                <span className="grant-name">{client.name ?? client.clientId}</span>
+                {client.uri && <span className="grant-about">{client.uri}</span>}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                pending={revoking === client.clientId}
+                disabled={revoking !== '' && revoking !== client.clientId}
+                onClick={() => revoke.mutate(client.clientId)}
+              >
+                Revoke
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
   )
 }
 
 /** The MCP clients the owner let use their agent, each revocable. */
 function ClientsCard() {
-  const listed = useQuery(clientsQuery)
-  const revoke = useMutation(revokeClientMutation)
-  const clients = listed.data
-  const revoking = revoke.isPending ? revoke.variables : ''
-  const failure = revoke.error === null ? '' : messageOf(revoke.error, 'revoke that app')
   return (
     <Card>
       <CardContent>
-        {listed.error !== null && (
-          <QueryError
-            error={listed.error}
-            action="list the apps that use your agent"
-            onRetry={() => void listed.refetch()}
-          />
-        )}
-        {failure && (
-          <Alert variant="destructive">
-            <AlertDescription>{failure}</AlertDescription>
-          </Alert>
-        )}
-        {clients === undefined && listed.error === null && <Skeleton className="h-6 w-full" />}
-        {clients?.length === 0 && <p className="server-note">None yet.</p>}
-        {clients !== undefined && clients.length > 0 && (
-          <ul className="pick-list">
-            {clients.map((client) => (
-              <li className="pick-row" key={client.clientId}>
-                <span className="grant-text">
-                  <span className="grant-name">{client.name ?? client.clientId}</span>
-                  {client.uri && <span className="grant-about">{client.uri}</span>}
-                </span>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  pending={revoking === client.clientId}
-                  disabled={revoking !== '' && revoking !== client.clientId}
-                  onClick={() => revoke.mutate(client.clientId)}
-                >
-                  Revoke
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <QueryBoundary action="list the apps that use your agent" pending={<Skeleton className="h-6 w-full" />}>
+          <Clients />
+        </QueryBoundary>
       </CardContent>
     </Card>
   )

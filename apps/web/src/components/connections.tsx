@@ -1,7 +1,7 @@
 // The owner's MCP servers: theirs first, each with what the agent may use from it, then one place to add another and,
 // last, a way to try a tool by hand.
 import { useCallback, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import {
   Alert,
   AlertDescription,
@@ -16,7 +16,7 @@ import {
 } from '@goblin/ui'
 import { CircleAlertIcon, CircleCheckIcon, PlugIcon, PlusIcon } from 'lucide-react'
 import { serversQuery } from '../mcp/queries.ts'
-import { QueryError } from '../lib/query/query-boundary.tsx'
+import { QueryBoundary } from '../lib/query/query-boundary.tsx'
 import { serverTitle } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'
 import { ServerCard } from './server-card.tsx'
@@ -52,17 +52,6 @@ function NoticeAlert({ notice }: { readonly notice: Notice }) {
   )
 }
 
-/** The owner's servers from the Query cache; `reload` reads them again after something changed them out of sight. */
-function useServers() {
-  const queryClient = useQueryClient()
-  const read = useQuery(serversQuery)
-  const reload = useCallback(
-    () => void queryClient.invalidateQueries({ queryKey: serversQuery.queryKey }),
-    [queryClient],
-  )
-  return { servers: read.data, error: read.error, retry: () => void read.refetch(), reload }
-}
-
 function NoServers({ onAdd }: { readonly onAdd: () => void }) {
   return (
     <Empty>
@@ -82,43 +71,61 @@ function NoServers({ onAdd }: { readonly onAdd: () => void }) {
   )
 }
 
+const SERVERS_NOTE = 'Your agent reaches another service only through a server here, and only with the tools you allow.'
+
+/** The owner's servers, each a card; `onAdd` goes to the picker below. */
+function Servers({ onAdd, onMessage }: { readonly onAdd: () => void; readonly onMessage: (text: string) => void }) {
+  const { data: servers, refetch } = useSuspenseQuery(serversQuery)
+  const channel = useTelegramChannel(onMessage)
+  // A server's card reads the list again after something changed it out of sight (its sign-in, its tools).
+  const reload = useCallback(() => void refetch(), [refetch])
+  return (
+    <PageSection
+      id="servers"
+      title="Your servers"
+      {...(servers.length > 0 && { count: servers.length })}
+      action={
+        servers.length > 0 ? (
+          <Button size="sm" variant="ghost" onClick={onAdd}>
+            <PlusIcon data-icon="inline-start" />
+            Add a server
+          </Button>
+        ) : undefined
+      }
+      note={SERVERS_NOTE}
+    >
+      {servers.length === 0 && <NoServers onAdd={onAdd} />}
+      {servers.map((server) => (
+        <ServerCard key={server.serverId} server={server} onReload={reload} onMessage={onMessage} channel={channel} />
+      ))}
+    </PageSection>
+  )
+}
+
 export function Connections() {
   const [notice, setNotice] = useState(callbackNotice)
   const done = useCallback((text: string) => setNotice({ tone: 'done', text }), [])
   const failed = useCallback((text: string) => setNotice({ tone: 'failed', text }), [])
-  const { servers, error, retry, reload } = useServers()
-  const channel = useTelegramChannel(failed)
+  // The tool console is optional: it waits for the list the servers section reads, and is absent without it.
+  const connected = (useQuery(serversQuery).data ?? []).filter((server) => server.status === 'connected')
   const picker = useRef<HTMLElement>(null)
   const toPicker = () => picker.current?.scrollIntoView({ behavior: glide(), block: 'start' })
   return (
     <div className="page-stack">
       {notice !== undefined && <NoticeAlert notice={notice} />}
-      <PageSection
-        id="servers"
-        title="Your servers"
-        {...(servers !== undefined && servers.length > 0 && { count: servers.length })}
-        action={
-          servers !== undefined && servers.length > 0 ? (
-            <Button size="sm" variant="ghost" onClick={toPicker}>
-              <PlusIcon data-icon="inline-start" />
-              Add a server
-            </Button>
-          ) : undefined
+      <QueryBoundary
+        action="list your servers"
+        pending={
+          <PageSection id="servers" title="Your servers" note={SERVERS_NOTE}>
+            <div className="page-stack" aria-busy>
+              <Skeleton className="h-28 w-full" />
+              <Skeleton className="h-28 w-full" />
+            </div>
+          </PageSection>
         }
-        note="Your agent reaches another service only through a server here, and only with the tools you allow."
       >
-        {error !== null && <QueryError error={error} action="list your servers" onRetry={retry} />}
-        {servers === undefined && error === null && (
-          <div className="page-stack" aria-busy>
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-28 w-full" />
-          </div>
-        )}
-        {servers?.length === 0 && <NoServers onAdd={toPicker} />}
-        {servers?.map((server) => (
-          <ServerCard key={server.serverId} server={server} onReload={reload} onMessage={failed} channel={channel} />
-        ))}
-      </PageSection>
+        <Servers onAdd={toPicker} onMessage={failed} />
+      </QueryBoundary>
       <PageSection id="add" title="Add a server" ref={picker}>
         <ServerPicker
           onChanged={done}
@@ -128,7 +135,7 @@ export function Connections() {
           onMessage={failed}
         />
       </PageSection>
-      <ToolConsole servers={(servers ?? []).filter((server) => server.status === 'connected')} />
+      <ToolConsole servers={connected} />
     </div>
   )
 }
