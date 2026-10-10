@@ -1,6 +1,5 @@
 import type { TextContent } from '@earendil-works/pi-ai'
 import type { PersonaAskData } from '@goblin/contracts'
-import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import { epochSeconds } from '../clock.ts'
 import { ChatOperations } from '../chats/service.ts'
@@ -46,7 +45,6 @@ const freeze = (ids: readonly number[]) =>
   })
 
 type Ask = {
-  readonly harness: PiHarness
   readonly personas: PersonaTurnKit
   readonly thread: string
   readonly operationId: string
@@ -106,12 +104,12 @@ export const askPersonas = (
         }))
         yield* invocations.insert(asked, now)
         const write = { requestId: input.operationId, entry: askEntry(frozen, order, content, now) }
-        yield* pi
-          .write(admitted.session, write)
-          .pipe(Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))))
+        const harness = yield* Effect.andThen(pi.write(admitted.session, write), pi.pi).pipe(
+          Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))),
+        )
         const parent = conversationId(admitted.session)
-        yield* attempt(async () =>
-          input.personas.start(await input.harness.pi(), {
+        yield* attempt(() =>
+          input.personas.start(harness, {
             operationId: input.operationId,
             chat: input.thread,
             parent,
