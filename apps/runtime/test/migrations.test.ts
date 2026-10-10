@@ -49,6 +49,7 @@ const APPLIED = [
   '20261026000350_thread_heads',
   '20261026000400_chat_moves',
   '20261026000500_routine_topics',
+  '20261026000600_decisions',
 ]
 
 describe('application migrations (unit)', () => {

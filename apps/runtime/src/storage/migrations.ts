@@ -2,14 +2,17 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator'
 import { BASE_MIGRATIONS } from './migrations/base.ts'
 import { CONVERSATION_MIGRATIONS } from './migrations/conversation.ts'
+import { DECISION_MIGRATIONS } from './migrations/decisions.ts'
 import { BREAK, type Migration } from './migrations/migration.ts'
 import { Internal } from '../http/errors.ts'
 import { assertApplicationTable } from './vendor.ts'
 
 /** Every application migration, the area lists merged in key order. */
-const MIGRATIONS: readonly Migration[] = [...BASE_MIGRATIONS, ...CONVERSATION_MIGRATIONS].toSorted((a, b) =>
-  a.key < b.key ? -1 : a.key > b.key ? 1 : 0,
-)
+const MIGRATIONS: readonly Migration[] = [
+  ...BASE_MIGRATIONS,
+  ...CONVERSATION_MIGRATIONS,
+  ...DECISION_MIGRATIONS,
+].toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 
 /** The migration keys in the order they apply. */
 export const migrationKeys = (): readonly string[] => MIGRATIONS.map((migration) => migration.key)
