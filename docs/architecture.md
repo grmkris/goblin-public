@@ -193,13 +193,11 @@ each over everything before it:
 - **The start** (`layers/index.ts`): the agent's start, step by step in one fixed order, each step a layer in its
   owning area's file and built after every step before it, so each await holds up the steps after it. In order: the
   MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the credential cipher,
-  held calls a restart cut off recovered); the cheap models; the chat directory; helper execution restored and the
-  retained Pi filters retooled once; the routine usage
-  projection, subscribed to Pi's commits; main registered; the App registry; every Topic Conversation given memory;
-  skills and the learner; the Telegram channel; and Events, with the routine
-  trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
-  shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `Cipher`); programs use
-  the area's services.
+  held calls a restart cut off recovered); the cheap models; helper execution restored and the retained Pi filters
+  retooled once; the routine usage projection, subscribed to Pi's commits; main registered; the App registry; every
+  Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine trigger
+  and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and shared with
+  the layers that wire it by an instance tag in its own module (`Cipher`); programs use the area's services.
   The conversation services publish `conversations.changed` with what each write changed, from inside the write; the
   App registry and the workspace feed follow that topic. A move a restart interrupted finishes once the conversation
   layer is built (`Moves` forks its reconcile in the layer's scope), never holding up the start.
