@@ -55,6 +55,7 @@ export function DownloadOffer({
   useEffect(() => {
     // SAFETY: a fresh Uint8Array owns a plain ArrayBuffer, which is what a Blob part needs.
     const made = URL.createObjectURL(new Blob([file.bytes as Uint8Array<ArrayBuffer>], { type: file.type }))
+    // oxlint-disable-next-line react/set-state-in-effect -- an object URL is a browser resource made and revoked with its file
     setUrl(made)
     // The browser reads the file after the click, so the URL outlives the offer by a minute.
     return () => void window.setTimeout(() => URL.revokeObjectURL(made), 60_000)

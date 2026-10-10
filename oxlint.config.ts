@@ -4,6 +4,21 @@ import { agentIgnorePatterns } from './tools/vendored.ts'
 /** Where React runs, and the plugins its files are linted with. */
 const REACT_FILES = ['apps/web/**', 'packages/ui/**', 'packages/kit/**', 'packages/app/src/ui/**']
 const REACT_PLUGINS: OxlintOverride['plugins'] = ['typescript', 'unicorn', 'oxc', 'import', 'react']
+/** The React Compiler's checks of the Rules of React (oxlint's port): refs, purity, effects, memoisation, syntax. */
+const RULES_OF_REACT = [
+  'refs',
+  'purity',
+  'immutability',
+  'preserve-manual-memoization',
+  'set-state-in-render',
+  'set-state-in-effect',
+  'static-components',
+  'use-memo',
+  'incompatible-library',
+  'unsupported-syntax',
+  'globals',
+  'error-boundaries',
+]
 
 /** What reaches the server from the browser: myapps' list without its extension messaging, plus SSE. */
 const TRANSPORT = {
@@ -158,6 +173,13 @@ export default defineConfig({
       files: REACT_FILES,
       plugins: REACT_PLUGINS,
       rules: { 'react/react-in-jsx-scope': 'off', 'react/rules-of-hooks': 'error', 'react/exhaustive-deps': 'error' },
+    },
+    // The Rules of React as the React Compiler checks them, in the source it compiles: a component that breaks one is
+    // skipped by it. Test fixtures count renders and poke at refs on purpose.
+    {
+      files: ['apps/web/src/**', 'packages/ui/src/**', 'packages/kit/src/**', 'packages/app/src/ui/**'],
+      plugins: REACT_PLUGINS,
+      rules: Object.fromEntries(RULES_OF_REACT.map((rule) => [`react/${rule}`, 'error'])),
     },
     // `any` is banned everywhere. In shipped code (src, app, entrypoints) the unsafe rules also keep an inferred `any`
     // from flowing through; tests and one-shot tooling (scripts, config files) poke at untyped JSON, provider responses
