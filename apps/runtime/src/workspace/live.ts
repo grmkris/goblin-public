@@ -67,7 +67,8 @@ const describe = ({ chats, conversations }: Sources, ids: readonly string[]) =>
 
 /**
  * Follows every change bus topic the feed shows: each handler reads what its payload names, as it is now, through
- * `follow`. Conversations are described in `scope` (a view reads Pi); every other source answers at once.
+ * `follow`. Conversations are described in `scope` (a view reads Pi), starting at once on the writer's stack, so a
+ * change is read as the write left it; every other source answers at once.
  */
 const followTopics = (
   changes: Changes['Service'],
@@ -77,7 +78,9 @@ const followTopics = (
 ) =>
   Effect.all([
     changes.on('conversations.changed', ({ ids }) =>
-      Effect.asVoid(Effect.forkIn(follow('workspace.conversations', describe(read, ids)), scope)),
+      Effect.asVoid(
+        Effect.forkIn(follow('workspace.conversations', describe(read, ids)), scope, { startImmediately: true }),
+      ),
     ),
     changes.on('apps.changed', ({ ids }) =>
       follow(
