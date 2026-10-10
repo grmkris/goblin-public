@@ -19,8 +19,9 @@ import { type Browser, type CDPSession, chromium, type Page } from 'playwright-c
 import { build, cleanUp, receiptDirectory, revision } from './perf/revision.ts'
 import { history, type Sample, snapshot } from './perf/transcript-fixture.ts'
 
-/** Where this script reports (@cloudflare/workers-types makes `process` `any`). */
+/** Where this script reports, and its progress (@cloudflare/workers-types makes `process` `any`). */
 const STDOUT = 1
+const STDERR = 2
 const { values: options } = parseArgs({
   options: {
     base: { type: 'string', default: 'HEAD' },
@@ -251,8 +252,12 @@ const jobs = options.scenarios
   )
 const rows: Row[] = []
 try {
-  for (const { variant, rep, ...job } of jobs)
-    rows.push({ ...job, variant: variant.label, rep, metrics: await measure(browser, { variant, ...job }) })
+  for (const [index, { variant, rep, ...job }] of jobs.entries()) {
+    const metrics = await measure(browser, { variant, ...job })
+    rows.push({ ...job, variant: variant.label, rep, metrics })
+    const where = `${index + 1}/${jobs.length} ${job.scenario} ${job.size} ${job.profile} ${variant.label}`
+    writeSync(STDERR, `${where} ${JSON.stringify(metrics)}\n`)
+  }
 } finally {
   await browser.close()
   for (const server of servers) server.close()
