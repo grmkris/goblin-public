@@ -8,7 +8,7 @@ import {
   ApprovalDecision,
   ApprovalView,
   AskFirstChange,
-  CatalogEntry,
+  CatalogResults,
   ConnectStart,
   Grant,
   GrantChange,
@@ -57,7 +57,7 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
   HttpApiEndpoint.get('suggested', '/mcp/suggested', { success: Schema.Array(ServerSuggestion) }),
   HttpApiEndpoint.get('catalog', '/mcp/catalog', {
     query: { q: Schema.optional(Schema.String) },
-    success: Schema.Array(CatalogEntry),
+    success: CatalogResults,
     error: ApiErrors.invalidInput,
   }),
   HttpApiEndpoint.get('registries', '/mcp/registries', { success: Schema.Array(RegistryView) }),

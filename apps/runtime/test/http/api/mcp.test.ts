@@ -201,6 +201,8 @@ describe('the mcp group', () => {
     expect(unknown.status).toBe(404)
     for (const path of ['/api/mcp/not.a.server/tools', '/api/mcp/approvals/has%20space'])
       expect(await (await fetch(get(path))).json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
+    // No registry answers here, so the search says it is partial rather than that nothing matched.
+    expect(await (await fetch(get('/api/mcp/catalog?q=notes'))).json()).toEqual({ entries: [], partial: true })
     const long = await fetch(get(`/api/mcp/catalog?q=${'x'.repeat(101)}`))
     expect(long.status).toBe(400)
     expect(await long.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'query_too_long' } })

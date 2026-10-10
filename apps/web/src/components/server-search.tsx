@@ -165,7 +165,7 @@ function useCatalog(query: string): Search {
   if (text.length < 2) return { kind: 'idle' }
   if (text !== settled || read.isFetching) return { kind: 'searching' }
   if (read.error !== null) return { kind: 'failed', reason: messageOf(read.error, 'search the registries') }
-  return read.data === undefined ? { kind: 'searching' } : { kind: 'found', results: read.data }
+  return read.data === undefined ? { kind: 'searching' } : { kind: 'found', results: read.data.entries }
 }
 
 /** Search the MCP registries; results update as the owner types. */

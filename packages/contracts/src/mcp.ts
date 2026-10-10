@@ -192,6 +192,10 @@ export const CatalogEntry = Schema.Struct({
 })
 export type CatalogEntry = typeof CatalogEntry.Type
 
+/** A catalog search: the entries that match, and `partial` when a registry could not be searched (some may be missing). */
+export const CatalogResults = Schema.Struct({ entries: Schema.Array(CatalogEntry), partial: Schema.Boolean })
+export type CatalogResults = typeof CatalogResults.Type
+
 /** An MCP registry searched for servers: built in (always searched) or added by the owner. */
 export const RegistryView = Schema.Struct({ url: Schema.String, title: Schema.String, builtIn: Schema.Boolean })
 export type RegistryView = typeof RegistryView.Type

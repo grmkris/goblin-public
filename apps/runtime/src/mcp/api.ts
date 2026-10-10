@@ -33,7 +33,7 @@ const catalog = endpoint('catalog')(({ query }) => {
   const text = query.q ?? ''
   return text.length > MAX_QUERY
     ? Effect.fail(new InvalidInput({ reason: 'query_too_long' }))
-    : McpServers.use((offered) => Effect.map(offered.catalog(text), ({ entries }) => entries))
+    : McpServers.use((offered) => offered.catalog(text))
 })
 const registries = endpoint('registries')(() => McpServers.use((offered) => offered.registries()))
 const addRegistry = endpoint('addRegistry')(({ payload }) =>
