@@ -5,6 +5,7 @@ import {
   BillingRefused,
   ERROR_COPY,
   ErrorEnvelope,
+  codeOf,
   statusOf,
 } from '@goblin/contracts/api'
 import { onlineManager } from '@tanstack/react-query'
@@ -102,11 +103,12 @@ const recoveryLink = (value: string | undefined): string | undefined => {
 /** A typed failure the API answered, as the contract describes it; the `ref` is the one the agent stamped. */
 const appView = (error: AppError, codes: Readonly<Record<string, ErrorKind>>): AppErrorView => {
   const copy = ERROR_COPY[error._tag]
+  const code = codeOf(error._tag)
   const status = statusOf(error)
   const subscribe = Predicate.isTagged(error, 'SubscriptionRequired') ? recoveryLink(error.subscribe) : undefined
   return {
-    kind: kindOf(copy.code, codes) ?? kindForStatus(status),
-    code: copy.code,
+    kind: kindOf(code, codes) ?? kindForStatus(status),
+    code,
     status,
     message: copy.message,
     recovery: 'recovery' in copy ? copy.recovery : undefined,

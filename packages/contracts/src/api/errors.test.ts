@@ -14,6 +14,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import {
   API_ERRORS,
   ApiErrors,
+  type ApiCode,
   type AppError,
   BudgetExhausted,
   Conflict,
@@ -100,10 +101,14 @@ describe('the API error envelope', () => {
     },
   )
 
-  it('names every code as its tag in lower_snake_case', () => {
-    for (const [tag, copy] of Object.entries(ERROR_COPY)) expect(copy.code).toBe(codeOf(tag))
-    expect(codeOf('NotFound')).toBe('not_found')
-    expect(codeOf('UpstreamMcp')).toBe('upstream_mcp')
+  it('names every code as its tag in lower_snake_case, as its type spells it', () => {
+    const notFound: 'not_found' = codeOf('NotFound')
+    const upstream: ApiCode = codeOf('UpstreamMcp')
+    expect([notFound, upstream, codeOf('NeedsAuthorization')]).toEqual([
+      'not_found',
+      'upstream_mcp',
+      'needs_authorization',
+    ])
   })
 
   it('carries safe detail fields only, with the remote JSON-RPC code as rpcCode', () => {

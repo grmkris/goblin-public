@@ -88,44 +88,37 @@ export type AppError = typeof AppError.Type
 export type AppErrorTag = AppError['_tag']
 
 /**
- * Each failure's public face on the wire: its `code` (the tag in lower_snake_case), a fixed `message` that never carries
- * runtime text, and what to do next when there is something to do.
+ * Each failure's public face on the wire besides its `code` (`codeOf`): a fixed `message` that never carries runtime
+ * text, and what to do next when there is something to do.
  */
 export const ERROR_COPY = {
-  Unauthenticated: { code: 'unauthenticated', message: 'Your session has ended.', recovery: 'Sign in again.' },
-  Forbidden: { code: 'forbidden', message: 'This request is not allowed.' },
-  GrantDenied: {
-    code: 'grant_denied',
-    message: 'That tool is not enabled.',
-    recovery: 'Turn it on under Connections.',
-  },
-  NotFound: { code: 'not_found', message: 'That does not exist.' },
-  Conflict: {
-    code: 'conflict',
-    message: 'That clashes with something that is already there.',
-    recovery: 'Refresh and try again.',
-  },
-  InvalidInput: { code: 'invalid_input', message: 'The request was not valid.' },
-  PayloadTooLarge: { code: 'payload_too_large', message: 'That is too large.' },
-  ResidentInactive: {
-    code: 'resident_inactive',
-    message: 'Resident authority is off.',
-    recovery: 'Re-enable it in Settings.',
-  },
-  BudgetExhausted: {
-    code: 'budget_exhausted',
-    message: "You have used today's model budget.",
-    recovery: 'It resets at 00:00 UTC.',
-  },
-  SubscriptionRequired: { code: 'subscription_required', message: 'Subscribe to Pro to use your personal agent.' },
-  NeedsAuthorization: { code: 'needs_authorization', message: 'This server needs to be connected again.' },
-  UpstreamMcp: { code: 'upstream_mcp', message: 'The MCP server did not respond as expected.' },
-  Internal: { code: 'internal', message: 'Something went wrong on our side.', recovery: 'Try again.' },
-} as const satisfies Record<
-  AppErrorTag,
-  { readonly code: string; readonly message: string; readonly recovery?: string }
->
-export type ApiCode = (typeof ERROR_COPY)[AppErrorTag]['code']
+  Unauthenticated: { message: 'Your session has ended.', recovery: 'Sign in again.' },
+  Forbidden: { message: 'This request is not allowed.' },
+  GrantDenied: { message: 'That tool is not enabled.', recovery: 'Turn it on under Connections.' },
+  NotFound: { message: 'That does not exist.' },
+  Conflict: { message: 'That clashes with something that is already there.', recovery: 'Refresh and try again.' },
+  InvalidInput: { message: 'The request was not valid.' },
+  PayloadTooLarge: { message: 'That is too large.' },
+  ResidentInactive: { message: 'Resident authority is off.', recovery: 'Re-enable it in Settings.' },
+  BudgetExhausted: { message: "You have used today's model budget.", recovery: 'It resets at 00:00 UTC.' },
+  SubscriptionRequired: { message: 'Subscribe to Pro to use your personal agent.' },
+  NeedsAuthorization: { message: 'This server needs to be connected again.' },
+  UpstreamMcp: { message: 'The MCP server did not respond as expected.' },
+  Internal: { message: 'Something went wrong on our side.', recovery: 'Try again.' },
+} as const satisfies Record<AppErrorTag, { readonly message: string; readonly recovery?: string }>
+
+/** `Tag` in lower_snake_case, as `codeOf` spells it; any string for a tag the type does not know. */
+type SnakeCase<Tag extends string, Done extends string = ''> = string extends Tag
+  ? string
+  : Tag extends `${infer Head}${infer Rest}`
+    ? SnakeCase<
+        Rest,
+        `${Done}${Head extends Lowercase<Head> ? Head : `${Done extends '' ? '' : '_'}${Lowercase<Head>}`}`
+      >
+    : Done
+
+/** A failure's wire code: its tag in lower_snake_case (`NotFound` is `not_found`). */
+export type ApiCode = SnakeCase<AppErrorTag>
 
 /** The HTTP status of each failure; the same table as the runtime's `statusOf` in `http/respond.ts`. */
 export const statusOf = (error: AppError | typeof AppError.Encoded): number =>
@@ -172,14 +165,16 @@ export const ErrorEnvelope = Schema.Struct({
 export type ErrorEnvelope = typeof ErrorEnvelope.Type
 
 /** A tag's wire code: the tag in lower_snake_case (`NotFound` is `not_found`). */
-export const codeOf = (tag: string): string => tag.replaceAll(/(?<=[a-z])(?=[A-Z])/gu, '_').toLowerCase()
+export const codeOf = <const Tag extends string>(tag: Tag): SnakeCase<Tag> =>
+  // SAFETY: an underscore before each capital but the first, then lower case, is what `SnakeCase` spells.
+  tag.replaceAll(/(?<=.)(?=[A-Z])/gu, '_').toLowerCase() as SnakeCase<Tag>
 const TAG_OF_CODE: ReadonlyMap<string, string> = new Map(Object.keys(ERROR_COPY).map((tag) => [codeOf(tag), tag]))
 
 /** The envelope body of an encoded failure: its code and fixed copy, then its own safe fields. */
 const toWire = (encoded: typeof AppError.Encoded): ErrorEnvelope => {
   const { _tag, ...fields } = encoded
   const rpc = Predicate.hasProperty(fields, 'code') && Predicate.isNumber(fields.code) ? { rpcCode: fields.code } : {}
-  return { error: { ...fields, ...rpc, ...ERROR_COPY[_tag] } }
+  return { error: { ...fields, ...rpc, code: codeOf(_tag), ...ERROR_COPY[_tag] } }
 }
 
 /** The class's encoded form from a wire detail; the target schema validates it right after. */
