@@ -439,12 +439,7 @@ export class PersonalAgentProbe extends PersonalAgent {
       execute: async () => ({ content: [] }),
     })
     const retooled: string[] = []
-    const profiles = new CapabilityProfiles(
-      db,
-      [tool],
-      async (session) => void retooled.push(session),
-      new ChatDirectory(db),
-    )
+    const profiles = new CapabilityProfiles(db, [tool], async (session) => void retooled.push(session))
     profiles.set(PRIMARY_CHAT, { kind: 'tool', serverId: 'notes', name: 'write' }, false, 1)
     profiles.copy(PRIMARY_CHAT, '900', 2)
     profiles.set('900', { kind: 'server', serverId: 'mail' }, false, 2)

@@ -1,9 +1,9 @@
-import type { Conversation, EntryRecord, Extension, Harness } from '@earendil-works/pi-durable'
+import type { Conversation, EntryRecord, Extension, Harness, ToolRegistration } from '@earendil-works/pi-durable'
 import { authorOf, type MoveReceipt, type MoveToThread } from '@goblin/contracts'
 import type { PiHarness } from 'agents/harness/pi'
 import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { CapabilityProfiles } from '../capabilities/profiles.ts'
+import { copyExclusions, piToolsFor } from '../capabilities/profiles.ts'
 import { nowSeconds } from '../clock.ts'
 import type { ConversationRegistry } from '../conversations.ts'
 import type { ChatMemories } from '../memory/memory.ts'
@@ -33,7 +33,8 @@ export type MoverPorts = {
   /** Runs `run` while `chat`'s admission lock is held: `ChatOperations.withChat`, the one lock per chat. */
   readonly withChat: <A>(chat: string, run: () => Promise<A>) => Promise<A>
   readonly conversations: ConversationRegistry
-  readonly capabilities: CapabilityProfiles
+  /** The tools Pi's filter removes where subagents are switched off. */
+  readonly subagentTools: readonly ToolRegistration[]
   /** Each Topic Conversation's memory: a move forgets the turn there. */
   readonly memories: ChatMemories
   /** The cross-Topic index (ADR 0035): the session's entries from the moved message on now belong to the Thread. */
@@ -209,14 +210,14 @@ export class ChatMover {
 
   /** The Thread's Pi fork at the turn's end, made a thread with the chat's switches; the chat's builder stops first. */
   async #fork(pi: Harness, row: MoveRow): Promise<MoveRow> {
-    const { conversations, capabilities } = this.#ports
+    const { db, conversations, subagentTools } = this.#ports
     const { source, end } = required(row)
     await stopBuilder(pi, conversationId(source))
     const recall = conversations.recallAt(row.chatId, row.messageEntry - 1) !== null
     const agent = {
       extensions: { add: recall ? [this.#ports.thread, this.#ports.recall] : [this.#ports.thread] },
       instructions: null,
-      tools: capabilities.piTools(row.chatId),
+      tools: piToolsFor(db, subagentTools, row.chatId),
     }
     const input = { operation: row.operationId, source: conversationId(source), agent }
     const fork = await forkThread(pi, { ...input, message: entryId(row.messageEntry), end: entryId(end) }).catch(
@@ -232,7 +233,7 @@ export class ChatMover {
 
   /** The moved Thread's rows and switches: in the chat's Topic, showing its replies from the moved message on. */
   async #register(row: MoveRow, conversation: Conversation, text: string): Promise<void> {
-    const { db, conversations, capabilities } = this.#ports
+    const { db, conversations } = this.#ports
     const { fork } = required(row)
     const before = { maxEntryId: entryId(row.messageEntry - 1) }
     const [previous] = (await conversation.entries(before, 1, undefined, BACKGROUND)).items
@@ -245,7 +246,7 @@ export class ChatMover {
       recallThrough: conversations.recallAt(row.chatId, row.messageEntry - 1),
     }
     this.#store.register(row, thread, now)
-    capabilities.copy(row.chatId, fork, now)
+    copyExclusions(db, row.chatId, fork, now)
     this.#ports.reassign(required(row).source, row.messageEntry, fork)
     conversations.touched([fork])
   }

@@ -30,7 +30,6 @@ import {
 } from '../chats/directory.ts'
 import { ChatMover, MovesInstance } from '../chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
-import { ProfilesInstance } from '../capabilities/profiles.ts'
 import { epochSeconds, nowSeconds } from '../clock.ts'
 import { ConversationRegistry, ConversationsInstance } from '../conversations.ts'
 import { MemoriesInstance } from '../memory/memory.ts'
@@ -61,7 +60,7 @@ export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.ef
 export const ConversationRegistryLive: Layer.Layer<
   ConversationsInstance,
   never,
-  AgentInput | Db | Changes | MemoriesInstance | ProfilesInstance | CheapModels
+  AgentInput | Db | Changes | MemoriesInstance | CheapModels
 > = Layer.effect(
   ConversationsInstance,
   Effect.gen(function* () {
@@ -72,7 +71,7 @@ export const ConversationRegistryLive: Layer.Layer<
       recall: input.memory.recall,
       memories: yield* MemoriesInstance,
       namer: cheap('naming'),
-      capabilities: yield* ProfilesInstance,
+      subagentTools: input.subagentTools,
     }
     // The registry is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
     const changes = yield* Changes
@@ -89,7 +88,7 @@ export const ConversationRegistryLive: Layer.Layer<
 export const MoverLive: Layer.Layer<
   MovesInstance,
   never,
-  AgentInput | Db | ConversationsInstance | ProfilesInstance | MemoriesInstance | TranscriptsInstance
+  AgentInput | Db | ConversationsInstance | MemoriesInstance | TranscriptsInstance
 > = Layer.effect(
   MovesInstance,
   Effect.gen(function* () {
@@ -101,7 +100,7 @@ export const MoverLive: Layer.Layer<
       // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
       withChat: (chat, run) => input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
       conversations: yield* ConversationsInstance,
-      capabilities: yield* ProfilesInstance,
+      subagentTools: input.subagentTools,
       memories: yield* MemoriesInstance,
       thread: input.thread,
       recall: input.memory.recall,

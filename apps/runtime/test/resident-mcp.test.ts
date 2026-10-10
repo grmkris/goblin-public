@@ -4,9 +4,9 @@ import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AppError } from '../src/http/errors.ts'
 import { McpHost, McpHostInstance } from '../src/mcp/host.ts'
-import { type CapabilityScope, type Exclusion, ProfilesInstance, scopeOf } from '../src/capabilities/profiles.ts'
+import { type CapabilityScope, type Exclusion, scopeOf } from '../src/capabilities/profiles.ts'
+import { Capabilities } from '../src/capabilities/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import { CapabilitiesLive } from '../src/layers/capabilities.ts'
 import { McpConnectionsLive, McpGrantsLive, McpServersLive } from '../src/layers/mcp.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
@@ -63,11 +63,12 @@ const scopes: Readonly<Record<string, CapabilityScope>> = {
   '10': scopeOf([off('server', 'notes')], false),
 }
 /** The tools' services over the host and the fixed switches above, always resident, on an active plan. */
-const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, CapabilitiesLive).pipe(
+const profiles = new FixedProfiles(scopes)
+const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive).pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       Layer.succeed(McpHostInstance, host),
-      Layer.succeed(ProfilesInstance, new FixedProfiles(scopes)),
+      stub(Capabilities, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
     ),

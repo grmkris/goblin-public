@@ -1,11 +1,10 @@
 import { type ConversationView, type HelperExclusion, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
 import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { Conversation, EntryId, EntryRecord, Extension } from '@earendil-works/pi-durable'
+import type { Conversation, EntryId, EntryRecord, Extension, ToolRegistration } from '@earendil-works/pi-durable'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
-import type { CapabilityProfiles } from './capabilities/profiles.ts'
-import { writeHelperExclusions } from './capabilities/profiles.ts'
+import { copyExclusions, piToolsFor, writeHelperExclusions } from './capabilities/profiles.ts'
 import {
   type ChatRow,
   chatOfSession,
@@ -76,7 +75,8 @@ export type ThreadKit = {
   readonly recall: Extension
   readonly memories: ChatMemories
   readonly namer: CheapModel
-  readonly capabilities: CapabilityProfiles
+  /** The tools Pi's filter removes where subagents are switched off. */
+  readonly subagentTools: readonly ToolRegistration[]
 }
 
 /**
@@ -118,6 +118,10 @@ export class ConversationRegistry {
 
   #row(id: string): Row | undefined {
     return chatRow(this.#db, id)
+  }
+
+  #piTools(chat: string) {
+    return piToolsFor(this.#db, this.#kit.subagentTools, chat)
   }
 
   /** A registered conversation's row; anything else is `NotFound`. */
@@ -222,7 +226,7 @@ export class ConversationRegistry {
   ): Promise<ConversationView> {
     const recallThrough = this.#recallAt(from, at)
     const extensions = { add: recallThrough === null ? [this.#kit.thread] : [this.#kit.thread, this.#kit.recall] }
-    const agent = { extensions, instructions: null, tools: this.#kit.capabilities.piTools(from.chatId) }
+    const agent = { extensions, instructions: null, tools: this.#piTools(from.chatId) }
     const fork = await source.fork(at, { ownership: { kind: 'ownerless' }, agent }, BACKGROUND)
     if (from.kind === 'subagent') {
       this.#db.update(appConversations).set({ keepOpenAt: now }).where(eq(appConversations.chatId, from.chatId)).run()
@@ -318,7 +322,7 @@ export class ConversationRegistry {
   /** A new top-level Pi session (not a fork) with `extensions` added and `like`'s tool filter. */
   async #session(extensions: readonly Extension[], like: string): Promise<string> {
     const session = await this.#harness.sessions.create()
-    const tools = this.#kit.capabilities.piTools(like)
+    const tools = this.#piTools(like)
     const pi = await (await this.#harness.pi()).conversation(conversationId(session.id), BACKGROUND)
     if (pi === undefined) throw new NotFound({ what: 'conversation' })
     await pi.configure({ extensions: { add: [...extensions] }, tools }, BACKGROUND)
@@ -603,7 +607,7 @@ export class ConversationRegistry {
     now: number,
   ): Promise<ConversationView> {
     registerChat(this.#db, { ...values, createdAt: now })
-    this.#kit.capabilities.copy(values.parentSession, values.chatId, now)
+    copyExclusions(this.#db, values.parentSession, values.chatId, now)
     this.#changed([values.chatId])
     return this.#describe(this.#registered(values.chatId))
   }
