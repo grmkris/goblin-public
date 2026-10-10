@@ -169,10 +169,13 @@ Drizzle an RC. `@shadcn/react` is pinned at 0.3.1 and patched (`patches/shadcn-r
 carries unreleased upstream fixes. The owner reaches the object through its typed API (`onRequest`, see The owner
 API); five RPC methods serve the Worker's other callers.
 
-The object builds one Effect `ManagedRuntime` lazily, on first use, from `AgentLive` (`layers/index.ts`). A runtime
-that fails to start is dropped, so the next caller starts it again; `deleteAgentData` closes it. What the services need
-from the instance (its storage and env, the Pi pieces its constructor made, schedules, the plan policy, Stop) is one
-record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, each over everything before it:
+The object's constructor migrates the application tables first (synchronously, as the Agents SDK makes its own): the
+lifecycle's start opens Pi, whose apps and run ledger read them, before `onStart`, and an RPC or the runtime may come
+before either. The object builds one Effect `ManagedRuntime` lazily, on first use, from `AgentLive`
+(`layers/index.ts`). A runtime that fails to start is dropped, so the next caller starts it again; `deleteAgentData`
+closes it. What the services need from the instance (its storage and env, the Pi pieces its constructor made,
+schedules, the plan policy, Stop) is one record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order,
+each over everything before it:
 
 - **Core** (`layers/core.ts`): `AgentInput`, the application database (`Db`), the change bus (`Changes`), Pi's calls
   as Effects (`PiSessions`), the per-key lock (`KeyedLock`), keyed single flights (`SingleFlight`), conversation flow
@@ -180,8 +183,8 @@ record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, ea
   content-free logger and failure reporter in place of Effect's defaults (see Logs, failures and references).
 - **The start** (`layers/index.ts`): the agent's start, step by step in one fixed order, each step a layer in its
   owning area's file and built after every step before it, so each await holds up the steps after it. In order: the
-  migrations; the MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the
-  credential cipher, held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
+  MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the credential cipher,
+  held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
   the capability profiles; helper execution restored and the retained Pi filters retooled once; the routine usage
   projection, subscribed to Pi's commits; the conversation registry (main is registered here); the App registry; the
   transcript index; the mover (a move a restart interrupted finishes in the background, never holding up the start);

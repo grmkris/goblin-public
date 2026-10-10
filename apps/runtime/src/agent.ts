@@ -82,6 +82,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   #runtime: Promise<Runtime> | undefined
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
+    // The application tables, before anything reads them: the lifecycle opens Pi (whose apps and ledger read them)
+    // before onStart, and an RPC or the runtime may come first too. Synchronous, as the Agents SDK's own schema is.
+    runApplicationMigrations(ctx.storage)
     this.#bridge = makeBridge(() => this.#services(), { instrument })
     const { run, local: routineRun } = this.#bridge
     this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
@@ -138,7 +141,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     return globalThis.fetch.bind(globalThis)
   }
   override async onStart(): Promise<void> {
-    runApplicationMigrations(this.ctx.storage)
     this.#telemetry.restarted(Date.now())
     // Reconstruct lease and receipt recovery without opening Pi or waiting on outbound network calls.
     await this.#scheduleWake('mcpEventsWake', Date.now() + 1000)

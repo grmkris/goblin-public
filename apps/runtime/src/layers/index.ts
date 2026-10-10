@@ -4,7 +4,7 @@ import { AppRegistryLive, AppsLive } from './apps.ts'
 import { ModelBudgetLive } from './budget.ts'
 import { CapabilitiesLive, ProfilesLive, RetoolLive } from './capabilities.ts'
 import { ChatDirectoryLive, ConversationLive, ConversationRegistryLive, MoverLive } from './conversation.ts'
-import { CoreLive, MigrationsLive } from './core.ts'
+import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { HttpLive } from './http.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive, TranscriptsLive } from './knowledge.ts'
@@ -25,7 +25,6 @@ const then =
  */
 const start = (input: AgentInputs) =>
   CoreLive(input).pipe(
-    then(MigrationsLive), // 1 core
     then(McpHostLive), // 2 mcp: endpoint bindings, cipher, held calls recovered, the host
     then(CheapModelsLive), // 3 knowledge
     then(ChatDirectoryLive), // 4 conversation

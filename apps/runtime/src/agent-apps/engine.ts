@@ -6,7 +6,6 @@ import { FileStore } from '../files/store.ts'
 import { nowMillis } from '../clock.ts'
 import type { RuntimeEnv } from '../env.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
-import { runApplicationMigrations } from '../storage/migrations.ts'
 import {
   AppBuilder,
   type BuildCaller,
@@ -204,9 +203,8 @@ export class AgentApps {
     this.#toolset.attach(registry)
   }
 
-  /** Before Pi opens: the application tables exist, and `app_call` is installed. */
+  /** Before Pi opens (the agent made the application tables in its constructor): `app_call` is installed. */
   restore(): void {
-    runApplicationMigrations(this.#deps.storage)
     this.#toolset.restore()
   }
 

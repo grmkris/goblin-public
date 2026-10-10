@@ -103,6 +103,8 @@ export class PersonalAgentProbe extends PersonalAgent {
   readonly routineProducer = new EventsFixture()
   /** The owner API as the Worker forwards to it, for the probes that send as the owner from inside the object. */
   readonly #ownerFetch = { fetch: (request: Request) => this.onRequest(request) }
+  /** The tables as the constructor left them, before the lifecycle's start opens Pi (its apps read `app_` ones). */
+  readonly #constructed = listTables(this.ctx.storage).map(({ name }) => name)
 
   modelRequestCount(): number {
     return this.seen.length
@@ -354,6 +356,8 @@ export class PersonalAgentProbe extends PersonalAgent {
     const before = listTables(this.ctx.storage)
     runApplicationMigrations(this.ctx.storage)
     const after = listTables(this.ctx.storage)
+    // Every application table was made by the constructor, before Pi opened.
+    if (after.some(({ name }) => name.startsWith('app_') && !this.#constructed.includes(name))) return Response.error()
     const metadata = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* AppMetadata
