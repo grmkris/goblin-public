@@ -107,6 +107,7 @@ export const PERSONA_DENIED_TOOLS: readonly string[] = [
   'topic_create',
   'topic_rename',
   'topic_archive',
+  'topic_setup',
   'persona_create',
   'persona_update',
   'routine_propose',

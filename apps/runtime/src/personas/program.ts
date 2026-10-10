@@ -1,7 +1,14 @@
-import type { CreatePersona, PersonaDefinition, PersonaView, UpdatePersona } from '@goblin/contracts'
+import {
+  type CreatePersona,
+  NOTHING,
+  type PersonaDefinition,
+  type PersonaView,
+  type UpdatePersona,
+} from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import type { NewReceipt } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
+import { refuseUnallowed } from '../setup/catalog.ts'
 import type { PersonaActor } from './registry.ts'
 import { Personas } from './service.ts'
 
@@ -29,6 +36,8 @@ export const createPersona = (input: CreatePersona, provenance: PersonaProvenanc
   Effect.gen(function* () {
     const personas = yield* Personas
     const receipts = yield* Receipts
+    // The agent may give a Persona only what the owner allows now (ADR 0040).
+    if (provenance.actor === 'agent' && input.setup !== undefined) yield* refuseUnallowed(NOTHING, input.setup)
     const made = yield* personas.create(input, provenance.actor)
     if (made.created)
       yield* receipts.record({
@@ -58,6 +67,8 @@ export const updatePersona = (id: number, change: UpdatePersona, provenance: Per
   Effect.gen(function* () {
     const personas = yield* Personas
     const receipts = yield* Receipts
+    if (provenance.actor === 'agent' && change.setup !== undefined)
+      yield* refuseUnallowed((yield* personas.get(id)).setup, change.setup)
     const { before, after } = yield* personas.update(id, change, provenance.actor)
     if (after.revision !== before.revision) {
       const receipt: NewReceipt = {

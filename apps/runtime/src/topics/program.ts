@@ -1,14 +1,13 @@
 import {
   type Allowed,
   type CreateTopic,
-  type SetupItem,
+  NOTHING,
   type TopicSeedData,
   type TopicSetup,
   type TopicSetupEdit,
   type TopicSetupSaved,
   type TopicView,
   type UpdateTopic,
-  holds,
   withItems,
   withoutItems,
 } from '@goblin/contracts'
@@ -16,12 +15,12 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { stopChat } from '../agent-program.ts'
 import { Conversations } from '../chats/service.ts'
-import { type AppError, InvalidInput } from '../http/errors.ts'
+import type { AppError } from '../http/errors.ts'
 import { viaOf } from '../organize/flows.ts'
 import { FlowEvents, failedFlow, withFlow } from '../observability/flows.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
-import { allows, setupCatalog } from '../setup/catalog.ts'
+import { refuseUnallowed, setupCatalog } from '../setup/catalog.ts'
 import { Setups } from '../setup/service.ts'
 import type { TopicActor } from './registry.ts'
 import { Topics } from './service.ts'
@@ -45,6 +44,8 @@ export const createTopic = (input: CreateTopic, provenance: Provenance | TopicAc
   return Effect.gen(function* () {
     const topics = yield* Topics
     const receipts = yield* Receipts
+    // The agent may make a Topic with only what the owner allows now (ADR 0040).
+    if (actor === 'agent' && input.setup !== undefined) yield* refuseUnallowed(NOTHING, input.setup)
     const made = yield* topics.create(input, actor, seed)
     if (made.created)
       yield* receipts.record({
@@ -137,21 +138,6 @@ function topicReceipt(before: TopicView, after: TopicView, provenance: Provenanc
   }
 }
 
-/** Every item the list categories of `setup` name: what an edit is checked for adding. */
-const listedItems = (setup: TopicSetup): readonly SetupItem[] => [
-  ...(setup.mcpServers === 'all'
-    ? []
-    : setup.mcpServers.flatMap(({ serverId, tools }): SetupItem[] =>
-        tools === 'all' ? [{ kind: 'server', serverId }] : tools.map((name) => ({ kind: 'tool', serverId, name })),
-      )),
-  ...(setup.skills === 'all'
-    ? []
-    : setup.skills.map(({ serverId, name }): SetupItem =>
-        name === undefined ? { kind: 'library', serverId } : { kind: 'skill', serverId, name },
-      )),
-  ...(setup.apps === 'all' ? [] : setup.apps.map((app): SetupItem => ({ kind: 'app', app }))),
-]
-
 /** Nothing allowed: what an edit that neither removes from `all` nor needs checking is computed against. */
 const NOTHING_ALLOWED: Allowed = { servers: [], libraries: [], apps: [] }
 
@@ -187,10 +173,9 @@ export const editTopicSetup = (id: number, edit: TopicSetupEdit, provenance: Pro
     const setups = yield* Setups
     const before = yield* topics.get(id)
     const agent = provenance.actor === 'agent'
-    const allowed = 'remove' in edit || agent ? yield* setupCatalog : NOTHING_ALLOWED
+    const allowed = 'remove' in edit ? yield* setupCatalog : NOTHING_ALLOWED
     const next = editedSetup(before.setup, edit, allowed)
-    if (agent && listedItems(next).some((item) => !holds(before.setup, item) && !allows(allowed, item)))
-      return yield* new InvalidInput({ reason: 'setup_not_allowed' })
+    if (agent) yield* refuseUnallowed(before.setup, next)
     const { after } = yield* topics.setSetup(id, next, 'set' in edit ? edit.expectedRevision : undefined)
     if (after.revision !== before.revision) yield* (yield* Receipts).record(setupReceipt(before, after, provenance))
     if (after.setup.subagents !== before.setup.subagents) yield* setups.retoolTopic(id)

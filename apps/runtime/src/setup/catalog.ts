@@ -1,7 +1,15 @@
-import type { Allowed, SetupCatalog, SetupItem } from '@goblin/contracts'
+import {
+  type Allowed,
+  type PersonaSetup,
+  type SetupCatalog,
+  type SetupItem,
+  type TopicSetup,
+  holds,
+} from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { AppEngine } from '../agent-apps/service.ts'
+import { InvalidInput } from '../http/errors.ts'
 import { McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
 import { toolOffered } from '../mcp/remote.ts'
 import { Skills } from '../skills/service.ts'
@@ -79,3 +87,37 @@ export function allows(allowed: Allowed, item: SetupItem): boolean {
       return true
   }
 }
+
+/** Every item the list categories of `setup` name: what an edit is checked for adding. */
+const listedItems = (setup: TopicSetup | PersonaSetup): readonly SetupItem[] => [
+  ...(setup.mcpServers === 'all'
+    ? []
+    : setup.mcpServers.flatMap(({ serverId, tools }): SetupItem[] =>
+        tools === 'all' ? [{ kind: 'server', serverId }] : tools.map((name) => ({ kind: 'tool', serverId, name })),
+      )),
+  ...(setup.skills === 'all'
+    ? []
+    : setup.skills.map(({ serverId, name }): SetupItem =>
+        name === undefined ? { kind: 'library', serverId } : { kind: 'skill', serverId, name },
+      )),
+  ...(setup.apps === 'all' ? [] : setup.apps.map((app): SetupItem => ({ kind: 'app', app }))),
+]
+
+/** What `next` lists that `before` did not hold and the owner does not allow now. */
+export const unallowed = (
+  before: TopicSetup | PersonaSetup,
+  next: TopicSetup | PersonaSetup,
+  allowed: Allowed,
+): readonly SetupItem[] => listedItems(next).filter((item) => !holds(before, item) && !allows(allowed, item))
+
+/**
+ * Refuses (`InvalidInput` `setup_not_allowed`) a setup that lists something `before` did not hold and the owner does not
+ * allow now: what the agent may not add to a Topic's or a Persona's setup (ADR 0040). The catalog is read only when the
+ * setup lists something new.
+ */
+export const refuseUnallowed = (before: TopicSetup | PersonaSetup, next: TopicSetup | PersonaSetup) =>
+  Effect.gen(function* () {
+    if (listedItems(next).every((item) => holds(before, item))) return
+    if (unallowed(before, next, yield* setupCatalog).length > 0)
+      return yield* new InvalidInput({ reason: 'setup_not_allowed' })
+  })

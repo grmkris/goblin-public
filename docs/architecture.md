@@ -898,9 +898,13 @@ undoes without touching the setup. Stop aborts the chat's turns and marks their 
 | `GET /api/personas/:id`, `PATCH /api/personas/:id` | One with its revisions, or a new revision (`UpdatePersona`; 409 unless `expectedRevision` is current). |
 | `POST /api/organize/:id/undo` | Undo one receipt (409 `touched` after a later edit, `undone` after an Undo). |
 
-The organize tools (`pi/organize.ts`: `topic_create`, `topic_rename`, `topic_archive`, `persona_create`,
-`persona_update`) act only on the owner's direct request and write a receipt (`app_organize_receipts`) with the target
-before and after; the same change from the UI writes one with actor `owner`. The workspace feed carries `personas`
+The organize tools (`pi/organize.ts`: `topic_create`, `topic_rename`, `topic_archive`, `topic_setup`,
+`persona_create`, `persona_update`) act only on the owner's direct request and write a receipt (`app_organize_receipts`)
+with the target before and after; the same change from the UI writes one with actor `owner`. `topic_create` and the
+Persona tools take a setup, and `topic_setup` adds to, removes from or replaces a Topic's (ADR 0040); the agent may only
+add what the owner allows now (`refuseUnallowed`, `setup/catalog.ts`), its tool result names the routines a change
+leaves without some of their tools, and the guide tells it never to use them to get past a refusal. A Persona's fork
+has none of these tools. The workspace feed carries `personas`
 (archived too), `invocations` and `receipts` (newest first) and the matching changes; the web lists them from it. Unit
 tests (`personas.test.ts`) run the real migrations in `node:sqlite`; the local workerd owner cases in `persona-case.ts`
 run in both native profiles. Neither is deployed-stage evidence.
