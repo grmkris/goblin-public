@@ -26,7 +26,6 @@ import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { flowRunEvent } from '../telemetry/events.ts'
 import type { Apps } from '../apps/service.ts'
 import type { Channel } from '../channel/service.ts'
-import type { ChatsInstance } from '../chats/directory.ts'
 import type { Cipher } from '../mcp/cipher.ts'
 import type { CheapModels } from '../memory/model.ts'
 import type { RoutineUsage } from '../routines/service.ts'
@@ -121,7 +120,6 @@ export const CoreLive = (
 
 /** What the start's steps provide (layers/index.ts). */
 type StartServices =
-  | ChatsInstance
   | McpConnections
   | McpServers
   | McpGrants

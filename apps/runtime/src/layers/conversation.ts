@@ -4,10 +4,8 @@ import * as Option from 'effect/Option'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
 import {
-  ChatDirectory,
   type ChatDb,
   type ChatRow,
-  ChatsInstance,
   chatOfSession,
   chatSession,
   conversationAbove,
@@ -34,12 +32,6 @@ import { KeyedLock } from '../observability/lock.ts'
 import { SingleFlight } from '../observability/single-flight.ts'
 import { Db } from '../runtime/db.ts'
 import type { FoundationServices } from './core.ts'
-
-/** Start step 4: the chat directory's reads as one object, for the synchronous code that takes one. */
-export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.effect(
-  ChatsInstance,
-  Db.useSync((db) => new ChatDirectory(db)),
-)
 
 /** Start step 10: main is registered, once (a retained or rebound binding is never overwritten). */
 export const PrimaryChatLive: Layer.Layer<never, never, Db> = Layer.effectDiscard(

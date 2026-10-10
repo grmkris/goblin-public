@@ -3,7 +3,6 @@ import { PRIMARY_CHAT } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
-import * as Context from 'effect/Context'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { appConversations } from '../storage/schema.ts'
 import { appTopics } from '../storage/topics.ts'
@@ -137,10 +136,7 @@ export const operationSession = (db: ChatDb, chat: string, op: string): SessionI
   return receipt === undefined ? undefined : SessionId(receipt.session)
 }
 
-/**
- * The directory's reads over one database as an object, for synchronous code that takes one (the Telegram channel,
- * the App registry, the workspace feed and the probes). The services read the functions above.
- */
+/** The directory's reads over one database as an object, for the probes and tests. The services read the functions. */
 export class ChatDirectory {
   readonly #db: ChatDb
 
@@ -188,9 +184,3 @@ export class ChatDirectory {
     return operationSession(this.#db, chat, op)
   }
 }
-
-/**
- * The agent's chat directory object, made at the start (`layers/conversation.ts`) for the synchronous code outside
- * the services that takes one. Programs use `Chats`.
- */
-export class ChatsInstance extends Context.Service<ChatsInstance, ChatDirectory>()('goblin/chats/ChatsInstance') {}

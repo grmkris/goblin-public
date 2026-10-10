@@ -4,7 +4,7 @@ import type { AgentInputs } from '../runtime/input.ts'
 import { AppRegistryLive, AppsLive } from './apps.ts'
 import { ModelBudgetLive } from './budget.ts'
 import { CapabilitiesLive, RetoolLive } from './capabilities.ts'
-import { ChatDirectoryLive, ConversationLive, PrimaryChatLive } from './conversation.ts'
+import { ConversationLive, PrimaryChatLive } from './conversation.ts'
 import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive } from './knowledge.ts'
@@ -28,7 +28,6 @@ const start = (input: AgentInputs) =>
   CoreLive(input).pipe(
     then(McpHostLive), // 2 mcp: endpoint bindings, cipher, held calls recovered, the host and its services
     then(CheapModelsLive), // 3 knowledge
-    then(ChatDirectoryLive), // 4 conversation
     then(HelperExecutionLive), // 7 delegation: await
     then(RetoolLive), // 8 capabilities: await
     then(RoutineRunsLive), // 9 routines: runs and their usage projection, await
