@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { GoblinMark } from '@goblin/ui'
 import {
@@ -12,7 +13,7 @@ import {
   SettingsIcon,
 } from 'lucide-react'
 import { railCounts } from '../../lib/rail.ts'
-import { signOut } from '../../lib/session.tsx'
+import { signOutMutation } from '../../auth/queries.ts'
 import { useActivities, useApps, useConversations, useInvocations } from '../../lib/workspace/hooks.ts'
 
 /** Whether a path is one of the channel's places: a channel and its threads, an App's page, a Persona's profile. */
@@ -47,6 +48,7 @@ export function Rail() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const at = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`)
   const counts = railCounts(useConversations(), useApps(), useActivities(), useInvocations())
+  const signingOut = useMutation(signOutMutation)
   return (
     <nav className="shell-rail" aria-label="Places">
       <Link to="/" className="rail-brand" aria-label="goblin home">
@@ -74,7 +76,12 @@ export function Rail() {
       <Link to="/settings" className="rail-item" aria-current={current(at('/settings'))}>
         <Stop label="Settings" icon={<SettingsIcon aria-hidden />} />
       </Link>
-      <button type="button" className="rail-item" onClick={() => void signOut()}>
+      <button
+        type="button"
+        className="rail-item"
+        disabled={signingOut.isPending}
+        onClick={() => signingOut.mutate(undefined, { onSettled: () => window.location.assign('/') })}
+      >
         <Stop label="Sign out" icon={<LogOutIcon aria-hidden />} />
       </button>
     </nav>

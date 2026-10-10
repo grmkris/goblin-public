@@ -128,6 +128,17 @@ export const consentMutation = mutationOptions({
   },
 })
 
+/**
+ * Ends the session. Its caller leaves for the start page either way, which shows the outcome: still signed in there if
+ * the server kept the session, so an expired one is no reason to send anyone to sign in first.
+ */
+export const signOutMutation = mutationOptions({
+  mutationFn: async (_: void) => {
+    await authCall((fetchOptions) => authClient.signOut({ fetchOptions }))
+  },
+  meta: { auth: 'optional' },
+})
+
 /** Deletes the account; Better Auth asks for a sign-in within the last few minutes first. */
 export const deleteAccountMutation = mutationOptions({
   mutationFn: async (_: void) => {

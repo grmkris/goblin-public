@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AuthRefused, healthQuery, requestSignInCode } from '../src/auth/queries.ts'
+import { MutationObserver } from '@tanstack/react-query'
+import { AuthRefused, healthQuery, requestSignInCode, signOutMutation } from '../src/auth/queries.ts'
 import { messageOf } from '../src/lib/query/app-error.ts'
 import { testQueryClient } from '../src/lib/query/testing.ts'
 
@@ -48,5 +49,16 @@ describe('a sign-in failure', () => {
     expect(failure).toMatchObject({ status: 503 })
     expect(failure instanceof AuthRefused ? failure.ref : '').toMatch(/^[0-9a-f]{8}$/u)
     expect(messageOf(failure, 'send a code')).toMatch(/ · ref [0-9a-f]{8}$/u)
+  })
+
+  it('a sign-out that fails is an AuthRefused, quoted like any other', async () => {
+    vi.stubGlobal('location', new URL('http://app.test/'))
+    answering(() => Response.json({}, { status: 500 }))
+    const failure = await new MutationObserver(testQueryClient(), signOutMutation).mutate().then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(AuthRefused)
+    expect(messageOf(failure, 'sign out')).toMatch(/^Could not sign out\. .+ · ref [0-9a-f]{8}$/u)
   })
 })
