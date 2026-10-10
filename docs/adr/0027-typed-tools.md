@@ -37,5 +37,5 @@ Consequences:
 - Tools move to `typedTool` one at a time; the web renders old and new tool names, so stored transcripts still read.
 - A call to an old tool name that Pi recovers after the switch fails once with an unknown-tool error.
 - Pi keeps a conversation's tool filter as tool names, so the filters that removed `subagent` where subagents are
-  switched off are applied again once with the new names (`CapabilityProfiles.retoolOnce`).
+  switched off are applied again once with the new names (`retoolOnce`).
 - Tool annotations, descriptions and remote content stay untrusted data: types describe shape, never permission.

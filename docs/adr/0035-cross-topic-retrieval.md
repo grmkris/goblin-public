@@ -67,7 +67,7 @@ angle brackets inside excerpts and attributes are neutralised. The result's `det
 ## Automatic retrieval
 
 On the first model request after an owner input in a Conversation or thread, a `beforeRequest` hook of
-`goblin.retrieval` retrieves without being asked (`retrieval/auto.ts`, `ChatRetrieval.automatic`). Persona forks never
+`goblin.retrieval` retrieves without being asked (`retrieval/auto.ts`, `Retrieval.automatic`). Persona forks never
 do. It catches the index up (bounded), then searches the input's indexed text (bounded and redacted, so a pasted
 credential never reaches the rerank) over the default Topics, never the asking chat, for up to eight candidate ranges.
 

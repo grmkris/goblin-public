@@ -33,7 +33,7 @@ library out, and Pi's per-conversation tool filter removes `subagent`. If the mo
 tool returns a `capability-off` result and the owner gets a "Turn on here" card, which turns it on in that conversation
 only. The check runs before the grant check and before any connection is made.
 
-One gate decides: `CapabilityProfiles.scope(session)` in `capabilities/profiles.ts`. Later bounds (a subagent definition's ceiling, a routine's allowlist) narrow the same scope rather than add checks.
+One gate decides: `capabilityScope(db, session)` in `capabilities/profiles.ts`. Later bounds (a subagent definition's ceiling, a routine's allowlist) narrow the same scope rather than add checks.
 
 Consequences:
 - The owner's console calls and an MCP App's own calls are the owner's acts and carry no conversation; they are not

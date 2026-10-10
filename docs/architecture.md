@@ -193,13 +193,13 @@ each over everything before it:
 - **The start** (`layers/index.ts`): the agent's start, step by step in one fixed order, each step a layer in its
   owning area's file and built after every step before it, so each await holds up the steps after it. In order: the
   MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the credential cipher,
-  held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
-  the capability profiles; helper execution restored and the retained Pi filters retooled once; the routine usage
+  held calls a restart cut off recovered); the cheap models; the chat directory; helper execution restored and the
+  retained Pi filters retooled once; the routine usage
   projection, subscribed to Pi's commits; main registered; the App registry; every Topic Conversation given memory;
   skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
-  shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `Cipher`,
-  `ProfilesInstance`, `MemoriesInstance`); programs use the area's services.
+  shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `Cipher`); programs use
+  the area's services.
   The conversation services publish `conversations.changed` with what each write changed, from inside the write; the
   App registry and the workspace feed follow that topic. A move a restart interrupted finishes once the conversation
   layer is built (`Moves` forks its reconcile in the layer's scope), never holding up the start.
@@ -435,7 +435,7 @@ Topics and their memory are below.
 
 **Capabilities** (ADR 0010, `capabilities/`): each conversation can switch off, for its own agent, a connected server,
 one granted tool of it, a skills library, or subagents. `app_conversation_capabilities` stores only what is off, so a
-tool granted later is on everywhere. `CapabilityProfiles.scope(session)` maps the calling Pi session through
+tool granted later is on everywhere. `capabilityScope(db, session)` maps the calling Pi session through
 `chatOf` to its current chat, then reads that chat's switches and, for a subagent, those of every chat above it,
 live at any depth (an unknown or no-longer-owned session,
 or a broken or cyclic chain of spawners, may use nothing). A thread copies the switches its parent works under as it
@@ -443,7 +443,7 @@ is registered; "Reset to where it came from" copies them again. What is off is h
 leaves it out, the `skills` section does not list or fetch that library, and Pi's per-conversation tool filter
 (`configure({ tools: { remove } })`) drops the subagent tools, whose section then hides too; Pi stores the filter as
 tool names, so when those names changed every filtering conversation's filter was applied again once
-(`CapabilityProfiles.retoolOnce`). A call that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read`,
+(`retoolOnce`). A call that still arrives runs nothing: `mcp_call`, `skill_activate`, `skill_read`,
 `subagent_spawn` and `subagent_send` check the scope before anything else (before the grant check or any connection)
 and return an error result with details `{ kind: 'capability-off', target }` (`pi/capabilities.ts`), which the web
 turns into an owner-only "Turn on here" card. In a subagent the result has words only. The owner's console and an
