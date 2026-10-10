@@ -1,7 +1,7 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import { describe, expect, it } from 'vitest'
-import type { AskResult } from '../../src/env.ts'
+import type { AskResult } from '@goblin/contracts/internal'
 import { SubscriptionRequired } from '../../src/http/errors.ts'
 import { type ClientAgentPort, inboundServer } from '../../src/inbound/server.ts'
 

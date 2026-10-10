@@ -15,9 +15,8 @@ import { RequestContext, type RequestFacts, requestFacts, routeNames, routeTempl
 import { answer, refusal, secured } from './render.ts'
 
 /**
- * The Worker side of the typed API (ADR 0038 to come). The Worker keeps the session, origin, CSRF and fresh plan
- * checks, answers the account API itself and forwards every owner `/api/*` request to the owner's own agent. Until the
- * switch, `worker.ts` serves only the account API through here; the owner routes still go through its own tables.
+ * The Worker side of the typed API (ADR 0038). The Worker keeps the session, origin, CSRF and fresh plan checks,
+ * answers the account API itself and forwards every owner `/api/*` request to the owner's own agent.
  */
 
 /**
@@ -168,6 +167,15 @@ export interface EdgeHttp {
   readonly account: (request: Request, edge: Edge) => Effect.Effect<Response>
   /** Admits an owner request and forwards it to the owner's own agent, which answers it. */
   readonly owner: (request: Request, edge: Edge) => Effect.Effect<Response>
+  /**
+   * One of the Worker's own routes (`/mcp`, `/hooks/*`, anything else it does not serve): `serve`'s answer with the
+   * API's headers, or the envelope of the failure it ended in, and the failure line either way. `serve` is given the
+   * request's reference, which the answer quotes.
+   */
+  readonly route: (
+    request: Request,
+    serve: (ref: string) => Effect.Effect<Response, AppError>,
+  ) => Effect.Effect<Response>
 }
 
 /**
@@ -231,5 +239,13 @@ export const makeEdgeHttp: Effect.Effect<EdgeHttp> = Effect.gen(function* () {
     return Effect.provideContext(served, observed)
   }
 
-  return { account, owner }
+  const route: EdgeHttp['route'] = (request, serve) => {
+    const facts = { ...requestFacts(request, routeTemplate(new URL(request.url).pathname)), ref: refOf(request) }
+    const served = settle(request, facts, () =>
+      Effect.map(serve(facts.ref), (response) => secured(response, facts.ref)),
+    )
+    return Effect.provideContext(served, observed)
+  }
+
+  return { account, owner, route }
 })

@@ -21,7 +21,7 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { describe, expect, it } from 'vitest'
 import { type AccountRecords, crashPoint } from '../../../src/http/api/account.ts'
-import { type Edge, type EdgeHttp, isAccountPath, makeEdgeHttp } from '../../../src/http/api/edge.ts'
+import { type Edge, isAccountPath, makeEdgeHttp } from '../../../src/http/api/edge.ts'
 import { statusOf } from '../../../src/http/respond.ts'
 import { FlowPointFailure } from '../../../src/observability/ae.ts'
 import { withLines } from '../../observability/lines.ts'
@@ -90,7 +90,7 @@ const deployment = (
 const built = Effect.runPromise(makeEdgeHttp)
 /** One request through the edge: its response and the lines it logged. */
 const through = async (
-  side: keyof EdgeHttp,
+  side: 'account' | 'owner',
   request: Request,
   edge: Edge,
 ): Promise<{ readonly response: Response; readonly lines: readonly unknown[] }> => {

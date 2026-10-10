@@ -1,12 +1,10 @@
-import * as Cause from 'effect/Cause'
 import * as Exit from 'effect/Exit'
-import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { AppError, toAppError } from './errors.ts'
+import { AppError, failureOf } from './errors.ts'
 
 /**
- * Durable Object RPC result. Workers RPC keeps plain data but drops error classes, so failures cross as the encoded
- * `AppError` and are rebuilt on the Worker side by `unwrap`.
+ * Durable Object RPC result, for the one RPC method left (`deleteAgentData`). Workers RPC keeps plain data but drops
+ * error classes, so failures cross as the encoded `AppError` and are rebuilt on the Worker side by `unwrap`.
  */
 export type RpcResult<A> =
   | { readonly ok: true; readonly value: A }
@@ -14,25 +12,10 @@ export type RpcResult<A> =
 
 export const encodeExit = <A>(exit: Exit.Exit<A, AppError>): RpcResult<A> => {
   if (Exit.isSuccess(exit)) return { ok: true, value: exit.value }
-  const failure = Option.getOrElse(Cause.findErrorOption(exit.cause), () => toAppError(Cause.squash(exit.cause)))
-  return { ok: false, error: Schema.encodeSync(AppError)(failure) }
+  return { ok: false, error: Schema.encodeSync(AppError)(failureOf(exit.cause)) }
 }
 
 export const unwrap = <A>(result: RpcResult<A>): A => {
-  if (result.ok) return result.value
-  throw Schema.decodeUnknownSync(AppError)(result.error)
-}
-
-const RpcJson = Schema.Union([
-  // A void result crosses as `{ ok: true }`: JSON drops an undefined value.
-  Schema.Struct({ ok: Schema.Literal(true), value: Schema.optional(Schema.Unknown) }),
-  Schema.Struct({ ok: Schema.Literal(false), error: Schema.Unknown }),
-])
-const decodeRpcJson = Schema.decodeUnknownSync(RpcJson)
-
-/** An `RpcResult` that crossed as JSON (an agent's internal fetch route): its value, or its rebuilt `AppError`. */
-export const unwrapJson = (json: unknown): unknown => {
-  const result = decodeRpcJson(json)
   if (result.ok) return result.value
   throw Schema.decodeUnknownSync(AppError)(result.error)
 }

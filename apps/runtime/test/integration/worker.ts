@@ -39,6 +39,7 @@ import { CapabilityProfiles } from '../../src/capabilities/profiles.ts'
 import { permutePrimary, profileEnabled } from './primary-profile.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { unwrap } from '../../src/http/rpc.ts'
+import { askResult, inspectResult, recentResult } from '../internal-client.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
 import { callOwner } from '../owner-client.ts'
 import {
@@ -101,7 +102,7 @@ export class PersonalAgentProbe extends PersonalAgent {
   readonly seen: SeenRequest[] = []
   readonly instance = String(Effect.runSync(nextInt))
   readonly routineProducer = new EventsFixture()
-  /** The owner API as the Worker forwards to it, for the probes that send as the owner from inside the object. */
+  /** The agent's APIs as the Worker reaches them, for the probes that call them from inside the object. */
   readonly #ownerFetch = { fetch: (request: Request) => this.onRequest(request) }
   /** The tables as the constructor left them, before the lifecycle's start opens Pi (its apps read `app_` ones). */
   readonly #constructed = listTables(this.ctx.storage).map(({ name }) => name)
@@ -147,8 +148,10 @@ export class PersonalAgentProbe extends PersonalAgent {
     const settled = await this.settle(PRIMARY_CHAT, operationId)
     const directory = new ChatDirectory(drizzle(this.ctx.storage))
     const session = directory.session(PRIMARY_CHAT)
-    const inbound = unwrap(await this.askAsClient('fixture-client', 'inbound binding proof', 'primary-inbound', 5000))
-    const recent = unwrap(await this.recentMessages(20))
+    const inbound = unwrap(
+      await askResult(this.#ownerFetch, 'fixture-client', 'inbound binding proof', 'primary-inbound', 5000),
+    )
+    const recent = unwrap(await recentResult(this.#ownerFetch, 20))
     return {
       session,
       inboundStatus: inbound.status,
@@ -196,10 +199,7 @@ export class PersonalAgentProbe extends PersonalAgent {
         await ownerSend(this.#ownerFetch, PRIMARY_CHAT, text, operationId)
         return this.settle(PRIMARY_CHAT, operationId)
       },
-      async (query) => {
-        const request = new Request('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) })
-        return (await this.onRequest(request)).json()
-      },
+      (query) => inspectResult(this.#ownerFetch, query),
     )
   }
 
@@ -291,7 +291,7 @@ export class PersonalAgentProbe extends PersonalAgent {
       this.#failPlanAt = nth
     }
     const revoke = async () => new ResidentAuthority(drizzle(this.ctx.storage)).revoke(Math.floor(Date.now() / 1000))
-    return Response.json(await eventsIngressCase(this, failPlanCheck, revoke))
+    return Response.json(await eventsIngressCase(this.#ownerFetch, failPlanCheck, revoke))
   }
   protected override mcpFetch(): typeof fetch {
     return (input, init) =>
@@ -560,7 +560,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const unknownApp = await ownerResult(agent, (api) =>
     api.mcp.setAppGrant({ payload: { serverId: 'missing', uri: 'ui://missing/app.html', allowed: true } }),
   )
-  const noConversation = await agent.recentMessages(5)
+  const noConversation = await recentResult(agent, 5)
   const thread = await ownerCreate(agent, {})
   const threads = await workspaceConversations(agent)
   const badBranch = await branchMain(agent, 999_999)
@@ -571,7 +571,7 @@ async function rpcSequence(agent: DurableObjectStub<PersonalAgentProbe>): Promis
   const modelChoice = await ownerResult(agent, (api) => api.agent.model())
   const unknownModel = await ownerResult(agent, (api) => api.agent.chooseModel({ payload: { model: 'not-offered' } }))
   await callOwner(agent, (api) => api.resident.set({ payload: { enabled: false } }))
-  const askWhileRevoked = await agent.askAsClient('Test client', 'hello', 'op-1', 1000)
+  const askWhileRevoked = await askResult(agent, 'Test client', 'hello', 'op-1', 1000)
   return Response.json({
     first,
     revoked,

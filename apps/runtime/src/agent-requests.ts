@@ -6,7 +6,6 @@ import { registeredConversation } from './agent-program.ts'
 import { piEventResponse } from './pi/events.ts'
 import { Workspace } from './workspace/service.ts'
 import { filesRequest } from './files/routes.ts'
-import { inspectRequest } from './inspect/request.ts'
 import type { JsonObject } from '@goblin/contracts'
 import { connectCallback } from './mcp/program.ts'
 import type { ExitProgram } from './runtime/bridge.ts'
@@ -24,8 +23,7 @@ const EVENTS = /^\/api\/conversations\/(\d{1,12})\/events$/u
 /**
  * The agent's raw routes: what is not JSON in and out, so not an owner API endpoint (`http/api/server.ts` answers
  * those first). The Worker's edge forwards each with its path unchanged after admitting the owner (session, CSRF on
- * writes, plan); none of them renews resident authority. `/inspect` is the one path the Worker reaches on its own, from
- * `/mcp` for a client that holds `goblin:inspect`.
+ * writes, plan); none of them renews resident authority.
  *
  * - `GET /api/conversations/:id/events`: the chat's Pi event stream (SSE).
  * - `GET /api/workspace/events`: the workspace feed (SSE).
@@ -40,7 +38,6 @@ export async function agentRequest(
 ): Promise<Response> {
   const url = new URL(request.url)
   const ref = request.headers.get('x-goblin-ref') ?? undefined
-  if (url.pathname === '/inspect') return inspectRequest(request, execute)
   if (request.method === 'GET' && url.pathname === '/api/workspace/events') {
     const feed = await execute(Workspace.use((workspace) => workspace.events))
     return Exit.isSuccess(feed) ? feed.value : Response.json({ error: 'Unavailable' }, { status: 503 })

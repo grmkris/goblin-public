@@ -1,14 +1,11 @@
 import type { Conversation, EntryRecord } from '@earendil-works/pi-durable'
 import { authorOf } from '@goblin/contracts'
+import type { TranscriptMessage } from '@goblin/contracts/internal'
 import { Predicate } from 'effect'
 import { BACKGROUND } from './context.ts'
 
-/** A user or assistant message; `author` names who wrote a user message when it was not the owner's browser. */
-export type TranscriptMessage = {
-  readonly role: 'user' | 'assistant'
-  readonly text: string
-  readonly author?: string
-}
+/** A user or assistant message, as the internal API answers main's newest ones (`recent`). */
+export type { TranscriptMessage }
 
 /** The non-empty text blocks of message content (a plain string is one block). */
 export const textBlocks = (content: unknown): string[] => {

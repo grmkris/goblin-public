@@ -34,9 +34,12 @@ const header = (request: Request, name: string, pattern: RegExp): string | undef
   return value !== null && pattern.test(value) ? value : undefined
 }
 
+/** The reference the Worker edge forwarded with `request`, when it is one. */
+export const forwardedRef = (request: Request): string | undefined => header(request, 'x-goblin-ref', REF)
+
 /** The facts the Worker edge forwarded with `request`, which reached `route`. */
 export const requestFacts = (request: Request, route: string): RequestFacts => ({
-  ref: header(request, 'x-goblin-ref', REF),
+  ref: forwardedRef(request),
   request: header(request, 'x-goblin-request', REQUEST),
   operation: header(request, 'x-goblin-operation', OPERATION),
   route,
@@ -54,13 +57,16 @@ export const routeTemplate = (path: string): string => {
 /** HttpApi paths are absolute; the guard only tells the router so. */
 const isPath = (path: string): path is FindMyWay.PathInput => path.startsWith('/')
 
+/** The endpoint a request names (`topics.update`), if it names one of an API's. */
+export type RouteNames = (request: Request) => string | undefined
+
 /**
  * The name of each of `api`'s endpoints (`topics.update`) by method and path: whether a request is the API's at all is
  * known before anything runs, and its logs name the endpoint rather than a path that may carry ids.
  */
 export const routeNames = <Id extends string, Groups extends HttpApiGroup.Constraint>(
   api: HttpApi.HttpApi<Id, Groups>,
-): ((request: Request) => string | undefined) => {
+): RouteNames => {
   const router = FindMyWay.make<string>()
   HttpApi.reflect(api, {
     onGroup: () => undefined,

@@ -1,11 +1,10 @@
-import type { InspectQuery } from '@goblin/contracts/inspect'
 import { createMcpHandler } from 'agents/mcp/server'
 import { INSPECT_SCOPE, challengeOf, clientName, verifyClientToken } from '../auth/index.ts'
 import type { RuntimeEnv } from '../env.ts'
-import { unwrap, unwrapJson } from '../http/rpc.ts'
-import { inboundServer } from './server.ts'
-import { accountPlan } from '../billing/gates.ts'
 import { runAtEdge } from '../http/api/edge.ts'
+import { internalCall } from './client.ts'
+import type { InspectReader } from './inspection.ts'
+import { inboundServer } from './server.ts'
 
 export const inboundHosts = (appUrl: string) => ({
   allowedHostnames: [new URL(appUrl).hostname],
@@ -24,22 +23,22 @@ export const handleInboundMcp = async (request: Request, env: RuntimeEnv): Promi
     // expected: a token that does not verify is answered with the sign-in challenge, as a missing one is.
     return challengeOf(env.APP_URL)
   }
-  // The token's subject is the user who consented; the client talks to that user's agent only. Asking runs the model,
-  // so it needs a plan; reading your own agent does not.
+  // The token's subject is the user who consented; the client talks to that user's agent only, through its internal
+  // API. Asking and reading main need a plan, which the agent checks; inspecting your own agent does not.
   const agent = env.AGENTS.getByName(principal.subject)
   const name = await clientName(principal.clientId, env)
-  const inspect = async (query: InspectQuery) =>
-    unwrapJson(
-      await (await agent.fetch('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) })).json(),
-    )
+  const inspect: InspectReader = (query) =>
+    runAtEdge(internalCall(agent, (api) => api.inbound.inspect({ payload: { query } })))
   const handler = createMcpHandler(
     () =>
       inboundServer({
-        ask: async (input, operationId, waitMs) => {
-          await runAtEdge(accountPlan(env, principal.subject))
-          return unwrap(await agent.askAsClient(name ?? 'an MCP client', input, operationId, waitMs))
-        },
-        recent: async (limit) => unwrap(await agent.recentMessages(limit)),
+        ask: (input, operationId, waitMs) =>
+          runAtEdge(
+            internalCall(agent, (api) =>
+              api.inbound.ask({ payload: { author: name ?? 'an MCP client', input, operationId, waitMs } }),
+            ),
+          ),
+        recent: (limit) => runAtEdge(internalCall(agent, (api) => api.inbound.recent({ query: { limit } }))),
         ...(principal.scopes.includes(INSPECT_SCOPE) ? { inspect } : {}),
       }),
     {

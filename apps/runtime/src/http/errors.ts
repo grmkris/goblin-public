@@ -1,5 +1,7 @@
 import { AppError, Internal } from '@goblin/contracts/api'
+import * as Cause from 'effect/Cause'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { writeLine } from '../observability/logger.ts'
 import { framesOf, safeErrorType } from '../observability/report.ts'
@@ -66,3 +68,7 @@ export const attempt = <A>(call: () => PromiseLike<A>, where?: string): Effect.E
 /** A call into synchronous code that throws its typed failures, taken the same way. */
 export const attemptSync = <A>(call: () => A, where?: string): Effect.Effect<A, AppError> =>
   Effect.try({ try: call, catch: (cause) => toAppError(cause, where) })
+
+/** The typed failure `cause` ends in; a defect or an interruption is `Internal` (reported, see `toAppError`). */
+export const failureOf = (cause: Cause.Cause<AppError>): AppError =>
+  Option.getOrElse(Cause.findErrorOption(cause), () => toAppError(Cause.squash(cause)))

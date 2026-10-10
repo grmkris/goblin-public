@@ -1,31 +1,14 @@
 import type { RpcResult } from './http/rpc.ts'
-import type { TranscriptMessage } from './pi/transcript.ts'
 import type { MailBinding } from './auth/mail.ts'
-import type { EventWebhook, EventWebhookResult } from './mcp/events.ts'
-import type { Doorbell } from './channel/doorbell.ts'
 
 /**
- * The Agent DO's RPC, what is left of it: the owner reaches the agent through its typed API (`onRequest`, forwarded by
- * the Worker's edge), never through RPC. These serve the Worker's other callers, each after its own check: an inbound
- * MCP client (`/mcp`), myagent's doorbell and MCP Events (`/hooks/*`, by route token), and account erasure.
+ * The Agent DO's RPC, what is left of it: account erasure. The owner reaches the agent through its typed API and the
+ * Worker's other callers (an inbound MCP client, myagent's doorbell, MCP Events) through the internal one, both over
+ * `fetch` (`onRequest`, `http/api/server.ts`).
  */
 export interface AgentRpcMethods {
-  readonly askAsClient: (
-    author: string,
-    input: string,
-    operationId: string,
-    waitMs: number,
-  ) => Promise<RpcResult<AskResult>>
-  readonly recentMessages: (limit: number) => Promise<RpcResult<readonly TranscriptMessage[]>>
-  /** Not an owner request: myagent's doorbell, after the Worker checked the hook token (channel/doorbell.ts). */
-  readonly channelDoorbell: (doorbell: Doorbell) => Promise<RpcResult<true>>
-  readonly mcpEventsWebhook: (input: EventWebhook) => Promise<RpcResult<EventWebhookResult>>
   readonly deleteAgentData: () => Promise<RpcResult<true>>
 }
-export type AskResult =
-  | { readonly status: 'done'; readonly operationId: string; readonly text: string }
-  | { readonly status: 'running'; readonly operationId: string }
-  | { readonly status: 'unanswered'; readonly operationId: string; readonly reason: string }
 export type AgentRpc = AgentRpcMethods & Rpc.DurableObjectBranded
 
 export interface RuntimeEnv {

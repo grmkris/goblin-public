@@ -13,15 +13,15 @@ import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts
 import { FlowEvents } from '../../src/observability/flows.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { portServices } from '../chat-fixtures.ts'
+import { inspectResult } from '../internal-client.ts'
 import { callOwner } from '../owner-client.ts'
 import { ownerCreate, ownerResult, ownerSend, snapshotOf, until, workspaceConversations } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 
 type Probe = DurableObjectStub<PersonalAgentProbe>
 
-/** One query of the agent's own `/inspect` route, answered as its `{ ok, value }` result. */
-const inspect = async (agent: Probe, query: object): Promise<unknown> =>
-  (await agent.fetch(new Request('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) }))).json()
+/** One query of the agent's inspection (`POST /internal/inspect`), answered as its `{ ok, value }` result. */
+const inspect = (agent: Probe, query: object): Promise<unknown> => inspectResult(agent, query)
 
 /** C4: the owner's create, sent twice at once under one operation id. */
 export async function doubleCreateSequence(agent: Probe): Promise<Response> {

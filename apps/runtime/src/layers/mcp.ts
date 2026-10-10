@@ -6,6 +6,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
+import { Entitlements, requirePlan } from '../billing/gates.ts'
 import { Channel } from '../channel/service.ts'
 import { nowMillis } from '../clock.ts'
 import { type AppError, Forbidden, GrantDenied, attempt, attemptSync } from '../http/errors.ts'
@@ -49,13 +50,10 @@ import { mcpReporter } from '../telemetry/report.ts'
 // those instances, and held calls and the registry catalog are built over the agent's database.
 
 /**
- * The plan, read fresh from the agent's own plan policy, then current resident authority: what the MCP host and Events
- * check before an Events call goes out.
+ * The plan the agent keeps, then current resident authority: what the MCP host and Events check before an Events call
+ * goes out, and what ingress checks before it takes a webhook.
  */
-const eventsAuthority = Effect.andThen(
-  AgentInput.use((input) => input.entitlements.require()),
-  requireResident,
-)
+const eventsAuthority = Effect.andThen(requirePlan(), requireResident)
 
 /**
  * The MCP host over the agent's database, with the stores it checks and the held calls a restart cut off recovered;
@@ -114,13 +112,13 @@ async function makeHost(input: AgentInputs, db: DrizzleSqliteDODatabase, authori
  * Start step 2: every server's endpoint binding is checked (a re-pointed server loses what it had), the credential
  * cipher is made, held calls a restart cut off are recovered, and the one MCP host is made.
  */
-export const McpHostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db | Resident> =
+export const McpHostLive: Layer.Layer<McpHostInstance | Cipher, never, AgentInput | Db | Entitlements | Resident> =
   Layer.effectContext(
     Effect.gen(function* () {
       const input = yield* AgentInput
       const db = yield* Db
       // The host's Events check is Promise code: it runs the Effect with this layer's services.
-      const run = promiseWith(yield* Effect.context<AgentInput | Resident>())
+      const run = promiseWith(yield* Effect.context<Entitlements | Resident>())
       const { host, cipher } = yield* Effect.promise(() => makeHost(input, db, () => run(eventsAuthority)))
       return Context.mergeAll(McpHostInstance.context(host), Cipher.context(cipher))
     }),
@@ -210,12 +208,12 @@ const consumerPorts = (
 export const McpEventsLive: Layer.Layer<
   Events,
   never,
-  AgentInput | Db | Resident | McpHostInstance | Cipher | Channel | Skills
+  AgentInput | Db | Entitlements | Resident | McpHostInstance | Cipher | Channel | Skills
 > = Layer.effect(
   Events,
   Effect.gen(function* () {
     const input = yield* AgentInput
-    const context = yield* Effect.context<AgentInput | Resident | Channel | Skills>()
+    const context = yield* Effect.context<AgentInput | Entitlements | Resident | Channel | Skills>()
     const run = promiseWith(context)
     const { env, userId } = input
     const host = yield* McpHostInstance

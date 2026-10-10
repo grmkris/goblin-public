@@ -12,7 +12,8 @@ import { afterEach } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
-import { OwnerHttp } from '../../../src/http/api/server.ts'
+import { routeNames } from '../../../src/http/api/context.ts'
+import { AgentHttp } from '../../../src/http/api/server.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { chatDatabase } from '../../chats-sqlite.ts'
 
@@ -43,7 +44,7 @@ export const plans = (active = true): Layer.Layer<Entitlements> => {
 }
 
 /**
- * `groups` and their `handlers` served the way the agent serves the owner API (`OwnerHttp.serve`): behind owner
+ * `groups` and their `handlers` served the way the agent serves the owner API (`AgentHttp.serve`): behind owner
  * admission, its router and its failure rendering. Provide it the services the handlers read, then `serve` it.
  */
 export const served = <const Groups extends NonEmptyReadonlyArray<HttpApiGroup.Constraint>, Handlers, R>(
@@ -51,8 +52,8 @@ export const served = <const Groups extends NonEmptyReadonlyArray<HttpApiGroup.C
   handlers: Layer.Layer<Handlers, never, R>,
 ) => {
   const api = ownerApiOf(...groups)
-  return OwnerHttp.serve(
-    api,
+  return AgentHttp.serve(
+    [routeNames(api)],
     HttpApiBuilder.layer(api).pipe(
       Layer.provide(handlers),
       Layer.provide(OwnerAdmissionLive),
@@ -70,10 +71,10 @@ afterEach(async () => {
 export const cleanup = (dispose: () => unknown): void => void disposals.push(dispose)
 
 /** Requests answered through `http`, as the agent answers them; disposed after each test. */
-export const serve = (http: Layer.Layer<OwnerHttp>) => {
+export const serve = (http: Layer.Layer<AgentHttp>) => {
   const runtime = ManagedRuntime.make(http)
   cleanup(() => runtime.dispose())
-  const handle = (request: Request) => runtime.runPromise(OwnerHttp.use((owner) => owner.handle(request)))
+  const handle = (request: Request) => runtime.runPromise(AgentHttp.use((agent) => agent.handle(request)))
   /** The agent's answer, or a failure if the server passed the request on to its raw routes. */
   const fetch = async (request: Request) =>
     Option.getOrThrowWith(await handle(request), () => new Error(`not an API route: ${request.url}`))

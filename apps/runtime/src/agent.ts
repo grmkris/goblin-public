@@ -2,16 +2,13 @@ import { Agent } from 'agents'
 import { type Extension } from '@earendil-works/pi-durable'
 import { PiHarness } from 'agents/harness/pi'
 import type { ProviderStreams } from '@earendil-works/pi-ai'
-import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
-import { type AppError, toAppError } from './http/errors.ts'
+import { failureOf, toAppError } from './http/errors.ts'
 import { ChannelWakes } from './channel/wake.ts'
-import { type Doorbell } from './channel/doorbell.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
-import { FileStore } from './files/store.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot } from './agent-apps/jobs.ts'
@@ -37,13 +34,11 @@ import { accountEntitlements, type EntitlementPolicy } from './billing/gates.ts'
 import { type Bridge, closeRuntime, makeBridge, openRuntime } from './runtime/bridge.ts'
 import type { AgentInputs } from './runtime/input.ts'
 import { type Instrument, reported } from './runtime/instrument.ts'
-import { OwnerHttp } from './http/api/server.ts'
+import { AgentHttp } from './http/api/server.ts'
+import { forwardedRef } from './http/api/context.ts'
+import { refusal } from './http/api/render.ts'
 import { runApplicationMigrations } from './storage/migrations.ts'
 import { nowSeconds } from './clock.ts'
-import type { EventWebhook } from './mcp/events.ts'
-import { Events } from './mcp/service.ts'
-import { acceptDoorbell } from './channel/program.ts'
-import { askClient, clientRequest, recentOwnerMessages } from './inbound/program.ts'
 import { type MovePhase } from './chats/mover.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { retrievalExtension } from './pi/retrieval.ts'
@@ -60,9 +55,9 @@ const instrument: Instrument = reported
 
 /**
  * The resident agent. Pi (through the native PiHarness) owns conversations; the services in `layers/` own MCP
- * connections, credentials, grants and resident authority. The owner reaches it through its typed API (`onRequest`);
- * the five RPC methods left are for the Worker's other callers (an inbound client, myagent, MCP Events, account
- * erasure), each one program.
+ * connections, credentials, grants and resident authority. The owner reaches it through its typed API and the Worker's
+ * other callers (an inbound client, myagent, MCP Events) through the internal one, both over `fetch` (`onRequest`);
+ * the one RPC method left erases the account.
  */
 export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods {
   readonly harness: PiHarness
@@ -208,9 +203,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.schedule(new Date(seconds * 1000), callback, { at: seconds }, { idempotent: true })
     for (const job of pending) await this.cancelSchedule(job.id)
   }
-  mcpEventsWebhook(input: EventWebhook) {
-    return this.#client(Events.use((events) => events.receive(input)))
-  }
   // The schedule callbacks: the Agents SDK calls them by name; each body lives in its area's wake.ts.
   async mcpEventsWake(): Promise<void> {
     await mcpEventsWake(this.#bridge.run, (at) => this.#scheduleWake('mcpEventsWake', at))
@@ -232,38 +224,17 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   /** What an archive or a Stop reaches: Pi, a routine's runs and the Persona turns asked in a chat. */
   readonly #stopping = () => ({ harness: this.harness, routines: this.#routines, personas: this.#personas })
 
-  /**
-   * An inbound MCP client asks the resident agent something, in main and labelled with the client's name, so the
-   * owner sees it and the agent answers with everything main knows. Needs current resident authority (it does not
-   * renew it). Returns the answer, or `running` with the operation id to wait again.
-   */
-  askAsClient(author: string, input: string, operationId: string, waitMs: number) {
-    const runtime = { harness: this.harness, applied: this.#applied }
-    return this.#client(askClient({ ...runtime, author, text: input, operationId, waitMs }, this.#bridge.run))
-  }
-  /**
-   * A doorbell from myagent; the Worker already checked the hook token. Checked against the secret the agent gave
-   * myagent, then answered at once: the pull runs from a schedule.
-   */
-  channelDoorbell(doorbell: Doorbell) {
-    return this.#client(acceptDoorbell(doorbell, () => this.schedule(0, 'channelPull')))
-  }
-
   async channelPull(): Promise<void> {
     await this.#channel.pull()
   }
   async channelReplies(): Promise<void> {
     await this.#channel.replies()
   }
-  recentMessages(limit: number) {
-    return this.#client(recentOwnerMessages(this.harness, limit))
-  }
 
   /** Erases the agent: its files in R2 first (a failure leaves everything to retry), then services and storage. */
   async deleteAgentData(): Promise<RpcResult<true>> {
-    const files = new FileStore(this.ctx.storage.sql, this.env.FILES, () => this.name)
     try {
-      await files.purge()
+      await this.#apps.ownerFiles.purge()
     } catch (cause) {
       return encodeExit(Exit.fail(toAppError(cause)))
     }
@@ -273,16 +244,15 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     await this.destroy()
     return { ok: true, value: true }
   }
-  async #client<A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<RpcResult<A>> {
-    return encodeExit(await this.#bridge.exit(clientRequest(program)))
-  }
   /**
-   * The owner API first (http/api/server.ts); any other path is one of the agent's raw routes (agent-requests.ts). Only
-   * the Worker reaches either: it admits the owner and forwards `/api/*` unchanged (http/api/edge.ts).
+   * The agent's typed APIs first (http/api/server.ts); any other path is one of the agent's raw routes
+   * (agent-requests.ts). Only the Worker reaches either: it admits the owner and forwards `/api/*` (http/api/edge.ts),
+   * and calls the internal API after its own check of the caller.
    */
   override async onRequest(request: Request): Promise<Response> {
-    const served = await this.#bridge.exit(OwnerHttp.use((http) => http.handle(request)))
-    if (Exit.isSuccess(served) && Option.isSome(served.value)) return served.value.value
+    const served = await this.#bridge.exit(AgentHttp.use((http) => http.handle(request)))
+    if (Exit.isFailure(served)) return refusal(failureOf(served.cause), forwardedRef(request))
+    if (Option.isSome(served.value)) return served.value.value
     return agentRequest(request, this.harness, this.#bridge.exit, this.env.APP_URL)
   }
 }

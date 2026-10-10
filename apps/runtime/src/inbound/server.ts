@@ -1,7 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
-import type { AskResult } from '../env.ts'
-import type { TranscriptMessage } from '../pi/transcript.ts'
+import type { AskResult, TranscriptMessage } from '@goblin/contracts/internal'
 import { INSPECTION_GUIDE, type InspectReader, registerInspection } from './inspection.ts'
 import { failed, standard, text } from './tools.ts'
 

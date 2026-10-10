@@ -1,4 +1,5 @@
-import { OwnerApi } from '@goblin/contracts/api'
+import { NotFound, OwnerApi } from '@goblin/contracts/api'
+import { FORWARDED_HEADER, INTERNAL_PREFIX, InternalApi } from '@goblin/contracts/internal'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -7,43 +8,55 @@ import type * as Scope from 'effect/Scope'
 import * as HttpRouter from 'effect/http/HttpRouter'
 import type * as HttpServerRequest from 'effect/http/HttpServerRequest'
 import type * as HttpServerResponse from 'effect/http/HttpServerResponse'
-import type * as HttpApi from 'effect/http-api/HttpApi'
-import type * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { RequestContext, requestFacts, routeNames } from './context.ts'
-import { OwnerApiLayer } from './groups.ts'
-import { answer } from './render.ts'
+import { RequestContext, type RouteNames, forwardedRef, requestFacts, routeNames } from './context.ts'
+import { AgentApiLayer } from './groups.ts'
+import { answer, refusal } from './render.ts'
+
+/** Whether `path` is `prefix` or under it. */
+const under = (path: string, prefix: string): boolean => path === prefix || path.startsWith(`${prefix}/`)
 
 /**
- * The owner API served inside the agent (ADR 0038 to come): the router is built once, in the agent's own runtime and
- * the layer's scope, never at module level. `handle` answers a request that names an owner endpoint and is `None` for
- * any other path, which the agent's raw routes (`agent-requests.ts`) still serve.
+ * The agent's typed APIs served inside it (ADR 0038): the owner's (`/api`) and the internal one the Worker calls
+ * (`/internal`), on one router built once, in the agent's own runtime and the layer's scope, never at module level.
+ * `handle` answers a request that names an endpoint of either API. An internal path forwarded for the owner (it
+ * carries the edge's `x-goblin-forwarded`) and any other internal path are a 404 in the envelope; any other path is
+ * `None`, which the agent's raw routes (`agent-requests.ts`) still serve.
  */
-export class OwnerHttp extends Context.Service<
-  OwnerHttp,
+export class AgentHttp extends Context.Service<
+  AgentHttp,
   { readonly handle: (request: Request) => Effect.Effect<Option.Option<Response>> }
->()('goblin/http/OwnerHttp') {
+>()('goblin/http/AgentHttp') {
   /**
-   * Serves `api` through `apiLayer` (its groups' handlers behind the owner gate). The agent serves every group; a test
-   * serves one area's groups with only the services that area needs (`test/http/api/serve.ts`).
+   * Serves the APIs `routes` names (`routeNames` of each) through `apiLayer`, their groups' handlers behind each API's
+   * gate. The agent serves every group of both; a test serves one area's groups with only the services that area needs
+   * (`test/http/api/fixture.ts`).
    */
-  static serve<Id extends string, Groups extends HttpApiGroup.Constraint, R>(
-    api: HttpApi.HttpApi<Id, Groups>,
-    apiLayer: Layer.Layer<never, never, R>,
-  ) {
+  static serve<R>(routes: readonly RouteNames[], apiLayer: Layer.Layer<never, never, R>) {
     return Layer.effect(
-      OwnerHttp,
+      AgentHttp,
       Effect.gen(function* () {
         const services = yield* Effect.context<HttpRouter.Request.Only<'Requires', R>>()
         const http = yield* HttpRouter.toHttpEffect(apiLayer)
-        const routeOf = routeNames(api)
-        return OwnerHttp.of({
+        const routeOf = (request: Request) => {
+          for (const route of routes) {
+            const name = route(request)
+            if (name !== undefined) return name
+          }
+          return undefined
+        }
+        return AgentHttp.of({
           handle: (request) => {
-            const route = routeOf(request)
-            if (route === undefined) return Effect.succeedNone
+            const path = new URL(request.url).pathname
+            const internal = under(path, INTERNAL_PREFIX)
+            const route = internal && request.headers.has(FORWARDED_HEADER) ? undefined : routeOf(request)
+            if (route === undefined) {
+              if (!internal) return Effect.succeedNone
+              return Effect.succeed(Option.some(refusal(new NotFound({ what: 'route' }), forwardedRef(request))))
+            }
             const facts = requestFacts(request, route)
             // SAFETY: `services` is this layer's context, which holds every service the router's handlers require
-            // (`R`'s `Requires`), and no owner group declares a global middleware: what is left is the request and
-            // its scope, which `answer` provides.
+            // (`R`'s `Requires`), and neither API declares a global middleware: what is left is the request and its
+            // scope, which `answer` provides.
             const served = http.pipe(
               Effect.provideContext(Context.add(services, RequestContext, facts)),
             ) as Effect.Effect<
@@ -58,5 +71,5 @@ export class OwnerHttp extends Context.Service<
     )
   }
 
-  static readonly layer = OwnerHttp.serve(OwnerApi, OwnerApiLayer)
+  static readonly layer = AgentHttp.serve([routeNames(OwnerApi), routeNames(InternalApi)], AgentApiLayer)
 }

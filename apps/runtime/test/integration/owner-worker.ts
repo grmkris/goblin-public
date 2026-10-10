@@ -16,6 +16,7 @@ import { permutePrimary, profileEnabled } from './primary-profile.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { unwrap } from '../../src/http/rpc.ts'
+import { askResult } from '../internal-client.ts'
 import type { MovePhase } from '../../src/chats/mover.ts'
 import { moveState, readRounds } from './move-probe.ts'
 import { ownerSend } from './probe-reads.ts'
@@ -69,7 +70,8 @@ export class OwnerAgent extends PersonalAgent {
       const { input, operationId } = Schema.decodeUnknownSync(
         Schema.Struct({ input: Schema.String, operationId: Schema.String }),
       )(await request.json())
-      return Response.json(unwrap(await this.askAsClient('topics-client', input, operationId, 5000)))
+      const self = { fetch: (internal: Request) => this.onRequest(internal) }
+      return Response.json(unwrap(await askResult(self, 'topics-client', input, operationId, 5000)))
     }
     if (path.startsWith('/test/move/')) return this.#moveProbe(path, request)
     if (path === '/test/queue/held') return Response.json({ inputs: queueModel(this).held() })

@@ -2,6 +2,7 @@ import { PRIMARY_CHAT } from '@goblin/contracts'
 import { FlowRecord, InspectDetails } from '@goblin/contracts/inspect'
 import { Schema } from 'effect'
 import { expect } from 'vitest'
+import { inspectResult } from '../internal-client.ts'
 import { callOwner } from '../owner-client.ts'
 import { exchange, ownerSend, snapshotOf, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
@@ -11,9 +12,8 @@ type Probe = DurableObjectStub<PersonalAgentProbe>
 const ASK = 'flows-ask'
 const SPAWN = 'flows-spawn'
 
-/** One query of the agent's own `/inspect` route, answered as its `{ ok, value }` result. */
-const inspect = async (agent: Probe, query: object): Promise<unknown> =>
-  (await agent.fetch(new Request('https://agent/inspect', { method: 'POST', body: JSON.stringify(query) }))).json()
+/** One query of the agent's inspection (`POST /internal/inspect`), answered as its `{ ok, value }` result. */
+const inspect = (agent: Probe, query: object): Promise<unknown> => inspectResult(agent, query)
 
 /**
  * The flows a Persona and a Delegate leave (plan §4): the owner tags a Persona in main and it answers; main spawns a

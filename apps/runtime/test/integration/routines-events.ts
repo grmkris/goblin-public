@@ -1,6 +1,9 @@
 import { PRIMARY_CHAT, type RoutineDefinition } from '@goblin/contracts'
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
+import * as Effect from 'effect/Effect'
+import * as Exit from 'effect/Exit'
+import { deliverEvents } from '../../src/inbound/client.ts'
 import { AddedServerStore } from '../../src/mcp/servers.ts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { CredentialStore } from '../../src/mcp/credentials.ts'
@@ -53,14 +56,18 @@ async function setup(storage: DurableObjectStorage, agent: PersonalAgent, fixtur
     1,
   )
   fixture.receiver = async (request) => {
-    const result = await agent.mcpEventsWebhook({
-      body: new Uint8Array(await request.arrayBuffer()),
-      id: request.headers.get('webhook-id') ?? '',
-      timestamp: request.headers.get('webhook-timestamp') ?? '',
-      signature: request.headers.get('webhook-signature') ?? '',
-      subscriptionId: request.headers.get('x-mcp-subscription-id') ?? '',
-    })
-    return result.ok
+    const delivered = deliverEvents(
+      { fetch: (internal) => agent.onRequest(internal) },
+      {
+        body: new Uint8Array(await request.arrayBuffer()),
+        id: request.headers.get('webhook-id') ?? '',
+        timestamp: request.headers.get('webhook-timestamp') ?? '',
+        signature: request.headers.get('webhook-signature') ?? '',
+        subscriptionId: request.headers.get('x-mcp-subscription-id') ?? '',
+      },
+    )
+    const result = await Effect.runPromiseExit(delivered)
+    return Exit.isSuccess(result)
       ? new Response(result.value.response ?? null, { status: result.value.status })
       : new Response(null, { status: 400 })
   }

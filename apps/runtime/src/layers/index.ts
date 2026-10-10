@@ -1,4 +1,5 @@
 import * as Layer from 'effect/Layer'
+import { AgentHttp } from '../http/api/server.ts'
 import type { AgentInputs } from '../runtime/input.ts'
 import { AppRegistryLive, AppsLive } from './apps.ts'
 import { ModelBudgetLive } from './budget.ts'
@@ -6,7 +7,6 @@ import { CapabilitiesLive, ProfilesLive, RetoolLive } from './capabilities.ts'
 import { ChatDirectoryLive, ConversationLive, ConversationRegistryLive, MoverLive } from './conversation.ts'
 import { CoreLive } from './core.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
-import { HttpLive } from './http.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive, MemoryEngineLive } from './knowledge.ts'
 import { McpEventsLive, McpHostLive, McpLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
@@ -58,7 +58,7 @@ export const AgentLive = (input: AgentInputs) =>
     then(RoutinesLive),
     then(ObservabilityLive),
     then(AppsLive),
-    then(HttpLive),
+    then(AgentHttp.layer),
   )
 
 /** Every service a program may require, derived from the layers so no lane edits a shared union. */
