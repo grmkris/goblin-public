@@ -191,17 +191,17 @@ each over everything before it:
   every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
   shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `ConversationsInstance`,
-  `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`); programs use
+  `MovesInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`); programs use
   the area's services.
   The conversation registry tells `conversations.changed` what each write changed, inline (`syncWith` in
   `runtime/boundary.ts`, because it writes from synchronous code inside Promise work); the App registry and the
   workspace feed follow that topic.
 - **One layer per area** after the start, in order: the model budget and picker (`Budget`, `Models`, which a send's
   admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`), delegation (`Topics`,
-  `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), MCP (`McpServers`, `McpGrants`, `McpConnections`,
-  `Approvals`), capabilities (`Capabilities`), knowledge (`Memories`, `Retrieval`), routines
-  (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`, `AppEngine`, `Files`)
-  and HTTP (`OwnerHttp`). `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel` are served by their start steps.
+  `Personas`, `Invocations`, `Receipts`, `Home`, `Workspace`), capabilities (`Capabilities`), knowledge (`Memories`,
+  `Retrieval`), routines (`Routines`, `RoutineRuns`, `RoutineControl`), observability (`Inspection`), apps (`Apps`,
+  `AppEngine`, `Files`) and HTTP (`OwnerHttp`). The MCP host's `McpConnections`, `McpServers`, `McpGrants` and
+  `Approvals`, and `Events`, `Skills`, `Learner`, `RoutineUsage` and `Channel`, are served by their start steps.
 
 `AgentServices`, every service a program may require, is derived from the layers, so no area edits a shared union. A
 service is a `Context.Service` tag in its area (`<area>/service.ts`) whose methods are `Effect.fn` Effects with typed
@@ -573,15 +573,15 @@ agent starts and a server ID now points at another endpoint, everything stored f
 transaction: credentials, client registration, pending authorizations and grants. The owner connects and grants
 again, so tokens issued by one host never reach another.
 
-Calls go through the `McpConnectionManager`, keyed by server ID, which caches a connection and closes it after five
-minutes idle. Its auth provider refreshes a token a minute before expiry, single-flight per server, and refreshes
-once after a 401. A refresh the authorization server refuses (an OAuth error, a refused flow, a 401) marks the server
-`needs_auth` and the owner reconnects; one that never got an answer (the network, a 5xx) fails as `UpstreamMcp`
+Calls go through the connection manager (`McpConnections`, `mcp/manager.ts`), keyed by server ID, which caches a
+connection and closes it after five minutes idle. Its auth provider (`mcp/auth.ts`) refreshes a token a minute before
+expiry, one `SingleFlight` per server, and refreshes once after a 401. A refresh the authorization server refuses (an
+OAuth error, a refused flow, a 401) marks the server `needs_auth` and the owner reconnects; one that never got an answer (the network, a 5xx) fails as `UpstreamMcp`
 transport and keeps the credentials for the next call (`mcp/errors.ts` `isOAuthRejection`). Results are bounded (1 MiB,
 16 MiB for App HTML); a result JSON cannot hold is `unsupported`, not over the limit.
 
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
-resource. An App's switch (`PUT /api/mcp/app-grants`, `McpHost.setAppGrant`) grants an App as a whole: exactly the
+resource. An App's switch (`PUT /api/mcp/app-grants`, `McpGrants.setApp`) grants an App as a whole: exactly the
 tools that declare its `ui://` resource, including the ones only the App may call, and the resource itself.
 Connections (`components/tool-grants.tsx`) lists those tools under the switch, each still adjustable, and offers Allow
 all and None, which send the same exact grants one at a time. Tool annotations from the server are shown as its claims
@@ -595,12 +595,11 @@ above); that check comes first, and switches are forgotten with the server's gra
 ## Skills
 
 Skills come from MCP servers that declare the MCP Skills extension, and only from those the owner turns them on for
-in Connections (`app_skill_sources`, ADR 0008). The client declares the extension; `McpConnectionManager.listSkills`,
-`getSkill` and `readSkillFile` speak `skills/list`, `skills/get` and `resources/read`, with the shapes decoded in
-`skills/protocol.ts` because the SDK has no Skills support yet. The current library activates entries from
-`skills/list`; `getSkill` is available in the connection manager.
+in Connections (`app_skill_sources`, ADR 0008). The client declares the extension; `McpConnections.skills` and
+`skillFile` speak `skills/list` and `resources/read`, with the shapes decoded in `skills/protocol.ts` because the SDK
+has no Skills support yet. The library activates entries from `skills/list`.
 
-`SkillLibrary` (`skills/library.ts`) keeps each enabled server's listing for its `ttlMs` (30 s to an hour) and names
+The `Skills` service (`skills/library.ts`) keeps each enabled server's listing for its `ttlMs` (30 s to an hour) and names
 every skill `<server>:<name>`. The `goblin.skills` extension (main, threads and helpers) renders that list in
 its `skills` section, refreshing an expired listing when the section is evaluated, and offers `skill_activate` and
 `skill_read`. Activation reads `SKILL.md`, checks size, SHA-256 and frontmatter against the entry (`skills/verify.ts`),
