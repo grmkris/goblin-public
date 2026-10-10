@@ -1,6 +1,7 @@
 import { FILE_PATH, type FileEntry } from '@goblin/contracts'
 import { NotFound, PayloadTooLarge } from '@goblin/contracts/api'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { owner } from '../src/lib/api.ts'
 import { fileSize, freeName, uploadAttachment, uploadFolder, uploadName } from '../src/lib/files.ts'
 import { messageOf } from '../src/lib/query/app-error.ts'
 
@@ -15,15 +16,18 @@ const entry = (name: string): FileEntry => ({
 })
 const notes = () => new File(['example'], 'notes.txt', { type: 'text/plain' })
 
-/** The files routes in memory: today's folder holds `held`, and a write answers `write`. */
+/**
+ * The files endpoints in memory: today's folder holds `held`, and a write answers `write`. The listing comes through
+ * the typed owner client (a URL), the upload through `fetch` itself (a path).
+ */
 function filesRoutes(held: readonly string[], write: () => Response) {
   const seen: string[] = []
-  vi.stubGlobal('fetch', async (input: string, init?: RequestInit) => {
-    const url = input
+  vi.stubGlobal('location', new URL('http://app.test/'))
+  vi.stubGlobal('fetch', async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(input, 'http://app.test/')
     const headers = new Headers(init?.headers)
-    seen.push(`${init?.method ?? 'GET'} ${url} csrf=${headers.get('x-goblin-csrf') ?? '-'}`)
-    if (url.startsWith('/api/files?dir='))
-      return Response.json({ entries: held.map(entry), usedBytes: 0, limitBytes: 1 })
+    seen.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search} csrf=${headers.get('x-goblin-csrf') ?? '-'}`)
+    if (url.pathname === '/api/files') return Response.json({ entries: held.map(entry), usedBytes: 0, limitBytes: 1 })
     return write()
   })
   return seen
@@ -31,6 +35,9 @@ function filesRoutes(held: readonly string[], write: () => Response) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+afterAll(async () => {
+  await owner.runtime.dispose()
 })
 
 describe('an upload', () => {
@@ -48,16 +55,21 @@ describe('an upload', () => {
     ])
   })
 
-  it('fails with the typed refusal and its reference, in either shape the routes answer', async () => {
+  it('fails with the typed refusal its envelope names, quoting its reference', async () => {
     filesRoutes([], () =>
-      Response.json({ error: 'NotFound', what: 'folder' }, { status: 404, headers: { 'x-goblin-ref': 'ray-404' } }),
+      Response.json(
+        { error: { code: 'not_found', message: 'That does not exist.', what: 'x', ref: 'ray-404' } },
+        {
+          status: 404,
+        },
+      ),
     )
-    const old = await uploadAttachment(notes(), new Set(), DAY).then(
+    const missing = await uploadAttachment(notes(), new Set(), DAY).then(
       () => undefined,
       (cause: unknown) => cause,
     )
-    expect(old).toBeInstanceOf(NotFound)
-    expect(messageOf(old, 'upload notes.txt')).toBe('That does not exist. · ref ray-404')
+    expect(missing).toBeInstanceOf(NotFound)
+    expect(messageOf(missing, 'upload notes.txt')).toBe('That does not exist. · ref ray-404')
     filesRoutes([], () =>
       Response.json(
         { error: { code: 'payload_too_large', message: 'That is too large.', limit: 1, ref: 'ray-413' } },

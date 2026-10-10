@@ -1,12 +1,13 @@
 // The owner's files as the browser reaches them (ADR 0022): uploads for a message go to `/uploads/<day>/`, under a
-// name the runtime's path rule accepts and that replaces nothing already there. The files routes carry bytes, not the
-// typed JSON API, so this module calls them itself, with the headers the typed client sends.
-import { type Attachment, FILE_LIMITS, FileEntry, FileListing } from '@goblin/contracts'
-import { API_ERRORS, AppError, PayloadTooLarge } from '@goblin/contracts/api'
+// name the runtime's path rule accepts and that replaces nothing already there. The listing goes through the typed
+// owner API; an upload sends the file's bytes as its body, so this module sends it itself, with the headers the typed
+// client sends.
+import { type Attachment, FILE_LIMITS, FileEntry } from '@goblin/contracts'
+import { API_ERRORS, PayloadTooLarge } from '@goblin/contracts/api'
 import * as Data from 'effect/Data'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { isString, record } from './values.ts'
+import { owner } from './api.ts'
 
 const NAME_LIMIT = 80
 
@@ -53,12 +54,10 @@ export function fileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`
 }
 
-const decodeListing = Schema.decodeUnknownSync(FileListing)
 const decodeEntry = Schema.decodeUnknownSync(FileEntry)
 const decodeEnvelope = Schema.decodeUnknownOption(Schema.Union(API_ERRORS))
-const decodeTagged = Schema.decodeUnknownOption(AppError)
 
-/** A files request whose answer names no failure: its status says what happened. */
+/** An upload whose answer names no failure: its status says what happened. */
 class FilesFailure extends Data.TaggedError('FilesFailure')<{ readonly status: number }> {
   constructor(status: number) {
     super({ status })
@@ -66,30 +65,20 @@ class FilesFailure extends Data.TaggedError('FilesFailure')<{ readonly status: n
 }
 
 /**
- * The typed failure a files answer carries, in either shape the files routes answer (the error envelope, or the older
- * `{ error: Tag, …fields }`), quoting the edge's reference, else the id the request went out with.
+ * One upload (`PUT /api/files/content`): same-origin with the session cookie, a fresh request id and the CSRF header,
+ * the file as the body. A refusal is the typed failure its envelope names, quoting the request's reference.
  */
-function failureOf(status: number, body: unknown, ref: string): Error {
-  const envelope = decodeEnvelope(body)
-  if (Option.isSome(envelope)) return envelope.value
-  const fields = record(body)
-  const tagged = decodeTagged({ ...fields, _tag: fields?.error, ref: isString(fields?.ref) ? fields.ref : ref })
-  return Option.getOrElse(tagged, () => new FilesFailure(status))
-}
-
-/** One call to the files routes: same-origin with the session cookie, a fresh request id, CSRF on a write. */
-async function filesCall(url: string, init: { readonly method?: 'PUT'; readonly type?: string; readonly body?: File }) {
+async function put(url: string, file: File, type: string): Promise<unknown> {
   const sent = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-  const write = init.method === undefined ? {} : { 'x-goblin-csrf': '1', 'content-type': init.type ?? '' }
   const response = await fetch(url, {
-    method: init.method ?? 'GET',
+    method: 'PUT',
     credentials: 'same-origin',
-    headers: { 'x-goblin-request': sent, ...write },
-    ...(init.body === undefined ? {} : { body: init.body }),
+    headers: { 'x-goblin-request': sent, 'x-goblin-csrf': '1', 'content-type': type },
+    body: file,
   })
   // expected: a body that is not JSON leaves the status to say what happened
   const data: unknown = await response.json().catch(() => null)
-  if (!response.ok) throw failureOf(response.status, data, response.headers.get('x-goblin-ref') ?? sent)
+  if (!response.ok) throw Option.getOrElse(decodeEnvelope(data), () => new FilesFailure(response.status))
   return data
 }
 
@@ -100,11 +89,11 @@ async function filesCall(url: string, init: { readonly method?: 'PUT'; readonly 
 export async function uploadAttachment(file: File, taken: Set<string>, now = new Date()): Promise<Attachment> {
   if (file.size > FILE_LIMITS.fileBytes) throw new PayloadTooLarge({ limit: FILE_LIMITS.fileBytes })
   const folder = uploadFolder(now)
-  const listing = decodeListing(await filesCall(`/api/files?dir=${encodeURIComponent(folder)}`, {}))
+  const listing = await owner.run((api) => api.files.list({ query: { dir: folder } }))
   const held = new Set([...taken, ...listing.entries.map((entry) => entry.name)])
   const name = freeName(uploadName(file.name), held)
   taken.add(name)
   const type = file.type === '' ? 'application/octet-stream' : file.type
-  const entry = decodeEntry(await filesCall(fileUrl(`${folder}/${name}`), { method: 'PUT', type, body: file }))
+  const entry = decodeEntry(await put(fileUrl(`${folder}/${name}`), file, type))
   return { path: entry.path, name: entry.name, size: entry.size, mimeType: entry.mimeType }
 }
