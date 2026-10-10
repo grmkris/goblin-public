@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import { channelOf } from '../../../lib/topics.ts'
-import { useWorkspaceFeed } from '../../workspace-feed.tsx'
+import { useConversations, useTopics } from '../../../lib/workspace/hooks.ts'
 
 /** A row of a rail page that opens a chat where it lives: a channel as itself, a thread or subagent in its panel. */
 export function ChatRow({
@@ -13,8 +13,7 @@ export function ChatRow({
   readonly unread?: boolean
   readonly children: ReactNode
 }) {
-  const { conversations, topics } = useWorkspaceFeed()
-  const channel = channelOf(chat, conversations, topics)
+  const channel = channelOf(chat, useConversations(), useTopics())
   return (
     <Link
       to="/c/$chatId"

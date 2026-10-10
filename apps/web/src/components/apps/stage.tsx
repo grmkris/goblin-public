@@ -2,8 +2,9 @@
 // the DOM; it follows its App's page while the App has one, else the App's place in its transcript, frame by frame,
 // and springs between the two when the App moves, so it leaves the transcript for its page and comes back along the
 // same path without reloading. It clips itself to what of that place shows, and tells the host whether any does.
-import { type RefObject, useEffect, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { PanelRightOpenIcon, XIcon } from 'lucide-react'
+import type { AppView } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
 import { clipStage, clippingAncestors } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
@@ -18,7 +19,7 @@ import { MessageOffer } from './message-offer.tsx'
 import { receiptText } from '../../lib/app-message.ts'
 import { useAppPlacement } from './placement.ts'
 import { appNames } from '../../lib/app-names.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useApps } from '../../lib/workspace/hooks.ts'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
 const AXES = ['x', 'y', 'width', 'height'] as const
@@ -175,7 +176,8 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
 /** The host's bar above the App in its transcript: its name, to its page, and close. On its page the pill does this. */
 function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
-  const title = appNames(useWorkspaceFeed().apps).get(instance.app.id) ?? instance.app.title
+  const { id } = instance.app
+  const title = useApps(useCallback((apps: readonly AppView[]) => appNames(apps).get(id), [id])) ?? instance.app.title
   return (
     <div className="app-chrome">
       <span className="app-chrome-title">{title}</span>

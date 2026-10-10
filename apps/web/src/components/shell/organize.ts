@@ -4,9 +4,9 @@ import type { TopicView, UpdateTopic } from '@goblin/contracts'
 import { Conflict } from '@goblin/contracts/api'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { withRef } from '../../lib/refusal.ts'
+import { applyWorkspaceChanges } from '../../lib/workspace/sync.ts'
 import { undoMutation } from '../../organize/queries.ts'
 import { createTopicMutation, updateTopicMutation } from '../../topics/queries.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 /** Why an Undo was refused, in words: something changed the target since, or it was already undone. */
 export function undoRefusal(failure: unknown): string {
@@ -23,7 +23,6 @@ export function undoRefusal(failure: unknown): string {
  */
 export function useOrganize() {
   const queryClient = useQueryClient()
-  const { apply } = useWorkspaceFeed()
   const create = useMutation(createTopicMutation(queryClient)).mutateAsync
   const update = useMutation(updateTopicMutation(queryClient)).mutateAsync
   const undo = useMutation(undoMutation(queryClient)).mutateAsync
@@ -31,18 +30,18 @@ export function useOrganize() {
     () => ({
       createTopic: async (name: string, operationId: string): Promise<TopicView> => {
         const topic = await create({ name, operationId })
-        apply([{ type: 'topic', topic }])
+        applyWorkspaceChanges(queryClient, [{ type: 'topic', topic }])
         return topic
       },
       updateTopic: async (id: number, change: UpdateTopic): Promise<TopicView> => {
         const topic = await update({ id, change })
-        apply([{ type: 'topic', topic }])
+        applyWorkspaceChanges(queryClient, [{ type: 'topic', topic }])
         return topic
       },
       undo: async (receipt: string): Promise<void> => {
-        apply([{ type: 'receipt', receipt: await undo(receipt) }])
+        applyWorkspaceChanges(queryClient, [{ type: 'receipt', receipt: await undo(receipt) }])
       },
     }),
-    [apply, create, update, undo],
+    [queryClient, create, update, undo],
   )
 }

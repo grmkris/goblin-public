@@ -1,7 +1,7 @@
 import type { PersonaInvocationView } from '@goblin/contracts'
-import { answering } from '../../lib/workspace-feed.ts'
+import { useInvocations, usePersonas } from '../../lib/workspace/hooks.ts'
+import { answering } from '../../lib/workspace/slices.ts'
 import { PersonaAvatar } from '../persona-avatar.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 
 const byOrder = (a: PersonaInvocationView, b: PersonaInvocationView) => a.order - b.order || a.persona - b.persona
 
@@ -10,10 +10,11 @@ const byOrder = (a: PersonaInvocationView, b: PersonaInvocationView) => a.order 
  * while one writes, "waiting…" while one waits its turn.
  */
 export function Answering({ chat }: { readonly chat: string }) {
-  const feed = useWorkspaceFeed()
-  const pending = feed.invocations.filter((each) => each.chat === chat && answering(each)).toSorted(byOrder)
+  const invocations = useInvocations()
+  const all = usePersonas()
+  const pending = invocations.filter((each) => each.chat === chat && answering(each)).toSorted(byOrder)
   if (pending.length === 0) return null
-  const personas = new Map(feed.personas.map((persona) => [persona.id, persona]))
+  const personas = new Map(all.map((persona) => [persona.id, persona]))
   return (
     <div className="answering" aria-live="polite">
       {pending.map((invocation) => {

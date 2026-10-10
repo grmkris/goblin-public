@@ -7,6 +7,7 @@ import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import { useNavigation } from '../lib/navigation.ts'
+import { usePersonas } from '../lib/workspace/hooks.ts'
 import { SharedContextChips, useSharedContext } from './apps/offers.tsx'
 import { CapabilitiesButton } from './capabilities.tsx'
 import { MessageComposer } from './composer.tsx'
@@ -17,7 +18,6 @@ import { ModelPicker, type useModelChoice } from './model-picker.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
 import { useUsageToday } from './use-usage.ts'
-import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 type Send = ReturnType<typeof useConversation>['send']
 
@@ -91,14 +91,12 @@ function ClosedNotice({ by, onReopen }: { readonly by: 'owner' | 'done'; readonl
 function ComposerContext({
   id,
   active,
-  running,
   presence,
   model,
   usage,
   context,
 }: {
   readonly id: string
-  readonly running: boolean
   readonly presence: ReturnType<typeof presenceOf>
   readonly model: ReturnType<typeof useModelChoice>
   readonly usage: ReturnType<typeof useUsageToday>
@@ -112,7 +110,7 @@ function ComposerContext({
         <span className="truncate">{presence.label}</span>
       </span>
       <ModelPicker choice={model.choice} onChoose={(picked) => void model.choose(picked)} />
-      <CapabilitiesButton thread={id} running={running} />
+      <CapabilitiesButton thread={id} />
       <UsageIndicator
         usage={usage}
         context={context}
@@ -163,7 +161,7 @@ function DockCards({
 function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: readonly Part[]) {
   const { projection, status } = conversation
   const running = projection?.running ?? false
-  const usage = useUsageToday(running)
+  const usage = useUsageToday()
   const waiting = useMemo(() => openInteractions(parts), [parts])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
   const presence = presenceOf({
@@ -214,7 +212,7 @@ export function ConversationDock({
   readonly sendLabel?: string | undefined
 }) {
   const navigation = useNavigation()
-  const { personas } = useWorkspaceFeed()
+  const personas = usePersonas()
   const { projection, notice, send, stop, removeQueued } = conversation
   const sendOwn = useSendWithAppContext(id, send, onStartThread)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
@@ -250,7 +248,6 @@ export function ConversationDock({
                 <ComposerContext
                   id={id}
                   active={active}
-                  running={running}
                   presence={presence}
                   model={model}
                   usage={usage}

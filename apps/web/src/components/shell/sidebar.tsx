@@ -8,10 +8,17 @@ import { activePersonas } from '../../lib/personas.ts'
 import { recentThreads } from '../../lib/recent-threads.ts'
 import { isUnread, threadTitle } from '../../lib/threads.ts'
 import { channelOf, channels, topicThreads } from '../../lib/topics.ts'
-import { activityState } from '../../lib/workspace-feed.ts'
+import {
+  useActivities,
+  useActivity,
+  useApps,
+  useConversation,
+  useConversations,
+  usePersonas,
+  useTopics,
+} from '../../lib/workspace/hooks.ts'
 import { AppTile } from '../apps/app-tile.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { TopicDialog } from './topic-dialog.tsx'
 
 /** The sections the owner folded, remembered in this browser (a convenience: without storage they open on reload). */
@@ -66,14 +73,16 @@ function Section({
 
 /** Where the page is: the channel it shows (a channel's own page, or the channel of a thread or App there) and its thread. */
 function useCurrent(): { readonly channel: string | undefined; readonly thread: string | undefined } {
-  const feed = useWorkspaceFeed()
+  const conversations = useConversations()
+  const topics = useTopics()
+  const apps = useApps()
   const location = useRouterState({ select: (router) => router.location })
   const [, kind, id] = /^\/([ca])\/(\d{1,12})$/u.exec(location.pathname) ?? []
   if (id === undefined) return { channel: undefined, thread: undefined }
-  const chat = kind === 'a' ? feed.apps.find((app) => app.id === id)?.conversation : id
+  const chat = kind === 'a' ? apps.find((app) => app.id === id)?.conversation : id
   const thread = kind === 'c' ? location.search.thread : undefined
   return {
-    channel: chat === undefined ? undefined : channelOf(chat, feed.conversations, feed.topics),
+    channel: chat === undefined ? undefined : channelOf(chat, conversations, topics),
     thread: thread === undefined ? undefined : String(thread),
   }
 }
@@ -88,10 +97,9 @@ function useRecentThreads(): ReadonlySet<string> {
 
 /** A Topic's channel: `#` and its name, bold with a dot while it has replies the owner has not read. */
 function ChannelRow({ topic, current }: { readonly topic: TopicView; readonly current: boolean }) {
-  const feed = useWorkspaceFeed()
-  const view = feed.conversations.find((candidate) => candidate.id === topic.conversation)
+  const view = useConversation(topic.conversation)
   const unread = view !== undefined && isUnread(view)
-  const working = activityState(feed, topic.conversation) !== 'idle'
+  const working = useActivity(topic.conversation) !== undefined
   return (
     <li>
       <Link
@@ -120,9 +128,8 @@ function ThreadRow({
   readonly channel: string
   readonly current: boolean
 }) {
-  const feed = useWorkspaceFeed()
   const unread = isUnread(view)
-  const working = activityState(feed, view.id) !== 'idle'
+  const working = useActivity(view.id) !== undefined
   return (
     <li>
       <Link
@@ -152,9 +159,11 @@ function ChannelWithThreads({
   readonly current: ReturnType<typeof useCurrent>
   readonly recent: ReadonlySet<string>
 }) {
-  const feed = useWorkspaceFeed()
+  const conversations = useConversations()
+  const topics = useTopics()
+  const activity = useActivities()
   const shown = current.thread === undefined ? recent : new Set([...recent, current.thread])
-  const threads = topicThreads(topic.conversation, feed.conversations, feed.topics, feed.activity, shown)
+  const threads = topicThreads(topic.conversation, conversations, topics, activity, shown)
   return (
     <>
       <ChannelRow topic={topic} current={topic.conversation === current.channel && current.thread === undefined} />
@@ -227,10 +236,10 @@ function PersonaRow({ persona, current }: { readonly persona: PersonaView; reado
 
 /** The Personas, then "+ Add persona". */
 function Personas({ path }: { readonly path: string }) {
-  const feed = useWorkspaceFeed()
+  const personas = usePersonas()
   return (
     <Section id="personas" label="Personas">
-      {activePersonas(feed.personas).map((persona) => (
+      {activePersonas(personas).map((persona) => (
         <PersonaRow key={persona.id} persona={persona} current={path === `/p/${persona.id}`} />
       ))}
       <li>
@@ -267,12 +276,11 @@ function AddTopic() {
  * end, then Add topic), then the Personas (a click opens a profile), then the agent apps. A click on a channel opens it; on a thread, opens it in the panel.
  */
 export function Sidebar() {
-  const feed = useWorkspaceFeed()
   const current = useCurrent()
   const recent = useRecentThreads()
   const path = useRouterState({ select: (router) => router.location.pathname })
-  const { active, archived } = channels(feed.topics)
-  const apps = agentApps(feed.apps)
+  const { active, archived } = channels(useTopics())
+  const apps = useApps(agentApps)
   return (
     <nav className="shell-sidebar" aria-label="Topics and apps">
       <header className="sidebar-head">

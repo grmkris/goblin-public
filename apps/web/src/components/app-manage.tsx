@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import type { AgentAppChange, AgentAppDetail, AgentAppJob, AppPower } from '@goblin/contracts'
+import type { AgentAppChange, AgentAppDetail, AgentAppJob, AppPower, ConversationView } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -14,30 +14,32 @@ import {
   NativeSelectOption,
   Skeleton,
 } from '@goblin/ui'
-import { agentAppQuery, changeAgentAppMutation, deleteAgentAppMutation, useFeedRefresh } from '../agent-apps/queries.ts'
+import { agentAppQuery, changeAgentAppMutation, deleteAgentAppMutation } from '../agent-apps/queries.ts'
 import { jobLine } from '../lib/app-jobs.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryBoundary } from '../lib/query/query-boundary.tsx'
 import { reportUnexpected } from '../lib/unexpected.ts'
+import { useConversations } from '../lib/workspace/hooks.ts'
 import { PageSection } from './page-section.tsx'
 import { powerText } from './parts/app-powers.tsx'
 import { AppTile } from './apps/app-tile.tsx'
-import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 type Run = (change: AgentAppChange) => void
 
 const when = (at: number) => new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 const kib = (bytes: number) => `${String(Math.max(0, Math.round(bytes / 1024)))} KB`
+/** The conversations an app may live in: any but a subagent, while open. */
+const homeChoices = (conversations: readonly ConversationView[]) =>
+  conversations.filter((each) => each.kind !== 'subagent' && each.closedBy === undefined)
 
-/** One agent app, read and changed: every change answers with the app as it is after it. */
+/**
+ * One agent app, read and changed: every change answers with the app as it is after it, and the feed showing the app
+ * changed reads it again (`lib/workspace/invalidations.ts`).
+ */
 function useAgentApp(name: string) {
   const queryClient = useQueryClient()
   const detail = useSuspenseQuery(agentAppQuery(name))
   const change = useMutation(changeAgentAppMutation(queryClient, name))
-  const feed = useWorkspaceFeed()
-  const shown = feed.apps.find((each) => each.source.kind === 'agent' && each.source.name === name)
-  const revision = shown?.source.kind === 'agent' ? `${shown.source.revision}:${JSON.stringify(shown.source.jobs)}` : ''
-  useFeedRefresh(agentAppQuery(name).queryKey, revision)
   const error =
     change.error !== null
       ? messageOf(change.error, 'change the app')
@@ -49,8 +51,7 @@ function useAgentApp(name: string) {
 
 /** The app's words, its version, where it lives (which the owner may change) and the way to open it. */
 function Overview({ app, busy, run }: { readonly app: AgentAppDetail; readonly busy: boolean; readonly run: Run }) {
-  const feed = useWorkspaceFeed()
-  const homes = feed.conversations.filter((each) => each.kind !== 'subagent' && each.closedBy === undefined)
+  const homes = useConversations(homeChoices)
   return (
     <Card>
       <CardContent>

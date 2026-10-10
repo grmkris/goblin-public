@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
@@ -24,21 +24,16 @@ type View = ConversationCapabilities
 type Change = (change: CapabilityChange) => void
 
 /**
- * A conversation's switches: loaded with it, again when a run starts or ends (a card may have turned one on) and when
- * the panel opens. A change shows at once and is replaced by the agent's answer, or undone with the reason.
+ * A conversation's switches: loaded with it, again when a run starts or ends there (a card may have turned one on; the
+ * workspace feed says so, `lib/workspace/invalidations.ts`) and when the panel opens. A change shows at once and is
+ * replaced by the agent's answer, or undone with the reason.
  */
-export function useCapabilities(thread: string, running: boolean) {
+export function useCapabilities(thread: string) {
   const queryClient = useQueryClient()
   const read = useQuery(capabilitiesQuery(thread))
   const setting = useMutation(setCapabilityMutation(queryClient, thread))
   const { refetch } = read
   const load = useCallback(() => void refetch(), [refetch])
-  const started = useRef(running)
-  useEffect(() => {
-    if (started.current === running) return
-    started.current = running
-    load()
-  }, [running, load])
   const error =
     (setting.error !== null && messageOf(setting.error, 'change that switch')) ||
     (read.error !== null && messageOf(read.error, "read this conversation's switches")) ||
@@ -192,8 +187,8 @@ function CapabilitiesPanel({
  * Beside the composer: what this conversation lets its agent use, in a panel above it. The button reads "3 of 5" when
  * something is switched off here. A subagent follows the conversation that started it, so it has none.
  */
-export function CapabilitiesButton({ thread, running }: { readonly thread: string; readonly running: boolean }) {
-  const { view, error, change, load } = useCapabilities(thread, running)
+export function CapabilitiesButton({ thread }: { readonly thread: string }) {
+  const { view, error, change, load } = useCapabilities(thread)
   if (view === undefined || view.kind === 'subagent') return null
   const { on, total } = capabilityCount(view)
   const narrowed = on < total

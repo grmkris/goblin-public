@@ -89,24 +89,18 @@ describe("a Topic's threads in the sidebar", () => {
     view('10'),
   ]
   it('lists the threads at work, unread or recently opened, newest first, under their own channel', () => {
-    const working = new Map([['7', { id: '7', state: 'working' as const, since: 1 }]])
+    const working = { '7': { id: '7', state: 'working' as const, since: 1 } }
     const listed = topicThreads('1', views, TOPICS, working, new Set(['6']))
     expect(listed.map(({ id }) => id)).toEqual(['6', '5', '7'])
-    expect(topicThreads('20', views, TOPICS, new Map(), new Set()).map(({ id }) => id)).toEqual(['8'])
+    expect(topicThreads('20', views, TOPICS, {}, new Set()).map(({ id }) => id)).toEqual(['8'])
   })
 
   it('never lists a closed thread, and lists at most five', () => {
-    expect(topicThreads('1', views, TOPICS, new Map(), new Set(['9'])).map(({ id }) => id)).toEqual(['5'])
+    expect(topicThreads('1', views, TOPICS, {}, new Set(['9'])).map(({ id }) => id)).toEqual(['5'])
     const many = [
       views[0] ?? view('1'),
       ...Array.from({ length: 8 }, (_, n) => view(String(30 + n), { lastReplyAt: n + 1 })),
     ]
-    expect(topicThreads('1', many, [], new Map(), new Set()).map(({ id }) => id)).toEqual([
-      '37',
-      '36',
-      '35',
-      '34',
-      '33',
-    ])
+    expect(topicThreads('1', many, [], {}, new Set()).map(({ id }) => id)).toEqual(['37', '36', '35', '34', '33'])
   })
 })

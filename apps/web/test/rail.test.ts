@@ -80,7 +80,7 @@ describe('the rail pages', () => {
   })
 
   it('puts Delegates at work first, then the open ones, and the finished apart', () => {
-    const work = delegates(VIEWS, new Map([['8', { id: '8', state: 'working' as const, since: 1 }]]))
+    const work = delegates(VIEWS, { '8': { id: '8', state: 'working', since: 1 } })
     expect(work.active.map(({ id }) => id)).toEqual(['8', '10'])
     expect(work.finished.map(({ id }) => id)).toEqual(['9'])
   })
@@ -96,12 +96,10 @@ describe('the rail pages', () => {
   })
 
   it('counts unread threads, what needs the owner and the work going on, for the rail', () => {
-    const counts = railCounts(
-      VIEWS,
-      [app('2', true)],
-      new Map([['8', { id: '8', state: 'working' as const, since: 1 }]]),
-      [invocation(1, 'running', 1), invocation(2, 'answered', 1)],
-    )
+    const counts = railCounts(VIEWS, [app('2', true)], { '8': { id: '8', state: 'working', since: 1 } }, [
+      invocation(1, 'running', 1),
+      invocation(2, 'answered', 1),
+    ])
     expect(counts).toEqual({ threads: 1, activity: 3, tasks: 2 })
   })
 })

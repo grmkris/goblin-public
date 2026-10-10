@@ -1,16 +1,8 @@
-import type {
-  AppView,
-  Attention,
-  ConversationActivity,
-  ConversationView,
-  PersonaInvocationView,
-} from '@goblin/contracts'
+import type { AppView, Attention, ConversationView, PersonaInvocationView } from '@goblin/contracts'
 import { jobTrouble } from './app-jobs.ts'
 import { isClosed, isUnread } from './threads.ts'
 import { isChannel } from './topics.ts'
-import { answering } from './workspace-feed.ts'
-
-type Activity = ReadonlyMap<string, ConversationActivity>
+import { type Activity, activityOf, answering } from './workspace/slices.ts'
 
 const latest = (view: ConversationView) => view.lastReplyAt ?? view.createdAt
 const newest = (a: ConversationView, b: ConversationView) => latest(b) - latest(a) || Number(b.id) - Number(a.id)
@@ -65,8 +57,9 @@ export function delegates(
 ): { readonly active: readonly ConversationView[]; readonly finished: readonly ConversationView[] } {
   const subagents = views.filter((view) => view.kind === 'subagent').toSorted(newest)
   const open = subagents.filter((view) => !isClosed(view))
+  const busy = (view: ConversationView) => activityOf(activity, view.id) !== undefined
   return {
-    active: [...open.filter((view) => activity.has(view.id)), ...open.filter((view) => !activity.has(view.id))],
+    active: [...open.filter(busy), ...open.filter((view) => !busy(view))],
     finished: subagents.filter(isClosed).slice(0, finishedShown),
   }
 }
@@ -84,7 +77,7 @@ export function railCounts(
   activity: Activity,
   invocations: readonly PersonaInvocationView[],
 ): { readonly threads: number; readonly activity: number; readonly tasks: number } {
-  const working = views.filter((view) => view.kind === 'subagent' && activity.has(view.id)).length
+  const working = views.filter((view) => view.kind === 'subagent' && activityOf(activity, view.id) !== undefined).length
   return {
     threads: threadList(views).unread.length,
     activity: needsYou(views, apps).length,

@@ -184,7 +184,7 @@ function CapabilityCard({
   readonly onAnswer: Answer
 }) {
   const { target } = interaction
-  const { view } = useCapabilities(thread, false)
+  const { view } = useCapabilities(thread)
   const label = targetLabel(target, view)
   const where = thread === PRIMARY_CHAT ? 'in main' : 'in this thread'
   const { busy, error, replying } = useReplying()

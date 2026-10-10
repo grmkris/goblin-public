@@ -1,10 +1,8 @@
 // The owner's agent apps (ADR 0021) through the typed client: the Apps page's list and each app's page. Keys are
 // [feature, kind, input]; a change answers with the app as it is after it, so its detail is set, not read again.
-import { type QueryClient, type QueryKey, mutationOptions, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
+import { type QueryClient, mutationOptions } from '@tanstack/react-query'
 import type { AgentAppChange } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
-import { reportUnexpected } from '../lib/unexpected.ts'
 
 const agentAppKeys = {
   list: ['agentApps', 'list'] as const,
@@ -46,17 +44,3 @@ export const deleteAgentAppMutation = (queryClient: QueryClient, name: string) =
     }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: agentAppKeys.list }),
   })
-
-/**
- * Reads `queryKey` again when the workspace feed's `signature` for it moves on: the feed says an app changed, Query
- * reads it. The first render reads through the query itself.
- */
-export function useFeedRefresh(queryKey: QueryKey, signature: string): void {
-  const queryClient = useQueryClient()
-  const seen = useRef(signature)
-  useEffect(() => {
-    if (seen.current === signature) return
-    seen.current = signature
-    queryClient.invalidateQueries({ queryKey }).catch(reportUnexpected)
-  }, [queryClient, queryKey, signature])
-}

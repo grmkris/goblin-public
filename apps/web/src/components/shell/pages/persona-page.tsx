@@ -9,11 +9,11 @@ import { QueryBoundary } from '../../../lib/query/query-boundary.tsx'
 import { withRef } from '../../../lib/refusal.ts'
 import { relativeTime } from '../../../lib/threads.ts'
 import { reportUnexpected } from '../../../lib/unexpected.ts'
+import { applyWorkspaceChanges } from '../../../lib/workspace/sync.ts'
 import { createPersonaMutation, personaDetailQuery, updatePersonaMutation } from '../../../personas/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 import { useMinute } from '../../use-now.ts'
-import { useWorkspaceFeed } from '../../workspace-feed.tsx'
 import { BLANK, NAME, PersonaForm } from './persona-form.tsx'
 
 /** What the owner reads when a Persona could not be saved: a conflict in its own words, anything else as described. */
@@ -113,12 +113,11 @@ function useDraft(persona: PersonaView) {
 
 /** Saving a new revision of `persona`: the feed shows it at once, and the profile reads it again. */
 function useSave(queryClient: QueryClient, persona: PersonaView, saved: (next: PersonaView) => void) {
-  const feed = useWorkspaceFeed()
   const save = useMutation(updatePersonaMutation(queryClient, persona.id))
   const start = (change: UpdatePersona) =>
     save.mutate(change, {
       onSuccess: (next) => {
-        feed.apply([{ type: 'persona', persona: next }])
+        applyWorkspaceChanges(queryClient, [{ type: 'persona', persona: next }])
         saved(next)
       },
     })
@@ -160,7 +159,6 @@ function Profile({ id }: { readonly id: number }) {
 /** A new Persona (`/p/new`): its definition, then Create, which opens its profile. One operation id per visit. */
 function Create() {
   const queryClient = useQueryClient()
-  const feed = useWorkspaceFeed()
   const navigate = useNavigate()
   const [draft, setDraft] = useState<PersonaDefinition>(BLANK)
   const [operation] = useState(() => crypto.randomUUID())
@@ -170,7 +168,7 @@ function Create() {
       { ...draft, operationId: operation },
       {
         onSuccess: (persona) => {
-          feed.apply([{ type: 'persona', persona }])
+          applyWorkspaceChanges(queryClient, [{ type: 'persona', persona }])
           navigate({ to: '/p/$id', params: { id: String(persona.id) }, replace: true }).catch(reportUnexpected)
         },
       },

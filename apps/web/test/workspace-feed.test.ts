@@ -1,17 +1,23 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { AppView, ConversationView } from '@goblin/contracts'
+import { MutationObserver, QueryObserver, type QueryClient, type QueryObserverOptions } from '@tanstack/react-query'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AppView, ConversationView, WorkspaceSnapshot } from '@goblin/contracts'
+import { usageQuery } from '../src/agent/queries.ts'
+import { agentAppQuery, agentAppsQuery } from '../src/agent-apps/queries.ts'
+import { capabilitiesQuery } from '../src/capabilities/queries.ts'
+import { conversationKeys } from '../src/conversations/queries.ts'
 import type { PiEventSource, ReconnectScheduler } from '../src/lib/conversation-stream.ts'
+import { testQueryClient } from '../src/lib/query/testing.ts'
+import { WorkspaceFeedConnection } from '../src/lib/workspace/connection.ts'
+import { decodeChanges, decodeSnapshot } from '../src/lib/workspace/decode.ts'
+import { type Cached, staleAfter } from '../src/lib/workspace/invalidations.ts'
 import {
-  EMPTY_WORKSPACE,
-  WorkspaceFeedConnection,
-  type WorkspaceState,
-  activityState,
-  applyChanges,
-  decodeChanges,
-  decodeSnapshot,
-  fromSnapshot,
-  withPendingApps,
-} from '../src/lib/workspace-feed.ts'
+  closeWorkspaceAppMutation,
+  keepWorkspaceAppMutation,
+  markReadWorkspaceMutation,
+} from '../src/lib/workspace/mutations.ts'
+import { EMPTY_WORKSPACE, activityOf, applyChanges, fromSnapshot } from '../src/lib/workspace/slices.ts'
+import { workspaceQueries, workspaceSync } from '../src/lib/workspace/sync.ts'
+import { personaKeys } from '../src/personas/queries.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,
@@ -59,6 +65,10 @@ const app = (id: string, extra: Partial<AppView> = {}): AppView => ({
   createdAt: Number(id),
   ...extra,
 })
+const agentApp = (id: string, name: string, revision: number): AppView => ({
+  ...app(id),
+  source: { kind: 'agent', name, release: 'r1', version: 1, revision, jobs: [] },
+})
 
 const CRITIC = {
   id: 4,
@@ -89,41 +99,43 @@ const receipt = (id: string, at: number) => ({
   at,
   undoable: true,
 })
+const working = (id: string, since = 1) => ({ id, state: 'working' as const, since })
+const snapshot = (extra: Partial<WorkspaceSnapshot> = {}): WorkspaceSnapshot => ({
+  conversations: [MAIN],
+  activity: [],
+  apps: [],
+  ...extra,
+})
 
-describe('the workspace feed state', () => {
-  it('starts from the snapshot in order of creation and keeps only what is not idle', () => {
-    const state = fromSnapshot({
-      conversations: [view('5'), MAIN],
-      activity: [
-        { id: '5', state: 'working', since: 1 },
-        { id: '1', state: 'idle', since: 1 },
-      ],
-      apps: [],
-    })
-    expect(state.conversations.map(({ id }) => id)).toEqual(['1', '5'])
-    expect(activityState(state, '5')).toBe('working')
-    expect(activityState(state, '1')).toBe('idle')
-    expect(state.activity.has('1')).toBe(false)
+describe('the workspace slices', () => {
+  it('start from the snapshot in order of creation and keep only the activity that is not idle', () => {
+    const slices = fromSnapshot(
+      snapshot({ conversations: [view('5'), MAIN], activity: [working('5'), { id: '1', state: 'idle', since: 1 }] }),
+    )
+    expect(slices.conversations.map(({ id }) => id)).toEqual(['1', '5'])
+    expect(activityOf(slices.activity, '5')?.state).toBe('working')
+    expect(activityOf(slices.activity, '1')).toBeUndefined()
+    expect(Object.keys(slices.activity)).toEqual(['5'])
   })
 
-  it('replaces a conversation by id, adds a new one in order, and moves activity in order', () => {
-    const start = fromSnapshot({ conversations: [MAIN, view('9')], activity: [], apps: [] })
+  it('replace a conversation by id, add a new one in order, and move activity in order', () => {
+    const start = fromSnapshot(snapshot({ conversations: [MAIN, view('9')] }))
     const next = applyChanges(start, [
       { type: 'conversation', conversation: view('5') },
       { type: 'conversation', conversation: view('9', { title: 'Car search', replies: 2 }) },
-      { type: 'activity', activity: { id: '9', state: 'working', since: 2 } },
+      { type: 'activity', activity: working('9', 2) },
       { type: 'activity', activity: { id: '1', state: 'waiting', since: 3 } },
       { type: 'activity', activity: { id: '9', state: 'idle', since: 4 } },
     ])
     expect(next.conversations.map(({ id }) => id)).toEqual(['1', '5', '9'])
     expect(next.conversations.at(-1)).toMatchObject({ title: 'Car search', replies: 2 })
-    expect(activityState(next, '9')).toBe('idle')
-    expect(activityState(next, '1')).toBe('waiting')
+    expect(activityOf(next.activity, '9')).toBeUndefined()
+    expect(activityOf(next.activity, '1')?.state).toBe('waiting')
     expect(start.conversations).toHaveLength(2)
   })
 
-  it('keeps Apps by id, in order, and replaces one that changed (closed)', () => {
-    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('7'), app('3')] })
+  it('keep Apps by id, in order, and replace one that changed (closed)', () => {
+    const start = fromSnapshot(snapshot({ apps: [app('7'), app('3')] }))
     expect(start.apps.map(({ id }) => id)).toEqual(['3', '7'])
     const next = applyChanges(start, [
       { type: 'app', app: app('5') },
@@ -133,23 +145,18 @@ describe('the workspace feed state', () => {
     expect(next.apps.at(-1)?.closedAt).toBe(9)
   })
 
-  it('leaves conversations alone for a Topic change it does not hold', () => {
-    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [] })
-    const topic = {
-      id: 2,
-      name: 'Japan',
-      conversation: '7',
-      searchExcluded: false,
-      revision: 1,
-      createdBy: 'owner' as const,
-      createdAt: 1,
-    }
-    const next = applyChanges(start, [{ type: 'topic', topic }])
-    expect(next.conversations).toEqual(start.conversations)
+  it('leave every other slice the same value for a change of one kind', () => {
+    const start = fromSnapshot(snapshot({ apps: [app('3')] }))
+    const japan = { ...TOPIC, id: 2, name: 'Japan', conversation: '7', revision: 1, createdBy: 'owner' as const }
+    const next = applyChanges(start, [{ type: 'topic', topic: japan }])
+    expect(next.conversations).toBe(start.conversations)
+    expect(next.apps).toBe(start.apps)
+    expect(next.activity).toBe(start.activity)
+    expect(next.topics).not.toBe(start.topics)
   })
 
-  it('keeps Topics, Personas, Persona answers on their way and receipts from changes, in their orders', () => {
-    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [] })
+  it('keep Topics, Personas, Persona answers on their way and receipts from changes, in their orders', () => {
+    const start = fromSnapshot(snapshot())
     const japan = { ...TOPIC, id: 2, name: 'Japan', conversation: '7' }
     const next = applyChanges(start, [
       { type: 'topic', topic: japan },
@@ -175,15 +182,15 @@ describe('the workspace feed state', () => {
     expect(start.topics).toEqual([])
   })
 
-  it('reads the Topics a snapshot lists, and none from a server without them', () => {
-    const snapshot = decodeSnapshot({ conversations: [MAIN], activity: [], apps: [], topics: [TOPIC, { id: 'x' }] })
-    expect(snapshot.topics).toEqual([TOPIC])
-    expect(fromSnapshot(snapshot).topics).toEqual([TOPIC])
+  it('read the Topics a snapshot lists, and none from a server without them', () => {
+    const decoded = decodeSnapshot({ conversations: [MAIN], activity: [], apps: [], topics: [TOPIC, { id: 'x' }] })
+    expect(decoded.topics).toEqual([TOPIC])
+    expect(fromSnapshot(decoded).topics).toEqual([TOPIC])
     expect(decodeSnapshot({ conversations: [], activity: [], apps: [] })).not.toHaveProperty('topics')
   })
 
-  it('drops an App the owner deleted', () => {
-    const start = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('3'), app('7')] })
+  it('drop an App the owner deleted', () => {
+    const start = fromSnapshot(snapshot({ apps: [app('3'), app('7')] }))
     const next = applyChanges(start, [{ type: 'app-removed', id: '3' }])
     expect(next.apps.map(({ id }) => id)).toEqual(['7'])
   })
@@ -208,11 +215,11 @@ describe('reading a newer server', () => {
       { type: 'conversation', conversation: view('5') },
       unknown,
       { type: 'conversation', conversation: { id: 'not digits' } },
-      { type: 'activity', activity: { id: '5', state: 'working', since: 1 } },
+      { type: 'activity', activity: working('5') },
     ])
     expect(changes.map((change) => change.type)).toEqual(['conversation', 'activity'])
-    const snapshot = decodeSnapshot({ conversations: [MAIN, { id: 'x' }], activity: [unknown], apps: [{}] })
-    expect(snapshot).toEqual({ conversations: [MAIN], activity: [], apps: [] })
+    const decoded = decodeSnapshot({ conversations: [MAIN, { id: 'x' }], activity: [unknown], apps: [{}] })
+    expect(decoded).toEqual({ conversations: [MAIN], activity: [], apps: [] })
   })
 
   it('still refuses a frame of another shape', () => {
@@ -221,93 +228,296 @@ describe('reading a newer server', () => {
   })
 })
 
+/** A connection over fixture streams, with what it delivered. */
+function connection() {
+  const sources: FixtureEvents[] = []
+  const delivered: string[] = []
+  const problems: (string | undefined)[] = []
+  const { queued, scheduler } = manual()
+  const feed = new WorkspaceFeedConnection(
+    () => {
+      const source = new FixtureEvents()
+      sources.push(source)
+      return source
+    },
+    {
+      snapshot: (frame) => delivered.push(`snapshot:${frame.conversations.map(({ id }) => id).join(',')}`),
+      changes: (changes) => delivered.push(`changes:${changes.map(({ type }) => type).join(',')}`),
+      report: (problem) => problems.push(problem),
+    },
+    scheduler,
+  )
+  return { feed, sources, delivered, problems, queued }
+}
+
 describe('the workspace feed connection', () => {
-  it('publishes the snapshot, then changes, and starts again from a fresh snapshot after an error', () => {
-    const sources: FixtureEvents[] = []
-    const states: WorkspaceState[] = []
-    const problems: (string | undefined)[] = []
-    const { queued, scheduler } = manual()
-    const connection = new WorkspaceFeedConnection(
-      () => {
-        const source = new FixtureEvents()
-        sources.push(source)
-        return source
-      },
-      (state) => states.push(state),
-      (problem) => problems.push(problem),
-      scheduler,
-    )
-    connection.connect()
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('delivers the snapshot, then changes, and starts again from a fresh snapshot after an error', () => {
+    const { feed, sources, delivered, problems, queued } = connection()
+    feed.connect()
     const first = sources[0]
     // A change before any snapshot has nothing to apply to.
     first?.emit('change', JSON.stringify([{ type: 'conversation', conversation: view('5') }]))
-    expect(states).toEqual([])
-    first?.emit('snapshot', JSON.stringify({ conversations: [MAIN], activity: [], apps: [] }))
+    expect(delivered).toEqual([])
+    first?.emit('snapshot', JSON.stringify(snapshot()))
     first?.emit('change', JSON.stringify([{ type: 'conversation', conversation: view('5') }]))
-    expect(states.at(-1)?.conversations.map(({ id }) => id)).toEqual(['1', '5'])
+    expect(delivered).toEqual(['snapshot:1', 'changes:conversation'])
     first?.errorListener?.()
     expect(first?.closed).toBe(true)
     expect(problems.at(-1)).toBe('Connection interrupted')
     queued.shift()?.()
-    sources[1]?.emit('snapshot', JSON.stringify({ conversations: [MAIN], activity: [], apps: [] }))
-    expect(states.at(-1)?.conversations.map(({ id }) => id)).toEqual(['1'])
+    // The new stream's changes wait for its own snapshot.
+    sources[1]?.emit('change', JSON.stringify([{ type: 'conversation', conversation: view('6') }]))
+    sources[1]?.emit('snapshot', JSON.stringify(snapshot()))
+    expect(delivered.at(-1)).toBe('snapshot:1')
     expect(problems.at(-1)).toBeUndefined()
     // The old stream's late frames are ignored.
     first?.emit('change', JSON.stringify([{ type: 'conversation', conversation: view('7') }]))
-    expect(states.at(-1)?.conversations).toHaveLength(1)
-    connection.dispose()
+    expect(delivered).toHaveLength(3)
+    feed.dispose()
     expect(sources[1]?.closed).toBe(true)
   })
 
   it('reports a frame it cannot read, reconnects, and stops for good once disposed', () => {
     const reported: unknown[] = []
     vi.stubGlobal('reportError', (error: unknown) => reported.push(error))
-    const sources: FixtureEvents[] = []
-    const problems: (string | undefined)[] = []
-    const { queued, scheduler } = manual()
-    const connection = new WorkspaceFeedConnection(
-      () => {
-        const source = new FixtureEvents()
-        sources.push(source)
-        return source
-      },
-      () => undefined,
-      (problem) => problems.push(problem),
-      scheduler,
-    )
+    const { feed, sources, problems, queued } = connection()
+    feed.connect()
+    sources[0]?.emit('snapshot', '{"conversations":"nope"}')
+    expect(reported).toHaveLength(1)
+    expect(problems).toEqual(['Workspace data could not be read'])
+    expect(sources[0]?.closed).toBe(true)
+    expect(queued).toHaveLength(1)
+    feed.dispose()
+    expect(queued).toHaveLength(0)
+  })
+})
+
+const conversationsOf = (client: QueryClient) =>
+  client.getQueryData(workspaceQueries.conversations.queryKey)?.map(({ id }) => id)
+const appsOf = (client: QueryClient) => client.getQueryData(workspaceQueries.apps.queryKey)
+
+describe('the workspace in the Query cache', () => {
+  it('reads each slice once the first snapshot is in, and keeps it current from the feed', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    const reading = client.query(workspaceQueries.conversations)
+    sync.snapshot(snapshot({ conversations: [MAIN, view('5')], apps: [app('3')] }))
+    expect((await reading).map(({ id }) => id)).toEqual(['1', '5'])
+    sync.changes([{ type: 'conversation', conversation: view('7') }])
+    expect(conversationsOf(client)).toEqual(['1', '5', '7'])
+    expect(appsOf(client)?.map(({ id }) => id)).toEqual(['3'])
+  })
+
+  it('waits for the feed rather than reading the server, so a reader answers as an empty workspace meanwhile', async () => {
+    const requests: unknown[] = []
+    vi.stubGlobal('fetch', (input: unknown) => {
+      requests.push(input)
+      return new Promise<never>(() => undefined)
+    })
     try {
-      connection.connect()
-      sources[0]?.emit('snapshot', '{"conversations":"nope"}')
-      expect(reported).toHaveLength(1)
-      expect(problems).toEqual(['Workspace data could not be read'])
-      expect(sources[0]?.closed).toBe(true)
-      expect(queued).toHaveLength(1)
-      connection.dispose()
-      expect(queued).toHaveLength(0)
-      expect(EMPTY_WORKSPACE.conversations).toEqual([])
+      const client = testQueryClient()
+      const observer = new QueryObserver(client, workspaceQueries.topics)
+      const stop = observer.subscribe(() => undefined)
+      await settled()
+      expect(observer.getCurrentResult().status).toBe('pending')
+      expect(requests).toEqual([])
+      expect(EMPTY_WORKSPACE.topics).toEqual([])
+      workspaceSync(client).snapshot(snapshot({ topics: [TOPIC] }))
+      await settled()
+      expect(observer.getCurrentResult().data).toEqual([TOPIC])
+      stop()
     } finally {
       vi.unstubAllGlobals()
     }
   })
+
+  it('follows the feed from its stream, and skips an item it cannot read in a change frame', () => {
+    const client = testQueryClient()
+    const sources: FixtureEvents[] = []
+    const stop = workspaceSync(client).connect(() => {
+      const source = new FixtureEvents()
+      sources.push(source)
+      return source
+    })
+    sources[0]?.emit('snapshot', JSON.stringify(snapshot()))
+    const unreadable = { type: 'conversation', conversation: { id: 7 } }
+    sources[0]?.emit('change', JSON.stringify([unreadable, { type: 'conversation', conversation: view('8') }]))
+    expect(conversationsOf(client)).toEqual(['1', '8'])
+    stop()
+    expect(sources[0]?.closed).toBe(true)
+  })
+
+  it('says what is wrong with the feed, and clears it once a frame arrives', () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.report('Connection interrupted')
+    expect(client.getQueryData(workspaceQueries.status.queryKey)).toBe('Connection interrupted')
+    sync.report(undefined)
+    expect(client.getQueryData(workspaceQueries.status.queryKey)).toBe('')
+  })
 })
 
-describe('Apps the owner just changed', () => {
-  it('stay as the owner left them through unrelated feed changes, until the feed shows them so', () => {
-    const open = fromSnapshot({ conversations: [MAIN], activity: [], apps: [app('4'), app('5')] })
-    const closing = new Map([['4', app('4', { closedAt: 9 })]])
-    const meanwhile = applyChanges(open, [{ type: 'activity', activity: { id: '1', state: 'working', since: 2 } }])
-    const shown = withPendingApps(meanwhile, closing)
-    expect(shown.state.apps.find(({ id }) => id === '4')?.closedAt).toBe(9)
-    expect(shown.state.apps.find(({ id }) => id === '5')?.closedAt).toBeUndefined()
-    expect(shown.settled).toEqual([])
-    const confirmed = applyChanges(meanwhile, [{ type: 'app', app: app('4', { closedAt: 10 }) }])
-    expect(withPendingApps(confirmed, closing)).toEqual({ state: confirmed, settled: ['4'] })
+/** A call the test answers by hand: the mutation stays pending until it does. */
+function held<A>() {
+  const settle: { answer?: (value: A) => void; refuse?: (failure: Error) => void } = {}
+  const promise = new Promise<A>((resolve, reject) => {
+    settle.answer = resolve
+    settle.refuse = reject
   })
-  it('show an App just kept before the feed lists it, and stop once it does', () => {
-    const empty = fromSnapshot({ conversations: [MAIN], activity: [], apps: [] })
-    const keeping = new Map([['6', app('6')]])
-    expect(withPendingApps(empty, keeping).state.apps.map(({ id }) => id)).toEqual(['6'])
-    const listed = applyChanges(empty, [{ type: 'app', app: app('6') }])
-    expect(withPendingApps(listed, keeping).settled).toEqual(['6'])
+  return { promise, answer: (value: A) => settle.answer?.(value), refuse: (failure: Error) => settle.refuse?.(failure) }
+}
+const settled = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+describe('Apps the owner just changed', () => {
+  it('stay closed through unrelated changes, a change to the App itself and a reconnect, until the server answers', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ apps: [app('4'), app('5')] }))
+    const call = held<AppView>()
+    const closing = new MutationObserver(client, { ...closeWorkspaceAppMutation, mutationFn: () => call.promise })
+    const done = closing.mutate({ id: '4', closed: true })
+    await settled()
+    const closedAt = (id: string) => appsOf(client)?.find((each) => each.id === id)?.closedAt
+    expect(closedAt('4')).toBeDefined()
+    sync.changes([{ type: 'activity', activity: working('1', 2) }])
+    sync.changes([{ type: 'app', app: app('4', { title: 'Board, renamed' }) }])
+    expect(closedAt('4')).toBeDefined()
+    sync.snapshot(snapshot({ apps: [app('4'), app('5')] }))
+    expect(closedAt('4')).toBeDefined()
+    expect(closedAt('5')).toBeUndefined()
+    call.answer(app('4', { closedAt: 10 }))
+    await done
+    expect(closedAt('4')).toBe(10)
+    sync.changes([{ type: 'conversation', conversation: view('6') }])
+    expect(closedAt('4')).toBe(10)
+  })
+
+  it('come back as they were when the server refuses the close, and stay so', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ apps: [app('4')] }))
+    const call = held<AppView>()
+    const closing = new MutationObserver(client, { ...closeWorkspaceAppMutation, mutationFn: () => call.promise })
+    const done = closing.mutate({ id: '4', closed: true })
+    await settled()
+    expect(appsOf(client)?.[0]?.closedAt).toBeDefined()
+    call.refuse(new Error('refused'))
+    await expect(done).rejects.toThrow('refused')
+    expect(appsOf(client)?.[0]?.closedAt).toBeUndefined()
+    sync.changes([{ type: 'activity', activity: working('1', 2) }])
+    expect(appsOf(client)?.[0]?.closedAt).toBeUndefined()
+  })
+
+  it('show an App just kept before the feed lists it', async () => {
+    const client = testQueryClient()
+    workspaceSync(client).snapshot(snapshot())
+    const keeping = new MutationObserver(client, { ...keepWorkspaceAppMutation, mutationFn: async () => app('6') })
+    await keeping.mutate({ conversation: '1', callId: 'call-6' })
+    expect(appsOf(client)?.map(({ id }) => id)).toEqual(['6'])
+  })
+
+  it('a conversation marked read shows read at once, and a mark the server refused says so', async () => {
+    const client = testQueryClient()
+    workspaceSync(client).snapshot(snapshot({ conversations: [MAIN, view('5', { lastReplyAt: 50 })] }))
+    const marking = new MutationObserver(client, {
+      ...markReadWorkspaceMutation,
+      mutationFn: () => Promise.reject(new Error('offline')),
+    })
+    await expect(marking.mutate('5')).rejects.toThrow('offline')
+    const read = client.getQueryData(workspaceQueries.conversations.queryKey)?.find(({ id }) => id === '5')?.readAt
+    expect(read).toBeGreaterThanOrEqual(50)
+    expect(client.getQueryData(workspaceQueries.status.queryKey)).toMatch(/^Could not mark it read/u)
+  })
+})
+
+const present = (snapshotted: ReturnType<typeof fromSnapshot>): Cached => snapshotted
+
+describe('what goes stale with a feed change', () => {
+  const before = fromSnapshot(
+    snapshot({ activity: [working('5')], apps: [agentApp('3', 'tracker', 1), app('4')], personas: [CRITIC] }),
+  )
+
+  it('is nothing on the first snapshot: nothing was read from an older one', () => {
+    const none: Cached = {
+      conversations: undefined,
+      activity: undefined,
+      apps: undefined,
+      topics: undefined,
+      personas: undefined,
+      invocations: undefined,
+      receipts: undefined,
+    }
+    expect(staleAfter(none, before)).toEqual([])
+  })
+
+  it("is a run's end: the conversation's sources and switches, and today's usage", () => {
+    const after = applyChanges(before, [{ type: 'activity', activity: { id: '5', state: 'idle', since: 2 } }])
+    expect(staleAfter(present(before), after)).toEqual([
+      capabilitiesQuery('5').queryKey,
+      conversationKeys.sources('5'),
+      usageQuery.queryKey,
+    ])
+    const started = applyChanges(before, [{ type: 'activity', activity: working('6', 2) }])
+    expect(staleAfter(present(before), started)).toEqual([capabilitiesQuery('6').queryKey])
+  })
+
+  it('is an agent app that changed or went: the list and its page; an MCP App changes nothing read', () => {
+    const changed = applyChanges(before, [{ type: 'app', app: agentApp('3', 'tracker', 2) }])
+    expect(staleAfter(present(before), changed)).toEqual([agentAppsQuery.queryKey, agentAppQuery('tracker').queryKey])
+    const gone = applyChanges(before, [{ type: 'app-removed', id: '3' }])
+    expect(staleAfter(present(before), gone)).toEqual([agentAppsQuery.queryKey, agentAppQuery('tracker').queryKey])
+    const closed = applyChanges(before, [{ type: 'app', app: app('4', { closedAt: 3 }) }])
+    expect(staleAfter(present(before), closed)).toEqual([])
+  })
+
+  it('is a Persona that changed: the Persona reads and what composers can tag', () => {
+    const after = applyChanges(before, [{ type: 'persona', persona: { ...CRITIC, revision: 2 } }])
+    expect(staleAfter(present(before), after)).toEqual([personaKeys.all, conversationKeys.composers])
+  })
+
+  it('is read again through the cache when the feed sends it', () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ activity: [working('5')] }))
+    const usage = client.getQueryCache().build(client, { queryKey: usageQuery.queryKey })
+    expect(usage.state.isInvalidated).toBe(false)
+    sync.changes([{ type: 'activity', activity: { id: '5', state: 'idle', since: 2 } }])
+    expect(usage.state.isInvalidated).toBe(true)
+  })
+})
+
+/**
+ * How often a reader of the cache is told to render: what `useQuery` subscribes with, tracking `status` and `data` as
+ * the slice hooks read them (`lib/workspace/hooks.ts`).
+ */
+function renders(client: QueryClient, options: QueryObserverOptions<any, Error, any, any, any>) {
+  const observer = new QueryObserver(client, { ...options, notifyOnChangeProps: ['status', 'data'] })
+  const count = { renders: 0 }
+  const stop = observer.subscribe(() => {
+    count.renders += 1
+  })
+  return Object.assign(count, { stop, observer })
+}
+
+describe('which readers render for a feed change', () => {
+  it('renders no App reader for a conversation change, and only that conversation activity reader for its activity', async () => {
+    const client = testQueryClient()
+    const sync = workspaceSync(client)
+    sync.snapshot(snapshot({ conversations: [MAIN, view('5'), view('6')], apps: [app('3')] }))
+    const apps = [renders(client, workspaceQueries.apps), renders(client, workspaceQueries.apps)]
+    const five = renders(client, { ...workspaceQueries.activity, select: (activity) => activityOf(activity, '5') })
+    const six = renders(client, { ...workspaceQueries.activity, select: (activity) => activityOf(activity, '6') })
+    await settled()
+    for (const reader of [...apps, five, six]) reader.renders = 0
+    sync.changes([{ type: 'conversation', conversation: view('5', { title: 'Renamed' }) }])
+    await settled()
+    expect(apps.map((reader) => reader.renders)).toEqual([0, 0])
+    sync.changes([{ type: 'activity', activity: working('5', 2) }])
+    await settled()
+    expect([five.renders, six.renders]).toEqual([1, 0])
+    expect(five.observer.getCurrentResult().data?.state).toBe('working')
+    for (const reader of [...apps, five, six]) reader.stop()
   })
 })

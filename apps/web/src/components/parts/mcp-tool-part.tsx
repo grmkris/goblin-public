@@ -1,4 +1,6 @@
-import { type ReactNode, createContext, use, useState } from 'react'
+import { type ReactNode, createContext, use, useCallback, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import type { AppView } from '@goblin/contracts'
 import { NotFound } from '@goblin/contracts/api'
 import { Button } from '@goblin/ui'
 import { messageOf } from '../../lib/query/app-error.ts'
@@ -6,18 +8,19 @@ import { withRef } from '../../lib/refusal.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { useAppHost } from '../apps/host.tsx'
 import { AppPlace } from '../apps/slot.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useApps } from '../../lib/workspace/hooks.ts'
+import { keepWorkspaceAppMutation } from '../../lib/workspace/mutations.ts'
 import { ToolCard } from './tool-part.tsx'
 
 /** Keeps this call's App (reopening it if it was closed) and shows it in place; says why when the tool has none. */
 function ShowApp({ conversation, callId }: { readonly conversation: string; readonly callId: string }) {
   const { show } = useAppHost()
-  const { keepApp } = useWorkspaceFeed()
+  const keepApp = useMutation(keepWorkspaceAppMutation).mutateAsync
   const [error, setError] = useState('')
   async function keep(): Promise<void> {
     setError('')
     try {
-      show(await keepApp(conversation, callId))
+      show(await keepApp({ conversation, callId }))
     } catch (cause) {
       setError(
         cause instanceof NotFound ? withRef('This tool has no app view.', cause) : messageOf(cause, 'show the app'),
@@ -62,11 +65,18 @@ export function McpToolPart({ part }: { readonly part: ToolPart }) {
 }
 
 function McpToolWithApp({ part, conversation }: { readonly part: ToolPart; readonly conversation: string }) {
-  const { apps } = useWorkspaceFeed()
   const callId = part.call.id
-  const app = apps.find(
-    (candidate) =>
-      candidate.conversation === conversation && candidate.source.kind === 'mcp' && candidate.source.callId === callId,
+  const app = useApps(
+    useCallback(
+      (apps: readonly AppView[]) =>
+        apps.find(
+          (candidate) =>
+            candidate.conversation === conversation &&
+            candidate.source.kind === 'mcp' &&
+            candidate.source.callId === callId,
+        ),
+      [conversation, callId],
+    ),
   )
   const open = app !== undefined && app.closedAt === undefined && part.state === 'done'
   const offer = part.target !== undefined && part.state === 'done' && !open

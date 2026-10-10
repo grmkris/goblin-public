@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import { messageOf } from '../../lib/query/app-error.ts'
@@ -6,8 +7,9 @@ import type { ToolPart } from '../../lib/parts.ts'
 import { useNavigation } from '../../lib/navigation.ts'
 import { useAppHost } from '../apps/host.tsx'
 import { AppPlace } from '../apps/slot.tsx'
+import { useApps } from '../../lib/workspace/hooks.ts'
+import { closeWorkspaceAppMutation } from '../../lib/workspace/mutations.ts'
 import { AppPowers } from './app-powers.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useAppsConversation } from './mcp-tool-part.tsx'
 import { ToolCard } from './tool-part.tsx'
 
@@ -15,12 +17,12 @@ import { ToolCard } from './tool-part.tsx'
 function OpenApp({ app, here }: { readonly app: AppView; readonly here: boolean }) {
   const navigation = useNavigation()
   const { show } = useAppHost()
-  const { reopenApp } = useWorkspaceFeed()
+  const reopen = useMutation(closeWorkspaceAppMutation).mutateAsync
   const [error, setError] = useState('')
   async function open(): Promise<void> {
     setError('')
     try {
-      show(app.closedAt === undefined ? app : await reopenApp(app.id))
+      show(app.closedAt === undefined ? app : await reopen({ id: app.id, closed: false }))
       if (!here) navigation.openApp(app.id)
     } catch (cause) {
       setError(messageOf(cause, 'open the app'))
@@ -42,12 +44,15 @@ function OpenApp({ app, here }: { readonly app: AppView; readonly here: boolean 
  */
 export function AppBuildPart({ part }: { readonly part: ToolPart }) {
   const conversation = useAppsConversation()
-  const { apps } = useWorkspaceFeed()
   const { built } = part
-  const app =
-    built?.ui === true
-      ? apps.find((candidate) => candidate.source.kind === 'agent' && candidate.source.name === built.app)
-      : undefined
+  const name = built?.ui === true ? built.app : undefined
+  const app = useApps(
+    useCallback(
+      (apps: readonly AppView[]) =>
+        apps.find((candidate) => candidate.source.kind === 'agent' && candidate.source.name === name),
+      [name],
+    ),
+  )
   const inline = conversation !== undefined && built?.place === true && app !== undefined && app.closedAt === undefined
   return (
     <div className="flex flex-col gap-2">

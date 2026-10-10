@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import type { ComposerSelection, ConversationView } from '@goblin/contracts'
 import {
   Button,
@@ -14,14 +15,13 @@ import { type PanelItem, draftFrom } from '../../lib/panel.ts'
 import { rememberThread } from '../../lib/recent-threads.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { isClosed, rootParts, threadTitle } from '../../lib/threads.ts'
-import { reportUnexpected } from '../../lib/unexpected.ts'
-import { activityState } from '../../lib/workspace-feed.ts'
+import { useActivity, useConversation as useFeedConversation } from '../../lib/workspace/hooks.ts'
+import { updateWorkspaceConversationMutation } from '../../lib/workspace/mutations.ts'
 import { MessageComposer } from '../composer.tsx'
 import type { SendExtras } from '../composer-state.ts'
 import { Notice } from '../conversation-dock.tsx'
 import { Conversation } from '../conversation.tsx'
 import { useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { KindMark, SubagentMenuItems, SubagentState } from './chat-marks.tsx'
 import { ChatView, ThreadRoot } from './chat-view.tsx'
 import { takeDraft } from './drafts.ts'
@@ -33,7 +33,7 @@ const SHARE_REQUEST = 'Share what we concluded here with the conversation this t
 
 /** A thread's name, editable in place. */
 function RenameForm({ view, onDone }: { readonly view: ConversationView; readonly onDone: () => void }) {
-  const { update } = useWorkspaceFeed()
+  const update = useMutation(updateWorkspaceConversationMutation).mutate
   return (
     <form
       className="panel-rename"
@@ -41,7 +41,7 @@ function RenameForm({ view, onDone }: { readonly view: ConversationView; readonl
         event.preventDefault()
         const value = new FormData(event.currentTarget).get('title')
         const title = typeof value === 'string' ? value.trim() : ''
-        if (title !== '') update(view.id, { title }).then(onDone).catch(reportUnexpected)
+        if (title !== '') update({ id: view.id, change: { title } }, { onSettled: onDone })
         else onDone()
       }}
     >
@@ -74,7 +74,7 @@ function ThreadMenu({
   readonly onRename: () => void
   readonly onShare: () => void
 }) {
-  const { update } = useWorkspaceFeed()
+  const update = useMutation(updateWorkspaceConversationMutation).mutate
   const closed = isClosed(view)
   return (
     <DropdownMenu>
@@ -94,7 +94,7 @@ function ThreadMenu({
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => void update(view.id, { closed: !closed })}>
+        <DropdownMenuItem onClick={() => update({ id: view.id, change: { closed: !closed } })}>
           {closed ? <RotateCcwIcon aria-hidden /> : <XIcon aria-hidden />}
           {closed ? 'Reopen' : view.kind === 'subagent' ? 'Close subagent' : 'Close thread'}
         </DropdownMenuItem>
@@ -121,10 +121,9 @@ function PanelHeader({
   readonly editing?: React.ReactNode
 }) {
   const panel = usePanel()
-  const feed = useWorkspaceFeed()
   const under = panel.items.at(-2)
-  const back = under?.kind === 'thread' ? feed.conversations.find((view) => view.id === under.id) : undefined
-  const channel = threadTitle(feed.conversations.find((view) => view.id === panel.channel))
+  const back = useFeedConversation(under?.kind === 'thread' ? under.id : undefined)
+  const channel = threadTitle(useFeedConversation(panel.channel))
   return (
     <header className="panel-header" data-app-cover>
       {under !== undefined ? (
@@ -157,11 +156,10 @@ function PanelHeader({
 
 /** A thread in the panel: its bar with its menu and state, then the thread itself. */
 function ThreadPanelView({ view, hideRoot }: { readonly view: ConversationView; readonly hideRoot: boolean }) {
-  const feed = useWorkspaceFeed()
   const [renaming, setRenaming] = useState(false)
   const conversation = useConversation(view.id)
-  const parent = threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent))
-  const working = activityState(feed, view.id) === 'working'
+  const parent = threadTitle(useFeedConversation(view.parent))
+  const working = useActivity(view.id)?.state === 'working'
   const header = (
     <PanelHeader
       title={threadTitle(view)}
@@ -196,7 +194,6 @@ const NOTHING_TO_STOP = () => undefined
  */
 function DraftView({ item }: { readonly item: PanelItem }) {
   const panel = usePanel()
-  const feed = useWorkspaceFeed()
   const from = draftFrom(item)
   const source = useConversation(from?.conversation ?? panel.channel)
   const { parts } = useTranscript(from?.conversation ?? panel.channel, source.projection, source.report)
@@ -228,7 +225,7 @@ function DraftView({ item }: { readonly item: PanelItem }) {
       return false
     }
   }
-  const parent = threadTitle(feed.conversations.find((view) => view.id === (from?.conversation ?? panel.channel)))
+  const parent = threadTitle(useFeedConversation(from?.conversation ?? panel.channel))
   return (
     <section className="chat-view" data-place="panel" aria-label="New thread" ref={section} data-app-scope>
       <PanelHeader title="New thread" />
@@ -267,16 +264,15 @@ export function ThreadPanel({
   readonly heads: ReadonlySet<string>
 }) {
   const panel = usePanel()
-  const feed = useWorkspaceFeed()
   const top = panel.items.at(-1)
   const shown = top?.kind === 'thread' ? top.id : undefined
+  const view = useFeedConversation(shown)
   useEffect(() => {
     if (shown !== undefined) rememberThread(shown)
   }, [shown])
   if (top === undefined) return null
   let body = null
   if (top.kind === 'thread') {
-    const view = feed.conversations.find((candidate) => candidate.id === top.id)
     body =
       view === undefined ? (
         <section className="chat-view" data-place="panel" aria-busy>

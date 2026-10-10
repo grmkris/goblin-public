@@ -5,8 +5,7 @@ import { TopBar, TopBarTitle } from '@goblin/ui'
 import { rememberChannel } from '../../lib/last-channel.ts'
 import { type PanelSearch, panelItems } from '../../lib/panel.ts'
 import { channelOf, isArchived, isChannel, topicOfChannel } from '../../lib/topics.ts'
-import { activityState } from '../../lib/workspace-feed.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useActivity, useConversation, useConversations, useTopics } from '../../lib/workspace/hooks.ts'
 import { ArchivedBanner, ChannelMenu } from './channel-menu.tsx'
 import { ChatView } from './chat-view.tsx'
 import { PanelProvider } from './panel.tsx'
@@ -23,8 +22,7 @@ function ChannelHeader({
   readonly topic: TopicView | undefined
   readonly onFailure: (text: string) => void
 }) {
-  const feed = useWorkspaceFeed()
-  const working = activityState(feed, view.id) === 'working'
+  const working = useActivity(view.id)?.state === 'working'
   return (
     <TopBar floating data-app-cover>
       <NavigationButton />
@@ -42,9 +40,9 @@ function ChannelHeader({
 
 /** The channel and, when its search opens one, the thread panel beside it (over it on a phone). */
 function ChannelLayout({ view, search }: { readonly view: ConversationView; readonly search: PanelSearch }) {
-  const feed = useWorkspaceFeed()
-  const topic = topicOfChannel(view.id, feed.topics)
-  const items = useMemo(() => panelItems(search, view.id, feed.conversations), [search, view.id, feed.conversations])
+  const conversations = useConversations()
+  const topic = topicOfChannel(view.id, useTopics())
+  const items = useMemo(() => panelItems(search, view.id, conversations), [search, view.id, conversations])
   const [heads, setHeads] = useState<ReadonlySet<string>>(new Set())
   const [failure, setFailure] = useState('')
   useEffect(() => rememberChannel(view.id), [view.id])
@@ -76,10 +74,11 @@ function ChannelLayout({ view, search }: { readonly view: ConversationView; read
  * with the panel showing it, so every old link to a chat still leads there.
  */
 export function ChannelPage({ chat, search }: { readonly chat: string; readonly search: PanelSearch }) {
-  const feed = useWorkspaceFeed()
-  const view = feed.conversations.find((candidate) => candidate.id === chat)
+  const conversations = useConversations()
+  const topics = useTopics()
+  const view = useConversation(chat)
   if (view !== undefined && !isChannel(view)) {
-    const channel = channelOf(chat, feed.conversations, feed.topics)
+    const channel = channelOf(chat, conversations, topics)
     return <Navigate to="/c/$chatId" params={{ chatId: channel }} search={{ thread: Number(chat) }} replace />
   }
   if (view === undefined)

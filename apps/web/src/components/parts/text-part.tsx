@@ -6,7 +6,7 @@ import { contextPreview } from '../../lib/app-context.ts'
 import { relativeTime, reporterOf } from '../../lib/threads.ts'
 import { MessageFiles } from '../attachments.tsx'
 import { ChatMarkdown } from './markdown.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useConversations } from '../../lib/workspace/hooks.ts'
 
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset (`ChatMarkdown`), with the little HTML ADR 0039 allows.
@@ -73,7 +73,7 @@ function SubagentReport({
   readonly text: string
   readonly at?: number | undefined
 }) {
-  const { conversations } = useWorkspaceFeed()
+  const conversations = useConversations()
   const open = use(OpenThread)
   const view = conversations.findLast((candidate) => candidate.kind === 'subagent' && candidate.title === name)
   const who =

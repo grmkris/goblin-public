@@ -11,8 +11,15 @@ import { routinesQuery } from '../../../routines/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { SubagentStateIcon, SubagentStateText } from '../../parts/subagent-block.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
+import {
+  useActivities,
+  useActivity,
+  useConversation,
+  useConversations,
+  useInvocations,
+  usePersonas,
+} from '../../../lib/workspace/hooks.ts'
 import { useMinute } from '../../use-now.ts'
-import { useWorkspaceFeed } from '../../workspace-feed.tsx'
 import { ChatRow, RowContents } from './chat-link.tsx'
 
 const NEXT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -41,11 +48,11 @@ const STATES: Readonly<Record<PersonaInvocationView['state'], string>> = {
 
 /** One Delegate (a subagent): its state, its name, who started it and where it stands; it opens in its panel. */
 function DelegateRow({ id }: { readonly id: string }) {
-  const feed = useWorkspaceFeed()
-  const view = feed.conversations.find((candidate) => candidate.id === id)
+  const view = useConversation(id)
+  const activity = useActivity(id)
+  const spawner = threadTitle(useConversation(view?.parent))
   if (view === undefined) return null
-  const state = subagentState(view, feed.activity.get(view.id))
-  const spawner = threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent))
+  const state = subagentState(view, activity)
   return (
     <li>
       <ChatRow chat={view.id}>
@@ -65,10 +72,10 @@ function DelegateRow({ id }: { readonly id: string }) {
 
 /** The Personas answering, then those that answered: each with its mark, what it is doing, and the chat it is in. */
 function PersonaAnswers({ now }: { readonly now: number }) {
-  const feed = useWorkspaceFeed()
-  const answers = personaTasks(feed.invocations)
+  const answers = personaTasks(useInvocations())
+  const all = usePersonas()
   if (answers.length === 0) return null
-  const personas = new Map(feed.personas.map((persona) => [persona.id, persona]))
+  const personas = new Map(all.map((persona) => [persona.id, persona]))
   return (
     <PageSection id="personas" title="Personas">
       <ul className="list-rows">
@@ -125,12 +132,12 @@ function Routines({ routines, error, retry }: ReturnType<typeof useRoutines>) {
 
 /** `/tasks`, delegated work (spec §5): the Delegates, the Personas answering, and the routines on their schedules. */
 export function TasksPage() {
-  const feed = useWorkspaceFeed()
+  const invocations = useInvocations()
   const now = useMinute()
-  const work = delegates(feed.conversations, feed.activity)
+  const work = delegates(useConversations(), useActivities())
   const scheduled = useRoutines()
   const listed = [...work.active, ...work.finished]
-  if (listed.length + feed.invocations.length + scheduled.routines.length === 0 && scheduled.error === null)
+  if (listed.length + invocations.length + scheduled.routines.length === 0 && scheduled.error === null)
     return <p className="page-empty">No delegated work.</p>
   return (
     <div className="page-stack">

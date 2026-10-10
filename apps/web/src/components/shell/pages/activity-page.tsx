@@ -12,9 +12,9 @@ import {
 } from 'lucide-react'
 import { type NeedsYou, needsYou, unreadChats } from '../../../lib/rail.ts'
 import { relativeTime, threadTitle } from '../../../lib/threads.ts'
+import { useApps, useConversations, useReceipts } from '../../../lib/workspace/hooks.ts'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
-import { useWorkspaceFeed } from '../../workspace-feed.tsx'
 import { undoRefusal, useOrganize } from '../organize.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
 
@@ -101,11 +101,11 @@ function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; reado
  * it waits; what organizing did, with Undo; and the chats with unread replies.
  */
 export function ActivityPage() {
-  const feed = useWorkspaceFeed()
+  const conversations = useConversations()
+  const receipts = useReceipts()
   const now = useMinute()
-  const needs = needsYou(feed.conversations, feed.apps)
-  const { receipts } = feed
-  const unread = unreadChats(feed.conversations)
+  const needs = needsYou(conversations, useApps())
+  const unread = unreadChats(conversations)
   if (needs.length + receipts.length + unread.length === 0) return <p className="page-empty">Nothing needs you.</p>
   return (
     <div className="page-stack">

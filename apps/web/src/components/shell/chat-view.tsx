@@ -1,8 +1,11 @@
 import { type ReactNode, useEffect, useMemo, useRef } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import type { ConversationView } from '@goblin/contracts'
 import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
 import { type Part, partKey } from '../../lib/parts.ts'
 import { closedBy, entryOfPart, movableEntry, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
+import { useConversation as useFeedConversation, useFeedStatus } from '../../lib/workspace/hooks.ts'
+import { updateWorkspaceConversationMutation } from '../../lib/workspace/mutations.ts'
 import { Conversation } from '../conversation.tsx'
 import { ConversationDock } from '../conversation-dock.tsx'
 import { useModelChoice } from '../model-picker.tsx'
@@ -11,7 +14,6 @@ import { AppsIn } from '../parts/mcp-tool-part.tsx'
 import { PartView } from '../parts/registry.tsx'
 import { Cause } from '../parts/text-part.tsx'
 import { useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { useChatExtras } from './chat-extras.tsx'
 import { useMover } from './move-action.tsx'
 import { useOpenChat } from './panel.tsx'
@@ -59,8 +61,7 @@ function composerOf(view: ConversationView, place: ChatPlace) {
  * subagent's task as its spawner gave it; a channel starts with its own history.
  */
 function useLead(view: ConversationView, parts: readonly Part[], earlier: boolean, hideRoot: boolean) {
-  const feed = useWorkspaceFeed()
-  const parent = threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent))
+  const parent = threadTitle(useFeedConversation(view.parent))
   const fork = view.forkEntry
   const first = parts[0]
   const task =
@@ -122,7 +123,8 @@ export function ChatView({
   readonly notices?: readonly string[]
 }) {
   const { id } = view
-  const feed = useWorkspaceFeed()
+  const status = useFeedStatus()
+  const update = useMutation(updateWorkspaceConversationMutation).mutate
   const openChat = useOpenChat()
   const section = useRef<HTMLElement>(null)
   const dock = useRef<HTMLDivElement>(null)
@@ -141,7 +143,7 @@ export function ChatView({
   const threads = useChatThreads(id, branchable, mover)
   const startThread = useThreadStart(id)
   const { lead, shown } = useLead(view, parts, earlier !== undefined, hideRoot)
-  const extras = useChatExtras(id, shown, running)
+  const extras = useChatExtras(id, shown)
   const heads = useMemo(
     () => parts.flatMap((part) => (part.kind === 'thread-head' ? [part.thread] : [])).join(' '),
     [parts],
@@ -171,8 +173,8 @@ export function ChatView({
           model={model}
           parts={parts}
           closed={closedBy(view)}
-          onReopen={() => void feed.update(id, { closed: false })}
-          notices={[...notices, ...(feed.error === '' ? [] : [feed.error])]}
+          onReopen={() => update({ id, change: { closed: false } })}
+          notices={[...notices, ...(status === '' ? [] : [status])]}
           active={active}
           {...(view.kind !== 'subagent' && { onStartThread: startThread })}
           {...composerOf(view, place)}

@@ -55,11 +55,7 @@ describe('work under a subagent', () => {
       view('6', { parent: '2', kind: 'thread' }),
       view('7', { parent: '7' }),
     ]
-    const activity = new Map([
-      ['3', at('3', 'waiting')],
-      ['4', at('4', 'working', 1)],
-      ['6', at('6', 'working', 1)],
-    ])
+    const activity = { '3': at('3', 'waiting'), '4': at('4', 'working', 1), '6': at('6', 'working', 1) }
     expect(workingUnder('2', views, activity)).toBe(2)
     expect(workingUnder('7', views, activity)).toBe(0)
   })

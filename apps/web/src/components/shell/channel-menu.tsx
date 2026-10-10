@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { isArchived } from '../../lib/topics.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useTopics } from '../../lib/workspace/hooks.ts'
 import { useOrganize } from './organize.ts'
 import { TopicDialog } from './topic-dialog.tsx'
 
@@ -49,10 +49,10 @@ export function ChannelMenu({
   readonly working: boolean
   readonly onFailure: (text: string) => void
 }) {
-  const feed = useWorkspaceFeed()
+  const topics = useTopics()
   const organize = useOrganize()
   const [renaming, setRenaming] = useState(false)
-  if (topic === undefined || feed.topics.length === 0) return <ChannelName name={name} working={working} />
+  if (topic === undefined || topics.length === 0) return <ChannelName name={name} working={working} />
   const change = (patch: Parameters<typeof organize.updateTopic>[1]) =>
     void organize
       .updateTopic(topic.id, patch)

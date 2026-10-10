@@ -3,7 +3,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { type Navigation, NavigationContext } from '../../lib/navigation.ts'
 import { channelOf } from '../../lib/topics.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useApps, useConversations, useTopics } from '../../lib/workspace/hooks.ts'
 import { keepDraft } from './drafts.ts'
 import { useOpenChat } from './panel.tsx'
 
@@ -14,7 +14,9 @@ import { useOpenChat } from './panel.tsx'
 export function ShellNavigation({ children }: { readonly children: ReactNode }) {
   const navigate = useNavigate()
   const path = useRouterState({ select: (router) => router.location.pathname })
-  const feed = useWorkspaceFeed()
+  const apps = useApps()
+  const conversations = useConversations()
+  const topics = useTopics()
   const openChat = useOpenChat()
   const value = useMemo<Navigation>(() => {
     const openApp = (app: string) => void navigate({ to: '/a/$appId', params: { appId: app } })
@@ -23,15 +25,15 @@ export function ShellNavigation({ children }: { readonly children: ReactNode }) 
       openApp,
       closeAppPage: (app) => {
         if (path !== `/a/${app}`) return
-        openChat(feed.apps.find((candidate) => candidate.id === app)?.conversation ?? '1')
+        openChat(apps.find((candidate) => candidate.id === app)?.conversation ?? '1')
       },
       focusApp: openApp,
       newThreadWith: (draft, from) => {
         keepDraft(draft)
-        const channel = channelOf(from, feed.conversations, feed.topics)
+        const channel = channelOf(from, conversations, topics)
         navigate({ to: '/c/$chatId', params: { chatId: channel }, search: { reply: 'new' } }).catch(reportUnexpected)
       },
     }
-  }, [navigate, path, feed.apps, feed.conversations, feed.topics, openChat])
+  }, [navigate, path, apps, conversations, topics, openChat])
   return <NavigationContext value={value}>{children}</NavigationContext>
 }

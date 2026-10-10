@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ConversationView } from '@goblin/contracts'
 import { CheckIcon, CopyIcon, MessageSquareReplyIcon } from 'lucide-react'
 import type { Part } from '../../lib/parts.ts'
@@ -11,9 +11,8 @@ import {
   threadTitle,
   threadsByFork,
 } from '../../lib/threads.ts'
-import { activityState } from '../../lib/workspace-feed.ts'
+import { useActivity, useConversation, useConversations } from '../../lib/workspace/hooks.ts'
 import { useMinute } from '../use-now.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { DetailsAction } from './message-details.tsx'
 import { MoveAction, type Mover } from './move-action.tsx'
 import { usePanel } from './panel.tsx'
@@ -35,9 +34,16 @@ export type ChatThreads = {
 
 /** The threads of `chat` for its transcript, opening in the channel's panel. */
 export function useChatThreads(chat: string, branchable: ReadonlySet<number>, mover?: Mover): ChatThreads {
-  const { conversations } = useWorkspaceFeed()
+  // Only the threads branched from this chat: a change to any other conversation leaves them, and `at`, as they were.
+  const branched = useConversations(
+    useCallback(
+      (conversations: readonly ConversationView[]) =>
+        conversations.filter((view) => view.kind === 'thread' && view.parent === chat),
+      [chat],
+    ),
+  )
   const panel = usePanel()
-  const at = useMemo(() => threadsByFork(conversations, chat), [conversations, chat])
+  const at = useMemo(() => threadsByFork(branched, chat), [branched, chat])
   return useMemo(
     () => ({
       chat,
@@ -76,10 +82,9 @@ function summaryLabel(view: ConversationView, working: boolean, unread: boolean)
  * in the panel.
  */
 export function ThreadSummary({ view, lead }: { readonly view: ConversationView; readonly lead?: string }) {
-  const feed = useWorkspaceFeed()
   const panel = usePanel()
   const now = useMinute()
-  const working = activityState(feed, view.id) !== 'idle'
+  const working = useActivity(view.id) !== undefined
   const unread = isUnread(view)
   const closed = isClosed(view)
   const last = view.lastReplyAt === undefined ? threadTitle(view) : `Last reply ${relativeTime(view.lastReplyAt, now)}`
@@ -192,8 +197,7 @@ export function MessageFooter({ part, threads }: { readonly part: Part; readonly
  * opening it. The model saw only the name it had then.
  */
 export function ThreadStartedRow({ thread }: { readonly thread: string }) {
-  const feed = useWorkspaceFeed()
-  const view = feed.conversations.find((candidate) => candidate.id === thread)
+  const view = useConversation(thread)
   if (view === undefined) return null
   return (
     <div className="thread-summaries">

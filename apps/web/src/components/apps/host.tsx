@@ -17,7 +17,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { type QueryClient, useQueryClient } from '@tanstack/react-query'
+import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { DownloadFile } from '../../lib/app-download.ts'
@@ -27,7 +27,8 @@ import { appLaunchQuery } from '../../apps/queries.ts'
 import { record, records } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { useNavigation } from '../../lib/navigation.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useApps } from '../../lib/workspace/hooks.ts'
+import { closeWorkspaceAppMutation } from '../../lib/workspace/mutations.ts'
 import type { AppSelection } from './frame.tsx'
 
 /** One loaded App: what it is, what it shows, and what it asked of the host so far. */
@@ -323,22 +324,22 @@ function useInstancePatches(setInstances: Dispatch<SetStateAction<ReadonlyMap<st
 }
 
 export function AppHost({ children }: { readonly children: ReactNode }) {
-  const feed = useWorkspaceFeed()
   const navigation = useNavigation()
+  const closing = useMutation(closeWorkspaceAppMutation).mutateAsync
   const { kick, onKick } = useKicks()
   const { slot, element } = useSlots(kick)
-  const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(feed.apps)
-  const outside = useRef({ feed, navigation, instances })
-  outside.current = { feed, navigation, instances }
+  const { instances, setInstances, dormant, problems, setProblems, show, seen, unload } = useResidency(useApps())
+  const outside = useRef({ navigation, instances })
+  outside.current = { navigation, instances }
   const close = useCallback(
     (id: string) => {
       unload([id], false)
       outside.current.navigation.closeAppPage(id)
-      outside.current.feed.closeApp(id).catch((cause: unknown) => {
+      closing({ id, closed: true }).catch((cause: unknown) => {
         setProblems((current) => withItem(current, id, messageOf(cause, 'close the app')))
       })
     },
-    [unload, setProblems],
+    [unload, setProblems, closing],
   )
   const { setHeight, setContext, setLink, setDownload, setMessage, dropMessage } = useInstancePatches(setInstances)
   const offerMessage = useCallback(

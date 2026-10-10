@@ -8,7 +8,7 @@ import { MessageFiles } from '../attachments.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
 import { usePanel } from '../shell/panel.tsx'
 import { ThreadSummary } from '../shell/thread-summary.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useConversation } from '../../lib/workspace/hooks.ts'
 import { Cause, MessageText, OpenThread } from './text-part.tsx'
 
 type Of<K extends Part['kind']> = Extract<Part, { readonly kind: K }>
@@ -19,9 +19,8 @@ type Of<K extends Part['kind']> = Extract<Part, { readonly kind: K }>
  * the thread even before the feed lists it.
  */
 export function ThreadHeadPart({ part }: { readonly part: Of<'thread-head'> }) {
-  const { conversations } = useWorkspaceFeed()
   const panel = usePanel()
-  const view = conversations.find((candidate) => candidate.id === part.thread)
+  const view = useConversation(part.thread)
   return (
     <>
       {part.author !== undefined && <p className="message-author">{part.author}</p>}

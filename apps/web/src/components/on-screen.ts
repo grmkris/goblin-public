@@ -1,7 +1,8 @@
 import { type RefObject, useEffect, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import type { ConversationView } from '@goblin/contracts'
 import { isUnread } from '../lib/threads.ts'
-import { useWorkspaceFeed } from './workspace-feed.tsx'
+import { markReadWorkspaceMutation } from '../lib/workspace/mutations.ts'
 
 /** Whether the page is in front: a background tab reads nothing. */
 function useDocumentVisible(): boolean {
@@ -36,7 +37,7 @@ export function useOnScreen(element: RefObject<HTMLElement | null>, threshold = 
  * Marks a conversation read once it has been shown for a moment with replies the owner has not seen.
  */
 export function useMarkRead(view: ConversationView, shown: boolean): void {
-  const { markRead } = useWorkspaceFeed()
+  const markRead = useMutation(markReadWorkspaceMutation).mutate
   const unread = isUnread(view)
   const reading = shown && unread
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { type ReactNode, use, useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import type { ConversationView } from '@goblin/contracts'
+import type { ConversationView, UpdateConversation } from '@goblin/contracts'
 import { Button, Duration } from '@goblin/ui'
 import {
   CheckIcon,
@@ -17,8 +17,9 @@ import { messageOf } from '../../lib/query/app-error.ts'
 import type { ToolPart } from '../../lib/parts.ts'
 import { type SubagentState, isBusy, subagentLabel, subagentState, workingUnder } from '../../lib/subagent-state.ts'
 import { subagentAction, subagentOf, threadTitle } from '../../lib/threads.ts'
+import { useActivities, useActivity, useConversation, useConversations } from '../../lib/workspace/hooks.ts'
+import { updateWorkspaceConversationMutation } from '../../lib/workspace/mutations.ts'
 import { useNow } from '../use-now.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
 import { OpenThread } from './text-part.tsx'
 import { ToolCard } from './tool-part.tsx'
 
@@ -54,27 +55,29 @@ export function SubagentStateText({ state }: { readonly state: SubagentState }) 
  * subagent works again.
  */
 export function useSubagent(view: ConversationView) {
-  const feed = useWorkspaceFeed()
+  const conversations = useConversations()
   const stopping = useMutation(stopMutation).mutate
+  const updating = useMutation(updateWorkspaceConversationMutation).mutate
   const [stopped, setStopped] = useState(false)
   const [failure, setFailure] = useState('')
-  const activity = feed.activity.get(view.id)
+  const activity = useActivity(view.id)
   useEffect(() => {
     if (activity !== undefined) setStopped(false)
   }, [activity])
-  const act = (change: Promise<unknown>) => {
+  // A change the server refuses shows in the feed's status, beside the composer, as every conversation change does.
+  const act = (change: UpdateConversation) => {
     setFailure('')
-    change.catch((cause: unknown) => setFailure(messageOf(cause, 'change the subagent')))
+    updating({ id: view.id, change })
   }
   const state = subagentState(view, activity, stopped)
-  const below = workingUnder(view.id, feed.conversations, feed.activity)
+  const below = workingUnder(view.id, conversations, useActivities())
   return {
     state,
     below,
     busy: isBusy(state, below),
     failure,
-    parent: threadTitle(feed.conversations.find((candidate) => candidate.id === view.parent)),
-    children: feed.conversations.filter((candidate) => candidate.kind === 'subagent' && candidate.parent === view.id),
+    parent: threadTitle(useConversation(view.parent)),
+    children: conversations.filter((candidate) => candidate.kind === 'subagent' && candidate.parent === view.id),
     stop: () => {
       setFailure('')
       stopping(view.id, {
@@ -82,9 +85,9 @@ export function useSubagent(view: ConversationView) {
         onError: (cause) => setFailure(messageOf(cause, 'stop the subagent')),
       })
     },
-    keepOpen: () => act(feed.update(view.id, { keepOpen: true })),
-    dismiss: () => act(feed.update(view.id, { closed: true })),
-    reopen: () => act(feed.update(view.id, { closed: false })),
+    keepOpen: () => act({ keepOpen: true }),
+    dismiss: () => act({ closed: true }),
+    reopen: () => act({ closed: false }),
   }
 }
 
@@ -283,11 +286,10 @@ function SubagentRow({
  * call still running, one that failed, a stop or a status check stays a plain tool line.
  */
 export function SubagentBlock({ part }: { readonly part: ToolPart }) {
-  const feed = useWorkspaceFeed()
   const subagent = subagentOf(part)
   const action = subagentAction(part)
   const { message } = part.call.arguments
-  const view = feed.conversations.find((candidate) => candidate.id === subagent?.thread)
+  const view = useConversation(subagent?.thread)
   if (view === undefined || (action !== 'spawn' && action !== 'send')) return <ToolCard part={part} />
   return (
     <SubagentRow

@@ -2,12 +2,11 @@ import { useSuspenseQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { AgentAppSummary } from '@goblin/contracts'
 import { Badge, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '@goblin/ui'
-import { agentAppsQuery, useFeedRefresh } from '../agent-apps/queries.ts'
+import { agentAppsQuery } from '../agent-apps/queries.ts'
 import { jobLine, jobTrouble } from '../lib/app-jobs.ts'
 import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
 import { reportUnexpected } from '../lib/unexpected.ts'
 import { AppTile } from './apps/app-tile.tsx'
-import { useWorkspaceFeed } from './workspace-feed.tsx'
 
 /** What an app needs from the owner, if anything: powers to allow, a schedule in trouble, a failure. */
 function needs(app: AgentAppSummary): string | undefined {
@@ -48,15 +47,12 @@ function AppCard({ app }: { readonly app: AgentAppSummary }) {
   )
 }
 
-/** The list itself, read through the cache the route primed; it reads again when the feed shows an app change. */
+/**
+ * The list itself, read through the cache the route primed; it reads again when the feed shows an app change
+ * (`lib/workspace/invalidations.ts`).
+ */
 function AppsList() {
-  const feed = useWorkspaceFeed()
   const list = useSuspenseQuery(agentAppsQuery)
-  const changed = feed.apps
-    .filter((app) => app.source.kind === 'agent')
-    .map((app) => `${app.id}:${app.source.kind === 'agent' ? app.source.revision : ''}`)
-    .join(',')
-  useFeedRefresh(agentAppsQuery.queryKey, changed)
   return (
     <>
       {list.isRefetchError && (

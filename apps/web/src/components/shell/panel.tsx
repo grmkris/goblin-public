@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { type PanelItem, type PanelSearch, panelSearch } from '../../lib/panel.ts'
 import { channelOf } from '../../lib/topics.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useConversations, useTopics } from '../../lib/workspace/hooks.ts'
 
 /** The thread panel beside a channel: what it holds, and the ways to change that, all through the URL. */
 type Panel = {
@@ -50,7 +50,7 @@ export function PanelProvider({
   readonly children: ReactNode
 }) {
   const navigate = useNavigate()
-  const { conversations } = useWorkspaceFeed()
+  const conversations = useConversations()
   const go = useCallback(
     (search: PanelSearch, replace = false) =>
       void navigate({ to: '/c/$chatId', params: { chatId: channel }, search, replace }),
@@ -81,7 +81,8 @@ export function PanelProvider({
  */
 export function useOpenChat(): (chat: string) => void {
   const navigate = useNavigate()
-  const { conversations, topics } = useWorkspaceFeed()
+  const conversations = useConversations()
+  const topics = useTopics()
   return useCallback(
     (chat: string) => {
       const channel = channelOf(chat, conversations, topics)

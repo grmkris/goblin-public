@@ -1,4 +1,4 @@
-import type { CreateConversation, MoveToThread, QueueRemoval, SendMessage, UpdateConversation } from '@goblin/contracts'
+import type { MoveToThread, QueueRemoval, SendMessage, UpdateConversation } from '@goblin/contracts'
 import { infiniteQueryOptions, queryOptions, skipToken } from '@tanstack/react-query'
 import type { ThreadStart } from '@goblin/contracts/api'
 import { owner } from '../lib/api.ts'
@@ -103,11 +103,6 @@ export const stopMutation = owner.apiMutation({
 export const removeQueuedMutation = owner.apiMutation({
   mutationFn: (api, { id, removal }: { readonly id: string; readonly removal: QueueRemoval }) =>
     api.conversations.removeQueued({ params: { id }, payload: removal }),
-})
-
-/** A Thread branched from an entry, or an empty one of a Topic; the workspace feed shows it. */
-export const createConversationMutation = owner.apiMutation({
-  mutationFn: (api, create: CreateConversation) => api.conversations.create({ payload: create }),
 })
 
 /** A chat renamed, closed or reopened, or a subagent kept open; the workspace feed shows it. */

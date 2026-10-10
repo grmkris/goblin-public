@@ -17,7 +17,7 @@ import { appNames, appOrigin } from '../../lib/app-names.ts'
 import { channelOf, topicOfChannel } from '../../lib/topics.ts'
 import { NavigationButton } from '../shell/shell.tsx'
 import { useOpenChat } from '../shell/panel.tsx'
-import { useWorkspaceFeed } from '../workspace-feed.tsx'
+import { useApps, useConversations, useTopics } from '../../lib/workspace/hooks.ts'
 import { AppTile } from './app-tile.tsx'
 import { useAppHost } from './host.tsx'
 import { useAppPlacement } from './placement.ts'
@@ -70,10 +70,11 @@ function AppPageMenu({ app }: { readonly app: AppView }) {
 
 /** "Back to #channel": the way to the chat the App belongs to, named by its channel. */
 function BackToChannel({ app }: { readonly app: AppView | undefined }) {
-  const feed = useWorkspaceFeed()
+  const conversations = useConversations()
+  const topics = useTopics()
   const openChat = useOpenChat()
   const chat = app?.conversation ?? '1'
-  const topic = topicOfChannel(channelOf(chat, feed.conversations, feed.topics), feed.topics)
+  const topic = topicOfChannel(channelOf(chat, conversations, topics), topics)
   return (
     <Button variant="ghost" size="sm" onClick={() => openChat(chat)}>
       <ChevronLeftIcon data-icon="inline-start" />
@@ -88,7 +89,7 @@ function BackToChannel({ app }: { readonly app: AppView | undefined }) {
  */
 export function AppPage({ id }: { readonly id: string }) {
   const host = useAppHost()
-  const { apps } = useWorkspaceFeed()
+  const apps = useApps()
   const app = apps.find((candidate) => candidate.id === id)
   const register = useSlot(`app-page:${id}`)
   const problem = host.problems.get(id)

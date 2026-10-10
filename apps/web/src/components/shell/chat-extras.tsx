@@ -1,8 +1,7 @@
-import { type ReactNode, useEffect, useMemo, useRef } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { type ReactNode, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { RetrievalSource, SourceUse } from '@goblin/contracts'
-import { conversationKeys, sourcesQuery } from '../../conversations/queries.ts'
-import { reportUnexpected } from '../../lib/unexpected.ts'
+import { sourcesQuery } from '../../conversations/queries.ts'
 import { ephemeralPlaces } from '../../lib/ephemeral.ts'
 import type { Part } from '../../lib/parts.ts'
 import { sourcePlaces } from '../../lib/sources.ts'
@@ -14,19 +13,10 @@ const NONE: readonly SourceUse[] = []
 
 /**
  * What retrieval gave a chat's answers (`GET …/sources`, ADR 0035): read when the chat opens and again each time a run
- * ends, which the chat's stream says. Sources are a note under answers: a read that fails keeps what was shown, and the
- * next run's end reads again.
+ * there ends, which the workspace feed says (`lib/workspace/invalidations.ts`). Sources are a note under answers: a
+ * read that fails keeps what was shown, and the next run's end reads again.
  */
-function useSourceUses(chat: string, running: boolean): readonly SourceUse[] {
-  const queryClient = useQueryClient()
-  const was = useRef(running)
-  const ended = was.current && !running
-  was.current = running
-  useEffect(() => {
-    if (ended) queryClient.invalidateQueries({ queryKey: conversationKeys.sources(chat) }).catch(reportUnexpected)
-  }, [ended, chat, queryClient])
-  return useQuery(sourcesQuery(chat)).data ?? NONE
-}
+const useSourceUses = (chat: string): readonly SourceUse[] => useQuery(sourcesQuery(chat)).data ?? NONE
 
 const flat = (uses: readonly SourceUse[]): RetrievalSource[] => uses.flatMap((use) => use.sources)
 
@@ -34,8 +24,8 @@ const flat = (uses: readonly SourceUse[]): RetrievalSource[] => uses.flatMap((us
  * What a chat's transcript shows beside its own messages: under an answer the sources automatic retrieval gave it,
  * the owner-only messages where they belong, and after everything the Personas still answering.
  */
-export function useChatExtras(chat: string, parts: readonly Part[], running: boolean) {
-  const uses = useSourceUses(chat, running)
+export function useChatExtras(chat: string, parts: readonly Part[]) {
+  const uses = useSourceUses(chat)
   const ephemeral = useEphemeral(chat)
   const strips = useMemo(() => sourcePlaces(parts, uses), [parts, uses])
   const placed = useMemo(() => ephemeralPlaces(parts, ephemeral.messages), [parts, ephemeral.messages])

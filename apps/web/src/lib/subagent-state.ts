@@ -1,5 +1,6 @@
 import type { ConversationActivity, ConversationView } from '@goblin/contracts'
 import { isClosed, relativeTime } from './threads.ts'
+import { type Activity, activityOf } from './workspace/slices.ts'
 
 /**
  * Where a subagent is in its life, from the workspace feed: at work (since, in ms), waiting on its own subagents,
@@ -32,11 +33,7 @@ export const isBusy = (state: SubagentState, below: number): boolean =>
   state.kind === 'working' || state.kind === 'waiting' || below > 0
 
 /** How many subagents under `id`, at any depth, are at work or waiting on their own. */
-export function workingUnder(
-  id: string,
-  conversations: readonly ConversationView[],
-  activity: ReadonlyMap<string, ConversationActivity>,
-): number {
+export function workingUnder(id: string, conversations: readonly ConversationView[], activity: Activity): number {
   const seen = new Set([id])
   let count = 0
   let level = [id]
@@ -47,7 +44,7 @@ export function workingUnder(
     )
     for (const view of next) {
       seen.add(view.id)
-      if (activity.has(view.id)) count += 1
+      if (activityOf(activity, view.id) !== undefined) count += 1
     }
     level = next.map((view) => view.id)
   }
