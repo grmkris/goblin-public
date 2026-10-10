@@ -1,5 +1,5 @@
 import { type SubmitEvent, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { RoutineDefinition, RoutineSettings, RoutineView } from '@goblin/contracts'
 import {
   Alert,
@@ -57,9 +57,8 @@ function whenOf(definition: RoutineDefinition): string {
 
 /** The account's routine timezone: a line saying it, opening to a field to change it. */
 function RoutineTimezone({ settings }: { readonly settings: RoutineSettings }) {
-  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const update = useMutation(routineSettingsMutation(queryClient))
+  const update = useMutation(routineSettingsMutation)
   const pending = update.isPending
   const error = update.error === null ? '' : messageOf(update.error, 'change the timezone')
   const suggested = browserZone()
@@ -160,8 +159,7 @@ type Change = 'confirm' | 'pause' | 'archive'
 
 /** Confirm, Pause, Edit and Archive, each busy while it is under way. */
 function useRoutineChange(routine: RoutineView, onChange?: (routine: RoutineView) => void) {
-  const queryClient = useQueryClient()
-  const changing = useMutation(changeRoutineMutation(queryClient))
+  const changing = useMutation(changeRoutineMutation)
   const pending = changing.isPending ? changing.variables.action : undefined
   const error = changing.error === null ? '' : messageOf(changing.error, 'change this routine')
   const change = (action: Change) =>

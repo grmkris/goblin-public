@@ -5,7 +5,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { approvalKeys, approvalQuery, decideApprovalMutation } from '../src/approvals/queries.ts'
+import { approvalQuery, decideApprovalMutation } from '../src/approvals/queries.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
 import { unusedHandlers } from './query/unused-handlers.ts'
@@ -57,9 +57,9 @@ describe('approval queries', () => {
     const unsubscribe = read.subscribe(() => undefined)
     try {
       await vi.waitFor(() => expect(read.getCurrentResult().data?.state).toBe('pending'))
-      const decide = new MutationObserver(client, decideApprovalMutation(client, 'apr-1'))
+      const decide = new MutationObserver(client, decideApprovalMutation('apr-1'))
       await decide.mutate(false)
-      expect(client.getQueryData(approvalKeys.detail('apr-1'))).toMatchObject({ state: 'refused' })
+      expect(client.getQueryData(approvalQuery('apr-1').queryKey)).toMatchObject({ state: 'refused' })
       expect(read.getCurrentResult().data?.state).toBe('refused')
     } finally {
       unsubscribe()

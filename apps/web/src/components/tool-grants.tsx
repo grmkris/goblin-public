@@ -2,7 +2,7 @@
 // (or, for an App, the App's resource and its tools). Names, descriptions and hints come from the server: they are
 // shown as its claims and never grant anything.
 import { useId, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { Badge, Button, Switch } from '@goblin/ui'
 import { appGrantMutation, askFirstMutation, toolGrantMutation } from '../mcp/queries.ts'
@@ -170,11 +170,10 @@ const appsOf = (tools: Tools): readonly string[] => [
 
 /** The grant calls behind the switches; each updates the list in the cache once the runtime has it. */
 function useGrants(serverId: string, tools: Tools, onMessage: (message: string) => void) {
-  const queryClient = useQueryClient()
   const { pending, during } = usePending()
-  const toolGrant = useMutation(toolGrantMutation(queryClient))
-  const appGrant = useMutation(appGrantMutation(queryClient))
-  const askFirst = useMutation(askFirstMutation(queryClient))
+  const toolGrant = useMutation(toolGrantMutation)
+  const appGrant = useMutation(appGrantMutation)
+  const askFirst = useMutation(askFirstMutation)
   const tool = (name: string, allowed: boolean) => toolGrant.mutateAsync({ serverId, name, allowed })
   const app = (uri: string, allowed: boolean) => appGrant.mutateAsync({ serverId, uri, allowed })
   const attempt = (busy: readonly string[], action: string, work: () => Promise<unknown>) =>

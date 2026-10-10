@@ -1,7 +1,7 @@
 // One of the owner's MCP servers: its name, where it stands, its actions, and once connected, the events, skills,
 // Telegram channel and tools it offers. A server's title and description are its own claims.
 import { useEffect, useId, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerView, ToolView } from '@goblin/contracts'
 import {
   Button,
@@ -65,8 +65,7 @@ function SkillsSwitch({
   readonly onMessage: (message: string) => void
 }) {
   const id = useId()
-  const queryClient = useQueryClient()
-  const toggle = useMutation(setSkillsMutation(queryClient))
+  const toggle = useMutation(setSkillsMutation)
   const pending = toggle.isPending
   const enabled = pending ? toggle.variables.enabled : server.skillsEnabled === true
   const change = (next: boolean) =>
@@ -149,8 +148,7 @@ function RemoveConfirm({
   readonly onCancel: () => void
   readonly onMessage: (message: string) => void
 }) {
-  const queryClient = useQueryClient()
-  const removing = useMutation(removeServerMutation(queryClient))
+  const removing = useMutation(removeServerMutation)
   const pending = removing.isPending || removing.isSuccess
   const remove = () =>
     removing.mutate(server.serverId, {
@@ -223,10 +221,9 @@ type ServerCardProps = {
 
 /** Connect, Disconnect and Look for new tools, with which of them is under way. */
 function useServerActions(server: ServerView, onMessage: (message: string) => void) {
-  const queryClient = useQueryClient()
-  const connect = useMutation(connectMutation(queryClient))
-  const disconnect = useMutation(disconnectMutation(queryClient))
-  const refresh = useMutation(refreshToolsMutation(queryClient))
+  const connect = useMutation(connectMutation)
+  const disconnect = useMutation(disconnectMutation)
+  const refresh = useMutation(refreshToolsMutation)
   const title = serverTitle(server)
   const failed = (action: string) => (error: unknown) => onMessage(messageOf(error, action))
   // An authorization URL means the page is leaving for the server's sign-in.

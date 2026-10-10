@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import type { AgentAppChange, AgentAppDetail, AgentAppJob, AppPower, ConversationView } from '@goblin/contracts'
 import {
@@ -38,9 +38,8 @@ const homeChoices = (conversations: readonly ConversationView[]) =>
  * changed reads it again (`lib/workspace/invalidations.ts`).
  */
 function useAgentApp(name: string) {
-  const queryClient = useQueryClient()
   const detail = useSuspenseQuery(agentAppQuery(name))
-  const change = useMutation(changeAgentAppMutation(queryClient, name))
+  const change = useMutation(changeAgentAppMutation(name))
   const error =
     change.error !== null
       ? messageOf(change.error, 'change the app')
@@ -171,8 +170,7 @@ function Versions({ app, busy, run }: { readonly app: AgentAppDetail; readonly b
 /** Deleting erases the app for good; the owner types its name first. */
 function DeleteApp({ app }: { readonly app: AgentAppDetail }) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const remove = useMutation(deleteAgentAppMutation(queryClient, app.name))
+  const remove = useMutation(deleteAgentAppMutation(app.name))
   const [typed, setTyped] = useState('')
   const error = remove.error === null ? '' : messageOf(remove.error, 'delete the app')
   return (

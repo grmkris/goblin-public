@@ -23,9 +23,9 @@ export function undoRefusal(failure: unknown): string {
  */
 export function useOrganize() {
   const queryClient = useQueryClient()
-  const create = useMutation(createTopicMutation(queryClient)).mutateAsync
-  const update = useMutation(updateTopicMutation(queryClient)).mutateAsync
-  const undo = useMutation(undoMutation(queryClient)).mutateAsync
+  const create = useMutation(createTopicMutation).mutateAsync
+  const update = useMutation(updateTopicMutation).mutateAsync
+  const undo = useMutation(undoMutation).mutateAsync
   return useMemo(
     () => ({
       createTopic: async (name: string, operationId: string): Promise<TopicView> => {

@@ -1,9 +1,9 @@
 import type { ApprovalView } from '@goblin/contracts'
-import { type QueryClient, mutationOptions, queryOptions } from '@tanstack/react-query'
+import { mutationOptions, queryOptions } from '@tanstack/react-query'
 import { owner } from '../lib/api.ts'
 
 /** Every approval read: keys are `['approvals', kind, input]`. */
-export const approvalKeys = { detail: (id: string) => ['approvals', 'detail', id] as const }
+const approvalKeys = { detail: (id: string) => ['approvals', 'detail', id] as const }
 
 /** Whether a held call still waits on its way: not yet decided, or decided and not yet run. */
 const awaitingApproval = (view: ApprovalView | undefined): boolean =>
@@ -20,10 +20,10 @@ export const approvalQuery = (id: string) =>
   })
 
 /** The owner's decision on held call `id`; its answer is the call as it now stands. */
-export const decideApprovalMutation = (queryClient: QueryClient, id: string) =>
+export const decideApprovalMutation = (id: string) =>
   mutationOptions({
     ...owner.apiMutation({
       mutationFn: (api, allowed: boolean) => api.mcp.decideApproval({ params: { id }, payload: { allowed } }),
     }),
-    onSuccess: (view) => queryClient.setQueryData(approvalKeys.detail(id), view),
+    onSuccess: (view, _allowed, _result, { client }) => client.setQueryData(approvalKeys.detail(id), view),
   })

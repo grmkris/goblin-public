@@ -1,7 +1,7 @@
 // Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
 // on its card; nothing here turns a routine on.
 import { type SubmitEvent, type ReactNode, useEffect, useId, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Option, Schema } from 'effect'
 import type { RoutineDefinition, RoutineView } from '@goblin/contracts'
 import {
@@ -101,8 +101,7 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const [cron, setCron] = useState(initial.trigger.kind === 'cron' ? initial.trigger.expression : '')
   const [selected, setSelected] = useState<readonly Tool[]>(initial.allowedTools)
   const [notify, setNotify] = useState(initial.notifyTelegram)
-  const queryClient = useQueryClient()
-  const saving = useMutation(saveRoutineMutation(queryClient))
+  const saving = useMutation(saveRoutineMutation)
   const [problem, setProblem] = useState('')
   const available = useAvailableTools(selected, setProblem)
   const pending = saving.isPending

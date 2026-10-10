@@ -71,14 +71,13 @@ export const appResourceReadMutation = owner.apiMutation({
 })
 
 /** The owner allows the tool an App asked for; the owner's MCP reads (grants among them) read again. */
-export const allowAppToolMutation = (queryClient: QueryClient) =>
-  mutationOptions({
-    ...owner.apiMutation({
-      mutationFn: (api, { serverId, name }: { readonly serverId: string; readonly name: string }) =>
-        api.mcp.setToolGrant({ payload: { serverId, name, allowed: true } }),
-    }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['mcp'] }),
-  })
+export const allowAppToolMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, { serverId, name }: { readonly serverId: string; readonly name: string }) =>
+      api.mcp.setToolGrant({ payload: { serverId, name, allowed: true } }),
+  }),
+  onSuccess: (_grants, _tool, _result, { client }) => client.invalidateQueries({ queryKey: ['mcp'] }),
+})
 
 /**
  * Runs `options` outside a component, as `useMutation` would: through the client's mutation cache, so an ended session

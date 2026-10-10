@@ -1,6 +1,6 @@
 // The owner's agent apps (ADR 0021) through the typed client: the Apps page's list and each app's page. Keys are
 // [feature, kind, input]; a change answers with the app as it is after it, so its detail is set, not read again.
-import { type QueryClient, mutationOptions } from '@tanstack/react-query'
+import { mutationOptions } from '@tanstack/react-query'
 import type { AgentAppChange } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
 
@@ -20,7 +20,7 @@ export const agentAppQuery = (name: string) =>
   })
 
 /** A change to agent app `name`: its answer is the app after it, and the list reads again (its summary moved). */
-export const changeAgentAppMutation = (queryClient: QueryClient, name: string) =>
+export const changeAgentAppMutation = (name: string) =>
   mutationOptions({
     ...owner.apiMutation({
       mutationFn: (api, change: AgentAppChange) =>
@@ -30,17 +30,17 @@ export const changeAgentAppMutation = (queryClient: QueryClient, name: string) =
           { params: { name }, payload: change } as Parameters<typeof api.agentApps.change>[0],
         ),
     }),
-    onSuccess: (detail) => {
-      queryClient.setQueryData(agentAppKeys.detail(name), detail)
-      return queryClient.invalidateQueries({ queryKey: agentAppKeys.list })
+    onSuccess: (detail, _change, _result, { client }) => {
+      client.setQueryData(agentAppKeys.detail(name), detail)
+      return client.invalidateQueries({ queryKey: agentAppKeys.list })
     },
   })
 
 /** Deletes agent app `name` once the owner typed it (`confirm`); the list reads again. */
-export const deleteAgentAppMutation = (queryClient: QueryClient, name: string) =>
+export const deleteAgentAppMutation = (name: string) =>
   mutationOptions({
     ...owner.apiMutation({
       mutationFn: (api, confirm: string) => api.agentApps.delete({ params: { name }, payload: { confirm } }),
     }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: agentAppKeys.list }),
+    onSuccess: (_deleted, _confirm, _result, { client }) => client.invalidateQueries({ queryKey: agentAppKeys.list }),
   })

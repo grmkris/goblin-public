@@ -1,20 +1,19 @@
-import { type QueryClient, mutationOptions } from '@tanstack/react-query'
+import { mutationOptions } from '@tanstack/react-query'
 import type { CapabilityChange } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
 import { applyChange } from '../lib/capabilities.ts'
 
-/**
- * A conversation's switches (ADR 0033) on the owner API. The key sits under `conversations`, so whatever refreshes a
- * conversation refreshes its switches too.
- */
+/** A conversation's switches (ADR 0033) on the owner API: keys are `['capabilities', chat]`. */
+const capabilityKeys = { chat: (chat: string) => ['capabilities', chat] as const }
+
 export const capabilitiesQuery = (chat: string) =>
   owner.apiQuery({
-    queryKey: ['conversations', 'capabilities', chat],
+    queryKey: capabilityKeys.chat(chat),
     queryFn: (api) => api.conversations.capabilities({ params: { id: chat } }),
   })
 
 /** One switch (or a reset to the parent's): shown at once, then the agent's answer, or read again if it refused. */
-export const setCapabilityMutation = (queryClient: QueryClient, chat: string) =>
+export const setCapabilityMutation = (chat: string) =>
   mutationOptions({
     ...owner.apiMutation({
       mutationFn: (api, change: CapabilityChange) =>
@@ -23,11 +22,12 @@ export const setCapabilityMutation = (queryClient: QueryClient, chat: string) =>
           ? api.conversations.setCapability({ params: { id: chat }, payload: change })
           : api.conversations.setCapability({ params: { id: chat }, payload: change }),
     }),
-    onMutate: async (change: CapabilityChange) => {
+    onMutate: async (change: CapabilityChange, { client }) => {
       const { queryKey } = capabilitiesQuery(chat)
-      await queryClient.cancelQueries({ queryKey })
-      queryClient.setQueryData(queryKey, (view) => (view === undefined ? view : applyChange(view, change)))
+      await client.cancelQueries({ queryKey })
+      client.setQueryData(queryKey, (view) => (view === undefined ? view : applyChange(view, change)))
     },
-    onError: () => queryClient.invalidateQueries({ queryKey: capabilitiesQuery(chat).queryKey }),
-    onSuccess: (view) => queryClient.setQueryData(capabilitiesQuery(chat).queryKey, view),
+    onError: (_error, _change, _result, { client }) =>
+      client.invalidateQueries({ queryKey: capabilityKeys.chat(chat) }),
+    onSuccess: (view, _change, _result, { client }) => client.setQueryData(capabilitiesQuery(chat).queryKey, view),
   })

@@ -129,7 +129,7 @@ describe("an App's frame calls", () => {
   it('allow the asked tool and read the MCP queries again', async () => {
     const client = testQueryClient()
     await client.query(owner.apiQuery({ queryKey: ['mcp', 'grants'], queryFn: (api) => api.mcp.grants() }))
-    const grants = await perform(client, allowAppToolMutation(client), { serverId: 'myplan', name: 'read' })
+    const grants = await perform(client, allowAppToolMutation, { serverId: 'myplan', name: 'read' })
     expect(grants).toEqual([{ serverId: 'myplan', capability: 'tool', name: 'read' }])
     expect(client.getQueryState(['mcp', 'grants'])?.isInvalidated).toBe(true)
   })

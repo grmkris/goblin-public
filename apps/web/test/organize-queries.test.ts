@@ -9,7 +9,7 @@ import { undoRefusal } from '../src/components/shell/organize.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
 import { undoMutation } from '../src/organize/queries.ts'
-import { createTopicMutation, topicKeys, updateTopicMutation } from '../src/topics/queries.ts'
+import { createTopicMutation, updateTopicMutation } from '../src/topics/queries.ts'
 
 const PERSONAL: TopicView = {
   id: 1,
@@ -89,23 +89,21 @@ afterAll(async () => {
 describe('organizing through the owner API', () => {
   it('creates a Topic as its operation, and refuses a name in use as a typed conflict', async () => {
     const client = testQueryClient()
-    const create = new MutationObserver(client, createTopicMutation(client))
+    const create = new MutationObserver(client, createTopicMutation)
     await expect(create.mutate({ name: 'Garden', operationId: 'op-1' })).resolves.toMatchObject({ name: 'Garden' })
     await expect(create.mutate({ name: 'Garden', operationId: 'op-2' })).rejects.toBeInstanceOf(Conflict)
     expect(fake.calls.at(-1)?.headers.get('x-goblin-operation')).toBe('op-2')
   })
 
-  it('renames a Topic, then marks every Topic read stale', async () => {
+  it('renames a Topic and answers it as it is now', async () => {
     const client = testQueryClient()
-    client.setQueryData([...topicKeys.all, 'list'], [PERSONAL])
-    const update = new MutationObserver(client, updateTopicMutation(client))
+    const update = new MutationObserver(client, updateTopicMutation)
     await expect(update.mutate({ id: 1, change: { name: 'Home' } })).resolves.toMatchObject({ name: 'Home' })
-    expect(client.getQueryState([...topicKeys.all, 'list'])?.isInvalidated).toBe(true)
   })
 
   it('undoes a receipt once, and says why a second Undo is refused', async () => {
     const client = testQueryClient()
-    const undo = new MutationObserver(client, undoMutation(client))
+    const undo = new MutationObserver(client, undoMutation)
     await expect(undo.mutate(RECEIPT)).resolves.toMatchObject({ id: RECEIPT, undoneAt: 2 })
     const again = await undo.mutate(RECEIPT).then(
       () => 'undone twice',

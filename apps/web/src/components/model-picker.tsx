@@ -1,5 +1,5 @@
 import { Fragment, useEffect } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { ChevronsUpDownIcon, CpuIcon } from 'lucide-react'
 import type { ModelChoice, ModelOption } from '@goblin/contracts'
 import {
@@ -18,9 +18,8 @@ import { messageOf } from '../lib/query/app-error.ts'
 
 /** The user's model and what the deployment offers. A pick shows at once and is undone if the server refuses it. */
 export function useModelChoice(onError: (message: string) => void) {
-  const queryClient = useQueryClient()
   const read = useQuery(modelQuery)
-  const pick = useMutation(chooseModelMutation(queryClient))
+  const pick = useMutation(chooseModelMutation)
   useEffect(() => {
     if (read.error !== null) onError(messageOf(read.error, 'load the models'))
   }, [read.error, onError])

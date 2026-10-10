@@ -1,5 +1,4 @@
-import { useCallback } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { CapabilityChange, ConversationCapabilities } from '@goblin/contracts'
 import {
@@ -22,26 +21,6 @@ import { messageOf } from '../lib/query/app-error.ts'
 
 type View = ConversationCapabilities
 type Change = (change: CapabilityChange) => void
-
-/**
- * A conversation's switches: loaded with it, again when a run starts or ends there (a card may have turned one on; the
- * workspace feed says so, `lib/workspace/invalidations.ts`) and when the panel opens. A change shows at once and is
- * replaced by the agent's answer, or undone with the reason.
- */
-export function useCapabilities(thread: string) {
-  const queryClient = useQueryClient()
-  const read = useQuery(capabilitiesQuery(thread))
-  const setting = useMutation(setCapabilityMutation(queryClient, thread))
-  const { refetch } = read
-  const load = useCallback(() => void refetch(), [refetch])
-  const error =
-    (setting.error !== null && messageOf(setting.error, 'change that switch')) ||
-    (read.error !== null && messageOf(read.error, "read this conversation's switches")) ||
-    ''
-  const { mutate } = setting
-  const change = useCallback((next: CapabilityChange) => mutate(next), [mutate])
-  return { view: read.data, error, change, load }
-}
 
 /** One switch with its name; the whole row toggles it, at least 44px tall on touch screens. */
 function SwitchRow({
@@ -185,16 +164,25 @@ function CapabilitiesPanel({
 
 /**
  * Beside the composer: what this conversation lets its agent use, in a panel above it. The button reads "3 of 5" when
- * something is switched off here. A subagent follows the conversation that started it, so it has none.
+ * something is switched off here. A subagent follows the conversation that started it, so it has none. The switches
+ * load with the conversation, again when a run starts or ends there (a card may have turned one on; the workspace
+ * feed says so, `lib/workspace/invalidations.ts`) and when the panel opens. A change shows at once and is replaced by
+ * the agent's answer, or undone with the reason.
  */
 export function CapabilitiesButton({ thread }: { readonly thread: string }) {
-  const { view, error, change, load } = useCapabilities(thread)
+  const read = useQuery(capabilitiesQuery(thread))
+  const setting = useMutation(setCapabilityMutation(thread))
+  const view = read.data
   if (view === undefined || view.kind === 'subagent') return null
+  const error =
+    (setting.error !== null && messageOf(setting.error, 'change that switch')) ||
+    (read.error !== null && messageOf(read.error, "read this conversation's switches")) ||
+    ''
   const { on, total } = capabilityCount(view)
   const narrowed = on < total
   const summary = narrowed ? `${on} of ${total} on` : 'everything on'
   return (
-    <Popover onOpenChange={(open) => open && load()}>
+    <Popover onOpenChange={(open) => open && void read.refetch()}>
       <PopoverTrigger
         render={<Button type="button" variant="ghost" aria-label={`What the agent can use here: ${summary}`} />}
       >
@@ -206,7 +194,7 @@ export function CapabilitiesButton({ thread }: { readonly thread: string }) {
         )}
       </PopoverTrigger>
       <PopoverContent side="top" align="start" size="panel">
-        <CapabilitiesPanel view={view} error={error} onChange={change} />
+        <CapabilitiesPanel view={view} error={error} onChange={setting.mutate} />
       </PopoverContent>
     </Popover>
   )

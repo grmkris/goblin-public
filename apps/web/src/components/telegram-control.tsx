@@ -1,6 +1,6 @@
 // The owner's one Telegram channel: a server with Telegram's tools can carry it, and only one does at a time.
 import { useEffect, useId } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { Switch } from '@goblin/ui'
 import { changeChannelMutation, channelQuery } from '../agent/queries.ts'
@@ -15,9 +15,8 @@ const channelDate = (seconds: number): string => new Date(seconds * 1000).toLoca
 
 /** One Telegram channel for the owner, shared by every server card. */
 export function useTelegramChannel(onMessage: (message: string) => void) {
-  const queryClient = useQueryClient()
   const read = useQuery(channelQuery)
-  const move = useMutation(changeChannelMutation(queryClient))
+  const move = useMutation(changeChannelMutation)
   useEffect(() => {
     if (read.error !== null) onMessage(messageOf(read.error, 'read the Telegram channel'))
   }, [read.error, onMessage])

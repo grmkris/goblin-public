@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { RoutineRunView } from '@goblin/contracts'
 import { Link } from '@tanstack/react-router'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
@@ -66,10 +66,9 @@ export function RoutineHistory({
   readonly revision: number
   readonly active: boolean
 }) {
-  const queryClient = useQueryClient()
   const read = useQuery(routineRunsQuery(id))
-  const running = useMutation(runRoutineMutation(queryClient))
-  const stopping = useMutation(stopRunMutation(queryClient))
+  const running = useMutation(runRoutineMutation)
+  const stopping = useMutation(stopRunMutation)
   const runs = read.data?.runs
   const pending = running.isPending ? 'run' : stopping.isPending ? stopping.variables.run : undefined
   const error =

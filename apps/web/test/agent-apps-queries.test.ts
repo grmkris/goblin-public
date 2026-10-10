@@ -107,7 +107,7 @@ describe('the agent apps factories', () => {
     const client = testQueryClient()
     await client.query(agentAppsQuery)
     await client.query(agentAppQuery('tracker'))
-    const change = new MutationObserver(client, changeAgentAppMutation(client, 'tracker'))
+    const change = new MutationObserver(client, changeAgentAppMutation('tracker'))
     const changed = await change.mutate({ kind: 'pause', action: 'sync', paused: true })
     expect(fake.changes).toEqual([{ kind: 'pause', action: 'sync', paused: true }])
     expect(client.getQueryData(agentAppQuery('tracker').queryKey)).toEqual(changed)
@@ -117,7 +117,7 @@ describe('the agent apps factories', () => {
 
   it('delete with the typed name, and a refusal reads as the owner sees it', async () => {
     const client = testQueryClient()
-    const remove = new MutationObserver(client, deleteAgentAppMutation(client, 'tracker'))
+    const remove = new MutationObserver(client, deleteAgentAppMutation('tracker'))
     const refused = await remove.mutate('trackr').then(
       () => undefined,
       (cause: unknown) => cause,

@@ -113,7 +113,7 @@ function useDraft(persona: PersonaView) {
 
 /** Saving a new revision of `persona`: the feed shows it at once, and the profile reads it again. */
 function useSave(queryClient: QueryClient, persona: PersonaView, saved: (next: PersonaView) => void) {
-  const save = useMutation(updatePersonaMutation(queryClient, persona.id))
+  const save = useMutation(updatePersonaMutation(persona.id))
   const start = (change: UpdatePersona) =>
     save.mutate(change, {
       onSuccess: (next) => {
@@ -162,7 +162,7 @@ function Create() {
   const navigate = useNavigate()
   const [draft, setDraft] = useState<PersonaDefinition>(BLANK)
   const [operation] = useState(() => crypto.randomUUID())
-  const create = useMutation(createPersonaMutation(queryClient))
+  const create = useMutation(createPersonaMutation)
   const submit = () =>
     create.mutate(
       { ...draft, operationId: operation },

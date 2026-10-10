@@ -1,5 +1,5 @@
 import { type SubmitEvent, useId, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   Alert,
   AlertDescription,
@@ -105,9 +105,8 @@ function MemoryCard() {
  */
 function ResidentCard() {
   const id = useId()
-  const queryClient = useQueryClient()
   const read = useQuery(residentQuery)
-  const change = useMutation(setResidentMutation(queryClient))
+  const change = useMutation(setResidentMutation)
   const status = read.data
   const pending = change.isPending
   const failure =
@@ -166,9 +165,8 @@ function ResidentCard() {
 
 /** The MCP clients the owner let use their agent, each revocable. */
 function ClientsCard() {
-  const queryClient = useQueryClient()
   const listed = useQuery(clientsQuery)
-  const revoke = useMutation(revokeClientMutation(queryClient))
+  const revoke = useMutation(revokeClientMutation)
   const clients = listed.data
   const revoking = revoke.isPending ? revoke.variables : ''
   const failure = revoke.error === null ? '' : messageOf(revoke.error, 'revoke that app')

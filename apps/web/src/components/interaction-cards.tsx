@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, PowerIcon } from 'lucide-react'
 import { PRIMARY_CHAT, type ToolView } from '@goblin/contracts'
 import {
@@ -23,13 +23,12 @@ import {
   QuestionnaireTitle,
   Receipt,
 } from '@goblin/ui'
-import { setCapabilityMutation } from '../capabilities/queries.ts'
+import { capabilitiesQuery, setCapabilityMutation } from '../capabilities/queries.ts'
 import { toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
-import { useCapabilities } from './capabilities.tsx'
 import { addAndConnect } from './server-add.tsx'
 import { ApprovalCard } from './approval-card.tsx'
 
@@ -132,8 +131,7 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
   const { serverId, name } = interaction
   const tool = useToolClaims(serverId, name)
   const { busy, error, replying } = useReplying()
-  const queryClient = useQueryClient()
-  const grant = useMutation(toolGrantMutation(queryClient)).mutateAsync
+  const grant = useMutation(toolGrantMutation).mutateAsync
   const reply = (allowed: boolean) =>
     void replying(async () => {
       if (allowed) await grant({ serverId, name, allowed })
@@ -184,12 +182,11 @@ function CapabilityCard({
   readonly onAnswer: Answer
 }) {
   const { target } = interaction
-  const { view } = useCapabilities(thread)
+  const view = useQuery(capabilitiesQuery(thread)).data
   const label = targetLabel(target, view)
   const where = thread === PRIMARY_CHAT ? 'in main' : 'in this thread'
   const { busy, error, replying } = useReplying()
-  const queryClient = useQueryClient()
-  const turnOn = useMutation(setCapabilityMutation(queryClient, thread)).mutateAsync
+  const turnOn = useMutation(setCapabilityMutation(thread)).mutateAsync
   const reply = (on: boolean) =>
     void replying(async () => {
       if (on) await turnOn({ target, on })

@@ -97,7 +97,7 @@ describe('Persona queries', () => {
     const unsubscribe = watching.subscribe(() => undefined)
     try {
       await vi.waitFor(() => expect(watching.getCurrentResult().data?.persona.revision).toBe(1))
-      const save = new MutationObserver(client, updatePersonaMutation(client, 1))
+      const save = new MutationObserver(client, updatePersonaMutation(1))
       await save.mutate({ role: 'Editor', expectedRevision: 1 })
       expect(watching.getCurrentResult().data?.persona).toMatchObject({ role: 'Editor', revision: 2 })
       await expect(save.mutate({ role: 'Critic', expectedRevision: 1 })).rejects.toBeInstanceOf(Conflict)

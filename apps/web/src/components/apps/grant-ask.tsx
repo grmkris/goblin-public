@@ -2,7 +2,7 @@
 // naming the exact tool. Allow grants that tool and retries; "Not now", or two minutes without an answer, fails the
 // call as denied. The App's own words never reach this card; only the tool name it called does.
 import { useCallback, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { KeyRoundIcon } from 'lucide-react'
 import { GrantDenied } from '@goblin/contracts/api'
 import { Button } from '@goblin/ui'
@@ -59,8 +59,7 @@ function AppGrantCard({
   readonly name: string
   readonly onAnswer: (allowed: boolean) => void
 }) {
-  const queryClient = useQueryClient()
-  const allow = useMutation(allowAppToolMutation(queryClient))
+  const allow = useMutation(allowAppToolMutation)
   const busy = allow.isPending || allow.isSuccess
   const error = allow.error === null ? '' : messageOf(allow.error, 'allow the tool')
   return (

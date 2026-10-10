@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { AskCard, AskCardHeader, AskCardDescription, AskCardActions, Button, JsonView, Receipt } from '@goblin/ui'
 import { KeyRoundIcon } from 'lucide-react'
 import { approvalQuery, decideApprovalMutation } from '../approvals/queries.ts'
@@ -12,9 +12,8 @@ type Approval = Extract<Interaction, { kind: 'approval' }>
  * waits; what went wrong deciding it, or reading it, shows on the card.
  */
 export function ApprovalCard({ interaction }: { readonly interaction: Approval }) {
-  const queryClient = useQueryClient()
   const read = useQuery(approvalQuery(interaction.approvalId))
-  const decision = useMutation(decideApprovalMutation(queryClient, interaction.approvalId))
+  const decision = useMutation(decideApprovalMutation(interaction.approvalId))
   const view = read.data
   const busy = decision.isPending
   const error =

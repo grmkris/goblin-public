@@ -29,9 +29,8 @@ export function AddByAddress({
   readonly onAdded: (server: ServerView) => void
   readonly onMessage: (message: string) => void
 }) {
-  const queryClient = useQueryClient()
   const [endpoint, setEndpoint] = useState('')
-  const adding = useMutation(addServerMutation(queryClient))
+  const adding = useMutation(addServerMutation)
   function add(event: SubmitEvent<HTMLFormElement>): void {
     event.preventDefault()
     adding.mutate(

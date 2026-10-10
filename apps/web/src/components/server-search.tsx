@@ -1,7 +1,7 @@
 // Finding servers in MCP registries. Everything shown comes from the publisher and is labelled with the registry it
 // came from; "namespace verified" appears only where the registry checks it. Adding one works as adding by URL.
 import { type SubmitEvent, useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CatalogEntry } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { Badge, Button, Input, Spinner } from '@goblin/ui'
@@ -20,9 +20,8 @@ const REGISTRY_REFUSED: Record<string, string> = {
 
 /** The registries searched: the built-in two, then the owner's own, which they may add and remove. */
 function Registries({ onMessage }: { readonly onMessage: (message: string) => void }) {
-  const queryClient = useQueryClient()
   const read = useQuery(registriesQuery)
-  const change = useMutation(registryMutation(queryClient))
+  const change = useMutation(registryMutation)
   const registries = read.data ?? []
   const [url, setUrl] = useState('')
   const failed = (error: unknown) =>

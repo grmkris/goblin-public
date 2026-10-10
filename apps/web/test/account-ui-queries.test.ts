@@ -108,7 +108,7 @@ describe('the model pick', () => {
   it("keeps the agent's answer in the cache", async () => {
     const client = testQueryClient()
     await client.query(modelQuery)
-    const pick = new MutationObserver(client, chooseModelMutation(client))
+    const pick = new MutationObserver(client, chooseModelMutation)
     await pick.mutate('deep')
     expect(client.getQueryData(modelQuery.queryKey)).toEqual({ ...CHOICE, current: 'deep' })
   })
@@ -116,7 +116,7 @@ describe('the model pick', () => {
   it('puts the previous model back when the agent refuses the pick', async () => {
     const client = testQueryClient()
     await client.query(modelQuery)
-    const pick = new MutationObserver(client, chooseModelMutation(client))
+    const pick = new MutationObserver(client, chooseModelMutation)
     await expect(pick.mutate('retired')).rejects.toBeInstanceOf(InvalidInput)
     expect(client.getQueryData(modelQuery.queryKey)?.current).toBe('fast')
   })
@@ -129,7 +129,7 @@ describe('a routine change', () => {
     const unsubscribe = list.subscribe(() => undefined)
     try {
       await vi.waitFor(() => expect(list.getCurrentResult().data?.routines[0]?.state).toBe('proposed'))
-      const change = new MutationObserver(client, changeRoutineMutation(client))
+      const change = new MutationObserver(client, changeRoutineMutation)
       await change.mutate({ action: 'confirm', id: ROUTINE.id, revision: 1, operationId: 'op-confirm-1' })
       expect(list.getCurrentResult().data?.routines[0]).toMatchObject({ state: 'active', revision: 2 })
       expect(fake.state.operations).toEqual(['op-confirm-1'])

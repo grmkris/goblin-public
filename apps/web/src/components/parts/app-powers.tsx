@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { AppPower } from '@goblin/contracts'
 import { AskCard, AskCardDescription, AskCardHeader, Button } from '@goblin/ui'
 import { ShieldCheckIcon } from 'lucide-react'
@@ -28,9 +28,8 @@ export function powerText(power: Pick<AppPower, 'kind' | 'target'>): string {
  * for, read live, with Allow. Its powers fail until the owner allows them; nothing is allowed by the agent.
  */
 export function AppPowers({ app, title }: { readonly app: string; readonly title: string }) {
-  const queryClient = useQueryClient()
   const detail = useQuery(agentAppQuery(app))
-  const change = useMutation(changeAgentAppMutation(queryClient, app)).mutateAsync
+  const change = useMutation(changeAgentAppMutation(app)).mutateAsync
   const [busy, setBusy] = useState(false)
   const [refused, setRefused] = useState('')
   const powers = detail.data?.powers
