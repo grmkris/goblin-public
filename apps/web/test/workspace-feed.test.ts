@@ -521,6 +521,7 @@ describe('what goes stale with a feed change', () => {
       personas: undefined,
       invocations: undefined,
       receipts: undefined,
+      proposals: undefined,
     }
     expect(staleAfter(none, before)).toEqual([])
   })

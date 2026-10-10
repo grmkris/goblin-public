@@ -8,6 +8,7 @@ import type {
   AppView,
   ConversationActivity,
   ConversationView,
+  DecisionProposal,
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
@@ -78,6 +79,14 @@ export const useInvocations = (): readonly PersonaInvocationView[] =>
 /** The latest organizing receipts, newest first. */
 export const useReceipts = (): readonly OrganizeReceipt[] =>
   useSlice(workspaceQueries.receipts, EMPTY_WORKSPACE.receipts, whole)
+
+/** The decision proposals still open or confirmed, oldest first, or what `select` takes from them. */
+export function useProposals(): readonly DecisionProposal[]
+export function useProposals<T>(select: (proposals: readonly DecisionProposal[]) => T): T
+export function useProposals<T>(select?: (proposals: readonly DecisionProposal[]) => T) {
+  const pick: (proposals: readonly DecisionProposal[]) => T | readonly DecisionProposal[] = select ?? whole
+  return useSlice(workspaceQueries.proposals, EMPTY_WORKSPACE.proposals, pick)
+}
 
 /** What is wrong with the feed, or with the owner's last change to it, in words; empty when nothing is. */
 export function useFeedStatus(): string {

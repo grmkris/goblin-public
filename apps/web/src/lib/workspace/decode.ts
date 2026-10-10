@@ -2,6 +2,7 @@ import {
   AppView,
   ConversationActivity,
   ConversationView,
+  DecisionProposal,
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
@@ -21,6 +22,7 @@ const decodeSnapshotFrame = Schema.decodeUnknownSync(
     personas: Schema.optional(Items),
     invocations: Schema.optional(Items),
     receipts: Schema.optional(Items),
+    proposals: Schema.optional(Items),
   }),
 )
 const decodeChangeFrame = Schema.decodeUnknownSync(Items)
@@ -39,7 +41,7 @@ const readable = <A>(items: readonly unknown[], decode: (item: unknown) => Optio
  */
 export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
   const frame = decodeSnapshotFrame(data)
-  const { topics, personas, invocations, receipts } = frame
+  const { topics, personas, invocations, receipts, proposals } = frame
   return {
     conversations: readable(frame.conversations, decodeConversation),
     activity: readable(frame.activity, decodeActivity),
@@ -50,6 +52,7 @@ export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
       invocations: readable(invocations, Schema.decodeUnknownOption(PersonaInvocationView)),
     }),
     ...(receipts !== undefined && { receipts: readable(receipts, Schema.decodeUnknownOption(OrganizeReceipt)) }),
+    ...(proposals !== undefined && { proposals: readable(proposals, Schema.decodeUnknownOption(DecisionProposal)) }),
   }
 }
 

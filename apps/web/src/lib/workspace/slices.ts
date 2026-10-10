@@ -2,6 +2,7 @@ import type {
   AppView,
   ConversationActivity,
   ConversationView,
+  DecisionProposal,
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
@@ -19,8 +20,8 @@ export type Activity = Readonly<Record<string, ConversationActivity>>
 /**
  * The workspace as the feed tells it, one slice each, each kept in the Query cache under `['workspace', slice]`: the
  * owner's conversations, oldest first; what each one that is not idle is doing; their kept Apps, oldest first; the
- * Topics and Personas; the Persona answers still on their way (and the newest settled ones); and the latest organizing
- * receipts, newest first.
+ * Topics and Personas; the Persona answers still on their way (and the newest settled ones); the latest organizing
+ * receipts, newest first; and the decision proposals still open or confirmed, oldest first.
  */
 export type Slices = {
   readonly conversations: readonly ConversationView[]
@@ -30,6 +31,7 @@ export type Slices = {
   readonly personas: readonly PersonaView[]
   readonly invocations: readonly PersonaInvocationView[]
   readonly receipts: readonly OrganizeReceipt[]
+  readonly proposals: readonly DecisionProposal[]
 }
 export type Slice = keyof Slices
 
@@ -41,6 +43,7 @@ export const SLICE_NAMES: readonly Slice[] = [
   'personas',
   'invocations',
   'receipts',
+  'proposals',
 ]
 
 export const EMPTY_WORKSPACE: Slices = {
@@ -51,6 +54,7 @@ export const EMPTY_WORKSPACE: Slices = {
   personas: [],
   invocations: [],
   receipts: [],
+  proposals: [],
 }
 
 /** How many settled Persona answers and organizing receipts the slices keep: enough for Activity and Tasks. */
@@ -81,6 +85,17 @@ const keptInvocations = (invocations: readonly PersonaInvocationView[]) => {
   const settled = invocations.filter((each) => !answering(each))
   const dropped = new Set(settled.toSorted((a, b) => b.createdAt - a.createdAt).slice(KEPT))
   return dropped.size === 0 ? invocations : invocations.filter((each) => !dropped.has(each))
+}
+
+/** A proposal the slice keeps: open, or confirmed (as the server's snapshot keeps it); dismissed and stale ones go. */
+const kept = (proposal: DecisionProposal) => proposal.state === 'open' || proposal.state === 'confirmed'
+const oldestProposal = (a: DecisionProposal, b: DecisionProposal) =>
+  a.createdAt - b.createdAt || a.id.localeCompare(b.id)
+
+/** `proposals` with `proposal` as it is now: in place of the one with its id, or added; gone once settled away. */
+function withProposal(proposals: readonly DecisionProposal[], proposal: DecisionProposal) {
+  const others = proposals.filter((each) => each.id !== proposal.id)
+  return kept(proposal) ? [...others, proposal].toSorted(oldestProposal) : others
 }
 
 /** What conversation `id` is doing now; undefined while it is idle. */
@@ -140,6 +155,10 @@ const SLICES: { readonly [K in Slice]: SliceOf<Slices[K]> } = {
     apply: (value, change) =>
       change.type === 'receipt' ? upsertBy(value, change.receipt, same, newestReceipt).slice(0, KEPT) : value,
   },
+  proposals: {
+    read: (snapshot) => (snapshot.proposals ?? []).filter(kept).toSorted(oldestProposal),
+    apply: (value, change) => (change.type === 'proposal' ? withProposal(value, change.proposal) : value),
+  },
 }
 
 /** Slice `slice` as the snapshot describes it. */
@@ -158,12 +177,14 @@ export const fromSnapshot = (snapshot: WorkspaceSnapshot): Slices => ({
   personas: sliceOf('personas', snapshot),
   invocations: sliceOf('invocations', snapshot),
   receipts: sliceOf('receipts', snapshot),
+  proposals: sliceOf('proposals', snapshot),
 })
 
 /**
- * The workspace after `changes`, in order: a conversation, App, Topic, Persona, invocation or receipt replaces the one
- * with its id (a new one joins in its slice's order), a removed App goes, and an activity replaces what its
- * conversation was doing (idle drops it). A slice no change touched is the same value.
+ * The workspace after `changes`, in order: a conversation, App, Topic, Persona, invocation, receipt or proposal
+ * replaces the one with its id (a new one joins in its slice's order; a dismissed or stale proposal goes), a removed
+ * App goes, and an activity replaces what its conversation was doing (idle drops it). A slice no change touched is the
+ * same value.
  */
 export const applyChanges = (slices: Slices, changes: readonly WorkspaceChange[]): Slices => ({
   conversations: sliceAfter('conversations', slices.conversations, changes),
@@ -173,6 +194,7 @@ export const applyChanges = (slices: Slices, changes: readonly WorkspaceChange[]
   personas: sliceAfter('personas', slices.personas, changes),
   invocations: sliceAfter('invocations', slices.invocations, changes),
   receipts: sliceAfter('receipts', slices.receipts, changes),
+  proposals: sliceAfter('proposals', slices.proposals, changes),
 })
 
 /** `apps` with each App the owner just changed shown as that call will leave it, the latest last. */
