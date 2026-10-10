@@ -7,7 +7,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
 import {
-  allowAppToolMutation,
   appCallMutation,
   appDiagnosticMutation,
   appLaunchQuery,
@@ -16,6 +15,7 @@ import {
   appToolCallMutation,
   perform,
 } from '../src/apps/queries.ts'
+import { grantsQuery, toolGrantMutation } from '../src/mcp/queries.ts'
 import { unusedHandlers } from './query/unused-handlers.ts'
 
 const LAUNCH: AppLaunch = {
@@ -126,12 +126,12 @@ describe("an App's frame calls", () => {
     expect(fake.callers).toEqual(['app', 'app'])
   })
 
-  it('allow the asked tool and read the MCP queries again', async () => {
+  it('allow the asked tool, and the grants show it', async () => {
     const client = testQueryClient()
-    await client.query(owner.apiQuery({ queryKey: ['mcp', 'grants'], queryFn: (api) => api.mcp.grants() }))
-    const grants = await perform(client, allowAppToolMutation, { serverId: 'myplan', name: 'read' })
+    await client.query(grantsQuery)
+    const grants = await perform(client, toolGrantMutation, { serverId: 'myplan', name: 'read', allowed: true })
     expect(grants).toEqual([{ serverId: 'myplan', capability: 'tool', name: 'read' }])
-    expect(client.getQueryState(['mcp', 'grants'])?.isInvalidated).toBe(true)
+    expect(client.getQueryData(grantsQuery.queryKey)).toEqual(grants)
   })
 
   it('fail with the typed refusal the owner sees', async () => {

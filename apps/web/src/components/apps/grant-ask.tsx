@@ -6,7 +6,7 @@ import { useMutation } from '@tanstack/react-query'
 import { KeyRoundIcon } from 'lucide-react'
 import { GrantDenied } from '@goblin/contracts/api'
 import { Button } from '@goblin/ui'
-import { allowAppToolMutation } from '../../apps/queries.ts'
+import { toolGrantMutation } from '../../mcp/queries.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 
 const WAIT_MS = 120_000
@@ -59,7 +59,7 @@ function AppGrantCard({
   readonly name: string
   readonly onAnswer: (allowed: boolean) => void
 }) {
-  const allow = useMutation(allowAppToolMutation)
+  const allow = useMutation(toolGrantMutation)
   const busy = allow.isPending || allow.isSuccess
   const error = allow.error === null ? '' : messageOf(allow.error, 'allow the tool')
   return (
@@ -78,7 +78,7 @@ function AppGrantCard({
       <Button
         size="app-action"
         disabled={busy}
-        onClick={() => allow.mutate({ serverId, name }, { onSuccess: () => onAnswer(true) })}
+        onClick={() => allow.mutate({ serverId, name, allowed: true }, { onSuccess: () => onAnswer(true) })}
       >
         Allow
       </Button>

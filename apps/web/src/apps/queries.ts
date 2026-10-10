@@ -1,13 +1,7 @@
 // An App's server data (ADRs 0020, 0021) through the owner's typed client: what the browser loads an App with, and the
 // calls its frame makes. An agent app's view reads its state, calls its actions and reports its failures; an MCP App
 // calls its own server's tools and resources, as the App, under the owner's grants. Keys are [feature, kind, input].
-import {
-  MutationObserver,
-  type MutationOptions,
-  type QueryClient,
-  mutationOptions,
-  queryOptions,
-} from '@tanstack/react-query'
+import { MutationObserver, type MutationOptions, type QueryClient, queryOptions } from '@tanstack/react-query'
 import type { AppCall, CreateApp, ResourceRead, ToolCall } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
 
@@ -68,15 +62,6 @@ export const appToolCallMutation = owner.apiMutation({
 export const appResourceReadMutation = owner.apiMutation({
   mutationFn: (api, { serverId, read }: { readonly serverId: string; readonly read: ResourceRead }) =>
     api.mcp.readResource({ params: { id: serverId }, headers: { 'x-mcp-caller': 'app' }, payload: read }),
-})
-
-/** The owner allows the tool an App asked for; the owner's MCP reads (grants among them) read again. */
-export const allowAppToolMutation = mutationOptions({
-  ...owner.apiMutation({
-    mutationFn: (api, { serverId, name }: { readonly serverId: string; readonly name: string }) =>
-      api.mcp.setToolGrant({ payload: { serverId, name, allowed: true } }),
-  }),
-  onSuccess: (_grants, _tool, _result, { client }) => client.invalidateQueries({ queryKey: ['mcp'] }),
 })
 
 /**
