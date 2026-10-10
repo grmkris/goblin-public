@@ -34,6 +34,8 @@ export class Apps extends Context.Service<
   {
     /** Every App, oldest first, closed ones included. */
     readonly list: Effect.Effect<readonly AppView[], AppError>
+    /** One App as it is now; `NotFound` when there is none. */
+    readonly view: (id: string) => Effect.Effect<AppView, AppError>
     /** An App's source, whether it is closed, its tool and its title; `NotFound` when there is none. */
     readonly placement: (id: string) => Effect.Effect<AppPlacement, AppError>
     /** Keeps the App of call `callId` in `session`; the same call keeps the same App, reopened if it was closed. */

@@ -12,6 +12,7 @@ import { McpEventsLive, McpHostLive, McpLive } from './mcp.ts'
 import { ObservabilityLive } from './observability.ts'
 import { ChannelLive, RoutineUsageLive, RoutinesLive } from './routines.ts'
 import { SkillsLive } from './skills.ts'
+import { WorkspaceLive } from '../workspace/live.ts'
 
 /** `step`, built after and over everything `built` provides; the result provides both. */
 const then =
@@ -58,6 +59,7 @@ export const AgentLive = (input: AgentInputs) =>
     then(RoutinesLive),
     then(ObservabilityLive),
     then(AppsLive),
+    then(WorkspaceLive),
     then(AgentHttp.layer),
   )
 

@@ -53,6 +53,9 @@ export const appsOver = (registry: AppRegistry, changes: Changes['Service']) => 
   const changed = (id: string) => changes.publish('apps.changed', { ids: [id] })
   return Apps.of({
     list: attemptSync(() => registry.list()).pipe(Effect.withSpan('Apps.list')),
+    view: Effect.fn('Apps.view')(function* (id: string) {
+      return yield* attemptSync(() => registry.view(id))
+    }),
     placement: Effect.fn('Apps.placement')(function* (id: string) {
       return yield* attemptSync(() => registry.placement(id))
     }),

@@ -25,6 +25,8 @@ export class Receipts extends Context.Service<
     readonly record: (input: NewReceipt) => Effect.Effect<OrganizeReceipt, AppError>
     /** The newest receipts first. */
     readonly list: (limit?: number) => Effect.Effect<readonly OrganizeReceipt[]>
+    /** One receipt as Activity shows it; `NotFound` when there is none with `id`. */
+    readonly view: (id: string) => Effect.Effect<OrganizeReceipt, AppError>
     /** A receipt with its snapshots, for Undo; `NotFound` when there is none with `id`. */
     readonly get: (id: string) => Effect.Effect<StoredReceipt, AppError>
     readonly markUndone: (id: string) => Effect.Effect<OrganizeReceipt, AppError>
@@ -47,6 +49,9 @@ export class Receipts extends Context.Service<
         }),
         list: Effect.fn('Receipts.list')(function* (limit?: number) {
           return yield* Effect.sync(() => store.list(limit))
+        }),
+        view: Effect.fn('Receipts.view')(function* (id: string) {
+          return yield* attemptSync(() => store.view(id))
         }),
         get: Effect.fn('Receipts.get')(function* (id: string) {
           return yield* attemptSync(() => store.get(id))

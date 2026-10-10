@@ -12,7 +12,6 @@ import { HomeService } from '../../../src/home/service.ts'
 import { delegationServices } from '../../../src/layers/delegation.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
 import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
-import { WorkspaceFeed } from '../../../src/workspace/feed.ts'
 import { McpConnections, Resident } from '../../../src/mcp/service.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { OrganizeHandlers } from '../../../src/organize/api.ts'
@@ -59,7 +58,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   )
   // SAFETY: with no agent apps, Home reads only the engine's (empty) app list and never an App placement or its info.
   const engine = Object.assign(Object.create(null) as AgentApps, { store: { apps: () => [] } })
-  // SAFETY: as above, nothing here places an App, so the App registry is never read.
+  // SAFETY: nothing here places an App, so Home never reads the App registry.
   const home = new HomeService(db, Object.create(null) as AppRegistry, engine)
   // Current, counting the gate's renewals; the organizing programs ask it only to `require` itself.
   const resident = currentResident()
@@ -68,13 +67,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
   // A Topic created here has no open chat, so an archive (an Undo of its creation) reads only `openIn`.
   const conversations = stub(Conversations, { openIn: () => Effect.succeed([]) })
   const flows: FlowEvent[] = []
-  // The feed reads its sources only for a listener, and none listens here.
-  const feed = new WorkspaceFeed(
-    unread,
-    { conversations: unread, apps: unread, home, topics, personas, invocations: unread, receipts },
-    unread,
-  )
-  const lane = delegationServices({ topics, personas, invocations: unread, receipts, home, feed }).pipe(
+  const lane = delegationServices({ topics, personas, invocations: unread, receipts, home }).pipe(
     Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))),
   )
   const { fetch } = serve(

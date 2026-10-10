@@ -1,13 +1,16 @@
-import type { WorkspaceChange } from '@goblin/contracts'
-import type { PiHarness } from 'agents/harness/pi'
+import type { Harness, TaskGraphWatch } from '@earendil-works/pi-durable'
+import * as Deferred from 'effect/Deferred'
 import * as Effect from 'effect/Effect'
+import * as Fiber from 'effect/Fiber'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
+import * as Stream from 'effect/Stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { AgentApps } from '../src/agent-apps/engine.ts'
 import type { AppRegistry } from '../src/apps/registry.ts'
-import type { ChatDirectory } from '../src/chats/directory.ts'
-import type { ConversationRegistry } from '../src/conversations.ts'
+import { Apps } from '../src/apps/service.ts'
+import type { ChatId } from '../src/chats/directory.ts'
+import { Chats, Conversations } from '../src/chats/service.ts'
 import { Home, HomeService } from '../src/home/service.ts'
 import { delegationServices } from '../src/layers/delegation.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
@@ -16,24 +19,25 @@ import { Receipts } from '../src/organize/service.ts'
 import { PersonaInvocations } from '../src/personas/invocations.ts'
 import { PersonaRegistry } from '../src/personas/registry.ts'
 import { Invocations, Personas } from '../src/personas/service.ts'
+import { PiSessions } from '../src/pi/sessions.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { TopicRegistry } from '../src/topics/registry.ts'
 import { Topics } from '../src/topics/service.ts'
-import { WorkspaceFeed } from '../src/workspace/feed.ts'
+import { WorkspaceLive } from '../src/workspace/live.ts'
+import { Workspace, type WorkspaceEvent } from '../src/workspace/service.ts'
 import { chatDatabase } from './chats-sqlite.ts'
+import { stub } from './http/api/fixture.ts'
 
 const closes: (() => void)[] = []
 afterEach(() => {
   for (const close of closes.splice(0)) close()
 })
 
-/** A listener set a fake source offers, which nothing here fires. */
-const quiet = () => () => undefined
-
 /**
- * Lane D's services over their stores on real SQLite, as the agent's layer builds them, with one lock and one change
- * bus. The feed's Pi task graph is empty, and the conversations, Apps and chats it reads are fakes with none.
+ * The delegation services over their stores on real SQLite, as the agent's layer builds them, with one lock and one
+ * change bus, and the workspace feed over them. The feed's Pi task graph is empty, and the conversations, Apps and
+ * chats it reads are fakes with none; `watching` counts the task graph watches running.
  */
 const services = () => {
   const { db, close } = chatDatabase()
@@ -51,26 +55,34 @@ const services = () => {
   const receipts = new OrganizeReceipts(db, () => undefined)
   // SAFETY: with no agent apps, Home reads only the engine's (empty) app list.
   const engine = Object.assign(Object.create(null) as AgentApps, { store: { apps: () => [] } })
-  // SAFETY: nothing here places an App; the feed reads only the (empty) App list and its listeners.
-  const apps = Object.assign(Object.create(null) as AppRegistry, { list: () => [], onChange: quiet, onRemove: quiet })
-  const home = new HomeService(db, apps, engine)
-  // SAFETY: the feed reads only the conversation list and its listener; there are no conversations here.
-  const conversations = Object.assign(Object.create(null) as ConversationRegistry, {
-    list: async () => [],
-    onChange: quiet,
+  // SAFETY: nothing here places an App, so Home never reads the App registry.
+  const home = new HomeService(db, Object.create(null) as AppRegistry, engine)
+  const watching = { count: 0 }
+  // SAFETY: the feed reads the watch's first graph, starts it and stops it; the graph stays empty.
+  const watch = Object.assign(Object.create(null) as TaskGraphWatch, {
+    value: { tasks: {} },
+    start: () => undefined,
+    stop: async () => void (watching.count -= 1),
   })
-  // SAFETY: the feed reads only Personal's chat id; the empty task graph names no session.
-  const chats = Object.assign(Object.create(null) as ChatDirectory, { primary: () => '1' })
-  const watch = { value: { tasks: {} }, start: () => undefined, stop: async () => undefined }
-  // SAFETY: the feed asks Pi only to watch its task graph, which stays empty.
-  const harness = Object.assign(Object.create(null) as PiHarness, {
-    pi: async () => ({ watchTaskGraph: async () => watch }),
+  // SAFETY: the feed asks Pi only to watch its task graph.
+  const pi = Object.assign(Object.create(null) as Harness, {
+    watchTaskGraph: async () => {
+      watching.count += 1
+      return watch
+    },
   })
-  const feed = new WorkspaceFeed(harness, { conversations, apps, home, topics, personas, invocations, receipts }, chats)
-  const layer = delegationServices({ topics, personas, invocations, receipts, home, feed }).pipe(
-    Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))),
+  const lane = delegationServices({ topics, personas, invocations, receipts, home }).pipe(
+    Layer.provideMerge(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))),
   )
-  return { layer, feed }
+  const sources = Layer.mergeAll(
+    // SAFETY: Personal's chat id, as the chat directory brands it.
+    stub(Chats, { primary: '1' as ChatId, isHidden: () => Effect.succeed(false) }),
+    stub(Conversations, { list: Effect.succeed([]) }),
+    stub(Apps, { list: Effect.succeed([]) }),
+    stub(PiSessions, { pi: Effect.succeed(pi) }),
+  )
+  const layer = Layer.provideMerge(WorkspaceLive, Layer.merge(lane, sources))
+  return { layer, watching }
 }
 
 const scout = {
@@ -117,11 +129,17 @@ describe("lane D's services over their stores", () => {
     expect(result.home).toEqual({ layout: { revision: 0, tiles: [] }, apps: [] })
   })
 
-  it('tells the workspace feed what each write changed, each as it is now', async () => {
-    const { layer, feed } = services()
-    const sent: { readonly event: string; readonly data: unknown }[] = []
-    const close = await feed.open((event, data) => void sent.push({ event, data }))
+  it('tells the workspace feed what each write changed, each as it is now, after its snapshot', async () => {
+    const { layer, watching } = services()
     const program = Effect.gen(function* () {
+      const opened = yield* Deferred.make<number>()
+      const feed = yield* (yield* Workspace).stream.pipe(
+        Stream.tap(() => Deferred.succeed(opened, watching.count)),
+        Stream.take(5),
+        Stream.runCollect,
+        Effect.forkChild,
+      )
+      const watchedWhileOpen = yield* Deferred.await(opened)
       const made = yield* (yield* Topics).create({ name: 'Garden', operationId: 'op-1' }, 'owner')
       yield* (yield* Personas).create({ ...scout, operationId: 'op-2' }, 'owner')
       const receipt = yield* (yield* Receipts).record({
@@ -141,19 +159,32 @@ describe("lane D's services over their stores", () => {
         },
         'owner',
       )
-      return { topic: made.topic.id, receipt: receipt.id }
+      const events: readonly WorkspaceEvent[] = yield* Fiber.join(feed)
+      return { topic: made.topic.id, receipt: receipt.id, events, watchedWhileOpen }
     })
     const made = await Effect.runPromise(program.pipe(Effect.provide(layer)))
-    await close()
-    expect(sent[0]?.event).toBe('snapshot')
-    // SAFETY: every frame after the snapshot is a `change` frame, a batch of WorkspaceChange.
-    const changes = sent.slice(1).flatMap(({ data }) => data as readonly WorkspaceChange[])
-    expect(changes.map((change) => change.type)).toEqual(['topic', 'persona', 'receipt', 'home'])
+    expect(made.watchedWhileOpen).toBe(1)
+    expect(watching.count).toBe(0)
+    const [snapshot, ...rest] = made.events
+    expect(snapshot).toMatchObject({ event: 'snapshot', data: { primary: '1', topics: [{ name: 'Personal' }] } })
+    const changes = rest.flatMap((event) => (event.event === 'change' ? event.data : []))
     expect(changes).toEqual([
-      expect.objectContaining({ topic: expect.objectContaining({ id: made.topic, name: 'Garden' }) }),
-      expect.objectContaining({ persona: expect.objectContaining({ name: 'Scout' }) }),
-      expect.objectContaining({ receipt: expect.objectContaining({ id: made.receipt }) }),
-      expect.objectContaining({ home: expect.objectContaining({ revision: 1 }) }),
+      expect.objectContaining({ type: 'topic', topic: expect.objectContaining({ id: made.topic, name: 'Garden' }) }),
+      expect.objectContaining({ type: 'persona', persona: expect.objectContaining({ name: 'Scout' }) }),
+      expect.objectContaining({ type: 'receipt', receipt: expect.objectContaining({ id: made.receipt }) }),
+      expect.objectContaining({ type: 'home', home: expect.objectContaining({ revision: 1 }) }),
     ])
+  })
+
+  it('watches the task graph only while a stream is open, and its snapshot shows what was written before', async () => {
+    const { layer, watching } = services()
+    const program = Effect.gen(function* () {
+      yield* (yield* Personas).create({ ...scout, operationId: 'op-3' }, 'owner')
+      const [snapshot] = yield* (yield* Workspace).stream.pipe(Stream.take(1), Stream.runCollect)
+      return snapshot
+    })
+    const snapshot = await Effect.runPromise(program.pipe(Effect.provide(layer)))
+    expect(snapshot).toMatchObject({ event: 'snapshot', data: { personas: [{ name: 'Scout' }] } })
+    expect(watching.count).toBe(0)
   })
 })
