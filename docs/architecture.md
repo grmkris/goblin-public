@@ -189,8 +189,8 @@ record, `AgentInput` (`runtime/input.ts`). The layers build in a fixed order, ea
   shared with the layers that wire it by an instance tag in its own module (`ChatsInstance`, `ConversationsInstance`,
   `MovesInstance`, `McpHostInstance`, `Cipher`, `ProfilesInstance`, `MemoriesInstance`, `TranscriptsInstance`,
   `AppsInstance`); programs use the area's services.
-  The conversation registry tells `conversations.changed` what each write changed, inline (`runNow` in
-  `runtime/bridge.ts`, because it writes from synchronous code inside Promise work); the App registry and the
+  The conversation registry tells `conversations.changed` what each write changed, inline (`syncWith` in
+  `runtime/boundary.ts`, because it writes from synchronous code inside Promise work); the App registry and the
   workspace feed follow that topic.
 - **One layer per area** after the start, in order: the plan, model budget and picker (`Entitlements`, `Budget`,
   `Models`, which a send's admission reads), conversation (`Chats`, `ChatOperations`, `Conversations`, `Moves`),

@@ -11,7 +11,7 @@ import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
 import { toAppError } from '../http/errors.ts'
 import type { KeyedLock } from '../observability/lock.ts'
-import { runNow } from '../runtime/bridge.ts'
+import { syncWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -33,7 +33,7 @@ export const AppRegistryLive: Layer.Layer<AppsInstance, never, AgentInput | Db |
     Effect.gen(function* () {
       const { harness, agentApps } = yield* AgentInput
       const changes = yield* Changes
-      const tell = runNow(yield* Effect.context<Changes>())
+      const tell = syncWith(yield* Effect.context<Changes>())
       const registry = new AppRegistry(
         yield* Db,
         harness,

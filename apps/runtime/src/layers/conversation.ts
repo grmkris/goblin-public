@@ -30,7 +30,7 @@ import { safeErrorType } from '../observability/report.ts'
 import { failedFlow } from '../organize/flows.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { TranscriptsInstance } from '../retrieval/index.ts'
-import { runNow } from '../runtime/bridge.ts'
+import { syncWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -65,7 +65,7 @@ export const ConversationRegistryLive: Layer.Layer<
     }
     // The registry is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
     const changes = yield* Changes
-    const tell = runNow(yield* Effect.context<Changes>())
+    const tell = syncWith(yield* Effect.context<Changes>())
     const changed = (ids: readonly string[]) => tell(changes.publish('conversations.changed', { ids }))
     return new ConversationRegistry(yield* Db, input.harness, kit, nowSeconds(), changed)
   }),

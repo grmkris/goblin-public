@@ -36,7 +36,7 @@ const dispatched = (hold: Hold, dispatch: AppDispatch, request: CallRequest) =>
   )
 
 /** The owner runs a schedule's action now: its run, then how it went as the schedule's last run (never a failure). */
-const runNow = (hold: Hold, engine: AgentApps, app: string, action: string) =>
+const runJobNow = (hold: Hold, engine: AgentApps, app: string, action: string) =>
   Effect.gen(function* () {
     const { input, op } = yield* stepSync(() => engine.jobs.startNow(app, action))
     const ran = yield* Effect.exit(
@@ -66,7 +66,7 @@ const changeApp = (
         yield* step(() => engine.jobs.pause(app, change.action, change.paused))
         return
       case 'run':
-        yield* runNow(hold, engine, app, change.action)
+        yield* runJobNow(hold, engine, app, change.action)
         return
       case 'power':
         yield* stepSync(() => engine.answer(app, { kind: change.power, target: change.target }, change.allowed))
