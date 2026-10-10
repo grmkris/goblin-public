@@ -25,7 +25,7 @@ export type AgentAppCalls = {
 }
 
 /** A state as the view's SDK takes it: a tool result whose `_meta` carries the revision, release and state. */
-export const stateResult = (snapshot: AppSnapshot): CallToolResult => ({
+const stateResult = (snapshot: AppSnapshot): CallToolResult => ({
   content: [],
   _meta: { 'goblin/state': { revision: snapshot.revision, release: snapshot.release, state: snapshot.state } },
 })

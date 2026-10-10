@@ -25,18 +25,6 @@ export function threadTitle(view: ConversationView | undefined): string {
 export const isUnread = (view: ConversationView): boolean =>
   view.lastReplyAt !== undefined && view.lastReplyAt > (view.readAt ?? 0)
 
-/** The names from the channel down to a conversation: "Personal › Trip › Flights". */
-export function pathOf(views: readonly ConversationView[], id: string, name: (view: ConversationView) => string) {
-  const byId = new Map(views.map((view) => [view.id, view]))
-  const names: string[] = []
-  const seen = new Set<string>()
-  for (let view = byId.get(id); view !== undefined && !seen.has(view.id); view = byId.get(view.parent ?? '')) {
-    seen.add(view.id)
-    names.unshift(name(view))
-  }
-  return names
-}
-
 /** The open threads branched from each message of `parent` (by entry id), newest first: what the reply rows show. */
 export function threadsByFork(
   views: readonly ConversationView[],

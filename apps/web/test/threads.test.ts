@@ -8,7 +8,6 @@ import {
   fromEntry,
   movableEntry,
   isUnread,
-  pathOf,
   relativeTime,
   repliesLabel,
   reporterOf,
@@ -106,12 +105,6 @@ describe('threads in main', () => {
     expect(threadTitle(view('5', { title: 'Flights' }))).toBe('Flights')
     expect(threadTitle(view('6'))).toBe('New thread')
     expect(threadTitle(view('7', { kind: 'subagent' }))).toBe('Subagent')
-  })
-
-  it('names the path from the channel down, and ends on a loop in stored parents', () => {
-    const views = [MAIN, view('5'), view('6', { parent: '5' }), view('8', { parent: '9' }), view('9', { parent: '8' })]
-    expect(pathOf(views, '6', ({ id }) => `#${id}`)).toEqual(['#1', '#5', '#6'])
-    expect(pathOf(views, '8', ({ id }) => id)).toEqual(['9', '8'])
   })
 
   it('says who closed a conversation: the owner, or a subagent whose job was done', () => {
