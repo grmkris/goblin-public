@@ -2,9 +2,9 @@ import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { ConversationView } from '@goblin/contracts'
 import { ConversationsGroup, InvalidInput, NotFound, UpstreamMcp } from '@goblin/contracts/api'
 import type { PiHarness } from 'agents/harness/pi'
-import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { Apps } from '../../../src/apps/service.ts'
@@ -12,12 +12,8 @@ import { Budget } from '../../../src/budget.ts'
 import { scopeOf } from '../../../src/capabilities/profiles.ts'
 import { Capabilities } from '../../../src/capabilities/service.ts'
 import { ConversationsHandlers } from '../../../src/chats/api.ts'
-import { ChatDirectory, ChatsInstance } from '../../../src/chats/directory.ts'
-import { type ChatMover, MovesInstance } from '../../../src/chats/mover.ts'
-import { type ConversationRegistry, ConversationsInstance } from '../../../src/conversations.ts'
 import { Files } from '../../../src/files/service.ts'
-import type { FoundationServices } from '../../../src/layers/core.ts'
-import { ConversationLive } from '../../../src/layers/conversation.ts'
+import { ChatOperationsLive, ChatsLive } from '../../../src/layers/conversation.ts'
 import { McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
 import { Models } from '../../../src/models.ts'
 import type { PersonaTurnKit } from '../../../src/organize/kit.ts'
@@ -31,7 +27,7 @@ import { KeyedLock } from '../../../src/observability/lock.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Skills } from '../../../src/skills/service.ts'
-import type { ThreadAnchor } from '../../../src/chats/service.ts'
+import { Conversations, Moves, type ThreadAnchor } from '../../../src/chats/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
 import { callOwner } from '../../owner-client.ts'
 import {
@@ -85,24 +81,27 @@ const NEW = '9'
 /** What the fakes were asked to do, in order. */
 type Calls = string[]
 
-const known = (id: string): string => {
-  if (CHATS[id] === undefined && id !== NEW) throw new NotFound({ what: 'conversation' })
-  return id
-}
+const known = (id: string) =>
+  Effect.suspend(() =>
+    CHATS[id] === undefined && id !== NEW ? Effect.fail(new NotFound({ what: 'conversation' })) : Effect.succeed(id),
+  )
 
 /** The registry's reads over `CHATS`. */
-const registryReads = (): Partial<ConversationRegistry> => ({
-  list: async () => Object.values(CHATS),
+const registryReads = (): Partial<Conversations['Service']> => ({
+  list: Effect.sync(() => Object.values(CHATS)),
   require: known,
-  requireOpen: (id) => {
-    if (CHATS[known(id)]?.closedAt !== undefined) throw new InvalidInput({ reason: 'conversation_closed' })
-    return id
-  },
-  kindOf: (id) => CHATS[known(id)]?.kind ?? 'thread',
-  view: async (id) => (id === NEW ? view(NEW, { forkEntry: 3 }) : CHATS[id]),
-  subtree: (id) => [id],
+  requireOpen: (id) =>
+    Effect.flatMap(known(id), (chat) =>
+      CHATS[chat]?.closedAt === undefined
+        ? Effect.succeed(chat)
+        : Effect.fail(new InvalidInput({ reason: 'conversation_closed' })),
+    ),
+  kindOf: (id) => Effect.map(known(id), (chat) => CHATS[chat]?.kind ?? 'thread'),
+  view: (id) => Effect.sync(() => Option.fromNullishOr(id === NEW ? view(NEW, { forkEntry: 3 }) : CHATS[id])),
+  subtree: (id) => Effect.succeed([id]),
   // SAFETY: the handler passes Pi's records through as they are; these stand in for them.
-  history: async (id, before) => ({ entries: [{ id: before - 1, kind: 'pi.user', chat: id }] as never, more: true }),
+  history: (id, before) =>
+    Effect.succeed({ entries: [{ id: before - 1, kind: 'pi.user', chat: id }] as never, more: true }),
 })
 
 /** How a recorded thread operation names its anchor. */
@@ -110,28 +109,40 @@ const anchorOf = (anchor: ThreadAnchor): string => (typeof anchor === 'string' ?
 
 /**
  * The registry's writes, recorded; a Thread start registers its Thread in the real directory, as the registry does, and
- * a repeat of its operation finds it.
+ * a repeat of its operation finds it. A create with an operation id is that chat's thread operation, as the registry's.
  */
-const registryWrites = (db: Database, calls: Calls): Partial<ConversationRegistry> => ({
-  createIn: async (channel) => view(NEW, { parent: channel }),
-  branch: async (parent, entry) => view(NEW, { parent, forkEntry: entry }),
-  update: async (id, change) => ({
-    view: view(known(id), change.title === undefined ? {} : { title: change.title }),
-    closed: [],
-  }),
-  markRead: (id) => void calls.push(`read:${known(id)}`),
-  startThread: async (parent, operationId, anchor) => {
-    calls.push(`start:${parent}:${operationId}:${anchorOf(anchor)}`)
-    const made = db
-      .insert(appConversations)
-      .values({ chatId: NEW, piSession: NEW, kind: 'thread', parentSession: parent, createdAt: 2 })
-      .onConflictDoNothing()
-      .returning()
-      .all()
-    return { view: view(NEW), existing: made.length === 0 }
-  },
-  stopSubagents: async (id) => void calls.push(`subagents:${id}`),
-})
+const registryWrites = (db: Database, calls: Calls): Partial<Conversations['Service']> => {
+  const startThread = (parent: string, operationId: string, anchor: ThreadAnchor) =>
+    Effect.sync(() => {
+      calls.push(`start:${parent}:${operationId}:${anchorOf(anchor)}`)
+      db.insert(appConversations)
+        .values({ chatId: NEW, piSession: NEW, kind: 'thread', parentSession: parent, createdAt: 2 })
+        .onConflictDoNothing()
+        .run()
+      return view(NEW)
+    })
+  return {
+    create: ({ from, operationId }) => {
+      if (operationId !== undefined)
+        return from === undefined
+          ? startThread('1', operationId, 'empty')
+          : startThread(from.conversation, operationId, { entry: from.entry })
+      return Effect.succeed(
+        from === undefined
+          ? view(NEW, { parent: '1' })
+          : view(NEW, { parent: from.conversation, forkEntry: from.entry }),
+      )
+    },
+    update: (id, change) =>
+      Effect.map(known(id), (chat) => ({
+        view: view(chat, change.title === undefined ? {} : { title: change.title }),
+        closed: [],
+      })),
+    markRead: (id) => Effect.map(known(id), (chat) => void calls.push(`read:${chat}`)),
+    startThread,
+    stopSubagents: (id) => Effect.sync(() => void calls.push(`subagents:${id}`)),
+  }
+}
 
 /** What reached Pi: owner inputs by session, and passive writes by conversation. */
 type PiRecord = {
@@ -231,8 +242,9 @@ const instance = (harness: PiHarness, calls: Calls) => {
 }
 
 /**
- * The conversations group as the agent serves it, running the conversation programs over a real chat directory on
- * SQLite. The registry, Pi and the instance are fakes that record what the programs asked of them.
+ * The conversations group as the agent serves it, running the conversation programs over a real chat directory and
+ * the chat operations on SQLite. The registry, the mover, Pi and the instance are fakes that record what the programs
+ * asked of them.
  */
 const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) => {
   const db = database()
@@ -247,40 +259,27 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   const record: PiRecord = { submitted: [], writes: [] }
   const harness = fakeHarness(record, calls)
   const resident = currentResident()
-  const registry = fake<ConversationRegistry>({ ...registryReads(), ...registryWrites(db, calls) })
-  const mover = fake<ChatMover>({
-    move: async (chat, input) => ({ ...input, chat, state: 'settled', thread: NEW }),
-  })
-  const legacy = Layer.mergeAll(
-    Layer.succeed(ChatsInstance, new ChatDirectory(db)),
-    Layer.succeed(ConversationsInstance, registry),
-    Layer.succeed(MovesInstance, mover),
+  const instances = Layer.mergeAll(
+    stub(Conversations, { ...registryReads(), ...registryWrites(db, calls) }),
+    stub(Moves, { move: (chat, input) => Effect.succeed({ ...input, chat, state: 'settled', thread: NEW }) }),
     Layer.succeed(Resident, resident.service),
     plans(),
     Layer.succeed(AgentInput, instance(harness, calls)),
   )
-  // Lane C's own services as the agent builds them, over the core services and the legacy instances above.
+  // The chat directory and the chat operations as the agent builds them, over the core services and the stubs above.
   const core = Layer.mergeAll(
     sqliteDb(db),
     KeyedLock.layer,
-    PiSessions.layer.pipe(Layer.provide(legacy)),
+    PiSessions.layer.pipe(Layer.provide(instances)),
     FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
   )
   const others = services(calls, options.personas ?? [])
-  const conversation = ConversationLive.pipe(
-    // SAFETY: the layer reads only the core services, legacy instances and input given here; the rest stays unprovided.
-    Layer.provide(
-      Layer.mergeAll(
-        Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
-        core,
-        legacy,
-        others,
-      ),
-    ),
+  const directory = Layer.mergeAll(ChatsLive, ChatOperationsLive).pipe(
+    Layer.provide(Layer.mergeAll(core, instances, others)),
   )
   const { fetch } = serve(
     served([ConversationsGroup], ConversationsHandlers).pipe(
-      Layer.provide(Layer.mergeAll(conversation, core, legacy, others)),
+      Layer.provide(Layer.mergeAll(directory, core, instances, others)),
     ),
   )
   const operations = () => db.select().from(appChatOperations).all()
@@ -367,7 +366,6 @@ describe('the conversations API served by the agent', () => {
       [NEW, 'op-t:first'],
     ])
     expect(operations()).toEqual([
-      expect.objectContaining({ chatId: '1', operationId: 'op-t', kind: 'start', state: 'settled', targetChat: NEW }),
       expect.objectContaining({
         chatId: '1',
         operationId: 'thread-head:op-t',
@@ -383,15 +381,13 @@ describe('the conversations API served by the agent', () => {
       }),
     ])
     expect(flows.map(({ flow, status }) => [flow, status])).toEqual([
-      ['start', 'ok'],
       ['send', 'ok'],
-      ['start', 'replayed'],
       ['send', 'replayed'],
     ])
   })
 
   it('replies at an entry and starts "+" empty with no head; a create with an operation id is the same operation (C4)', async () => {
-    const { fetch, calls, record, flows } = fixture()
+    const { fetch, calls, record } = fixture()
     const reply = { operationId: 'op-r', anchor: { entry: 4 }, message: { input: 'about this' } }
     expect((await fetch(post('/api/conversations/2/threads', reply))).status).toBe(201)
     const plus = { operationId: 'op-e', anchor: 'empty', message: { input: 'new idea' } }
@@ -406,12 +402,6 @@ describe('the conversations API served by the agent', () => {
       'start:1:op-e:empty',
       'start:1:op-c:empty',
       'start:2:op-b:4',
-    ])
-    expect(flows.filter(({ flow }) => flow !== 'send').map(({ flow }) => flow)).toEqual([
-      'reply',
-      'empty',
-      'empty',
-      'reply',
     ])
   })
 
@@ -467,7 +457,7 @@ describe('the conversations API served by the agent', () => {
   })
 
   it("lists the owner's queued inputs, answers a move's receipt, and reads the composer and switches", async () => {
-    const { fetch, flows, operations } = fixture()
+    const { fetch } = fixture()
     const queue = await fetch(json('GET', '/api/conversations/2/queue'))
     expect(await queue.json()).toEqual({ inputs: [{ id: 7, mode: 'followUp', content: 'later' }] })
     const subagent = await fetch(json('GET', '/api/conversations/4/queue'))
@@ -479,12 +469,6 @@ describe('the conversations API served by the agent', () => {
       state: 'settled',
       thread: NEW,
     })
-    expect(flows).toEqual([
-      { flow: 'move', via: 'app', actor: 'owner', chat: '1', operationId: 'move-1', status: 'ok' },
-    ])
-    expect(operations()).toEqual([
-      expect.objectContaining({ chatId: '1', operationId: 'move-1', kind: 'move', state: 'settled', targetChat: NEW }),
-    ])
     const composer = await fetch(json('GET', '/api/conversations/2/composer'))
     expect(await composer.json()).toEqual({
       options: [

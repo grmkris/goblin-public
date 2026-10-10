@@ -5,7 +5,6 @@ import { and, eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { copyExclusions, piToolsFor } from '../capabilities/profiles.ts'
 import { nowSeconds } from '../clock.ts'
-import type { ConversationRegistry } from '../conversations.ts'
 import { forgetFrom, rememberedThrough } from '../memory/store.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { movedToThreadContent } from '../pi/content.ts'
@@ -20,7 +19,8 @@ import { framesOf, safeErrorType } from '../observability/report.ts'
 import { Moves } from './service.ts'
 import * as Context from 'effect/Context'
 import { appMcpApprovals } from '../storage/mcp-approvals.ts'
-import { chatSession, isConversationChat, topicOfChat } from './directory.ts'
+import { chatRow, chatSession, isConversationChat, openChatSession, topicOfChat } from './directory.ts'
+import { recallFrom } from './conversations/reads.ts'
 import { type MoveRow, MoveStore, moveReceipt } from './moves.ts'
 import { submitThreadHead } from './thread-heads.ts'
 
@@ -33,7 +33,8 @@ export type MoverPorts = {
   readonly harness: PiHarness
   /** Runs `run` while `chat`'s admission lock is held: `ChatOperations.withChat`, the one lock per chat. */
   readonly withChat: <A>(chat: string, run: () => Promise<A>) => Promise<A>
-  readonly conversations: ConversationRegistry
+  /** Tells `conversations.changed` about the chats a move changed. */
+  readonly touched: (ids: readonly string[]) => void
   /** The tools Pi's filter removes where subagents are switched off. */
   readonly subagentTools: readonly ToolRegistration[]
   readonly thread: Extension
@@ -118,9 +119,9 @@ export class ChatMover {
    * its newest turn still shown (not one moved already), with no approval waiting on the owner. A reason when not.
    */
   async #plan(chat: string, entry: number): Promise<Plan | string> {
-    const { db, conversations } = this.#ports
+    const { db } = this.#ports
     if (!isConversationChat(db, chat)) return 'not_conversation'
-    conversations.requireOpen(chat)
+    openChatSession(db, chat)
     const source = chatSession(db, chat)
     const pi = await this.#pi()
     const conversation = await pi.conversation(conversationId(source), BACKGROUND)
@@ -176,7 +177,7 @@ export class ChatMover {
       this.#store.saveRelays(operation, await turnRelays(pi, from, row.messageEntry), nowSeconds())
     this.#store.respawn(source, fork, await this.#ports.handover(pi, { from, to, ids }))
     this.#store.settled(operation, nowSeconds())
-    this.#ports.conversations.touched([row.chatId, row.threadChat ?? fork])
+    this.#ports.touched([row.chatId, row.threadChat ?? fork])
   }
 
   /** The Thread: its Pi fork, its rows, the head that omits the turn in the chat, and the chat's memory. */
@@ -198,7 +199,7 @@ export class ChatMover {
       ...(words.author === undefined ? {} : { author: words.author }),
     }
     const omit = await turnEntries(pi, { source: conversationId(source), message: row.messageEntry, end })
-    const title = (await this.#ports.conversations.view(fork))?.title ?? titleOf(words.text)
+    const title = chatRow(this.#ports.db, fork)?.title ?? titleOf(words.text)
     await submitThreadHead(conversation, head, movedToThreadContent(title), omit)
     // The chat's memory forgets the turn: every message from the moved one on.
     const { db } = this.#ports
@@ -208,10 +209,10 @@ export class ChatMover {
 
   /** The Thread's Pi fork at the turn's end, made a thread with the chat's switches; the chat's builder stops first. */
   async #fork(pi: Harness, row: MoveRow): Promise<MoveRow> {
-    const { db, conversations, subagentTools } = this.#ports
+    const { db, subagentTools } = this.#ports
     const { source, end } = required(row)
     await stopBuilder(pi, conversationId(source))
-    const recall = conversations.recallAt(row.chatId, row.messageEntry - 1) !== null
+    const recall = recallAt(db, row) !== null
     const agent = {
       extensions: { add: recall ? [this.#ports.thread, this.#ports.recall] : [this.#ports.thread] },
       instructions: null,
@@ -231,7 +232,7 @@ export class ChatMover {
 
   /** The moved Thread's rows and switches: in the chat's Topic, showing its replies from the moved message on. */
   async #register(row: MoveRow, conversation: Conversation, text: string): Promise<void> {
-    const { db, conversations } = this.#ports
+    const { db } = this.#ports
     const { fork } = required(row)
     const before = { maxEntryId: entryId(row.messageEntry - 1) }
     const [previous] = (await conversation.entries(before, 1, undefined, BACKGROUND)).items
@@ -241,18 +242,25 @@ export class ChatMover {
       title: titleOf(text),
       topic: topicOfChat(db, row.chatId),
       before: previous?.id ?? null,
-      recallThrough: conversations.recallAt(row.chatId, row.messageEntry - 1),
+      recallThrough: recallAt(db, row),
     }
     this.#store.register(row, thread, now)
     copyExclusions(db, row.chatId, fork, now)
     // The cross-Topic index (ADR 0035): the session's entries from the moved message on now belong to the Thread.
     reassignExcerpts(db, required(row).source, row.messageEntry, fork)
-    conversations.touched([fork])
+    this.#ports.touched([fork])
   }
 
   async #pi(): Promise<Harness> {
     return this.#ports.harness.pi()
   }
+}
+
+/** How far the moved Thread may zoom into the memory of the chat it leaves: as it was just before the moved message. */
+function recallAt(db: DrizzleSqliteDODatabase, row: MoveRow): number | null {
+  const chat = chatRow(db, row.chatId)
+  if (chat === undefined) throw new NotFound({ what: 'conversation' })
+  return recallFrom(db, chat, row.messageEntry - 1)
 }
 
 /** The sessions and turn end a move has from its `requested` row on. */

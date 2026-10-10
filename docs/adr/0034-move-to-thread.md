@@ -12,7 +12,7 @@ the conversation that follows it in the Thread.
 `POST /api/conversations/:id/threads` takes the ordinary `SendMessage` body. `startThread` (`chats/thread-heads.ts`)
 does three idempotent steps:
 
-1. `ConversationRegistry.startThread` makes the Thread once per operation id. The additive migration
+1. `Conversations.startThread` makes the Thread once per operation id. The additive migration
    `20261026000350_thread_heads` adds `app_conversations.origin_op` with a unique index; a repeat, also a concurrent
    one (serialized per operation in the isolate), finds the same row, and the same operation id from another chat is
    409 `Conflict`. The Thread is a Pi fork of the chat at its newest entry outside a running turn (`pi/turns.ts`: while

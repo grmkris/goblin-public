@@ -195,7 +195,7 @@ each over everything before it:
   MCP host (each server's endpoint binding checked, so a re-pointed server loses what it had, the credential cipher,
   held calls a restart cut off recovered); the cheap models; the chat directory; the memory engine;
   the capability profiles; helper execution restored and the retained Pi filters retooled once; the routine usage
-  projection, subscribed to Pi's commits; the conversation registry (main is registered here); the App registry; the
+  projection, subscribed to Pi's commits; main registered; the App registry; the
   mover (a move a restart interrupted finishes in the background, never holding up the start);
   every Topic Conversation given memory; skills and the learner; the Telegram channel; and Events, with the routine
   trigger and then the Telegram and skills consumers registered. A stateful object is made once, by its step, and
@@ -237,7 +237,7 @@ calls them from inside an Effect, it composes instead.
 - `PiSessions` (`pi/sessions.ts`): Pi's submit, write, wait, abort and reads as Effects with a typed `PiFailure`.
   Every call names its session, and interrupting a `wait` ends only the wait.
 
-Conversations (`conversations.ts`): every agent has one **main** conversation, stable chat id `1` (`PRIMARY_CHAT`),
+Conversations (`chats/conversations/`): every agent has one **main** conversation, stable chat id `1` (`PRIMARY_CHAT`),
 where the owner's browser and every inbound MCP client talk. `ChatDirectory` resolves that chat to its current Pi
 session. A fresh agent starts with Pi's root session `1`; `/c/1` stays the same whatever session it names. A message
 from anyone but the owner's browser starts with an author tag block (`[from Claude Code]`, the `authorTag` contract),

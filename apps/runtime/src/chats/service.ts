@@ -174,9 +174,6 @@ export class ChatOperations extends Context.Service<
  */
 export type { ThreadAnchor }
 
-/** A thread operation's Thread, and whether an earlier run of the same operation made it. */
-export type StartedOnce = { readonly view: ConversationView; readonly existing: boolean }
-
 /** A page of a chat's history before an entry, oldest first, and whether older entries remain. */
 export type HistoryPage = { readonly entries: readonly EntryRecord[]; readonly more: boolean }
 

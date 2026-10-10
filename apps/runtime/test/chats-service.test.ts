@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@effect/vitest'
+import { eq } from 'drizzle-orm'
 import type { PiHarness, PiOperationResult } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Deferred from 'effect/Deferred'
@@ -8,66 +9,56 @@ import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as TestClock from 'effect/testing/TestClock'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
-import { ChatDirectory, ChatsInstance } from '../src/chats/directory.ts'
 import { settledWithin } from '../src/chats/instance.ts'
 import { type ChatMover, MovesInstance } from '../src/chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves } from '../src/chats/service.ts'
 import { Conflict } from '../src/http/errors.ts'
-import { type ConversationRegistry, ConversationsInstance } from '../src/conversations.ts'
 import type { FoundationServices } from '../src/layers/core.ts'
 import { ConversationLive } from '../src/layers/conversation.ts'
 import { Budget } from '../src/budget.ts'
 import { Models } from '../src/models.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
+import { SingleFlight } from '../src/observability/single-flight.ts'
+import { type CheapModel, CheapModels } from '../src/memory/model.ts'
+import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { PiFailure, PiSessions } from '../src/pi/sessions.ts'
 import { Db } from '../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
-import { appConversations } from '../src/storage/schema.ts'
+import { appChatOperations, appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 /** A stand-in implementing only the members these tests reach. */
 const fake = <T>(members: Partial<T>): T =>
-  // SAFETY: each fake below is given every member the adapters under test call on it.
+  // SAFETY: each fake below is given every member the services under test call on it.
   members as T
 
-/** What the legacy instances were asked, with the time each was given. */
+/** What Pi and the mover were asked, in order. */
 type Calls = string[]
 
-/** The registry: writes that record what they were given, a Close of `2` and its child, and the notes it prepares. */
-const registryOf = (calls: Calls) =>
-  fake<ConversationRegistry>({
-    markRead: (chat, now) => void calls.push(`read:${chat}@${now}`),
-    registerRoutine: (session, runId, _title, now, topic) =>
-      void calls.push(`routine:${session}:${runId}@${now}:${topic}`),
-    view: async () => undefined,
-    announcement: (thread) =>
-      thread === '2'
-        ? { chat: '1', write: { requestId: 'thread-started:2', entry: { kind: 'app.thread_started', data: {} } } }
-        : undefined,
-    announced: () => true,
-    close: async (chat) => (chat === '2' ? [chat, '5'] : []),
-    shareBack: (thread, _note, requestId, at) => ({
-      chat: '1',
-      write: { requestId, origin: 'agent', entry: { kind: 'app.shared', data: { thread, at } } },
-      sharedWith: 'main',
-    }),
-  })
-
-/** Pi's harness: a conversation's writes, a session's model and a submit, each recorded. */
+/**
+ * Pi's harness: a conversation's writes, aborts and Pi configuration, an empty history, a new session, a session's
+ * model and a submit, each recorded.
+ */
 const harnessOf = (calls: Calls) => {
   const conversation = (id: number) => ({
     submit: async (write: { readonly type: string; readonly requestId: string }) => {
       calls.push(`${write.type}:${id}:${write.requestId}`)
       return { id: 1 }
     },
+    abort: async () => void calls.push(`abort:${id}`),
+    configure: async () => void calls.push(`configure:${id}`),
+    entries: async () => ({ items: [], next: undefined }),
   })
+  let sessions = 60
   return fake<PiHarness>({
-    // SAFETY: a passive write asks Pi's harness only for a conversation.
+    // SAFETY: the services ask Pi's harness only for a conversation.
     pi: async () => ({ conversation: async (id: number) => conversation(id) }) as never,
     // SAFETY: a send asks a session only to change its model.
     session: (session: string) =>
       ({ setModel: async ({ id }: { id: string }) => void calls.push(`model:${session}:${id}`) }) as never,
+    // SAFETY: a new session is asked only for its id.
+    sessions: { create: async () => ({ id: String((sessions += 1)) }) } as never,
     submit: async (_content, options = {}) => {
       calls.push(`submit:${options.session}:${options.operationId}`)
       return { session: options.session ?? '', operationId: options.operationId ?? '', accepted: true }
@@ -76,9 +67,9 @@ const harnessOf = (calls: Calls) => {
 }
 
 /**
- * The conversation services over the one legacy instance of each: a real chat directory on SQLite, a registry and a
- * mover that record their calls, Pi's harness for a write, a model choice and a submit, and the flows recorded.
- * Nothing else the layer captures is read.
+ * The conversation services as the agent builds them, over a real chat directory on SQLite (Personal `1`, an open
+ * thread `2` owed its announcement with a thread `5` under it, and a closed thread `3`), Pi's harness above, a mover
+ * that records its moves, and the flows recorded. Nothing else the layer captures is read.
  */
 const services = (calls: Calls) => {
   const flows: FlowEvent[] = []
@@ -86,7 +77,16 @@ const services = (calls: Calls) => {
   db.insert(appConversations)
     .values([
       { chatId: '1', piSession: '41', kind: 'main', role: 'primary', createdAt: 1 },
-      { chatId: '2', piSession: '42', kind: 'thread', parentSession: '1', createdAt: 1 },
+      {
+        chatId: '2',
+        piSession: '42',
+        kind: 'thread',
+        parentSession: '1',
+        title: 'Plans',
+        mainNote: 'owed',
+        createdAt: 1,
+      },
+      { chatId: '5', piSession: '45', kind: 'thread', parentSession: '2', createdAt: 1 },
       {
         chatId: '3',
         piSession: '43',
@@ -105,9 +105,18 @@ const services = (calls: Calls) => {
     },
   })
   const harness = harnessOf(calls)
-  const directory = new ChatDirectory(db)
-  const registry = registryOf(calls)
-  const input = Layer.succeed(AgentInput, fake<AgentInputs>({ harness, applied: new Map() }))
+  // SAFETY: a thread's extensions are handed to Pi's fake configure and fork, which never read them.
+  const extension = {} as never
+  const input = Layer.succeed(
+    AgentInput,
+    fake<AgentInputs>({
+      harness,
+      applied: new Map(),
+      subagentTools: [],
+      thread: extension,
+      memory: { memory: extension, recall: extension },
+    }),
+  )
   const plans = Layer.mergeAll(
     Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void })),
     Layer.succeed(Models, fake<Models['Service']>({ current: Effect.succeed('model-a') })),
@@ -116,14 +125,16 @@ const services = (calls: Calls) => {
   const layer = ConversationLive.pipe(
     Layer.provide(
       Layer.mergeAll(
-        // SAFETY: the layer reads only the core services, legacy instances and input given below; the rest stays unprovided.
+        // SAFETY: the layer reads only the core services, the mover and the input given below; the rest stays unprovided.
         Layer.succeedContext(Context.empty() as Context.Context<FoundationServices>),
         // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
         Layer.succeed(Db, db as never),
         KeyedLock.layer,
+        SingleFlight.layer,
+        Layer.succeed(Changes, makeChanges()),
+        // SAFETY: no test here names a thread, so the cheap model is never called.
+        Layer.succeed(CheapModels, () => fake<CheapModel>({})),
         PiSessions.layer.pipe(Layer.provide(input)),
-        Layer.succeed(ChatsInstance, directory),
-        Layer.succeed(ConversationsInstance, registry),
         Layer.succeed(MovesInstance, moves),
         input,
         plans,
@@ -133,7 +144,7 @@ const services = (calls: Calls) => {
   return {
     layer: Layer.merge(layer, Layer.effectDiscard(Effect.addFinalizer(() => Effect.sync(close)))),
     calls,
-    directory,
+    db,
     flows,
   }
 }
@@ -301,31 +312,97 @@ describe('the conversation services', () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it.effect('record a Close as its close flow, one that closed nothing as a replay', () => {
-    const { layer, flows } = services([])
+  it.effect('record a Close as its close flow, one that closed nothing as a replay, and stop what it closed', () => {
+    const { layer, flows, calls } = services([])
     return Effect.gen(function* () {
       const conversations = yield* Conversations
       expect(yield* conversations.close('2', 'done')).toEqual(['2', '5'])
-      expect(yield* conversations.close('1', 'owner')).toEqual([])
-      expect(flows).toEqual([
-        { flow: 'close', chat: '2', via: 'system', actor: 'subagent', count: 2, status: 'ok' },
-        { flow: 'close', chat: '1', via: 'app', actor: 'owner', count: 0, status: 'replayed' },
-      ])
+      expect(yield* conversations.close('3', 'owner')).toEqual([])
+      expect(calls).toEqual(['abort:42', 'abort:45'])
+      expect(yield* Effect.flip(conversations.close('1', 'owner'))).toMatchObject({ reason: 'main_thread' })
+      expect(flows.map(({ flow, chat, via, actor, count, status }) => [flow, chat, via, actor, count, status])).toEqual(
+        [
+          ['close', '2', 'system', 'subagent', 2, 'ok'],
+          ['close', '3', 'app', 'owner', 0, 'replayed'],
+          ['close', '1', 'app', 'owner', undefined, 'refused'],
+        ],
+      )
     }).pipe(Effect.provide(layer))
   })
 
-  it.effect("hand the registry and the mover the Clock's time in seconds", () => {
-    const { layer, calls } = services([])
+  it.effect("read the Clock's time in seconds: a read mark, a routine chat, an announcement and a move", () => {
+    const { layer, calls, db } = services([])
     return Effect.gen(function* () {
       yield* TestClock.adjust('90 seconds')
       const conversations = yield* Conversations
       yield* conversations.markRead('2')
       yield* conversations.registerRoutine('77', 'run-1', 'Daily', 3)
-      expect(yield* conversations.view('5')).toEqual(Option.none())
-      expect([yield* conversations.announce('2'), yield* conversations.announce('3')]).toEqual([true, false])
+      const row = (chat: string) => db.select().from(appConversations).where(eq(appConversations.chatId, chat)).get()
+      expect(row('2')?.readAt).toBe(90)
+      // Topic 3 does not exist, so the routine's chat sits under Personal's Conversation.
+      expect(row('77')).toMatchObject({ createdAt: 90, parentSession: '1', topicId: 1, routineRunId: 'run-1' })
+      expect(yield* conversations.view('99')).toEqual(Option.none())
+      expect([yield* conversations.announce('2'), yield* conversations.announce('2')]).toEqual([true, false])
+      expect(yield* conversations.announce('3')).toBe(false)
       const receipt = yield* (yield* Moves).move('1', { entry: 4, operationId: 'move-1' })
       expect(receipt).toMatchObject({ state: 'refused', reason: 'streaming' })
-      expect(calls).toEqual(['read:2@90', 'routine:77:run-1@90:3', 'write:41:thread-started:2', 'move:1@90'])
+      expect(calls).toEqual(['write:41:thread-started:2', 'move:1@90'])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect('start a Thread once per operation, also when it is repeated at once, with its receipt and flow', () => {
+    const { layer, calls, db, flows } = services([])
+    return Effect.gen(function* () {
+      const conversations = yield* Conversations
+      const start = conversations.startThread('2', 'op-e', 'empty')
+      const [first, second] = yield* Effect.all([start, start], { concurrency: 'unbounded' })
+      expect([first.id, second.id]).toEqual(['61', '61'])
+      expect(first).toMatchObject({ kind: 'thread', parent: '1', topic: 1, replies: 0 })
+      expect(calls).toEqual(['configure:61'])
+      expect(yield* conversations.startThread('2', 'op-e', 'empty')).toMatchObject({ id: '61' })
+      const receipts = db.select().from(appChatOperations).all()
+      expect(receipts).toEqual([
+        expect.objectContaining({
+          chatId: '2',
+          operationId: 'op-e',
+          kind: 'empty',
+          state: 'settled',
+          targetChat: '61',
+        }),
+      ])
+      expect(flows.map(({ flow, chat, parentChat, status }) => [flow, chat, parentChat, status])).toEqual([
+        ['empty', '61', '2', 'ok'],
+        ['empty', '61', '2', 'replayed'],
+        ['empty', '61', '2', 'replayed'],
+      ])
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect("record a move's receipt and flow from what the mover answered", () => {
+    const { layer, db, flows } = services([])
+    return Effect.gen(function* () {
+      const moves = yield* Moves
+      expect(yield* moves.move('1', { entry: 4, operationId: 'move-1' })).toMatchObject({ state: 'refused' })
+      expect(db.select().from(appChatOperations).all()).toEqual([
+        expect.objectContaining({
+          chatId: '1',
+          operationId: 'move-1',
+          kind: 'move',
+          state: 'refused',
+          reason: 'streaming',
+        }),
+      ])
+      expect(flows).toEqual([
+        {
+          flow: 'move',
+          via: 'app',
+          actor: 'owner',
+          chat: '1',
+          operationId: 'move-1',
+          status: 'refused',
+          errorType: 'streaming',
+        },
+      ])
     }).pipe(Effect.provide(layer))
   })
 })

@@ -1,16 +1,7 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
-import {
-  type CreateConversation,
-  type HelperExclusion,
-  type MoveReceipt,
-  type MoveToThread,
-  PERSONAL_TOPIC,
-  type UpdateConversation,
-} from '@goblin/contracts'
-import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
-import * as Clock from 'effect/Clock'
+import type { MoveReceipt, MoveToThread } from '@goblin/contracts'
 import type { Budget } from '../budget.ts'
 import { makeChatOperations } from '../chats/operations.ts'
 import {
@@ -26,20 +17,26 @@ import {
   isHiddenChat,
   primaryChat,
   registerChat,
+  registerPrimary,
   topicOfChat,
 } from '../chats/directory.ts'
+import { makeRegistryCore } from '../chats/conversations/core.ts'
+import { registryReads } from '../chats/conversations/reads.ts'
+import { registryThreads } from '../chats/conversations/threads.ts'
+import { registryWrites } from '../chats/conversations/writes.ts'
 import { ChatMover, MovesInstance } from '../chats/mover.ts'
-import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
-import { epochSeconds, nowSeconds } from '../clock.ts'
-import { ConversationRegistry, ConversationsInstance } from '../conversations.ts'
+import { ChatOperations, Chats, Conversations, Moves } from '../chats/service.ts'
+import { epochSeconds } from '../clock.ts'
+import { ConversationsInstance } from '../conversations.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
 import { attempt, attemptSync } from '../http/errors.ts'
 import { FlowEvents, withFlow } from '../observability/flows.ts'
+import { KeyedLock } from '../observability/lock.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
-import { BACKGROUND } from '../pi/context.ts'
-import { syncWith } from '../runtime/boundary.ts'
+import { SingleFlight } from '../observability/single-flight.ts'
+import { promiseWith, syncWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -51,30 +48,12 @@ export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.ef
   Db.useSync((db) => new ChatDirectory(db)),
 )
 
-/**
- * Start step 10: the conversation registry, made once; main is registered here. Each write tells
- * `conversations.changed` which conversations it changed, before it returns (the Apps registry and the feed follow).
- */
-export const ConversationRegistryLive: Layer.Layer<
-  ConversationsInstance,
-  never,
-  AgentInput | Db | Changes | CheapModels
-> = Layer.effect(
-  ConversationsInstance,
+/** Start step 10: main is registered, once (a retained or rebound binding is never overwritten). */
+export const PrimaryChatLive: Layer.Layer<never, never, Db> = Layer.effectDiscard(
   Effect.gen(function* () {
-    const input = yield* AgentInput
-    const cheap = yield* CheapModels
-    const kit = {
-      thread: input.thread,
-      recall: input.memory.recall,
-      namer: cheap('naming'),
-      subagentTools: input.subagentTools,
-    }
-    // The registry is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
-    const changes = yield* Changes
-    const tell = syncWith(yield* Effect.context<Changes>())
-    const changed = (ids: readonly string[]) => tell(changes.publish('conversations.changed', { ids }))
-    return new ConversationRegistry(yield* Db, input.harness, kit, nowSeconds(), changed)
+    const db = yield* Db
+    const now = yield* epochSeconds
+    yield* Effect.sync(() => registerPrimary(db, now))
   }),
 )
 
@@ -82,16 +61,19 @@ export const ConversationRegistryLive: Layer.Layer<
  * Start step 13: Move to thread, the one mover. A move a restart interrupted finishes once the services are up again
  * (ADR 0034); it never holds up the start, so its reconcile runs on while the steps after this one are built.
  */
-export const MoverLive: Layer.Layer<MovesInstance, never, AgentInput | Db | ConversationsInstance> = Layer.effect(
+export const MoverLive: Layer.Layer<MovesInstance, never, AgentInput | Db | Changes> = Layer.effect(
   MovesInstance,
   Effect.gen(function* () {
     const input = yield* AgentInput
+    // The mover is Promise code that writes synchronously: it tells the change bus inline, on its own stack.
+    const changes = yield* Changes
+    const tell = syncWith(yield* Effect.context<Changes>())
     const moves = new ChatMover({
       db: yield* Db,
       harness: input.harness,
       // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
       withChat: (chat, run) => input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
-      conversations: yield* ConversationsInstance,
+      touched: (ids) => tell(changes.publish('conversations.changed', { ids })),
       subagentTools: input.subagentTools,
       thread: input.thread,
       recall: input.memory.recall,
@@ -138,255 +120,39 @@ export const ChatsLive = Layer.effect(
 /** The chat operations natively (chats/operations.ts), over the agent's database. */
 export const ChatOperationsLive = Layer.effect(ChatOperations, makeChatOperations)
 
-/** The registry's reads over the agent's one `ConversationRegistry`. */
-const registryReads = (conversations: ConversationRegistry) => ({
-  require: Effect.fn('Conversations.require')(function* (chat: string) {
-    return yield* attemptSync(() => conversations.require(chat))
-  }),
-  requireOpen: Effect.fn('Conversations.requireOpen')(function* (chat: string) {
-    return yield* attemptSync(() => conversations.requireOpen(chat))
-  }),
-  kindOf: Effect.fn('Conversations.kindOf')(function* (chat: string) {
-    return yield* attemptSync(() => conversations.kindOf(chat))
-  }),
-  spawnerSession: Effect.fn('Conversations.spawnerSession')(function* (chat: string) {
-    return yield* attemptSync(() => conversations.spawnerSession(chat))
-  }),
-  view: Effect.fn('Conversations.view')(function* (chat: string) {
-    return Option.fromNullishOr(yield* attempt(() => conversations.view(chat)))
-  }),
-  list: Effect.withSpan(
-    attempt(() => conversations.list()),
-    'Conversations.list',
-  ),
-  helperReference: Effect.fn('Conversations.helperReference')(function* (chat: string) {
-    return yield* attempt(() => conversations.helperReference(chat))
-  }),
-  openIn: Effect.fn('Conversations.openIn')(function* (topic: number) {
-    return yield* attemptSync(() => conversations.openIn(topic))
-  }),
-  recallAt: Effect.fn('Conversations.recallAt')(function* (chat: string, entry: number) {
-    return yield* attemptSync(() => conversations.recallAt(chat, entry))
-  }),
-  recallLimit: Effect.fn('Conversations.recallLimit')(function* (session: string, size: number) {
-    return yield* attemptSync(() => conversations.recallLimit(session, size))
-  }),
-  history: Effect.fn('Conversations.history')(function* (chat: string, before: number) {
-    return yield* attempt(() => conversations.history(chat, before))
-  }),
-  subtree: Effect.fn('Conversations.subtree')(function* (chat: string) {
-    return yield* attemptSync(() => conversations.subtree(chat))
-  }),
-})
-
-/** The registry's new chats over the one `ConversationRegistry`: Threads, Topic Conversations and registrations. */
-const registryChats = (conversations: ConversationRegistry) => ({
-  openConversation: Effect.withSpan(
-    attempt(() => conversations.openConversation()),
-    'Conversations.openConversation',
-  ),
-  registerSubagent: Effect.fn('Conversations.registerSubagent')(function* (
-    session: string,
-    parent: string,
-    name: string,
-    exclusions: readonly HelperExclusion[] = [],
-  ) {
-    const now = yield* epochSeconds
-    return yield* attemptSync(() => conversations.registerSubagent(session, parent, name, now, exclusions))
-  }),
-  registerPersona: Effect.fn('Conversations.registerPersona')(function* (
-    session: string,
-    parentChat: string,
-    name: string,
-  ) {
-    const now = yield* epochSeconds
-    return yield* attempt(() => conversations.registerPersona(session, parentChat, name, now))
-  }),
-  registerRoutine: Effect.fn('Conversations.registerRoutine')(function* (
-    session: string,
-    runId: string,
-    title: string,
-    topic?: number,
-  ) {
-    const now = yield* epochSeconds
-    return yield* attemptSync(() => conversations.registerRoutine(session, runId, title, now, topic))
-  }),
-})
-
-/** The flow, and the receipt's kind, of a thread operation by where it starts its Thread. */
-const threadFlow = (anchor: ThreadAnchor) => (anchor === 'latest' ? 'start' : anchor === 'empty' ? 'empty' : 'reply')
-
 /**
- * Thread operations (ADR 0034) over the one registry: the Thread made once per operation, its receipt in the chat it
- * came from (moved on to `settled` with the Thread it made), and its `start`, `reply` or `empty` flow. A create with an
- * operation id is that chat's thread operation (C4); one without stays the plain create it always was.
+ * The registry of the owner's chats natively (chats/conversations/): its reads, its new chats and its writes over the
+ * agent's database and Pi. A thread operation is admitted once per operation id under the KeyedLock
+ * (`thread-op:<op>`), a thread is named once at a time (`SingleFlight`), each chat's reply tally is kept by the
+ * service, and every write tells `conversations.changed` what it changed, inside the write.
  */
-const threadStarts = (
-  conversations: ConversationRegistry,
-  db: ChatDb,
-  operations: ChatOperations['Service'],
-  flows: FlowEvents['Service'],
-) => {
-  const startThread = Effect.fn('Conversations.startThread')(function* (
-    parent: string,
-    operationId: string,
-    anchor: ThreadAnchor,
-  ) {
-    const kind = threadFlow(anchor)
-    const flow = { flow: kind, via: 'app', actor: 'owner', parentChat: parent, operationId } as const
-    const started = operations.tracked(
-      parent,
-      operationId,
-      { kind, origin: 'owner' },
-      () =>
-        Effect.flatMap(epochSeconds, (now) =>
-          attempt(() => conversations.startThread(parent, operationId, anchor, now)),
-        ),
-      (thread) => ({ state: 'settled', targetChat: thread.view.id }),
-    )
-    const thread = yield* started.pipe(
-      withFlow(flow, ({ view, existing }) => ({ chat: view.id, status: existing ? 'replayed' : 'ok' })),
-      Effect.provideService(FlowEvents, flows),
-    )
-    return thread.view
-  })
-  const create = Effect.fn('Conversations.create')(function* (input: CreateConversation) {
-    const { from, topic, operationId } = input
-    if (operationId !== undefined) {
-      if (from !== undefined) return yield* startThread(from.conversation, operationId, { entry: from.entry })
-      const channel = yield* attemptSync(() => conversationOfTopic(db, topic ?? PERSONAL_TOPIC))
-      return yield* startThread(channel, operationId, 'empty')
-    }
-    const now = yield* epochSeconds
-    if (from !== undefined) return yield* attempt(() => conversations.branch(from.conversation, from.entry, now))
-    const channel = yield* attemptSync(() => conversationOfTopic(db, topic ?? PERSONAL_TOPIC))
-    return yield* attempt(() => conversations.createIn(channel, now))
-  })
-  return { startThread, create }
-}
-
-/** The registry's writes into existing chats over the one `ConversationRegistry`. */
-/**
- * A Close as its `close` flow (plan §4): the owner's from the app, or a subagent's own once its job is done; `count` is
- * how many chats it closed, and a Close that closed none (all were closed already) is a replay.
- */
-const closing = <A, E, R>(
-  flows: FlowEvents['Service'],
-  chat: string,
-  by: 'owner' | 'done',
-  close: Effect.Effect<A, E, R>,
-  count: (closed: A) => number,
-) => {
-  const who =
-    by === 'owner' ? ({ via: 'app', actor: 'owner' } as const) : ({ via: 'system', actor: 'subagent' } as const)
-  const flow = { flow: 'close', chat, ...who } as const
-  return close.pipe(
-    withFlow(flow, (closed) => ({ count: count(closed), status: count(closed) === 0 ? 'replayed' : 'ok' })),
-    Effect.provideService(FlowEvents, flows),
-  )
-}
-
-/** A thread's note into the chat it came from, as its own `share` flow (plan §4). */
-const shareBackWith = (
-  conversations: ConversationRegistry,
-  operations: ChatOperations['Service'],
-  flows: FlowEvents['Service'],
-) =>
-  Effect.fn('Conversations.shareBack')(function* (thread: string, note: string, requestId: string) {
-    const flow = { flow: 'share', via: 'tool', actor: 'agent', chat: thread, operationId: requestId } as const
-    const shared = Effect.gen(function* () {
-      const at = yield* Clock.currentTimeMillis
-      const share = yield* attemptSync(() => conversations.shareBack(thread, note, requestId, at))
-      yield* operations.passiveWrite(share.chat, share.write)
-      return share
-    })
-    const { sharedWith } = yield* shared.pipe(
-      withFlow(flow, ({ chat }) => ({ parentChat: chat })),
-      Effect.provideService(FlowEvents, flows),
-    )
-    return sharedWith
-  })
-
-const registryWrites = (
-  conversations: ConversationRegistry,
-  operations: ChatOperations['Service'],
-  flows: FlowEvents['Service'],
-) => ({
-  touched: Effect.fn('Conversations.touched')(function* (chats: readonly string[]) {
-    return yield* attemptSync(() => conversations.touched(chats))
-  }),
-  reportRoutine: Effect.fn('Conversations.reportRoutine')(function* (report: RoutineReport) {
-    const { chat, write } = yield* attemptSync(() => conversations.routineReport(report))
-    yield* operations.passiveWrite(chat, write)
-  }),
-  shareBack: shareBackWith(conversations, operations, flows),
-  announce: Effect.fn('Conversations.announce')(function* (thread: string) {
-    const at = yield* Clock.currentTimeMillis
-    const owed = yield* attemptSync(() => conversations.announcement(thread, at))
-    if (owed === undefined) return false
-    yield* operations.passiveWrite(owed.chat, owed.write)
-    return yield* attemptSync(() => conversations.announced(thread))
-  }),
-  writeEntry: Effect.fn('Conversations.writeEntry')(function* (chat: string, requestId: string, entry: EntryDraft) {
-    const submission = yield* operations.passiveWrite(chat, { requestId, entry })
-    return { placed: placedOf(submission) }
-  }),
-  nameIfUntitled: Effect.fn('Conversations.nameIfUntitled')(function* (thread: string) {
-    return yield* attempt(() => conversations.nameIfUntitled(thread))
-  }),
-  update: Effect.fn('Conversations.update')(function* (chat: string, change: UpdateConversation) {
-    const now = yield* epochSeconds
-    const updating = attempt(() => conversations.update(chat, change, now))
-    if (change.closed !== true) return yield* updating
-    return yield* closing(flows, chat, 'owner', updating, (updated) => updated.closed.length)
-  }),
-  markRead: Effect.fn('Conversations.markRead')(function* (chat: string) {
-    const now = yield* epochSeconds
-    return yield* attemptSync(() => conversations.markRead(chat, now))
-  }),
-  close: Effect.fn('Conversations.close')(function* (chat: string, by: 'owner' | 'done') {
-    const now = yield* epochSeconds
-    return yield* closing(
-      flows,
-      chat,
-      by,
-      attempt(() => conversations.close(chat, by, now)),
-      (closed) => closed.length,
-    )
-  }),
-  stopSubagents: Effect.fn('Conversations.stopSubagents')(function* (chat: string) {
-    return yield* attempt(() => conversations.stopSubagents(chat))
-  }),
-})
-
-/**
- * Where a passive write landed: its entry id once it is in the transcript (at once when the chat is idle, else at its
- * next boundary), none when Pi did not place it. It waits outside the chat's lock.
- */
-const placedOf = (submission: Submission) =>
-  Effect.map(
-    attempt(() => submission.wait(BACKGROUND)),
-    (settled) =>
-      settled.status === 'done' && settled.entry !== undefined ? Option.some(Number(settled.entry)) : Option.none(),
-  )
-
-/**
- * The registry over the one `ConversationRegistry` (start step 10), reading the time from the Clock as the programs do. Its passive
- * writes go through `ChatOperations.passiveWrite`: under the chat's lock, each with its receipt.
- */
-const ConversationsAdapter = Layer.effect(
+export const ConversationsLive = Layer.effect(
   Conversations,
   Effect.gen(function* () {
-    const conversations = yield* ConversationsInstance
-    const db = yield* Db
+    const core = yield* makeRegistryCore
     const operations = yield* ChatOperations
     const flows = yield* FlowEvents
-    return Conversations.of({
-      ...registryReads(conversations),
-      ...registryChats(conversations),
-      ...threadStarts(conversations, db, operations, flows),
-      ...registryWrites(conversations, operations, flows),
-    })
+    const threads = registryThreads(core, { operations, flows, locks: yield* KeyedLock })
+    const namer = (yield* CheapModels)('naming')
+    const writes = registryWrites(core, { operations, flows, flights: yield* SingleFlight, namer })
+    return Conversations.of({ ...registryReads(core), ...threads, ...writes })
+  }),
+)
+
+/** The registry's Promise view, for the Topic ports and the workspace feed: it runs the native service's methods. */
+const ConversationsInstanceLive = Layer.effect(
+  ConversationsInstance,
+  Effect.gen(function* () {
+    const conversations = yield* Conversations
+    const context = yield* Effect.context()
+    const run = promiseWith(context)
+    return {
+      openConversation: () => run(conversations.openConversation),
+      // The change bus runs its handlers inline and never waits, so this ends on the caller's stack.
+      touched: (ids) => syncWith(context)(conversations.touched(ids)),
+      list: () => run(conversations.list),
+      view: (id) => run(Effect.map(conversations.view(id), Option.getOrUndefined)),
+    }
   }),
 )
 
@@ -443,14 +209,16 @@ const MovesAdapter = Layer.effect(
 )
 
 /**
- * The conversation services after the start (chats/service.ts). `Chats` and `ChatOperations` are native: SQLite reads
- * and receipts, each chat's one lock in `KeyedLock` (the mover and the Topic seed take it through the bridge), Pi
- * through `PiSessions`, flows through `FlowEvents`. `Conversations` and `Moves` are served over the one registry and
- * mover (start steps 10 and 13), which the Topic ports, the Apps registry and the workspace feed share; their passive
- * writes, receipts and flows go through `ChatOperations` and `FlowEvents`.
+ * The conversation services after the start (chats/service.ts), all native but `Moves`: SQLite reads and receipts,
+ * each chat's one lock in `KeyedLock` (the mover takes it through the bridge), Pi through `PiSessions`, flows through
+ * `FlowEvents`. `Moves` is served over the one mover (start step 13); its receipts and flows go through
+ * `ChatOperations` and `FlowEvents`.
  */
 export const ConversationLive: Layer.Layer<
-  Chats | ChatOperations | Conversations | Moves,
+  Chats | ChatOperations | Conversations | ConversationsInstance | Moves,
   never,
   FoundationServices | Budget | Models
-> = Layer.mergeAll(ChatsLive, ConversationsAdapter, MovesAdapter).pipe(Layer.provideMerge(ChatOperationsLive))
+> = Layer.mergeAll(ChatsLive, ConversationsInstanceLive, MovesAdapter).pipe(
+  Layer.provideMerge(ConversationsLive),
+  Layer.provideMerge(ChatOperationsLive),
+)
