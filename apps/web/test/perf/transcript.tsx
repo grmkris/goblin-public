@@ -8,7 +8,14 @@ import type { ChatThreads } from '../../src/components/shell/thread-summary.tsx'
 import { useConversation, useTranscript } from '../../src/components/use-conversation.ts'
 import { WorkspaceFeedProvider } from '../../src/components/workspace-feed.tsx'
 import { type Navigation, NavigationContext } from '../../src/lib/navigation.ts'
-import { BATCH_INTERVAL_MS, type PerfApi, type Sample, streamBatches } from './transcript-fixture.ts'
+import {
+  BATCH_INTERVAL_MS,
+  type FollowReport,
+  type PerfApi,
+  type Sample,
+  type Step,
+  streamBatches,
+} from './transcript-fixture.ts'
 import '../../src/styles.css'
 
 /** What the page measures, read by the runner (`../ui-perf.ts`) through `window.perf`. */
@@ -29,6 +36,97 @@ new PerformanceObserver((list) => {
 }).observe({ type: 'event', durationThreshold: 16 })
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** The scroller as one frame shows it: where the rows are, how far the newest is hidden, and what is on offer. */
+function look() {
+  const viewport = document.querySelector<HTMLElement>('[data-slot="message-scroller-viewport"]')
+  const content = viewport?.firstElementChild
+  if (!(viewport instanceof HTMLElement) || !(content instanceof HTMLElement)) return undefined
+  const rows = [...document.querySelectorAll<HTMLElement>('[data-message-id]')]
+  const last = rows.at(-1)?.getBoundingClientRect()
+  const box = viewport.getBoundingClientRect()
+  const clear = box.bottom - Number.parseFloat(getComputedStyle(content).paddingBottom)
+  return {
+    top: viewport.scrollTop,
+    hidden: last === undefined ? 0 : last.bottom - clear,
+    arrow: (viewport.parentElement?.getAttribute('data-scrollable') ?? '').split(' ').includes('end'),
+    spacer: document.querySelector<HTMLElement>('[data-message-scroller-spacer]')?.offsetHeight ?? 0,
+    rows: new Map(
+      rows.map((row) => [row.dataset.messageId ?? '', row.getBoundingClientRect().top + viewport.scrollTop]),
+    ),
+  }
+}
+
+/** Plays `steps` and watches every frame; the scroller's own state is read from the DOM, as a person would see it. */
+async function follow(steps: readonly Step[]): Promise<FollowReport> {
+  let watching = true
+  let streaming = true
+  let previous = look()
+  let frames = 0
+  let hiddenMax = Number.NEGATIVE_INFINITY
+  let arrowFrames = 0
+  let backFrames = 0
+  let backMax = 0
+  let shifts = 0
+  let shiftMax = 0
+  let spacerMax = 0
+  const trace: string[] = []
+  const watch = () => {
+    const now = look()
+    if (now !== undefined) {
+      frames += 1
+      hiddenMax = Math.max(hiddenMax, now.hidden)
+      spacerMax = Math.max(spacerMax, now.spacer)
+      if (now.arrow && streaming) arrowFrames += 1
+      if (previous !== undefined) {
+        const back = previous.top - now.top
+        if (back > 2) {
+          backFrames += 1
+          backMax = Math.max(backMax, back)
+        }
+        const newest = [...now.rows.keys()].at(-1)
+        for (const [id, top] of now.rows) {
+          const before = previous.rows.get(id)
+          if (before !== undefined && id !== newest && Math.abs(top - before) > 1) {
+            shifts += 1
+            shiftMax = Math.max(shiftMax, Math.abs(top - before))
+          }
+        }
+        if (trace.length < 400 && (back > 2 || now.arrow !== previous.arrow))
+          trace.push(
+            `f${frames} top ${Math.round(previous.top)}→${Math.round(now.top)} arrow ${now.arrow} spacer ${now.spacer}`,
+          )
+      }
+      previous = now
+    }
+    if (watching) requestAnimationFrame(watch)
+  }
+  requestAnimationFrame(watch)
+  for (const { batch, wait, dock } of steps) {
+    if (dock !== undefined) document.documentElement.style.setProperty('--dock-height', dock)
+    window.dispatchEvent(new MessageEvent('fixture-batch', { data: JSON.stringify(batch) }))
+    await sleep(wait)
+  }
+  streaming = false
+  await nextFrame()
+  await sleep(500)
+  const settled = look()
+  watching = false
+  return {
+    frames,
+    hiddenMax: Math.round(hiddenMax),
+    hiddenFinal: Math.round(settled?.hidden ?? 0),
+    arrowFinal: settled?.arrow ?? false,
+    arrowFrames,
+    backFrames,
+    backMax: Math.round(backMax),
+    shifts,
+    shiftMax: Math.round(shiftMax),
+    spacerMax,
+    trace,
+  }
+}
 const perf: PerfApi = {
   start() {
     Object.assign(sample, { frames: [], longTasks: [], inputs: [], commits: 0, commitMs: 0 })
@@ -47,6 +145,7 @@ const perf: PerfApi = {
     }
     await nextFrame()
   },
+  follow,
 }
 Object.defineProperty(window, 'perf', { value: perf })
 

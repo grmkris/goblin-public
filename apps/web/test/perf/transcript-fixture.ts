@@ -157,6 +157,149 @@ export function streamBatches(lastId: number): readonly (readonly Entry[])[] {
   return batches
 }
 
+/** One step of a scripted stream: a batch, how long the server stays quiet after it, and the dock's height from then on. */
+export type Step = { readonly batch: readonly Entry[]; readonly wait: number; readonly dock?: string }
+const step = (batch: readonly Entry[], wait = BATCH_INTERVAL_MS, dock?: string): Step => ({
+  batch,
+  wait,
+  ...(dock !== undefined && { dock }),
+})
+
+/** The reply's text as `message_update` batches of one block, `BATCH_CHARACTERS` at a time. */
+function textSteps(reply: string, contentIndex: number): Step[] {
+  const steps: Step[] = []
+  for (let offset = 0; offset < reply.length; offset += BATCH_CHARACTERS)
+    steps.push(
+      step([
+        {
+          type: 'message_update',
+          changes: [{ type: 'text_delta', contentIndex, delta: reply.slice(offset, offset + BATCH_CHARACTERS) }],
+        },
+      ]),
+    )
+  return steps
+}
+
+/** Scenarios of one owner turn that the follow runner (`../ui-follow.ts`) plays against the real transcript. */
+export const FOLLOW_SCENARIOS = ['reply', 'tools', 'long-first', 'dock', 'same-batch', 'resnapshot'] as const
+export type FollowScenario = (typeof FOLLOW_SCENARIOS)[number]
+
+/**
+ * `reply`: the baseline, a streamed answer. `tools`: a slow provider, thinking, a tool that takes a while, then the
+ * answer. `long-first`: the answer is already longer than the screen when its first batch arrives. `dock`: the
+ * baseline while the composer grows (a queued message, an attachment) partway through. `same-batch`: the owner's turn
+ * and more than a screen of its reply arrive together (a Telegram turn, a queued one starting). `resnapshot`: the tab
+ * comes back from the background and the stream starts again from a snapshot that already holds the turn and a long
+ * partial reply, which then keeps streaming.
+ */
+export function followSteps(scenario: FollowScenario, entries: readonly Entry[]): readonly Step[] {
+  const lastId = entries.length
+  const at = START + 10_000_000
+  const question = user(lastId + 1, at, 'Pull it all together into one overview I can keep.')
+  const opening = step([{ type: 'entry_appended', entry: question }, { type: 'run_start' }])
+  const message = (when: number) => ({
+    type: 'message_start',
+    message: { role: 'assistant', content: [], timestamp: when },
+  })
+  const reply = streamedReply()
+  const committed = (id: number, when: number) =>
+    step([{ type: 'message_end', entry: assistant(id, when, [{ type: 'text', text: reply }]) }, { type: 'run_end' }])
+  if (scenario === 'reply')
+    return [opening, step([message(at + 1_000)]), ...textSteps(reply, 0), committed(lastId + 2, at + 1_000)]
+  if (scenario === 'long-first')
+    return [
+      opening,
+      step([
+        message(at + 1_000),
+        { type: 'message_update', changes: [{ type: 'text_delta', contentIndex: 0, delta: reply.slice(0, 2_400) }] },
+      ]),
+      ...textSteps(reply.slice(2_400), 0),
+      committed(lastId + 2, at + 1_000),
+    ]
+  if (scenario === 'same-batch')
+    return [
+      step([
+        { type: 'entry_appended', entry: question },
+        { type: 'run_start' },
+        message(at + 1_000),
+        { type: 'message_update', changes: [{ type: 'text_delta', contentIndex: 0, delta: reply.slice(0, 2_400) }] },
+      ]),
+      ...textSteps(reply.slice(2_400), 0),
+      committed(lastId + 2, at + 1_000),
+    ]
+  if (scenario === 'resnapshot')
+    return [
+      step([
+        {
+          type: 'snapshot',
+          entries: [...entries, question],
+          tools: [],
+          inbox: [],
+          run: {},
+          generation: {
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: reply.slice(0, 2_400) }],
+              timestamp: at + 1_000,
+            },
+          },
+        },
+      ]),
+      ...textSteps(reply.slice(2_400), 0),
+      committed(lastId + 2, at + 1_000),
+    ]
+  if (scenario === 'dock') {
+    const steps = [opening, step([message(at + 1_000)]), ...textSteps(reply, 0)]
+    const third = Math.floor(steps.length / 3)
+    const grown = steps.map((one, index) => (index === third ? { ...one, dock: '11rem' } : one))
+    return [...grown, committed(lastId + 2, at + 1_000)]
+  }
+  const call = 'call-follow'
+  const thinking = 'The saved notes probably have this; fetch the page to be sure.'
+  const request = { type: 'toolCall', id: call, name: 'web_fetch', arguments: { url: 'https://example.com/plans' } }
+  const first = assistant(lastId + 2, at + 1_000, [{ type: 'thinking', thinking }, request])
+  return [
+    { ...opening, wait: 3_000 }, // the provider's quiet stretch before anything streams
+    step([message(at + 1_000)]),
+    step([
+      {
+        type: 'message_update',
+        changes: [{ type: 'thinking_start', contentIndex: 0, block: { type: 'thinking', thinking: '' } }],
+      },
+    ]),
+    step([{ type: 'message_update', changes: [{ type: 'thinking_delta', contentIndex: 0, delta: thinking }] }]),
+    step([{ type: 'message_end', entry: first }]),
+    step([{ type: 'tool_execution_start', toolCallId: call, toolName: 'web_fetch', args: request.arguments }], 1_500),
+    step([{ type: 'tool_execution_end', toolCallId: call, entry: toolResult(lastId + 3, at + 2_500, call) }], 2_500),
+    step([message(at + 3_000)]),
+    ...textSteps(reply, 0),
+    committed(lastId + 4, at + 3_000),
+  ]
+}
+
+/** What the page saw of the scroller over one scripted turn (`transcript.tsx`). */
+export type FollowReport = {
+  readonly frames: number
+  /** How far the newest row's bottom is below the clear area above the composer, at the worst frame (px; > 0 is hidden). */
+  readonly hiddenMax: number
+  /** The same, once the stream had finished and settled. */
+  readonly hiddenFinal: number
+  /** Whether the jump-to-end arrow was offered once it had settled. */
+  readonly arrowFinal: boolean
+  /** Frames in which the arrow was offered while the reply was still streaming. */
+  readonly arrowFrames: number
+  /** Frames where the viewport moved back up, and by how much at most (px). */
+  readonly backFrames: number
+  readonly backMax: number
+  /** Rows that were already there and moved (not the newest), and the biggest move (px). */
+  readonly shifts: number
+  readonly shiftMax: number
+  /** The tallest the reserved space under a pinned turn got (px). */
+  readonly spacerMax: number
+  /** What the scroller held at each of the first frames after the turn's first batch: the rows' ids and tops. */
+  readonly trace: readonly string[]
+}
+
 /** What the page measured over one recorded stretch. */
 export type Sample = {
   frames: number[]
@@ -173,6 +316,8 @@ export type PerfApi = {
   stop(): Sample
   /** Plays one owner turn and its streamed reply after entry `lastId`. */
   stream(lastId: number): Promise<void>
+  /** Plays a scripted turn while watching the scroller, and says what it saw. */
+  follow(steps: readonly Step[]): Promise<FollowReport>
 }
 declare global {
   interface Window {

@@ -10,14 +10,14 @@
  * revision builds in a scratch worktree with today's fixture copied in and its own React plugins. Receipts go to
  * `.local/goblin-perf/<utc>-perf/`: every sample (`receipt.json`) and the verdicts (`summary.md`).
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { mkdirSync, writeFileSync, writeSync } from 'node:fs'
 import { cpus, loadavg } from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { type Browser, type CDPSession, chromium, type Page } from 'playwright-core'
+import { install, PROFILES, serve } from './perf/browser.ts'
 import { build, cleanUp, receiptDirectory, revision } from './perf/revision.ts'
-import { history, type Sample, snapshot } from './perf/transcript-fixture.ts'
+import { history, type Sample } from './perf/transcript-fixture.ts'
 
 /** Where this script reports, and its progress (@cloudflare/workers-types makes `process` `any`). */
 const STDOUT = 1
@@ -44,60 +44,9 @@ function prepare(ref: string, label: string): Variant {
   return { label, ref, sha: source.sha, dist, origin: '' }
 }
 
-const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }
-/** Serves a built fixture; anything that is not a file is the page. */
-async function serve(variant: Variant): Promise<Server> {
-  const server = createServer((request, response) => {
-    const name = new URL(request.url ?? '/', 'http://fixture').pathname
-    const file = path.join(variant.dist, name === '/' ? 'index.html' : name)
-    const found = file.startsWith(variant.dist) && existsSync(file) ? file : path.join(variant.dist, 'index.html')
-    response.writeHead(200, { 'content-type': TYPES[path.extname(found)] ?? 'application/octet-stream' })
-    response.end(readFileSync(found))
-  })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('perf_fixture_address_missing')
-  variant.origin = `http://127.0.0.1:${address.port}`
-  return server
-}
-
-type Profile = { readonly cpu: number; readonly context: Parameters<Browser['newContext']>[0] }
-const PROFILES: Record<string, Profile> = {
-  mobile: {
-    cpu: 4,
-    context: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true },
-  },
-  desktop: { cpu: 1, context: { viewport: { width: 1280, height: 800 } } },
-}
 const SIZES = { open: [100, 200, 400, 800, 1600], stream: [0, 200, 1000], scroll: [1000], idle: [200] } as const
 type Scenario = keyof typeof SIZES
 const isScenario = (name: string): name is Scenario => Object.hasOwn(SIZES, name)
-
-/** The fixture's own stream (the shape `ui-queue.ts` fakes) and its reads, answered from the synthetic history. */
-async function install(page: Page, entries: readonly Record<string, unknown>[]) {
-  await page.addInitScript(() => {
-    class Events extends EventTarget {
-      readonly forward = (event: Event) => {
-        if (event instanceof MessageEvent) this.dispatchEvent(new MessageEvent('batch', { data: event.data }))
-      }
-      constructor() {
-        super()
-        window.addEventListener('fixture-batch', this.forward)
-      }
-      close() {
-        window.removeEventListener('fixture-batch', this.forward)
-      }
-    }
-    Object.defineProperty(window, 'EventSource', { value: Events })
-  })
-  const body = JSON.stringify(snapshot(entries))
-  await page.route('**/api/**', (route) => {
-    const action = new URL(route.request().url()).pathname.split('/').at(-1)
-    if (action === 'snapshot') return route.fulfill({ body, contentType: 'application/json' })
-    if (action === 'queue') return route.fulfill({ json: { inputs: [] } })
-    return route.fulfill({ json: {} })
-  })
-}
 
 const percentile = (values: readonly number[], p: number) => {
   const sorted = values.toSorted((a, b) => a - b)
@@ -227,7 +176,8 @@ function verdicts(rows: readonly Row[]) {
 }
 
 const variants = [prepare(options.base, 'A'), prepare(options.candidate, 'B')]
-const servers = await Promise.all(variants.map(serve))
+const servers = await Promise.all(variants.map((variant) => serve(variant.dist)))
+for (const [index, variant] of variants.entries()) variant.origin = servers[index]?.origin ?? ''
 const browser = await chromium.launch()
 const environment = { chromium: browser.version(), cpus: cpus().length, loadBefore: loadavg().map(round) }
 const reps = Array.from({ length: Number(options.reps) }, (_, rep) => rep)
