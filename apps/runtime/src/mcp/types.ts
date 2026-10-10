@@ -88,10 +88,13 @@ export type McpCallOptions = McpRequestOptions & {
 }
 export type McpToolResult = CallToolResult
 
+/** One skill as an authority check names it: its name and, when known, the URI of its `SKILL.md`. */
+export type SkillIdentity = { readonly name: string; readonly uri?: string }
+
 /**
  * Skills transport authority is checked again for every HTTP dispatch, including refresh retries: per server, an Effect
- * bound to the caller's services.
+ * bound to the caller's services. The library asks it about one skill too (`skill`), before loading or reading it.
  */
 export type SkillRequestOptions = RequestOptions & {
-  readonly authorize?: (serverId: string) => Effect.Effect<void, AppError>
+  readonly authorize?: (serverId: string, skill?: SkillIdentity) => Effect.Effect<void, AppError>
 }

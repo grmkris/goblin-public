@@ -1,4 +1,4 @@
-import { EVERYTHING } from '@goblin/contracts'
+import { EVERYTHING, type TopicSetup } from '@goblin/contracts'
 import { ProtocolError, createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -6,7 +6,9 @@ import * as Schema from 'effect/Schema'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { topicScope } from '../src/setup/scope.ts'
 import * as TestClock from 'effect/testing/TestClock'
-import type { AppError } from '../src/http/errors.ts'
+import { type AppError, NotFound } from '../src/http/errors.ts'
+import { Entitlements } from '../src/billing/gates.ts'
+import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { mcpHost } from '../src/mcp/host.ts'
 import { skillsExtension } from '../src/pi/skills.ts'
 import { Setups } from '../src/setup/service.ts'
@@ -17,6 +19,7 @@ import { makeSkills } from '../src/skills/library.ts'
 import { Skills } from '../src/skills/service.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../src/skills/protocol.ts'
 import { digestOf } from '../src/skills/verify.ts'
+import { fake } from './fake.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { knowledgeOver } from './knowledge-layer.ts'
 import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
@@ -231,23 +234,61 @@ describe("a skills library outside the Topic's setup (unit)", () => {
     expect(await services.run(library.catalog({}, () => false))).toEqual({ skills: [], unavailable: [] })
   })
 
-  it("loads nothing when the model still asks for one of its skills, and offers to add it to the Topic's setup", async () => {
-    const setup = { ...EVERYTHING, skills: [] }
+  /** `skill_activate` in conversation 4 of a Topic "Work" whose setup holds the skills `held`. */
+  const activateIn = async (held: TopicSetup['skills'], handle: string) => {
+    const setup = { ...EVERYTHING, skills: held }
     const profiles = new FixedProfiles({ '4': topicScope({ id: 2, name: 'Work', setup }) })
     const layer = Layer.mergeAll(
       knowledgeOver({ skills: library }),
       Layer.mock(Resident)({ require: () => Effect.void }),
+      Layer.mock(Entitlements)({ require: () => Effect.succeed(fake<AccountPlan>({ active: true })) }),
       Layer.mock(Setups)({ scope: (session: string) => Effect.sync(() => profiles.scope(session)) }),
     )
     const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
-      // SAFETY: skill_activate needs only the Skills, Resident and Setups services provided here.
+      // SAFETY: skill_activate needs only the Skills, Resident, Entitlements and Setups services provided here.
       Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
     const activate = skillsExtension(run).tools?.find((tool) => tool.name === 'skill_activate')
     if (activate === undefined) throw new Error('skill_activate is not registered')
-    const result = await executeTool(activate, { skill: 'lib:code-review' }, inConversation(4))
-    expect(result).toMatchObject({
+    return executeTool(activate, { skill: handle }, inConversation(4))
+  }
+
+  it("loads nothing when the model still asks for one of its skills, and offers to add it to the Topic's setup", async () => {
+    expect(await activateIn([], 'lib:code-review')).toMatchObject({
       isError: true,
       details: { kind: 'not-in-topic', target: { kind: 'library', serverId: 'lib' }, topic: { id: 2, name: 'Work' } },
     })
+  })
+
+  it('loads a skill the setup names, whatever its URI now, and refuses its namesake-free neighbours', async () => {
+    const loaded = await activateIn([{ serverId: 'lib', name: 'code-review' }], 'lib:code-review')
+    expect(JSON.stringify(loaded.content)).toContain('<skill handle=\\"lib:code-review\\"')
+    expect(await activateIn([{ serverId: 'lib', name: 'plan' }], 'lib:code-review')).toMatchObject({
+      isError: true,
+      details: {
+        kind: 'not-in-topic',
+        target: { kind: 'skill', serverId: 'lib', name: 'code-review' },
+        topic: { id: 2, name: 'Work' },
+      },
+    })
+  })
+
+  it('asks about the one skill before loading it or reading its files, cached bytes too', async () => {
+    const refused = new NotFound({ what: 'skill scope' })
+    const asked: string[] = []
+    const authorize = (serverId: string, skill?: { readonly name: string; readonly uri?: string }) =>
+      Effect.suspend(() => {
+        asked.push(skill === undefined ? serverId : `${serverId}:${skill.name}@${skill.uri ?? ''}`)
+        return skill === undefined || allow ? Effect.void : Effect.fail(refused)
+      })
+    let allow = true
+    await services.run(library.activate('9', 'lib:code-review', { authorize }))
+    expect(asked).toContain('lib:code-review@skill://v1/code-review/SKILL.md')
+    allow = false
+    const read = await services.run(
+      Effect.flip(library.read('9', 'lib:code-review', 'references/checklist.md', { authorize })),
+    )
+    expect(read).toBe(refused)
+    const again = await services.run(Effect.flip(library.activate('9', 'lib:code-review', { authorize })))
+    expect(again).toBe(refused)
   })
 })

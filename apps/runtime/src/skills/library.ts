@@ -197,7 +197,8 @@ const activateSkill = (library: Library, sessionId: string, skill: ListedSkill, 
     const files = yield* attemptSync(() => usableManifest(skill.entry))
     const { bytes } = yield* bytesOf(library, skill.serverId, skill.entry, 'SKILL.md', options)
     const { body } = yield* attemptSync(() => verifySkillFile(skill.entry, new TextDecoder().decode(bytes)))
-    if (options.authorize !== undefined) yield* options.authorize(skill.serverId)
+    if (options.authorize !== undefined)
+      yield* options.authorize(skill.serverId, { name: skill.name, uri: skill.entry.uri })
     const activatedAt = yield* Clock.currentTimeMillis
     yield* Effect.sync(() =>
       library.state.activate(sessionId, { serverId: skill.serverId, entry: skill.entry, activatedAt }),
@@ -218,6 +219,7 @@ const selected = (library: Library, sessionId: string, serverId: string, uri: st
     if (!(yield* sourcesOf(library)).includes(serverId)) return yield* new NotFound({ what: 'skill library' })
     const skill = (yield* listingOf(library, serverId, options)).find((item) => item.entry.uri === uri)
     if (skill === undefined) return yield* new NotFound({ what: 'selected skill' })
+    // activateSkill asks about this one skill before it is recorded.
     return yield* activateSkill(library, sessionId, skill, options)
   })
 
@@ -241,6 +243,10 @@ const readFile = (library: Library, sessionId: string, handle: string, path: str
   Effect.gen(function* () {
     const found = yield* activationOf(library.state, sessionId, handle)
     if (!library.state.enabled(found.serverId)) return yield* new NotFound({ what: `activated skill ${handle}` })
+    // Asked before any byte is read, from the cache or the server: a skill the setup no longer holds reads nothing.
+    const name = found.entry.frontmatter['name']
+    if (options.authorize !== undefined)
+      yield* options.authorize(found.serverId, { name: typeof name === 'string' ? name : '', uri: found.entry.uri })
     const { bytes, mimeType } = yield* bytesOf(library, found.serverId, found.entry, path, options)
     if (isText(mimeType, path)) return { kind: 'text', path, text: new TextDecoder().decode(bytes) } satisfies SkillFile
     if (mimeType !== undefined && /^image\/(png|jpeg|gif|webp)$/u.test(mimeType))

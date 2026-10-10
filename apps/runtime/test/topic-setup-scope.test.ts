@@ -111,6 +111,8 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
       expect(scope.tool('plan', 'anything')).toBe(true)
       expect(scope.server('mail')).toBe(false)
       expect(scope.skills('lib')).toBe(true)
+      expect(scope.skill('lib', 'review', 'skill://v2/review/SKILL.md')).toBe(true)
+      expect(scope.skill('lib', 'plan')).toBe(false)
       expect(scope.skills('other')).toBe(false)
       expect(scope.subagents()).toBe(false)
       expect(scope.app('tracker')).toBe(true)

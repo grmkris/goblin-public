@@ -654,7 +654,11 @@ Dynamic skills are declined; skill scripts can be read but are never executed (t
 is its own apps' and `code_run`'s, in Dynamic Workers; see Agent apps). Enabled skills are procedures the agent
 follows, but they grant no permissions and cannot override the owner. Disabling the server stops new activations and
 file reads; instructions already in a conversation stay there. A Topic's setup can leave a library out (Setup and
-scope): its chats' section leaves it out without fetching it, and their activations and reads are refused.
+scope): its chats' section leaves it out without fetching it, and their activations and reads are refused. A setup
+can also hold single skills, by server and name (a new version keeps its place; a URI is kept only to tell namesakes
+apart): the section lists only those, the composer offers only those, and `skill_activate`, a composer selection and
+`skill_read` ask the scope about the one skill (`skillScope`'s `(serverId, { name, uri })`) before anything is loaded or
+read, a cached file included. A skill outside the setup refuses with the `not-in-topic` ask.
 
 After a final answer in an owner conversation (`goblin.skill-learning`, `onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
 or a request to keep how something was done, the memory model decides whether the exchange teaches a procedure. A

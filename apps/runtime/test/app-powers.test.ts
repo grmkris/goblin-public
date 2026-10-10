@@ -39,6 +39,7 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
     server: () => true,
     tool: (_serverId, name) => name !== 'off',
     skills: () => true,
+    skill: () => true,
     subagents: () => true,
     app: () => true,
   }

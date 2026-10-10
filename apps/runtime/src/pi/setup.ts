@@ -67,6 +67,16 @@ export function outsideScopeResult(target: ExclusionTarget, scope: SetupScope): 
   }
 }
 
+/**
+ * What the model gets for one skill it may not use: outside the Topic's setup, the refusal that names the Topic; else
+ * words. Its library is held (the caller checked), so only a setup that leaves the skill out refuses it here.
+ */
+export function skillOutsideResult(skill: { serverId: string; name: string }, scope: SetupScope): ToolExecutionResult {
+  const item: SetupItem = { kind: 'skill', ...skill }
+  if (scope.topic !== undefined && !scope.topic.holds(item)) return notInTopicResult(item, scope.topic, scope.editable)
+  return outsideScopeResult({ kind: 'skills', serverId: skill.serverId }, scope)
+}
+
 /** What of an MCP server and tool is switched off in `scope`: the server first, then the tool; none when both are on. */
 export function mcpOff(scope: SetupScope, serverId: string, name: string): ExclusionTarget | undefined {
   if (!scope.server(serverId)) return { kind: 'server', serverId }

@@ -113,13 +113,17 @@ export const hasTool = (setup: Setup, serverId: string, name: string): boolean =
 export const hasLibrary = (setup: Setup, serverId: string): boolean =>
   setup.skills === 'all' || setup.skills.some((skill) => skill.serverId === serverId)
 
-/** Whether `setup` holds the skill: every skill, its whole library, or it by name (and URI, when one was kept). */
-export const hasSkill = (setup: Setup, skill: { serverId: string; name: string; uri?: string }): boolean =>
+/**
+ * Whether `setup` holds the skill: every skill, its whole library, or it by name (and URI, when one was kept and the
+ * caller knows the skill's; a check by handle, before the skill is looked up, matches by name).
+ */
+export const hasSkill = (setup: Setup, skill: { serverId: string; name: string; uri?: string | undefined }): boolean =>
   setup.skills === 'all' ||
   setup.skills.some(
     (held) =>
       held.serverId === skill.serverId &&
-      (held.name === undefined || (held.name === skill.name && (held.uri === undefined || held.uri === skill.uri))),
+      (held.name === undefined ||
+        (held.name === skill.name && (held.uri === undefined || skill.uri === undefined || held.uri === skill.uri))),
   )
 
 /** Whether `setup` holds the agent app. */

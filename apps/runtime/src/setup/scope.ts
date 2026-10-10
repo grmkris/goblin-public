@@ -9,6 +9,7 @@ import {
   hasApp,
   hasLibrary,
   hasServer,
+  hasSkill,
   hasTool,
   holds,
   NOTHING,
@@ -46,7 +47,10 @@ type Allow = {
   readonly server: (serverId: string) => boolean
   /** A tool is off when it or its server is. */
   readonly tool: (serverId: string, name: string) => boolean
+  /** Whether any skill of the server's library may be used: what reading its listing needs. */
   readonly skills: (serverId: string) => boolean
+  /** Whether this one skill may be used, by name and, when known, URI. */
+  readonly skill: (serverId: string, name: string, uri?: string) => boolean
   readonly subagents: () => boolean
   readonly app: (name: string) => boolean
 }
@@ -68,6 +72,7 @@ export const CLOSED: SetupScope = {
   server: () => false,
   tool: () => false,
   skills: () => false,
+  skill: () => false,
   subagents: () => false,
   app: () => false,
 }
@@ -77,6 +82,7 @@ const both = (one: Allow, other: Allow): Allow => ({
   server: (serverId) => one.server(serverId) && other.server(serverId),
   tool: (serverId, name) => one.tool(serverId, name) && other.tool(serverId, name),
   skills: (serverId) => one.skills(serverId) && other.skills(serverId),
+  skill: (serverId, name, uri) => one.skill(serverId, name, uri) && other.skill(serverId, name, uri),
   subagents: () => one.subagents() && other.subagents(),
   app: (name) => one.app(name) && other.app(name),
 })
@@ -86,6 +92,7 @@ const setupAllows = (setup: TopicSetup | PersonaSetup): Allow => ({
   server: (serverId) => hasServer(setup, serverId),
   tool: (serverId, name) => hasTool(setup, serverId, name),
   skills: (serverId) => hasLibrary(setup, serverId),
+  skill: (serverId, name, uri) => hasSkill(setup, { serverId, name, uri }),
   subagents: () => 'subagents' in setup && setup.subagents,
   app: (name) => hasApp(setup, name),
 })
@@ -105,6 +112,7 @@ const either = (one: Allow, other: Allow): Allow => ({
   server: (serverId) => one.server(serverId) || other.server(serverId),
   tool: (serverId, name) => one.tool(serverId, name) || other.tool(serverId, name),
   skills: (serverId) => one.skills(serverId) || other.skills(serverId),
+  skill: (serverId, name, uri) => one.skill(serverId, name, uri) || other.skill(serverId, name, uri),
   subagents: () => one.subagents() || other.subagents(),
   app: (name) => one.app(name) || other.app(name),
 })
@@ -134,6 +142,7 @@ export function scopeOf(
     server,
     tool: (serverId, name) => server(serverId) && !off.has(key({ kind: 'tool', serverId, name })),
     skills: (serverId) => !off.has(key({ kind: 'skills', serverId, name: '' })),
+    skill: (serverId) => !off.has(key({ kind: 'skills', serverId, name: '' })),
     subagents: () => !off.has(key({ kind: 'subagents', serverId: '', name: '' })),
     app: (name) => !appsOff.has(name),
   }
@@ -239,6 +248,7 @@ const routineScope = (db: Db, scope: SetupScope, runId: string): SetupScope => {
       (definition.notifyTelegram || channel?.serverId !== id || name !== 'send_message') &&
       definition.allowedTools.some((tool) => tool.serverId === id && tool.name === name),
     skills: () => false,
+    skill: () => false,
     subagents: () => false,
     app: () => false,
   }

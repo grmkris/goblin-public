@@ -26,7 +26,7 @@ export const composerOptions = (chat: string) =>
         description: `${server.status} · Connection hint; permissions stay unchanged`,
       }))
     const procedures: ComposerOption[] = catalog.skills
-      .filter((skill) => scope.skills(skill.serverId))
+      .filter((skill) => scope.skill(skill.serverId, skill.name, skill.entry.uri))
       .map((skill) => ({
         selection: { kind: 'skill', serverId: skill.serverId, uri: skill.entry.uri },
         label: skill.name,

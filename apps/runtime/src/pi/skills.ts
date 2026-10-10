@@ -9,7 +9,7 @@ import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { Catalog } from '../skills/library.ts'
 import { skillScope } from '../skills/scope.ts'
 import { Learner, Skills } from '../skills/service.ts'
-import { outsideScopeResult } from './setup.ts'
+import { outsideScopeResult, skillOutsideResult } from './setup.ts'
 import { withContext } from './context-tail.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 
@@ -81,7 +81,7 @@ const skillsNow = async (run: RunProgram, session: string): Promise<string | und
           )
           const current = yield* scopeFor(session)
           return {
-            skills: catalog.skills.filter((skill) => current.skills(skill.serverId)),
+            skills: catalog.skills.filter((skill) => current.skill(skill.serverId, skill.name, skill.entry.uri)),
             unavailable: catalog.unavailable.filter((id) => current.skills(id)),
           }
         }),
@@ -98,16 +98,21 @@ const SKILLS_GUIDE =
   'Skills the owner turned on are listed under <skills> in the <goblin-context> block that ends each request, when there are any.'
 
 /**
- * Whether a skill handle (`<server>:<name>`) comes from a library this conversation switched off: the result that says
- * so, or none. A handle from no enabled library goes on to the library, which does not know it.
+ * Whether a skill handle (`<server>:<name>`, `~N` for a namesake) names a skill this chat may not use: its library or,
+ * by name, the skill itself outside the Topic's setup (ADR 0040). The result that says so, or none. A handle from no
+ * enabled library goes on to the library, which does not know it; the library checks the skill's URI too.
  */
 const skillsOff = (session: string, handle: string) =>
   Effect.gen(function* () {
     const skills = yield* Skills
     const scope = yield* scopeFor(session)
-    const serverId = handle.split(':', 1)[0] ?? ''
-    if (scope.skills(serverId) || !(yield* skills.sources()).includes(serverId)) return undefined
-    return outsideScopeResult({ kind: 'skills', serverId }, scope)
+    const colon = handle.indexOf(':')
+    const serverId = colon < 0 ? handle : handle.slice(0, colon)
+    const name = colon < 0 ? '' : handle.slice(colon + 1).replace(/~\d+$/u, '')
+    if (!(yield* skills.sources()).includes(serverId)) return undefined
+    if (!scope.skills(serverId)) return outsideScopeResult({ kind: 'skills', serverId }, scope)
+    if (name === '' || scope.skill(serverId, name)) return undefined
+    return skillOutsideResult({ serverId, name }, scope)
   })
 
 /** `skill_activate`: load one verified `SKILL.md` into the conversation. */
