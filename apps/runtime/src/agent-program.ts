@@ -79,7 +79,7 @@ export type StopRuntime = {
  * asked in it (their unsettled answers are dropped).
  */
 export const stopOwner = (
-  input: StopRuntime & {
+  input: Pick<StopRuntime, 'personas'> & {
     thread: string
     operationId: string | undefined
   },
@@ -92,13 +92,14 @@ export const stopOwner = (
       yield* RoutineControl.use((control) => control.stop(run.id))
       return true
     }
-    const operationId = input.operationId === undefined ? {} : { operationId: input.operationId }
     yield* conversations.stopSubagents(input.thread)
     const invocations = yield* Invocations
     const now = yield* epochSeconds
-    yield* attempt(async () => input.personas.drop(await input.harness.pi(), conversationId(session)))
+    const pi = yield* PiSessions
+    const harness = yield* fromPi(pi.pi)
+    yield* attempt(() => input.personas.drop(harness, conversationId(session)))
     yield* invocations.stopChat(input.thread, now)
-    return yield* attempt(() => input.harness.abort({ session, ...operationId }))
+    return yield* fromPi(pi.abort(session, input.operationId))
   })
 
 /**
@@ -112,7 +113,7 @@ export const stopChat = (
 ): Effect.Effect<
   boolean,
   AppError,
-  Conversations | RoutineRuns | RoutineControl | Invocations | AgentInput | FlowEvents
+  Conversations | RoutineRuns | RoutineControl | Invocations | PiSessions | AgentInput | FlowEvents
 > => {
   const flow = {
     flow: 'stop',
@@ -121,7 +122,7 @@ export const stopChat = (
     chat,
     ...(operationId === undefined ? {} : { operationId }),
   } as const
-  return AgentInput.use(({ harness, personas }) => stopOwner({ harness, personas, thread: chat, operationId })).pipe(
+  return AgentInput.use(({ personas }) => stopOwner({ personas, thread: chat, operationId })).pipe(
     withFlow(flow, (stopped) => ({ count: stopped ? 1 : 0 })),
   )
 }

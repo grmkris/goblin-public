@@ -6,6 +6,7 @@ import type { AgentApps } from '../../../src/agent-apps/engine.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
+import { PiSessions } from '../../../src/pi/sessions.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { HomeService } from '../../../src/home/service.ts'
 import { delegationServices } from '../../../src/layers/delegation.ts'
@@ -79,6 +80,7 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           lane,
           conversations,
           stub(AgentInput),
+          stub(PiSessions),
           stub(RoutineRuns),
           stub(RoutineControl),
           stub(Apps),

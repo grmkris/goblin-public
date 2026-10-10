@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Conversations } from '../src/chats/service.ts'
 import { RoutineControl, RoutineRuns } from '../src/routines/service.ts'
 import { AgentInput } from '../src/runtime/input.ts'
+import { PiSessions } from '../src/pi/sessions.ts'
 import { FlowEvents } from '../src/observability/flows.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
@@ -297,6 +298,7 @@ type Provided =
   | RoutineRuns
   | RoutineControl
   | Invocations
+  | PiSessions
   | FlowEvents
 const run = <A, E>(layer: Layer.Layer<Provided>, program: Effect.Effect<A, E, Provided>) =>
   Effect.runPromise(Effect.provide(program, layer))
@@ -334,6 +336,7 @@ describe('organize receipts and Undo', () => {
       Layer.succeed(RoutineRuns, unread),
       Layer.succeed(RoutineControl, unread),
       Layer.succeed(Invocations, unread),
+      Layer.succeed(PiSessions, unread),
       FlowEvents.noop,
     ).pipe(Layer.provide(Layer.merge(KeyedLock.layer, Layer.succeed(Changes, makeChanges()))))
     return { ...parts, layer }
