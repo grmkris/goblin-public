@@ -12,6 +12,8 @@ import {
 } from '@goblin/ui'
 import { modelQuery } from '../../../agent/queries.ts'
 import { QueryError } from '../../../lib/query/query-boundary.tsx'
+import { setupCatalogQuery } from '../../../setup/queries.ts'
+import { SetupPicker } from '../../setup-picker.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 
 /** A Persona's name as `@name` takes it: a letter, then up to 31 letters, digits, spaces, `_` or `-`. */
@@ -144,8 +146,31 @@ function Behaviour({
 }
 
 /**
- * A Persona's definition: its mark (a glyph on a hue), name, role, instructions and model. What it adds to a Topic's
- * setup is kept as it is (ADR 0040). A Persona never starts subagents, so it never delegates or loops (ADR 0033).
+ * What a Persona adds to the setup of the Topic it answers in (ADR 0040): MCP servers and their tools, skills and apps,
+ * each nothing by default, everything, or only the items chosen. It works with the Topic's setup and these together;
+ * it never starts subagents. The catalog is read with the page.
+ */
+function Adds({ draft, onChange }: Edit) {
+  const catalog = useQuery(setupCatalogQuery)
+  return (
+    <fieldset className="persona-adds">
+      <legend>MCP servers & skills</legend>
+      <p className="list-row-meta">
+        It works with the setup of the Topic it answers in, and adds these. Only what you have granted or turned on.
+      </p>
+      {catalog.error !== null && (
+        <QueryError error={catalog.error} action="load what can be chosen" onRetry={() => void catalog.refetch()} />
+      )}
+      {catalog.data !== undefined && (
+        <SetupPicker setup={draft.setup} catalog={catalog.data} onChange={(setup) => onChange({ ...draft, setup })} />
+      )}
+    </fieldset>
+  )
+}
+
+/**
+ * A Persona's definition: its mark (a glyph on a hue), name, role, instructions, model, and what it adds to a Topic's
+ * setup (ADR 0040). A Persona never starts subagents, so it never delegates or loops (ADR 0033).
  */
 export function PersonaForm({ draft, onChange }: Edit) {
   const { models, failure } = useModels()
@@ -153,6 +178,7 @@ export function PersonaForm({ draft, onChange }: Edit) {
     <FieldGroup>
       <Identity draft={draft} onChange={onChange} />
       <Behaviour draft={draft} onChange={onChange} models={models} failure={failure} />
+      <Adds draft={draft} onChange={onChange} />
     </FieldGroup>
   )
 }
