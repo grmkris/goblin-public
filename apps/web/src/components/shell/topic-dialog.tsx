@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { TopicView } from '@goblin/contracts'
 import {
@@ -16,7 +17,7 @@ import { Conflict, NotFound } from '@goblin/contracts/api'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { withRef } from '../../lib/refusal.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
-import { useOrganize } from './organize.ts'
+import { createWorkspaceTopicMutation, updateWorkspaceTopicMutation } from '../../lib/workspace/mutations.ts'
 
 /** What the owner reads when a Topic could not be named so. */
 function refusal(failure: unknown, action: string): string {
@@ -40,32 +41,29 @@ export function TopicDialog({
   /** The Topic to rename; without one, a new Topic. */
   readonly topic?: TopicView
 }) {
-  const organize = useOrganize()
   const navigate = useNavigate()
+  const create = useMutation(createWorkspaceTopicMutation)
+  const rename = useMutation(updateWorkspaceTopicMutation)
   const [name, setName] = useState(topic?.name ?? '')
-  const [error, setError] = useState('')
-  const [pending, setPending] = useState(false)
   const [operation] = useState(() => crypto.randomUUID())
-  async function submit(): Promise<void> {
+  const pending = create.isPending || rename.isPending
+  // expected: the dialog stays open and shows the refusal (a name in use) under the name
+  const failure = topic === undefined ? create.error : rename.error
+  const error = failure === null ? '' : refusal(failure, topic === undefined ? 'create the topic' : 'rename the topic')
+  function submit(): void {
     const trimmed = name.trim()
     if (trimmed === '' || pending) return
-    setPending(true)
-    setError('')
-    try {
-      if (topic === undefined) {
-        const created = await organize.createTopic(trimmed, operation)
-        onOpenChange(false)
-        navigate({ to: '/c/$chatId', params: { chatId: created.conversation } }).catch(reportUnexpected)
-      } else {
-        await organize.updateTopic(topic.id, { name: trimmed })
-        onOpenChange(false)
-      }
-    } catch (failure) {
-      // expected: the dialog stays open and shows the refusal (a name in use) under the name
-      setError(refusal(failure, topic === undefined ? 'create the topic' : 'rename the topic'))
-    } finally {
-      setPending(false)
-    }
+    if (topic === undefined)
+      create.mutate(
+        { name: trimmed, operationId: operation },
+        {
+          onSuccess: (created) => {
+            onOpenChange(false)
+            navigate({ to: '/c/$chatId', params: { chatId: created.conversation } }).catch(reportUnexpected)
+          },
+        },
+      )
+    else rename.mutate({ id: topic.id, change: { name: trimmed } }, { onSuccess: () => onOpenChange(false) })
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,7 +73,7 @@ export function TopicDialog({
           className="mt-4 flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault()
-            submit().catch(reportUnexpected)
+            submit()
           }}
         >
           <Field data-invalid={error !== '' || undefined}>

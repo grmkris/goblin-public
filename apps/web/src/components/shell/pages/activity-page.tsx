@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { Attention, OrganizeReceipt } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
@@ -13,9 +13,10 @@ import {
 import { type NeedsYou, needsYou, unreadChats } from '../../../lib/rail.ts'
 import { relativeTime, threadTitle } from '../../../lib/threads.ts'
 import { useApps, useConversations, useReceipts } from '../../../lib/workspace/hooks.ts'
+import { undoWorkspaceReceiptMutation } from '../../../lib/workspace/mutations.ts'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
-import { undoRefusal, useOrganize } from '../organize.ts'
+import { undoRefusal } from '../organize.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
 
 const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundIcon; readonly label: string }>> = {
@@ -57,9 +58,9 @@ function NeedRow({ need, now }: { readonly need: NeedsYou; readonly now: number 
 
 /** What organizing did (a Topic made, renamed, archived; a Persona changed), with Undo while nothing else touched it. */
 function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; readonly now: number }) {
-  const organize = useOrganize()
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState('')
+  const undo = useMutation(undoWorkspaceReceiptMutation)
+  // expected: the receipt's row shows why it cannot be undone in place of its time
+  const error = undo.error === null ? '' : undoRefusal(undo.error)
   const who = receipt.actor === 'agent' ? 'Goblin' : 'You'
   return (
     <li className="list-row" data-static>
@@ -72,20 +73,7 @@ function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; reado
             <span className="list-row-meta">Undone</span>
           ) : (
             receipt.undoable && (
-              <Button
-                variant="outline"
-                size="sm"
-                pending={pending}
-                onClick={() => {
-                  setPending(true)
-                  setError('')
-                  organize
-                    .undo(receipt.id)
-                    // expected: the receipt's row shows why it cannot be undone in place of its time
-                    .catch((failure: unknown) => setError(undoRefusal(failure)))
-                    .finally(() => setPending(false))
-                }}
-              >
+              <Button variant="outline" size="sm" pending={undo.isPending} onClick={() => undo.mutate(receipt.id)}>
                 Undo
               </Button>
             )

@@ -1,6 +1,9 @@
 import { mutationOptions } from '@tanstack/react-query'
 import { appClosedMutation, keepAppMutation } from '../../apps/queries.ts'
-import { markReadMutation, updateConversationMutation } from '../../conversations/queries.ts'
+import { markReadMutation, startThreadMutation, updateConversationMutation } from '../../conversations/queries.ts'
+import { undoMutation } from '../../organize/queries.ts'
+import { createPersonaMutation, updatePersonaMutation } from '../../personas/queries.ts'
+import { createTopicMutation, updateTopicMutation } from '../../topics/queries.ts'
 import { messageOf } from '../query/app-error.ts'
 import { applyWorkspaceChanges, setFeedStatus, workspaceKeys, workspaceQueries, workspaceSync } from './sync.ts'
 
@@ -58,3 +61,49 @@ export const updateWorkspaceConversationMutation = mutationOptions({
   onSuccess: (conversation, _update, _context, { client }) =>
     applyWorkspaceChanges(client, [{ type: 'conversation', conversation }]),
 })
+
+/** A new Topic (the same `operationId` finds the same one): it shows as the server answers. */
+export const createWorkspaceTopicMutation = mutationOptions({
+  ...createTopicMutation,
+  onSuccess: (topic, _create, _context, { client }) => applyWorkspaceChanges(client, [{ type: 'topic', topic }]),
+})
+
+/** A Topic renamed, archived or restored, or kept out of search: it shows as the server answers. */
+export const updateWorkspaceTopicMutation = mutationOptions({
+  ...updateTopicMutation,
+  onSuccess: (topic, _update, _context, { client }) => applyWorkspaceChanges(client, [{ type: 'topic', topic }]),
+})
+
+/** Undo of an organizing receipt: the receipt shows undone as the server answers; the feed brings what it restored. */
+export const undoWorkspaceReceiptMutation = mutationOptions({
+  ...undoMutation,
+  onSuccess: (receipt, _id, _context, { client }) => applyWorkspaceChanges(client, [{ type: 'receipt', receipt }]),
+})
+
+/** The unified thread operation (ADR 0034): the thread it made shows as the server answers. */
+export const startWorkspaceThreadMutation = mutationOptions({
+  ...startThreadMutation,
+  onSuccess: (started, _start, _context, { client }) =>
+    applyWorkspaceChanges(client, [{ type: 'conversation', conversation: started.thread }]),
+})
+
+/** A new Persona (the same `operationId` finds the same one): it shows as the server answers; its profile reads it. */
+export const createWorkspacePersonaMutation = mutationOptions({
+  ...createPersonaMutation,
+  onSuccess: (persona, create, result, context) => {
+    applyWorkspaceChanges(context.client, [{ type: 'persona', persona }])
+    return createPersonaMutation.onSuccess?.(persona, create, result, context)
+  },
+})
+
+/** A new revision of Persona `id`: it shows as the server answers, and its profile reads it again. */
+export const updateWorkspacePersonaMutation = (id: number) => {
+  const update = updatePersonaMutation(id)
+  return mutationOptions({
+    ...update,
+    onSuccess: (persona, change, result, context) => {
+      applyWorkspaceChanges(context.client, [{ type: 'persona', persona }])
+      return update.onSuccess?.(persona, change, result, context)
+    },
+  })
+}

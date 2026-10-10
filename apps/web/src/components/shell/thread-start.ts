@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import type { AppContext, ComposerSelection, StartThread as StartThreadOperation } from '@goblin/contracts'
-import { startThreadMutation, submitMutation } from '../../conversations/queries.ts'
+import { submitMutation } from '../../conversations/queries.ts'
 import { DraftThread } from '../../lib/draft-thread.ts'
 import { SubmissionRetry } from '../../lib/submission-retry.ts'
-import { applyWorkspaceChanges } from '../../lib/workspace/sync.ts'
+import { startWorkspaceThreadMutation } from '../../lib/workspace/mutations.ts'
 import type { StartThread } from '../conversation-dock.tsx'
 import { messageBody } from '../use-conversation.ts'
 import { usePanel } from './panel.tsx'
@@ -32,8 +32,7 @@ function threadMessage(
  */
 export function useThreadStart(chat: string): StartThread {
   const panel = usePanel()
-  const queryClient = useQueryClient()
-  const start = useMutation(startThreadMutation).mutateAsync
+  const start = useMutation(startWorkspaceThreadMutation).mutateAsync
   const retry = useRef(
     new SubmissionRetry(() => {
       return crypto.randomUUID()
@@ -48,12 +47,11 @@ export function useThreadStart(chat: string): StartThread {
         id: chat,
         start: { operationId, anchor, message, ...(personaOrder !== undefined && { personaOrder }) },
       })
-      applyWorkspaceChanges(queryClient, [{ type: 'conversation', conversation: thread }])
       retry.current.accepted(operationId)
       panel.open(thread.id)
       return true
     },
-    [chat, queryClient, panel, start],
+    [chat, panel, start],
   )
 }
 
@@ -67,8 +65,7 @@ export type DraftStart = Omit<StartThreadOperation, 'operationId'>
  * is on its way waits for the same thread, then goes into it as a message of its own. Resolves the thread's id.
  */
 export function useDraftStart(chat: string) {
-  const queryClient = useQueryClient()
-  const start = useMutation(startThreadMutation).mutateAsync
+  const start = useMutation(startWorkspaceThreadMutation).mutateAsync
   const submit = useMutation(submitMutation).mutateAsync
   const [draft] = useState(() => new DraftThread(crypto.randomUUID(), () => crypto.randomUUID()))
   return useCallback(
@@ -78,7 +75,6 @@ export function useDraftStart(chat: string) {
         first = true
         const order = personaOrder !== undefined && { personaOrder }
         const started = await start({ id: chat, start: { operationId, anchor, message, ...order } })
-        applyWorkspaceChanges(queryClient, [{ type: 'conversation', conversation: started.thread }])
         return started.thread.id
       })
       if (thread === undefined || first) return thread
@@ -89,6 +85,6 @@ export function useDraftStart(chat: string) {
       draft.sent(id)
       return thread
     },
-    [chat, draft, queryClient, start, submit],
+    [chat, draft, start, submit],
   )
 }

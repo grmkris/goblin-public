@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { type QueryClient, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { type PersonaDefinition, type PersonaDetail, type PersonaView, type UpdatePersona } from '@goblin/contracts'
 import { Conflict } from '@goblin/contracts/api'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
@@ -9,8 +9,8 @@ import { QueryBoundary } from '../../../lib/query/query-boundary.tsx'
 import { withRef } from '../../../lib/refusal.ts'
 import { relativeTime } from '../../../lib/threads.ts'
 import { reportUnexpected } from '../../../lib/unexpected.ts'
-import { applyWorkspaceChanges } from '../../../lib/workspace/sync.ts'
-import { createPersonaMutation, personaDetailQuery, updatePersonaMutation } from '../../../personas/queries.ts'
+import { createWorkspacePersonaMutation, updateWorkspacePersonaMutation } from '../../../lib/workspace/mutations.ts'
+import { personaDetailQuery } from '../../../personas/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 import { useMinute } from '../../use-now.ts'
@@ -112,24 +112,17 @@ function useDraft(persona: PersonaView) {
 }
 
 /** Saving a new revision of `persona`: the feed shows it at once, and the profile reads it again. */
-function useSave(queryClient: QueryClient, persona: PersonaView, saved: (next: PersonaView) => void) {
-  const save = useMutation(updatePersonaMutation(persona.id))
-  const start = (change: UpdatePersona) =>
-    save.mutate(change, {
-      onSuccess: (next) => {
-        applyWorkspaceChanges(queryClient, [{ type: 'persona', persona: next }])
-        saved(next)
-      },
-    })
+function useSave(persona: PersonaView, saved: (next: PersonaView) => void) {
+  const save = useMutation(updateWorkspacePersonaMutation(persona.id))
+  const start = (change: UpdatePersona) => save.mutate(change, { onSuccess: saved })
   return { start, pending: save.isPending, error: refusal(save.error, 'save the persona') }
 }
 
 /** A Persona's profile (`/p/<id>`): its definition to edit, Save as a new revision, Archive or Restore, its revisions. */
 function Profile({ id }: { readonly id: number }) {
-  const queryClient = useQueryClient()
   const detail = useSuspenseQuery(personaDetailQuery(id)).data
   const { draft, setDraft, base, saved } = useDraft(detail.persona)
-  const save = useSave(queryClient, detail.persona, saved)
+  const save = useSave(detail.persona, saved)
   const archived = detail.persona.archivedAt !== undefined
   return (
     <div className="page-stack">
@@ -158,17 +151,15 @@ function Profile({ id }: { readonly id: number }) {
 
 /** A new Persona (`/p/new`): its definition, then Create, which opens its profile. One operation id per visit. */
 function Create() {
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [draft, setDraft] = useState<PersonaDefinition>(BLANK)
   const [operation] = useState(() => crypto.randomUUID())
-  const create = useMutation(createPersonaMutation)
+  const create = useMutation(createWorkspacePersonaMutation)
   const submit = () =>
     create.mutate(
       { ...draft, operationId: operation },
       {
         onSuccess: (persona) => {
-          applyWorkspaceChanges(queryClient, [{ type: 'persona', persona }])
           navigate({ to: '/p/$id', params: { id: String(persona.id) }, replace: true }).catch(reportUnexpected)
         },
       },

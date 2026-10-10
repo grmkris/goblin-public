@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { TopicView } from '@goblin/contracts'
+import { useMutation } from '@tanstack/react-query'
+import type { TopicView, UpdateTopic } from '@goblin/contracts'
 import {
   Button,
   DropdownMenu,
@@ -20,7 +21,7 @@ import {
 import { messageOf } from '../../lib/query/app-error.ts'
 import { isArchived } from '../../lib/topics.ts'
 import { useTopics } from '../../lib/workspace/hooks.ts'
-import { useOrganize } from './organize.ts'
+import { updateWorkspaceTopicMutation } from '../../lib/workspace/mutations.ts'
 import { TopicDialog } from './topic-dialog.tsx'
 
 /** The channel's name as its bar shows it: `#` and the Topic's name, with a pulse while its agent works. */
@@ -50,13 +51,14 @@ export function ChannelMenu({
   readonly onFailure: (text: string) => void
 }) {
   const topics = useTopics()
-  const organize = useOrganize()
+  const update = useMutation(updateWorkspaceTopicMutation)
   const [renaming, setRenaming] = useState(false)
   if (topic === undefined || topics.length === 0) return <ChannelName name={name} working={working} />
-  const change = (patch: Parameters<typeof organize.updateTopic>[1]) =>
-    void organize
-      .updateTopic(topic.id, patch)
-      .catch((failure: unknown) => onFailure(messageOf(failure, 'change the topic')))
+  const change = (patch: UpdateTopic) =>
+    update.mutate(
+      { id: topic.id, change: patch },
+      { onError: (failure) => onFailure(messageOf(failure, 'change the topic')) },
+    )
   const archived = isArchived(topic)
   return (
     <>
@@ -101,8 +103,7 @@ export function ArchivedBanner({
   readonly topic: TopicView
   readonly onFailure: (text: string) => void
 }) {
-  const organize = useOrganize()
-  const [pending, setPending] = useState(false)
+  const restore = useMutation(updateWorkspaceTopicMutation)
   return (
     <div className="chat-dock">
       <div className="chat-closed" role="status">
@@ -110,14 +111,13 @@ export function ArchivedBanner({
         <Button
           variant="outline"
           size="sm"
-          pending={pending}
-          onClick={() => {
-            setPending(true)
-            organize
-              .updateTopic(topic.id, { archived: false })
-              .catch((failure: unknown) => onFailure(messageOf(failure, 'restore the topic')))
-              .finally(() => setPending(false))
-          }}
+          pending={restore.isPending}
+          onClick={() =>
+            restore.mutate(
+              { id: topic.id, change: { archived: false } },
+              { onError: (failure) => onFailure(messageOf(failure, 'restore the topic')) },
+            )
+          }
         >
           <ArchiveRestoreIcon data-icon="inline-start" />
           Restore
