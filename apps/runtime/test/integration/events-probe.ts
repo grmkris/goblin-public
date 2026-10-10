@@ -4,8 +4,9 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Layer from 'effect/Layer'
+import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as TestClock from 'effect/testing/TestClock'
-import { TelegramChannel, channelTool } from '../../src/channel/channel.ts'
+import { type ChannelCall, channelTool, telegramChannel } from '../../src/channel/channel.ts'
 import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import { CollectedRuns, RunTelemetry } from '../../src/telemetry/events.ts'
 import { mcpReporter } from '../../src/telemetry/report.ts'
@@ -69,7 +70,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   const { run } = services
   await run(TestClock.setTime(fixture.now))
   const connections = await run(McpConnections)
-  const channel = new TelegramChannel(db, cipher, () => undefined, telemetry, chats)
+  const channel = await Effect.runPromise(telegramChannel({ db, cipher, chats, telemetry, wake: () => undefined }))
   const eventOptions: EventsOptions = {
     connections,
     store,
@@ -103,22 +104,24 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
   const operations: string[] = []
   const budget = new ModelBudget(usageLedger(db), 300_000)
   const models = new ModelPicker(new ModelChoiceStore(db), modelOptions(undefined, 'storage-only'))
-  const portRun: Parameters<typeof channelPorts>[1] = (program) =>
-    Effect.runPromise(program.pipe(Effect.provide(portServices({ db, harness, budget, models }))))
-  /** A tool of the channel server, as the channel calls it. */
-  const call = (name: string, args: Record<string, unknown>) => run(channelTool(connections, 'mygram')(name, args))
-  const ports = channelPorts(call, portRun)
+  /** A tool of the channel server, as the channel calls it, on the probe's clock. */
+  const call: ChannelCall = (name, args) => attempt(() => run(channelTool(connections, 'mygram')(name, args)))
+  const portRuntime = ManagedRuntime.make(portServices({ db, harness, budget, models }))
+  const ports = await portRuntime.runPromise(channelPorts(call))
   const pull = () =>
-    channel.pull(
-      {
-        ...ports,
-        submit: async (text, operationId) => {
-          operations.push(operationId)
-          await ports.submit(text, operationId)
+    Effect.runPromise(
+      channel.pull(
+        {
+          ...ports,
+          submit: (text, operationId) =>
+            Effect.andThen(
+              Effect.sync(() => void operations.push(operationId)),
+              ports.submit(text, operationId),
+            ),
+          answer: () => Effect.succeed(undefined),
         },
-        answer: async () => undefined,
-      },
-      Math.floor(fixture.now / 1000),
+        Math.floor(fixture.now / 1000),
+      ),
     )
   await run(
     events.register('telegram-inbox', ({ envelope }) =>
@@ -177,8 +180,11 @@ async function subscribeTelegram(state: Awaited<ReturnType<typeof setup>>) {
       handlerKey: 'telegram-inbox',
     }),
   )
-  state.channel.enableEvents('mygram', '0', Math.floor(state.fixture.now / 1000))
+  await Effect.runPromise(state.channel.enableEvents('mygram', '0', Math.floor(state.fixture.now / 1000)))
 }
+
+/** The first message's turn answered; the second still runs. */
+const answer = (operationId: string) => Effect.succeed(operationId === 'telegram-tg-123' ? 'hello back' : undefined)
 
 async function exercise(state: Awaited<ReturnType<typeof setup>>) {
   const { fixture, events, store, channel, operations, run } = state
@@ -223,12 +229,10 @@ async function exercise(state: Awaited<ReturnType<typeof setup>>) {
   await run(events.unsubscribe({ consumerId: 'second-consumer', revision: 1 }))
   await run(events.unsubscribe({ consumerId: 'telegram:question.answered', revision: 1 }))
   // The first message's turn answered; the second still runs: one reply goes out, one waits.
-  const answers = { call: state.call, submit: async () => undefined }
-  const waiting = await channel.deliver(
-    { ...answers, answer: async (operationId) => (operationId === 'telegram-tg-123' ? 'hello back' : undefined) },
-    Math.floor(first / 1000),
+  const waiting = await Effect.runPromise(
+    channel.deliver({ call: state.call, submit: () => Effect.void, answer }, Math.floor(first / 1000)),
   )
-  channel.disable()
+  await Effect.runPromise(channel.disable)
   return {
     waiting,
     received: received.status,

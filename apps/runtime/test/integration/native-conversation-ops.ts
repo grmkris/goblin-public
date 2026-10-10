@@ -96,11 +96,12 @@ export async function telegramFlowsProbe(storage: DurableObjectStorage, harness:
     models: new ModelPicker(new ModelChoiceStore(db), modelOptions(undefined, 'storage-only')),
     flows: FlowEvents.layerWith((event) => Effect.sync(() => void recorded.push(event))),
   })
-  const run: Parameters<typeof channelPorts>[1] = async (program) =>
-    Effect.runPromise(Effect.provide(program, services))
-  const ports = channelPorts(async () => undefined, run)
-  await ports.submit('hello from telegram', 'telegram-flow')
-  await ports.submit('hello from telegram', 'telegram-flow')
+  const twice = Effect.gen(function* () {
+    const ports = yield* channelPorts(() => Effect.void)
+    yield* ports.submit('hello from telegram', 'telegram-flow')
+    yield* ports.submit('hello from telegram', 'telegram-flow')
+  })
+  await Effect.runPromise(Effect.provide(twice, services))
   return { flows: recorded }
 }
 

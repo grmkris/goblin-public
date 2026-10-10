@@ -6,7 +6,7 @@ import * as Exit from 'effect/Exit'
 import * as ManagedRuntime from 'effect/ManagedRuntime'
 import type { AgentRpcMethods, RuntimeEnv } from './env.ts'
 import { failureOf, toAppError } from './http/errors.ts'
-import { ChannelWakes } from './channel/wake.ts'
+import { channelPull, channelReplies } from './channel/wake.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
@@ -73,8 +73,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   readonly #telemetry: AgentTelemetry
   /** How the object runs its programs (runtime/bridge.ts). */
   readonly #bridge: Bridge
-  /** The Telegram channel alarms (channel/wake.ts). */
-  readonly #channel: ChannelWakes
   #runtime: Promise<Runtime> | undefined
   constructor(ctx: DurableObjectState, env: RuntimeEnv) {
     super(ctx, env)
@@ -107,8 +105,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, this.#personas.extension, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)
-    const again = (seconds: number) => this.schedule(seconds, 'channelReplies')
-    this.#channel = new ChannelWakes({ harness: this.harness, applied: this.#applied, run, again })
     this.lifecycle.use(this.harness)
   }
   /** The native schedules that run the agent's apps' jobs (ADR 0021). */
@@ -163,7 +159,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
       userId: this.name,
       entitlements: this.entitlementPolicy(),
       scheduleEvents: (at) => this.#scheduleWake('mcpEventsWake', at),
-      pullTelegram: () => this.channelPull(),
       schedulePull: () => this.schedule(0, 'channelPull'),
       mcpFetch: this.mcpFetch(),
       agentApps: this.#apps,
@@ -222,11 +217,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
   /** What an archive or a Stop reaches besides the services: Pi and the Persona turns asked in a chat. */
   readonly #stopping = () => ({ harness: this.harness, personas: this.#personas })
 
+  /** The Telegram channel's alarms (channel/wake.ts): one pull, and the ready answers sent. */
   async channelPull(): Promise<void> {
-    await this.#channel.pull()
+    await channelPull(this.#bridge.run)
   }
   async channelReplies(): Promise<void> {
-    await this.#channel.replies()
+    await channelReplies(this.#bridge.run, (seconds) => this.schedule(seconds, 'channelReplies'))
   }
 
   /** Erases the agent: its files in R2 first (a failure leaves everything to retry), then services and storage. */

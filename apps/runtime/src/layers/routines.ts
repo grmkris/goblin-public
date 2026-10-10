@@ -2,7 +2,7 @@ import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { creditRates } from '../budget-credits.ts'
-import { TelegramChannel } from '../channel/channel.ts'
+import { telegramChannel } from '../channel/channel.ts'
 import { ChatsInstance } from '../chats/directory.ts'
 import { Channel } from '../channel/service.ts'
 import { attempt, attemptSync } from '../http/errors.ts'
@@ -29,12 +29,6 @@ const tryAsync = <Args extends readonly unknown[], A>(name: string, method: Meth
   Effect.fn(name)(function* (...args: Args) {
     return yield* attempt(() => method(...args))
   })
-
-/** A method that is an Effect already: only named for its traces. */
-const passThrough =
-  <Args extends readonly unknown[], A, E>(name: string, method: Method<Args, Effect.Effect<A, E>>) =>
-  (...args: Args) =>
-    method(...args).pipe(Effect.withSpan(name))
 
 /** A method with no typed failure: a read or a write callers run with `useSync`, where a throw is a defect. */
 const sync = <Args extends readonly unknown[], A>(name: string, method: Method<Args, A>) =>
@@ -106,27 +100,22 @@ export const RoutineRunsLive: Layer.Layer<RoutineRuns | RoutineUsage, never, Age
   }),
 )
 
-/** The Telegram channel over `channel`, the agent's one (or a test's own). */
-export const channelOver = (channel: TelegramChannel): Channel['Service'] =>
-  Channel.of({
-    status: sync('Channel.status', channel.status.bind(channel))(),
-    startCursor: passThrough('Channel.startCursor', channel.startCursor.bind(channel)),
-    enableEvents: sync('Channel.enableEvents', channel.enableEvents.bind(channel)),
-    enable: passThrough('Channel.enable', channel.enable.bind(channel)),
-    disable: sync('Channel.disable', channel.disable.bind(channel))(),
-    secret: tryAsync('Channel.secret', channel.secret.bind(channel))(),
-    track: sync('Channel.track', channel.track.bind(channel)),
-    pull: tryAsync('Channel.pull', channel.pull.bind(channel)),
-    deliver: tryAsync('Channel.deliver', channel.deliver.bind(channel)),
-  })
-
-/** Start step 16: the Telegram channel, the one instance, over the chat directory and the credential cipher. */
+/**
+ * Start step 16: the Telegram channel, the one instance, over the agent's database, the chat directory and the
+ * credential cipher, with its pull's own semaphore.
+ */
 export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher | ChatsInstance> = Layer.effect(
   Channel,
   Effect.gen(function* () {
     const { scheduleReplies, telemetry } = yield* AgentInput
-    const channel = new TelegramChannel(yield* Db, yield* Cipher, scheduleReplies, telemetry, yield* ChatsInstance)
-    return channelOver(channel)
+    const db = yield* Db
+    return yield* telegramChannel({
+      db,
+      cipher: yield* Cipher,
+      chats: yield* ChatsInstance,
+      telemetry,
+      wake: scheduleReplies,
+    })
   }),
 )
 

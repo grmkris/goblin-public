@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import { afterEach } from 'vitest'
-import { type ChannelCall, TelegramChannel } from '../src/channel/channel.ts'
+import { type ChannelCall, telegramChannel } from '../src/channel/channel.ts'
 import { ChatDirectory, registerPrimary } from '../src/chats/directory.ts'
 import { UpstreamMcp } from '../src/http/errors.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
@@ -24,8 +24,14 @@ const fixture = (pages: number, subscribe: unknown = { status: 'subscribed' }) =
     closes.push(close)
     registerPrimary(db, 1)
     const cipher = yield* Effect.promise(() => CredentialCipher.fromBase64(KEY))
-    // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-    const channel = new TelegramChannel(db as never, cipher, () => undefined, undefined, new ChatDirectory(db))
+    const channel = yield* telegramChannel({
+      // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
+      db: db as never,
+      cipher,
+      chats: new ChatDirectory(db),
+      telemetry: undefined,
+      wake: () => undefined,
+    })
     const calls: string[] = []
     const call: ChannelCall = (name, args) =>
       Effect.sync(() => {
@@ -46,7 +52,7 @@ describe('turning the Telegram channel on', () => {
       const status = yield* channel.enable('mygram', 'https://goblin.test/hooks/x', call, 100)
       expect(status).toEqual({ serverId: 'mygram', enabledAt: 100, transport: 'doorbell' })
       expect(calls).toEqual(['inbox:', 'inbox:c1', 'inbox:c2', 'subscribe:'])
-      expect(yield* Effect.promise(() => channel.secret())).toMatch(/^[A-Za-z0-9+/]{43}=$/u)
+      expect(yield* channel.secret).toMatch(/^[A-Za-z0-9+/]{43}=$/u)
       expect(yield* channel.startCursor('mygram', call)).toBe('c3')
       expect(calls).toHaveLength(4)
     }),
@@ -57,7 +63,7 @@ describe('turning the Telegram channel on', () => {
       const { channel, call } = yield* fixture(0, { status: 'refused', reason: 'bot' })
       const refused = yield* Effect.flip(channel.enable('mygram', 'https://goblin.test/hooks/x', call, 100))
       expect(refused).toMatchObject({ _tag: 'InvalidInput', reason: 'the doorbell was refused: bot' })
-      expect(channel.status()).toBeNull()
+      expect(yield* channel.status).toBeNull()
     }),
   )
 

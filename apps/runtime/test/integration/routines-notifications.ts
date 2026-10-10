@@ -10,10 +10,11 @@ import { RoutineStore } from '../../src/routines/store.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { notifyRoutine } from '../../src/routines/notifications.ts'
 import { ResidentAuthority } from '../../src/resident.ts'
-import { TelegramChannel } from '../../src/channel/channel.ts'
+import { telegramChannel } from '../../src/channel/channel.ts'
+import { enableEvents } from '../../src/channel/store.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
-import { channelOver, routineRunsOf } from '../../src/layers/routines.ts'
+import { routineRunsOf } from '../../src/layers/routines.ts'
 import { RoutineRuns as RoutineRunsService } from '../../src/routines/service.ts'
 import { ResidentLive } from '../../src/layers/core.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
@@ -86,14 +87,14 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const runs = new RoutineRunStore(db, owner)
   const resident = new ResidentAuthority(db)
   resident.enable(Math.floor(Date.now() / 1000))
-  const channel = new TelegramChannel(
+  const channel = telegramChannel({
     db,
-    await CredentialCipher.fromBase64(KEY),
-    () => undefined,
-    undefined,
-    new ChatDirectory(db),
-  )
-  channel.enableEvents('mygram', '', Math.floor(Date.now() / 1000))
+    cipher: await CredentialCipher.fromBase64(KEY),
+    chats: new ChatDirectory(db),
+    telemetry: undefined,
+    wake: () => undefined,
+  })
+  enableEvents(db, 'mygram', '', Math.floor(Date.now() / 1000))
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('mygram', { access_token: 'keyless-fixture', token_type: 'bearer' }, 1)
   const attempts: Record<string, unknown>[] = []
@@ -102,7 +103,7 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   // The services notifyRoutine reads, over these instances as the agent's layers build them.
   const services = Layer.mergeAll(
     Layer.succeed(RoutineRunsService, routineRunsOf(runs)),
-    Layer.succeed(ChannelService, channelOver(channel)),
+    Layer.effect(ChannelService, channel),
     host.pipe(Layer.provide(SingleFlight.layer)),
     ResidentLive,
   ).pipe(Layer.provide(Layer.succeed(Db, db)))

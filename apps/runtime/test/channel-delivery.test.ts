@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { type ChannelPorts, type DeliveredReply, TelegramChannel } from '../src/channel/channel.ts'
+import { describe, expect, it } from '@effect/vitest'
+import * as Effect from 'effect/Effect'
+import { afterEach } from 'vitest'
+import { type ChannelCall, type ChannelPorts, type DeliveredReply, telegramChannel } from '../src/channel/channel.ts'
+import { enableEvents, trackReply } from '../src/channel/store.ts'
 import { ChatDirectory, registerPrimary } from '../src/chats/directory.ts'
 import { UpstreamMcp } from '../src/http/errors.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
@@ -13,42 +16,51 @@ afterEach(() => {
 })
 
 /** A channel carried by Events on SQLite with one answer to send, and the tools of a channel server that `sends`. */
-const fixture = async (sends: (name: string) => Promise<unknown>) => {
-  const { db, close } = chatDatabase()
-  closes.push(close)
-  registerPrimary(db, 1)
-  const cipher = await CredentialCipher.fromBase64(KEY)
-  // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-  const channel = new TelegramChannel(db as never, cipher, () => undefined, undefined, new ChatDirectory(db))
-  channel.enableEvents('mygram', '', 1)
-  channel.track('telegram-m1', 1)
-  const ports: ChannelPorts = {
-    call: sends,
-    submit: async () => undefined,
-    answer: async () => 'The plants are watered.',
-  }
-  const delivered: DeliveredReply[] = []
-  const deliver = () =>
-    channel.deliver(ports, 2, async (reply) => {
-      delivered.push(reply)
+const fixture = (sends: ChannelCall) =>
+  Effect.gen(function* () {
+    const { db, close } = chatDatabase()
+    closes.push(close)
+    registerPrimary(db, 1)
+    const cipher = yield* Effect.promise(() => CredentialCipher.fromBase64(KEY))
+    // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
+    const sqlite = db as never
+    const channel = yield* telegramChannel({
+      db: sqlite,
+      cipher,
+      chats: new ChatDirectory(db),
+      telemetry: undefined,
+      wake: () => undefined,
     })
-  return { deliver, delivered }
-}
+    enableEvents(sqlite, 'mygram', '', 1)
+    trackReply(sqlite, 'telegram-m1', 1)
+    const ports: ChannelPorts = {
+      call: sends,
+      submit: () => Effect.void,
+      answer: () => Effect.succeed('The plants are watered.'),
+    }
+    const delivered: DeliveredReply[] = []
+    const deliver = channel.deliver(ports, 2, (reply) => Effect.sync(() => void delivered.push(reply)))
+    return { deliver, delivered }
+  })
 
 describe('delivering answers to Telegram', () => {
-  it("hears each answer's delivery once it is stored", async () => {
-    const { deliver, delivered } = await fixture(async () => ({ id: 'remote-1' }))
-    expect(await deliver()).toBe(false)
-    expect(delivered).toEqual([{ operationId: 'telegram-m1', pieces: 1 }])
-    await deliver()
-    expect(delivered).toHaveLength(1)
-  })
+  it.effect("hears each answer's delivery once it is stored", () =>
+    Effect.gen(function* () {
+      const { deliver, delivered } = yield* fixture(() => Effect.succeed({ id: 'remote-1' }))
+      expect(yield* deliver).toBe(false)
+      expect(delivered).toEqual([{ operationId: 'telegram-m1', pieces: 1 }])
+      yield* deliver
+      expect(delivered).toHaveLength(1)
+    }),
+  )
 
-  it('hears a failed delivery with its error type, then fails as before', async () => {
-    const { deliver, delivered } = await fixture(async () => {
-      throw new UpstreamMcp({ serverId: 'mygram', reason: 'transport' })
-    })
-    await expect(deliver()).rejects.toMatchObject({ _tag: 'UpstreamMcp' })
-    expect(delivered).toEqual([{ operationId: 'telegram-m1', pieces: 1, errorType: 'UpstreamMcp:transport' }])
-  })
+  it.effect('hears a failed delivery with its error type, then fails as before', () =>
+    Effect.gen(function* () {
+      const { deliver, delivered } = yield* fixture(() =>
+        Effect.fail(new UpstreamMcp({ serverId: 'mygram', reason: 'transport' })),
+      )
+      expect(yield* Effect.flip(deliver)).toMatchObject({ _tag: 'UpstreamMcp' })
+      expect(delivered).toEqual([{ operationId: 'telegram-m1', pieces: 1, errorType: 'UpstreamMcp:transport' }])
+    }),
+  )
 })

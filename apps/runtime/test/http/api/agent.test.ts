@@ -8,13 +8,12 @@ import { describe, expect, it } from 'vitest'
 import type { Applied } from '../../../src/agent-model.ts'
 import type { EntitlementPolicy } from '../../../src/billing/gates.ts'
 import { ModelBudget, usageLedger } from '../../../src/budget.ts'
-import { TelegramChannel } from '../../../src/channel/channel.ts'
+import { telegramChannel } from '../../../src/channel/channel.ts'
 import { Channel } from '../../../src/channel/service.ts'
 import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
 import { ModelBudgetLive } from '../../../src/layers/budget.ts'
-import { channelOver } from '../../../src/layers/routines.ts'
 import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
@@ -28,8 +27,6 @@ const fixture = () => {
   registerPrimary(db, 1)
   const chats = new ChatDirectory(db)
   const budget = new ModelBudget(usageLedger(sqlite), 100)
-  // SAFETY: the channel's status and disable read and clear its tables only; the cipher and telemetry stay unused.
-  const channel = new TelegramChannel(sqlite, undefined as never, () => undefined, undefined, chats)
   const pinned: string[] = []
   // Choosing a model only puts the primary session on it; nothing else of Pi is reached.
   const harness: PiHarness = Object.assign(Object.create(null), {
@@ -40,7 +37,11 @@ const fixture = () => {
   const applied: Applied = new Map()
   const entitlements: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const legacy = Layer.mergeAll(
-    Layer.succeed(Channel, channelOver(channel)),
+    Layer.effect(
+      Channel,
+      // SAFETY: the channel's status and disable read and clear its tables only; the cipher stays unused.
+      telegramChannel({ db: sqlite, cipher: undefined as never, chats, telemetry: undefined, wake: () => undefined }),
+    ),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
     stub(McpServers, { tools: () => Effect.succeed([]) }),
     stub(McpConnections, { snapshot: () => Effect.succeedNone }),

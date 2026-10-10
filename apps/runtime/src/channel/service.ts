@@ -6,7 +6,7 @@ import type { ChannelCall, ChannelPorts, DeliveredReply } from './channel.ts'
 
 /**
  * The Telegram channel (ADR 0009): the one connection the owner chose to carry Telegram, its inbox cursor, the doorbell
- * secret, and the answers still to send. Instants are epoch seconds.
+ * secret, and the answers still to send. Instants are epoch seconds. Built once, by start step 16 (`telegramChannel`).
  */
 export class Channel extends Context.Service<
   Channel,
@@ -30,13 +30,13 @@ export class Channel extends Context.Service<
     readonly secret: Effect.Effect<string | undefined, AppError>
     /** Remembers a turn of main whose answer goes to Telegram. */
     readonly track: (operationId: string, now: number) => Effect.Effect<void>
-    /** Reads the inbox from the cursor and puts each new message from the owner into main. */
+    /** Reads the inbox from the cursor and puts each new message from the owner into main, one pull at a time. */
     readonly pull: (ports: ChannelPorts, now: number) => Effect.Effect<void, AppError>
     /** Sends every answer that is ready, telling `delivered` about each; true while some are still running. */
     readonly deliver: (
       ports: ChannelPorts,
       now: number,
-      delivered?: (reply: DeliveredReply) => Promise<void>,
+      delivered?: (reply: DeliveredReply) => Effect.Effect<void>,
     ) => Effect.Effect<boolean, AppError>
   }
 >()('goblin/channel/Channel') {}

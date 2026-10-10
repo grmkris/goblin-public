@@ -29,7 +29,7 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
   await run(library.setEnabled('mygram', true))
   await run(
     installEventConsumers(events, {
-      channel: Effect.sync(() => channel.status()),
+      channel: channel.status,
       pull: attempt(state.pull),
       skills: { enabled: library.enabled, invalidate: library.invalidate },
     }),
