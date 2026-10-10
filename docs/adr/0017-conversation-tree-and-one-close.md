@@ -38,7 +38,8 @@ goes idle it is described again (its replies and its title may have changed). `C
 `busy`; one feed per tab replaces polling the list after every run.
 
 Consequences:
-- The thread routes are now `/api/conversations*`; the list (`GET /api/conversations`) stays for scripts and tests.
+- The thread routes are now `/api/conversations*`. The list (`GET /api/conversations`) stayed for scripts and tests
+  until 2026-10-10, when it was deleted: they read the workspace feed's snapshot, as the web does.
 - Unlimited depth is bounded only by the owner's budget until subagents v2 (Phase 5 of the panes plan) adds closing on
   report; Close and Stop reach the whole subtree, and the feed shows a subtree that is still waiting.
 - Activity lives in the Agent's isolate: a client that reconnects starts again from a fresh snapshot.

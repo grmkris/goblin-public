@@ -1,6 +1,7 @@
 # ADR 0030: Logical chats over Pi sessions
 
-Accepted 2026-10-08. Builds on ADRs 0007, 0010, 0017, 0018 and 0029.
+Accepted 2026-10-08. Builds on ADRs 0007, 0010, 0017, 0018 and 0029. Amended 2026-10-09 and 2026-10-10: nothing
+rebinds a chat, and its one lock is `KeyedLock`'s (see the dated sections).
 
 “Move to thread” needs an identity swap: the browser must keep following Main while its previous conversation becomes
 an ordinary thread. Pi cannot move a running turn between conversations. A stable application chat identity lets a
@@ -58,6 +59,18 @@ coordinate in-flight work and admission rather than treat the fence as a way to 
 - **No rebind.** `rebind` never had a production caller and was deleted, with its listeners. Move to thread (ADR 0034)
   forks a new Thread instead. The permuted-primary test profile binds chat `1` itself before services compose.
 - **One inserter.** Every chat row goes in through `registerChat` (`Chats.register` for programs).
+
+### One chat lock, the directory as functions (2026-10-10)
+
+- **One lock.** `ChatOperations.withChat` (`KeyedLock`, `chat:<id>`) is the chat's only lock: admission, every
+  passive write (a Topic's seed among them, through `Conversations.writeEntry`) and the mover (`Moves`, an Effect
+  service) take it. `ChatDirectory.withChat` and its in-isolate lock are gone.
+- **The directory as functions.** Resolution is a set of functions of the agent's database in `chats/directory.ts`
+  (`chatSession`, `chatOfSession`, `openChatSession`, `operationSession`, `conversationAbove`, …), read through the
+  `Chats` service by programs; no stateful directory object is built.
+- **No rebind anywhere.** The sections above that describe `rebind`, its epoch fence and its listeners record what
+  was built on 2026-10-08. `app_conversations.epoch` stays in the table, unused, and a replay keeps its first session
+  because its receipt names it.
 
 ## Callers
 

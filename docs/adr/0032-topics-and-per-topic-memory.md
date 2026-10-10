@@ -64,9 +64,11 @@ archived (`personal_topic`).
 
 ## Owner API and feed
 
-`GET/POST /api/topics` and `PATCH /api/topics/:id` are the `topics` group of the owner API
+`POST /api/topics` and `PATCH /api/topics/:id` are the `topics` group of the owner API
 (`packages/contracts/src/api/topics.ts`), served by the agent (`topics/api.ts`) behind the Worker's session, origin,
-CSRF and plan checks; refusals answer in the API's error envelope. Archiving stops each open chat through
+CSRF and plan checks; refusals answer in the API's error envelope. The Topics themselves are read from the workspace
+feed (the list, `GET /api/topics`, had no other reader and was deleted on 2026-10-10). Archiving stops each open chat
+through
 `stopChat`, the owner's Stop. The workspace feed's snapshot carries `topics`, each change is a
 `{ type: 'topic' }` item, and every `ConversationView` carries its `topic` and, for a Topic's Conversation,
 `conversation: true`. An older client ignores all of these. A Topic write tells the agent's change bus
@@ -83,7 +85,7 @@ migration `20261026000100_chat_memory` creates `app_chat_memory_log`, `app_chat_
 idx, entry id and node unchanged. The old tables stay, no longer read.
 
 `ChatMemory(chat)` is the old `MainMemory` with every query keyed by chat id and the chat's Pi session resolved on each
-use, so a rebind moves no row. The `Memories` service serves them: `activate(chat)` (the `goblin.memory` and
+use, so no memory row names a session. The `Memories` service serves them: `activate(chat)` (the `goblin.memory` and
 `goblin.recall` extensions, once) and `truncate(chat, size)` (`forgetFrom` in `memory/store.ts`), which forgets the
 messages from `size` on and every summary covering one, and pulls the view back to `size` at most; Move to thread uses
 it.

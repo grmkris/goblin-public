@@ -19,8 +19,9 @@ the operation id and the operation that caused it (`parentOperation`), counts, t
 `ok`, `replayed` (the same operation id found an earlier result), `refused` or `error` with a safe error code. Never
 text, arguments or results.
 
-- **Recording.** Programs record a step with `FlowEvents.record` (`observability/flows.ts`). It never fails the flow it
-  describes: a sink that fails is reported instead. Each area records at its own emission points.
+- **Recording.** Programs record a step with `FlowEvents.record`, or wrap a whole operation in `withFlow`, which
+  records how it ended (`observability/flows.ts`). Neither fails the flow it describes: a sink that fails is reported
+  instead. Each area records at its own emission points.
 - **In the run ledger.** A step becomes one run event of kind `flow` (`flowRunEvent` in `telemetry/events.ts`): the
   operation id has its own column, so the step shows in its operation's timeline, and the rest are allowlisted
   `goblin.flow*`, `goblin.actor`, `goblin.chat*`, `goblin.topic`, `goblin.operation.parent`, `goblin.count`,

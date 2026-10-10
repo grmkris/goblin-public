@@ -106,6 +106,18 @@ conversations. Until then a running turn is refused with `streaming` and the web
 A move also records a `move` receipt in the chat (2026-10-09): settled with its Thread, or refused with the mover's
 reason, and its `move` flow. `app_chat_moves` stays the authority; the receipt indexes it.
 
+### Amended 2026-10-10
+
+- **The swap's traces are gone from the API.** `MoveReceipt` no longer carries `mode`; every move is the settled-turn
+  move. `app_chat_moves` keeps its `mode` and `swapped` values, since an agent that ran the swap may still hold such
+  rows: on start the reconcile refuses every swap that never settled (`retireSwaps`, reason `unsupported`), and a
+  receipt read from one reads as refused the same way.
+- **A failing move is refused.** A move whose work fails leaves its receipt `refused` with the failure's type, not
+  `admitted`.
+- **The thread operation's body** is `StartThread` (`{ operationId, anchor, message, personaOrder? }`), the name the
+  2026-10-09 section calls `ThreadStart`; `CreateConversation` (`POST /api/conversations`) is the same operation
+  without a message, built from the same ids.
+
 ## Verification
 
 Local workerd, owner suite (so the permuted-primary profile runs it too). Move (`test/integration/move-case.ts`): the

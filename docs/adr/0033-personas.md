@@ -25,10 +25,10 @@ every revision in `app_persona_revisions` (migration `20261026000200_personas`; 
 - Exclusions are `HelperExclusions`, the same vocabulary as a helper's, and can only narrow. They are stored as given,
   de-duplicated, and applied on top of the chat's own switches; a Persona never gains a capability.
 
-`GET/POST /api/personas` and `GET/PATCH /api/personas/:id` are the owner API's `personas` group
+`POST /api/personas` and `GET/PATCH /api/personas/:id` are the owner API's `personas` group
 (`packages/contracts/src/api/personas.ts`, served by the agent from `personas/api.ts`); like every owner write, the
 two writes need the CSRF header (ADR 0038). The workspace feed carries `personas`, `invocations` and `receipts` in its snapshot and `persona`, `invocation` and
-`receipt` changes.
+`receipt` changes; the web reads the Personas from it (the list, `GET /api/personas`, was deleted on 2026-10-10).
 
 ## The ask: no Goblin run
 
@@ -84,11 +84,11 @@ request**. Targets are named, not numbered (the active Topic or Persona with tha
 `after_revision`. A tool call that runs twice finds its receipt (the call id keys it). Archiving from inside the
 Topic's own run does not stop that run from within itself.
 
-`GET /api/organize` lists receipts, newest first; `POST /api/organize/:id/undo` (the owner API's `organize` group,
-like the `personas` group's `/api/personas` routes) puts the target back (creation undone
+The workspace feed lists receipts, newest first (`GET /api/organize`, which listed them too, was deleted on
+2026-10-10); `POST /api/organize/:id/undo` (the owner API's `organize` group) puts the target back (creation undone
 archives; archive undone restores; rename and update restore the old values as a new revision). It applies only while
 the target's revision still equals `after_revision`; otherwise it is refused as `touched` (409), and a receipt can be
-undone once (`undone`). `undoable` in the list is that same test, so the UI never offers what would be refused. The
+undone once (`undone`). A receipt's `undoable` is that same test, so the UI never offers what would be refused. The
 Undo is itself a receipt, owned by the owner, and records an `organize_undo` flow row.
 
 ## Delegate results (spec section 5)
