@@ -9,17 +9,16 @@ import { Config, Effect, Option, Redacted, Schema } from 'effect'
 import { createHash, randomBytes } from 'node:crypto'
 import { chmod, stat, writeFile } from 'node:fs/promises'
 import { appChecks } from './smoke-apps.ts'
+import { DevClient, type Step } from './smoke-client.ts'
 import { edgeChecks } from './smoke-edge.ts'
 import { delegateReported } from './smoke-entries.ts'
 import { publicSmoke } from './smoke-public.ts'
-import { readSession } from './session.ts'
 
 const ObjectSchema = Schema.Record(Schema.String, Schema.MutableJson)
 type JsonObject = typeof ObjectSchema.Type
 const object = Schema.decodeUnknownSync(ObjectSchema)
 const objects = Schema.decodeUnknownSync(Schema.Array(ObjectSchema))
 const string = Schema.decodeUnknownSync(Schema.String)
-const number = Schema.decodeUnknownSync(Schema.Number)
 
 /** A read-only tool per known server, called only if the owner has already granted it. */
 const PROBES: Readonly<Record<string, string>> = { myplan: 'account_read', mybrowser: 'browser_backends' }
@@ -27,10 +26,9 @@ const REDIRECT_URI = 'http://127.0.0.1:9/callback'
 const DEV_MARKER = 'GOBLIN_DEV_OK'
 const MCP_MARKER = 'GOBLIN_MCP_OK'
 const SMOKE_CLIENT_NAME = 'goblin-smoke'
-const MAIN_HISTORY = '/api/conversations/1/history?before=2147483647'
+/** Main's newest page of history. */
+const MAIN_HISTORY = { params: { id: '1' }, query: { before: 2_147_483_647 } } as const
 
-/** One request the smoke sent: its status, and the reference the answer quoted (`goblin lookup <ref>`). */
-type Step = { readonly step: string; readonly status: number; readonly ref?: string }
 type Settings = {
   readonly stage: string
   readonly url: string
@@ -60,65 +58,6 @@ function targetUrl(config: Settings): URL {
 }
 
 const base64url = (bytes: Buffer): string => bytes.toString('base64url')
-
-/** Everything the smoke sends goes through here: one origin, the owner cookie when signed in, every status logged. */
-class DevClient {
-  readonly #url: URL
-  readonly #steps: Step[]
-  #cookie = ''
-  constructor(url: URL, steps: Step[]) {
-    this.#url = url
-    this.#steps = steps
-  }
-
-  get origin(): string {
-    return this.#url.origin
-  }
-
-  async send(
-    path: string,
-    init: RequestInit & { readonly owner?: boolean; readonly csrf?: boolean } = {},
-  ): Promise<Response> {
-    const { owner = true, csrf = true, ...rest } = init
-    const headers = new Headers(rest.headers)
-    headers.set('origin', this.#url.origin)
-    // As the web does: every write carries the CSRF header, which every /api write requires.
-    if (csrf && (rest.method ?? 'GET') !== 'GET') headers.set('x-goblin-csrf', '1')
-    if (owner && this.#cookie) headers.set('cookie', this.#cookie)
-    const response = await fetch(new URL(path, this.#url), {
-      ...rest,
-      headers,
-      redirect: 'manual',
-      signal: rest.signal ?? AbortSignal.timeout(150_000),
-    })
-    const ref = response.headers.get('x-goblin-ref')
-    const step = `${rest.method ?? 'GET'} ${path.split('?')[0] ?? path}`
-    this.#steps.push({ step, status: response.status, ...(ref === null ? {} : { ref }) })
-    return response
-  }
-
-  async json(path: string, init: RequestInit & { readonly owner?: boolean } = {}): Promise<JsonObject> {
-    const response = await this.send(path, init)
-    if (!response.ok) throw new Error(`request_failed: ${path.split('?')[0] ?? path}`)
-    return object(await response.json())
-  }
-
-  async list(path: string): Promise<readonly JsonObject[]> {
-    const response = await this.send(path)
-    if (!response.ok) throw new Error(`request_failed: ${path}`)
-    return objects(await response.json())
-  }
-
-  async useSession(file: string, email: Redacted.Redacted): Promise<void> {
-    const saved = readSession(file)
-    if (saved.origin !== this.origin) throw new Error('session_origin_mismatch')
-    this.#cookie = saved.cookie
-    const session = await this.json('/api/auth/get-session')
-    const owner = object(session['user'])
-    if (string(owner['email']) !== Redacted.value(email)) throw new Error('session_owner_mismatch')
-    if (Date.parse(string(object(session['session'])['expiresAt'])) <= Date.now()) throw new Error('session_expired')
-  }
-}
 
 /** An inbound MCP client: dynamic registration, owner consent, PKCE code exchange, then Streamable HTTP calls. */
 class InboundClient {
@@ -230,30 +169,33 @@ class InboundClient {
 
 type ServerReport = { serverId: string; status: string; tools?: number; granted?: number; probe?: string }
 
-async function serverReport(dev: DevClient, server: JsonObject): Promise<ServerReport> {
-  const serverId = string(server['serverId'])
-  const report: ServerReport = { serverId, status: string(server['status']) }
+async function serverReport(
+  dev: DevClient,
+  server: { readonly serverId: string; readonly status: string },
+): Promise<ServerReport> {
+  const { serverId } = server
+  const report: ServerReport = { serverId, status: server.status }
   if (report.status !== 'connected') return report
-  const listed = await dev.send(`/api/mcp/${encodeURIComponent(serverId)}/tools?refresh`)
   // A connected server whose host no longer answers (a stopped tunnel) is the server's outage, not goblin's: the
   // agent answers it as UpstreamMcp (502, or 504 on a timeout), which the report records instead of failing.
-  if (listed.status === 502 || listed.status === 504) return { ...report, probe: 'unreachable' }
-  if (!listed.ok) throw new Error(`request_failed: /api/mcp/${serverId}/tools`)
-  const tools = objects(await listed.json())
+  const tools = await dev.owner((api) =>
+    api.mcp
+      .tools({ params: { id: serverId }, query: { refresh: '' } })
+      .pipe(Effect.catchTag('UpstreamMcp', () => Effect.succeed(undefined))),
+  )
+  if (tools === undefined) return { ...report, probe: 'unreachable' }
   report.tools = tools.length
-  report.granted = tools.filter((tool) => tool['granted'] === true).length
+  report.granted = tools.filter((tool) => tool.granted).length
   const probe = PROBES[serverId]
-  const granted = tools.some((tool) => tool['name'] === probe && tool['granted'] === true)
+  const granted = tools.some((tool) => tool.name === probe && tool.granted)
   if (probe === undefined || !granted) {
     report.probe = 'not-granted'
     return report
   }
-  const result = await dev.json(`/api/mcp/${encodeURIComponent(serverId)}/tools/call`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goblin-csrf': '1' },
-    body: JSON.stringify({ name: probe, arguments: {} }),
-  })
-  report.probe = result['isError'] === true ? 'error' : 'ok'
+  const result = await dev.owner((api) =>
+    api.mcp.callTool({ params: { id: serverId }, headers: {}, payload: { name: probe, arguments: {} } }),
+  )
+  report.probe = result.isError === true ? 'error' : 'ok'
   return report
 }
 
@@ -272,10 +214,10 @@ const wait = (milliseconds: number): Promise<void> => new Promise((resolve) => s
 
 const operationId = (step: string): string => `smoke-${step}-${base64url(randomBytes(9))}`
 
-async function poll(
-  dev: DevClient,
-  path: string,
-  ready: (value: JsonObject) => boolean,
+/** Reads with `read` until `ready`, or fails with `reason` once `milliseconds` have passed. */
+async function poll<A>(
+  read: (signal: AbortSignal) => Promise<A>,
+  ready: (value: A) => boolean,
   milliseconds: number,
   reason: string,
 ): Promise<void> {
@@ -284,7 +226,7 @@ async function poll(
   try {
     await wait(1_500)
     while (Date.now() < deadline) {
-      if (ready(await dev.json(path, { signal }))) return
+      if (ready(await read(signal))) return
       await wait(1_000)
     }
   } catch (error) {
@@ -293,42 +235,39 @@ async function poll(
   throw new Error(reason)
 }
 
+const mainHistory = (dev: DevClient, signal?: AbortSignal) =>
+  dev.owner((api) => api.conversations.history(MAIN_HISTORY), signal)
+
 const waitForIdle = (dev: DevClient, thread: string): Promise<void> =>
   poll(
-    dev,
-    `/api/conversations/${encodeURIComponent(thread)}/snapshot`,
+    (signal) => dev.owner((api) => api.conversations.snapshot({ params: { id: thread } }), signal),
     (snapshot) => !snapshot['run'] && objects(snapshot['inbox']).length === 0,
     120_000,
     'thread_still_busy',
   )
 
 async function submitMessage(dev: DevClient, thread: string, input: string, step: string): Promise<void> {
-  const response = await dev.send(`/api/conversations/${encodeURIComponent(thread)}/messages`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ input, operationId: operationId(step) }),
-  })
-  if (response.status !== 202) throw new Error(`${step}_submit_failed`)
+  const payload = { input, operationId: operationId(step) }
+  await dev
+    .owner((api) => api.conversations.submit({ params: { id: thread }, payload }))
+    .catch(() => {
+      throw new Error(`${step}_submit_failed`)
+    })
 }
 
 type ThreadCheck = { readonly thread: 'ok'; readonly shared: true }
 
 async function closeThread(dev: DevClient, thread: string): Promise<void> {
-  const closed = await dev.send(`/api/conversations/${encodeURIComponent(thread)}`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ closed: true }),
-  })
-  if (!closed.ok) throw new Error('thread_close_failed')
+  const payload = { closed: true }
+  await dev
+    .owner((api) => api.conversations.update({ params: { id: thread }, payload }))
+    .catch(() => {
+      throw new Error('thread_close_failed')
+    })
 }
 
 async function threadChecks(dev: DevClient): Promise<ThreadCheck> {
-  const created = await dev.json('/api/conversations', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: '{}',
-  })
-  const thread = string(created['id'])
+  const { id: thread } = await dev.owner((api) => api.conversations.create({ payload: {} }))
   try {
     await submitMessage(
       dev,
@@ -337,14 +276,12 @@ async function threadChecks(dev: DevClient): Promise<ThreadCheck> {
       'thread',
     )
     await waitForIdle(dev, thread)
-    const before = await dev.json(MAIN_HISTORY)
-    const seen = new Set(objects(before['entries']).map((entry) => entry['id']))
+    const before = await mainHistory(dev)
+    const seen = new Set(objects(before.entries).map((entry) => entry['id']))
     await submitMessage(dev, thread, 'Share what we concluded here with main.', 'thread_share')
     await poll(
-      dev,
-      MAIN_HISTORY,
-      (history) =>
-        objects(history['entries']).some((entry) => entry['kind'] === 'app.shared' && !seen.has(entry['id'])),
+      (signal) => mainHistory(dev, signal),
+      (history) => objects(history.entries).some((entry) => entry['kind'] === 'app.shared' && !seen.has(entry['id'])),
       60_000,
       'thread_share_missing',
     )
@@ -358,8 +295,8 @@ async function threadChecks(dev: DevClient): Promise<ThreadCheck> {
 type SubagentCheck = { readonly subagent: 'reported' }
 
 async function subagentChecks(dev: DevClient): Promise<SubagentCheck> {
-  const before = await dev.json(MAIN_HISTORY)
-  const seen = new Set(objects(before['entries']).map((entry) => entry['id']))
+  const before = await mainHistory(dev)
+  const seen = new Set(objects(before.entries).map((entry) => entry['id']))
   await submitMessage(
     dev,
     '1',
@@ -367,10 +304,9 @@ async function subagentChecks(dev: DevClient): Promise<SubagentCheck> {
     'subagent',
   )
   await poll(
-    dev,
-    MAIN_HISTORY,
+    (signal) => mainHistory(dev, signal),
     (history) => {
-      const entries = objects(history['entries']).filter((entry) => !seen.has(entry['id']))
+      const entries = objects(history.entries).filter((entry) => !seen.has(entry['id']))
       return delegateReported(entries, 'smokecount')
     },
     120_000,
@@ -383,12 +319,13 @@ async function subagentChecks(dev: DevClient): Promise<SubagentCheck> {
 type MemoryCheck = { readonly memory: { readonly messages: number; readonly summarized: number } }
 
 async function memoryChecks(dev: DevClient): Promise<MemoryCheck> {
-  const memory = await dev.json('/api/agent/memory')
-  const messages = number(memory['messages'])
-  const summarized = number(memory['summarized'])
+  const { messages, summarized } = await dev.owner((api) => api.memory.status({ query: {} }))
   if (messages === 0) throw new Error('memory_empty')
   return { memory: { messages, summarized } }
 }
+
+const revokeClient = (dev: DevClient, clientId: string) =>
+  dev.account((api) => api.clients.revoke({ params: { clientId } }))
 
 async function inboundChecks(dev: DevClient, client: InboundClient, servers: readonly ServerReport[]) {
   await client.authorize()
@@ -415,25 +352,20 @@ async function inboundChecks(dev: DevClient, client: InboundClient, servers: rea
   if (!texts.includes(DEV_MARKER)) throw new Error('inbound_history_missing')
   const smokeMessage = messages.findLast((message) => message['role'] === 'user' && message['text'] === smokeInput)
   if (smokeMessage?.['author'] !== SMOKE_CLIENT_NAME) throw new Error('inbound_author_missing')
-  const revoked = await dev.json(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
+  const revoked = await revokeClient(dev, client.clientId)
   const after = await client.rpc('tools/list')
-  if (revoked['revoked'] !== true || after.status !== 401) throw new Error('inbound_revocation_failed')
+  if (!revoked.revoked || after.status !== 401) throw new Error('inbound_revocation_failed')
   return { initialized: true, modelTurn: 'ok', residentTool, history: 'ok', author: 'ok', revokedThen401: true }
 }
 
-const putModel = (dev: DevClient, model: string) =>
-  dev.json('/api/agent/model', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model }),
-  })
+const putModel = (dev: DevClient, model: string) => dev.owner((api) => api.agent.chooseModel({ payload: { model } }))
 
 /** Runs `work` with the agent answering on `model`, then puts the owner's own pick back, whatever happened. */
 async function withModel<T>(dev: DevClient, model: string | undefined, work: () => Promise<T>): Promise<T> {
   if (model === undefined) return work()
-  const choice = await dev.json('/api/agent/model')
-  if (!objects(choice['options']).some((option) => option['id'] === model)) throw new Error('smoke_model_not_offered')
-  const own = string(choice['current'])
+  const choice = await dev.owner((api) => api.agent.model())
+  if (!choice.options.some((option) => option.id === model)) throw new Error('smoke_model_not_offered')
+  const own = choice.current
   if (own === model) return work()
   await putModel(dev, model)
   try {
@@ -504,6 +436,22 @@ type Receipt = {
   readonly app: 'ok'
 }
 
+/** Signed in: resident authority is active and main has a snapshot. */
+async function ownerReads(dev: DevClient): Promise<{ readonly resident: 'active' }> {
+  const resident = await dev.owner((api) => api.resident.status())
+  if (resident.state !== 'active') throw new Error('resident_authority_inactive')
+  const snapshot = await dev.owner((api) => api.conversations.snapshot({ params: { id: '1' } }))
+  if (snapshot['type'] !== 'snapshot') throw new Error('main_snapshot_missing')
+  return { resident: resident.state }
+}
+
+/** Each of the owner's MCP servers, as `serverReport` finds it. */
+async function serverReports(dev: DevClient): Promise<readonly ServerReport[]> {
+  const reports: ServerReport[] = []
+  for (const server of await dev.owner((api) => api.mcp.servers())) reports.push(await serverReport(dev, server))
+  return reports
+}
+
 async function smokeDev(
   steps: Step[],
 ): Promise<Receipt | { readonly stage: string; readonly signup: string; readonly mode: 'read-only' }> {
@@ -520,14 +468,10 @@ async function smokeDev(
   }
   if (signup !== 'open') await refusedSignup(dev, steps)
   await dev.useSession(config.sessionFile, config.email)
-  const resident = await dev.json('/api/agent/resident')
-  if (resident['state'] !== 'active') throw new Error('resident_authority_inactive')
-  const snapshot = await dev.json('/api/conversations/1/snapshot')
-  if (snapshot['type'] !== 'snapshot') throw new Error('main_snapshot_missing')
+  const { resident } = await ownerReads(dev)
   const { files } = await fileChecks(dev)
   const { edge } = await edgeChecks(dev)
-  const servers: ServerReport[] = []
-  for (const server of await dev.list('/api/mcp/servers')) servers.push(await serverReport(dev, server))
+  const servers = await serverReports(dev)
   const client = await InboundClient.register(dev)
   try {
     const checks = await withModel(dev, config.smokeModel, async () => {
@@ -539,10 +483,11 @@ async function smokeDev(
       return { inbound, ...thread, ...subagent, ...memory, ...app }
     })
     const model = config.smokeModel ?? 'owner pick'
-    return { stage: config.stage, model, signup, resident: string(resident['state']), servers, files, edge, ...checks }
+    return { stage: config.stage, model, signup, resident, servers, files, edge, ...checks }
   } finally {
     // Never leave the throwaway client authorized, whatever failed above.
-    await dev.send(`/api/clients/${encodeURIComponent(client.clientId)}`, { method: 'DELETE' })
+    // expected: the step list records the revoke's answer; a refusal here must not hide the failure above
+    await revokeClient(dev, client.clientId).catch(() => undefined)
   }
 }
 

@@ -13,7 +13,7 @@ export async function publicSmoke(
   refusedSignup: () => Promise<void>,
 ): Promise<void> {
   if (signup !== 'invite' || health['mail'] !== true) throw new Error('prod_admission_policy_mismatch')
-  const probe = await dev.send('/api/conversations', { owner: false })
+  const probe = await dev.send('/api/agent/usage', { owner: false })
   if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
   await refusedSignup()
   const metadata = await dev.json('/.well-known/oauth-protected-resource', { owner: false })

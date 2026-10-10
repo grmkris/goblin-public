@@ -75,18 +75,35 @@ async function visit(page: Page, origin: string, route: string): Promise<void> {
   await page.waitForTimeout(SETTLE_MS)
 }
 
-/** A thread of the account, as a link to its own `/c/<id>` (which opens its channel with the panel), if it has one. */
+/**
+ * An open thread of the account, as a link to its own `/c/<id>` (which opens its channel with the panel), if it has
+ * one: the first snapshot of the workspace feed the page itself follows.
+ */
 async function threadRoute(page: Page): Promise<string | undefined> {
-  const id = await page.evaluate(async () => {
-    const response = await fetch('/api/conversations', { credentials: 'same-origin' })
-    const views: unknown = response.ok ? await response.json() : []
-    const thread = Array.isArray(views)
-      ? views.find(
-          (view: { kind?: string; closedAt?: number }) => view.kind === 'thread' && view.closedAt === undefined,
-        )
-      : undefined
-    return typeof thread?.id === 'string' ? thread.id : undefined
-  })
+  const id = await page.evaluate(
+    () =>
+      new Promise<string | undefined>((resolve) => {
+        // The page's own EventSource; the script's Bun typings give its constructor no URL.
+        const Feed: new (url: string) => {
+          addEventListener: (type: string, listener: (event: { readonly data: string }) => void) => void
+          close: () => void
+        } = EventSource
+        const feed = new Feed('/api/workspace/events')
+        const settle = (found: string | undefined) => {
+          feed.close()
+          resolve(found)
+        }
+        feed.addEventListener('snapshot', (event) => {
+          const snapshot: { conversations?: { id?: unknown; kind?: string; closedAt?: number }[] } = JSON.parse(
+            event.data,
+          )
+          const thread = snapshot.conversations?.find((view) => view.kind === 'thread' && view.closedAt === undefined)
+          settle(typeof thread?.id === 'string' ? thread.id : undefined)
+        })
+        feed.addEventListener('error', () => settle(undefined))
+        setTimeout(() => settle(undefined), 10_000)
+      }),
+  )
   return id === undefined ? undefined : `/c/${id}`
 }
 
