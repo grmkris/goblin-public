@@ -1148,10 +1148,17 @@ a.list-row:focus-visible {
   min-height: 2.75rem;
   accent-color: var(--moss);
 }
+/* A fieldset sizes to its widest line unless told otherwise: on a phone it would push the page sideways. */
 .persona-adds {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-inline-size: 0;
+}
+.persona-adds-note {
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+  text-wrap: pretty;
 }
 .persona-adds > legend {
   margin-block-end: 0.25rem;

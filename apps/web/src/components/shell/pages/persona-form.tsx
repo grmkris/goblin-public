@@ -155,7 +155,7 @@ function Adds({ draft, onChange }: Edit) {
   return (
     <fieldset className="persona-adds">
       <legend>MCP servers & skills</legend>
-      <p className="list-row-meta">
+      <p className="persona-adds-note">
         It works with the setup of the Topic it answers in, and adds these. Only what you have granted or turned on.
       </p>
       {catalog.error !== null && (
