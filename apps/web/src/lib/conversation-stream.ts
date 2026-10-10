@@ -1,5 +1,4 @@
-import { ConversationQueue, type QueuedInput } from '@goblin/contracts'
-import * as Schema from 'effect/Schema'
+import type { ConversationQueue, QueuedInput } from '@goblin/contracts'
 import { isString } from './values.ts'
 import { projectBatch, projectSnapshot, type ConversationProjection, UnreadableFrame } from './projection.ts'
 import { withRef } from './query/app-error.ts'
@@ -31,10 +30,13 @@ export class BrowserPiEvents implements PiEventSource {
     this.source.addEventListener('error', listener)
   }
 }
-/** The stream's own reads (`conversations/queries.ts`): a Pi snapshot and the queued inputs, each read as it comes. */
+/**
+ * The stream's own reads (`conversations/queries.ts`): a Pi snapshot, projected here, and the queued inputs, decoded by
+ * the typed client.
+ */
 export type PiStreamDependencies = {
   readonly snapshot: (signal: AbortSignal) => Promise<unknown>
-  readonly queue: (signal: AbortSignal) => Promise<unknown>
+  readonly queue: (signal: AbortSignal) => Promise<ConversationQueue>
   readonly events: () => PiEventSource
 }
 /** Timers, injectable so tests can drive reconnection without waiting. */
@@ -137,7 +139,7 @@ export class ConversationStream {
     const controller = new AbortController()
     this.#queueController = controller
     try {
-      const queue = Schema.decodeUnknownSync(ConversationQueue)(await this.dependencies.queue(controller.signal))
+      const queue = await this.dependencies.queue(controller.signal)
       if (controller.signal.aborted || this.#disposed) return
       this.#queueCache = queue.inputs
       this.#projection = { ...this.#projection, queueNotice: '' }

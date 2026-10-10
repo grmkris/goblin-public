@@ -5,7 +5,6 @@ import { Badge, Card, CardDescription, CardHeader, CardTitle, Skeleton } from '@
 import { agentAppsQuery } from '../agent-apps/queries.ts'
 import { jobLine, jobTrouble } from '../lib/app-jobs.ts'
 import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
-import { reportUnexpected } from '../lib/unexpected.ts'
 import { AppTile } from './apps/app-tile.tsx'
 import { useMinute } from './use-now.ts'
 
@@ -58,13 +57,7 @@ function AppsList() {
   return (
     <>
       {list.isRefetchError && (
-        <QueryError
-          error={list.error}
-          action="load your apps"
-          onRetry={() => {
-            list.refetch().catch(reportUnexpected)
-          }}
-        />
+        <QueryError error={list.error} action="load your apps" onRetry={() => void list.refetch()} />
       )}
       {list.data.length === 0 && <p className="text-sm text-muted-foreground">No apps yet.</p>}
       <div className="apps-grid">

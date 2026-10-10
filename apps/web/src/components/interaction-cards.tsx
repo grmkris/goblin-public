@@ -29,7 +29,6 @@ import { useAddAndConnect } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
-import { reportUnexpected } from '../lib/unexpected.ts'
 import { ApprovalCard } from './approval-card.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
@@ -217,6 +216,13 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
   const { questions } = interaction
   const several = questions.length > 1
   const { busy, error, replying } = useReplying()
+  const answer = (data: FormData) =>
+    void replying(() =>
+      onAnswer(
+        answerText(questions, (id) => data.getAll(id)),
+        interactionOperation(interaction),
+      ),
+    )
   return (
     <AskCard aria-label="Questions from your agent">
       <AskCardHeader>
@@ -228,13 +234,7 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
         onSubmit={(event) => {
           event.preventDefault()
           if (busy) return
-          const data = new FormData(event.currentTarget)
-          replying(() =>
-            onAnswer(
-              answerText(questions, (id) => data.getAll(id)),
-              interactionOperation(interaction),
-            ),
-          ).catch(reportUnexpected)
+          answer(new FormData(event.currentTarget))
         }}
       >
         {several && <QuestionnaireProgress />}

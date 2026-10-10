@@ -4,12 +4,12 @@ import { ChannelPage } from '../components/shell/channel.tsx'
 import { sourcesQuery } from '../conversations/queries.ts'
 import { parsePanelSearch } from '../lib/panel.ts'
 import { primeOwnerRead } from '../lib/prime.ts'
-import { reportUnexpected } from '../lib/unexpected.ts'
 
 /**
  * A Topic's channel (`/c/<id>`), with the thread panel its search names (`?thread=`, `?reply=`, `?stack=`); a thread's
  * or a subagent's id opens its channel with the panel showing it. Its transcript is the chat's live stream; the loader
- * primes, without waiting for them, the sources noted under the answers of the channel and of its open thread.
+ * primes the sources noted under the answers of the channel and of its open thread, and hands the router that promise
+ * unawaited (deferred loader data), so the channel does not wait for them.
  */
 export const Route = createFileRoute('/c/$chatId')({
   validateSearch: parsePanelSearch,
@@ -19,7 +19,7 @@ export const Route = createFileRoute('/c/$chatId')({
   },
   loader: ({ context, params, deps }) => {
     const chats = deps.thread === undefined ? [params.chatId] : [params.chatId, String(deps.thread)]
-    for (const chat of chats) primeOwnerRead(context.queryClient, sourcesQuery(chat)).catch(reportUnexpected)
+    return { sources: Promise.all(chats.map((chat) => primeOwnerRead(context.queryClient, sourcesQuery(chat)))) }
   },
   component: ChannelRoute,
 })

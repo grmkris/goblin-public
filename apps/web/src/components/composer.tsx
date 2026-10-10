@@ -12,12 +12,14 @@ import {
 } from '@goblin/ui'
 import { ArrowUpIcon, CircleHelpIcon, MessageSquarePlusIcon, SquareIcon, XIcon } from 'lucide-react'
 import { sendsMessage } from '../lib/keys.ts'
-import { reportUnexpected } from '../lib/unexpected.ts'
 import { activePersonas, taggedPersonas } from '../lib/personas.ts'
 import { AttachButton, PendingFiles } from './attachments.tsx'
 import { ComposerPicker, useComposerPicker } from './composer-picker.tsx'
 import { type ComposerProps, useComposer } from './composer-state.ts'
 import { PersonaAvatar } from './persona-avatar.tsx'
+
+/** Sends what the composer holds; `submit` shows its own failure beside the composer and never rejects. */
+const send = (state: ReturnType<typeof useComposer>) => void state.submit()
 
 type Props = ComposerProps & {
   readonly running: boolean
@@ -180,7 +182,7 @@ function ComposerField({
           if (sendsMessage({ ...event, isComposing: event.nativeEvent.isComposing }, touch)) {
             event.preventDefault()
             picker.close()
-            state.submit().catch(reportUnexpected)
+            send(state)
           }
         }}
         {...(compact && { className: 'min-h-9 py-1.5' })}
@@ -226,7 +228,7 @@ export function MessageComposer({
       onSubmit={(event) => {
         event.preventDefault()
         picker.close()
-        state.submit().catch(reportUnexpected)
+        send(state)
       }}
     >
       <ComposerPicker picker={picker} />

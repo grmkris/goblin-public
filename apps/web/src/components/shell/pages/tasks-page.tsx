@@ -6,7 +6,6 @@ import { QueryError } from '../../../lib/query/query-boundary.tsx'
 import { delegates, personaTasks } from '../../../lib/rail.ts'
 import { subagentState } from '../../../lib/subagent-state.ts'
 import { relativeTime, threadTitle } from '../../../lib/threads.ts'
-import { reportUnexpected } from '../../../lib/unexpected.ts'
 import { routinesQuery } from '../../../routines/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { SubagentStateIcon, SubagentStateText } from '../../parts/subagent-block.tsx'
@@ -32,9 +31,7 @@ const SCHEDULED: readonly RoutineView['state'][] = ['activating', 'active', 'pau
 function useRoutines() {
   const read = useQuery(routinesQuery)
   const routines = (read.data?.routines ?? []).filter((each) => SCHEDULED.includes(each.state))
-  const retry = () => {
-    read.refetch().catch(reportUnexpected)
-  }
+  const retry = () => void read.refetch()
   return { routines, error: read.error, retry }
 }
 

@@ -5,7 +5,7 @@ import {
   type PiEventSource,
   type ReconnectScheduler,
 } from '../src/lib/conversation-stream.ts'
-import type { JsonValue } from '@goblin/contracts'
+import type { ConversationQueue } from '@goblin/contracts'
 import type { ConversationProjection } from '../src/lib/projection.ts'
 
 class FixtureEvents implements PiEventSource {
@@ -182,7 +182,7 @@ describe('snapshot reconnection', () => {
 describe('native queue content reads', () => {
   it('keeps duplicate text in native order, refetches on inbox events, and rejects superseded/disposed responses', async () => {
     const source = new FixtureEvents()
-    const reads: { signal: AbortSignal; resolve: (value: JsonValue) => void }[] = []
+    const reads: { signal: AbortSignal; resolve: (value: ConversationQueue) => void }[] = []
     let state: ConversationProjection | undefined
     const refs = [
       { id: 5, mode: 'followUp' },

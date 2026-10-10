@@ -15,7 +15,6 @@ import { detailsQuery } from '../../inspect/queries.ts'
 import { type DetailStep, detailSteps, detailSummary, durationText, relatedText } from '../../lib/details.ts'
 import { describeError, withRef } from '../../lib/query/app-error.ts'
 import { QueryError } from '../../lib/query/query-boundary.tsx'
-import { reportUnexpected } from '../../lib/unexpected.ts'
 import { useOpenChat } from './panel.tsx'
 
 /** One step: what it was, how it ended and how long it took, and a line of detail under it. */
@@ -48,15 +47,7 @@ function DetailsBody({ chat, entry }: { readonly chat: string; readonly entry: n
       return (
         <p className="text-muted-foreground">{withRef('Nothing is recorded for this message yet.', details.error)}</p>
       )
-    return (
-      <QueryError
-        error={details.error}
-        action="read the details"
-        onRetry={() => {
-          details.refetch().catch(reportUnexpected)
-        }}
-      />
-    )
+    return <QueryError error={details.error} action="read the details" onRetry={() => void details.refetch()} />
   }
   const steps = detailSteps(details.data)
   const { related, coverage } = details.data
