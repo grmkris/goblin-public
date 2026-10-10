@@ -2,12 +2,13 @@ import { useState } from 'react'
 import type { ConversationView } from '@goblin/contracts'
 import { ChevronRightIcon, MessagesSquareIcon } from 'lucide-react'
 import { threadList } from '../../../lib/rail.ts'
-import { relativeTime, repliesLabel, threadTitle } from '../../../lib/threads.ts'
+import { repliesLabel, threadTitle } from '../../../lib/threads.ts'
 import { channelOf, topicOfChannel } from '../../../lib/topics.ts'
 import { useActivity, useConversations, useTopics } from '../../../lib/workspace/hooks.ts'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
+import { relativeTime } from '../../../lib/format.ts'
 
 /** One thread: its name, its channel, its replies and when the last came; a dot while unread, a pulse while it works. */
 function ThreadRow({ view, now }: { readonly view: ConversationView; readonly now: number }) {

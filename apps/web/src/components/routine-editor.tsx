@@ -28,6 +28,7 @@ import { grantsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { saveRoutineMutation } from '../routines/queries.ts'
 import { localInput, localInstant } from '../lib/local-time.ts'
+import { browserZone } from '../lib/format.ts'
 
 type Kind = RoutineDefinition['trigger']['kind']
 type Tool = { readonly serverId: string; readonly name: string }
@@ -201,7 +202,7 @@ function OnceFields({ kit }: { readonly kit: Kit }) {
         defaultValue={trigger.kind === 'once' ? localInput(trigger.at) : ''}
         required
       />
-      <FieldDescription>In your time, {Intl.DateTimeFormat().resolvedOptions().timeZone}.</FieldDescription>
+      <FieldDescription>In your time, {browserZone()}.</FieldDescription>
     </Field>
   )
 }

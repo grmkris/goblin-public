@@ -6,7 +6,6 @@ import { Conflict } from '@goblin/contracts/api'
 import { Alert, AlertDescription, Button, Skeleton } from '@goblin/ui'
 import { messageOf, withRef } from '../../../lib/query/app-error.ts'
 import { QueryBoundary } from '../../../lib/query/query-boundary.tsx'
-import { relativeTime } from '../../../lib/threads.ts'
 import { reportUnexpected } from '../../../lib/unexpected.ts'
 import { createWorkspacePersonaMutation, updateWorkspacePersonaMutation } from '../../../lib/workspace/mutations.ts'
 import { personaDetailQuery } from '../../../personas/queries.ts'
@@ -14,6 +13,7 @@ import { PageSection } from '../../page-section.tsx'
 import { PersonaAvatar } from '../../persona-avatar.tsx'
 import { useMinute } from '../../use-now.ts'
 import { BLANK, NAME, PersonaForm } from './persona-form.tsx'
+import { relativeTime } from '../../../lib/format.ts'
 
 /** What the owner reads when a Persona could not be saved: a conflict in its own words, anything else as described. */
 function refusal(failure: Error | null, action: string): string {

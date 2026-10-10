@@ -37,19 +37,17 @@ import { PageSection } from './page-section.tsx'
 import { RoutineEditor } from './routine-editor.tsx'
 import { RoutineHistory } from './routine-history.tsx'
 import { StatusLabel } from './status-label.tsx'
+import { browserZone, dateTime } from '../lib/format.ts'
 
 const operation = () => crypto.randomUUID()
-const localTime = (at: number, zone: string) =>
-  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: zone }).format(at)
 const count = (value: number) => value.toLocaleString()
-const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone
 
 /** When a routine runs, in words. */
 function whenOf(definition: RoutineDefinition): string {
   const trigger = definition.trigger
   if (trigger.kind === 'once') {
     const at = Date.parse(trigger.at)
-    return Number.isNaN(at) ? `Once, at ${trigger.at}` : `Once, ${localTime(at, definition.timezone)}`
+    return Number.isNaN(at) ? `Once, at ${trigger.at}` : `Once, ${dateTime(at, definition.timezone)}`
   }
   if (trigger.kind === 'cron') return `Repeats on the schedule ${trigger.expression}`
   return `When ${trigger.serverId} sends ${trigger.name}`
@@ -117,7 +115,7 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
         {routine.nextFireAt !== null && trigger.kind !== 'once' && (
           <div>
             <dt>Next</dt>
-            <dd>{localTime(routine.nextFireAt, definition.timezone)}</dd>
+            <dd>{dateTime(routine.nextFireAt, definition.timezone)}</dd>
           </div>
         )}
         {trigger.kind === 'event' && (

@@ -3,11 +3,12 @@ import { AppWindowIcon, CornerDownRightIcon } from 'lucide-react'
 import { type Attachment, type ComposerOption, selectionKey } from '@goblin/contracts'
 import type { SharedContext } from '../../lib/app-context.ts'
 import { contextPreview } from '../../lib/app-context.ts'
-import { relativeTime, reporterOf } from '../../lib/threads.ts'
+import { reporterOf } from '../../lib/threads.ts'
 import { MessageFiles } from '../attachments.tsx'
 import { ChatMarkdown } from './markdown.tsx'
 import { useConversations } from '../../lib/workspace/hooks.ts'
 import { useMinute } from '../use-now.ts'
+import { relativeTime } from '../../lib/format.ts'
 
 /**
  * Assistant text as GitHub-flavoured Markdown, set by shadcn/typeset (`ChatMarkdown`), with the little HTML ADR 0039 allows.

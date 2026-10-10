@@ -1,4 +1,4 @@
-const pad = (value: number): string => String(value).padStart(2, '0')
+import { pad } from './format.ts'
 
 /**
  * A `datetime-local` value (wall time in this browser's zone) as the ISO instant with its UTC offset a reminder needs,

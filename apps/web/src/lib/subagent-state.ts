@@ -1,6 +1,7 @@
 import type { ConversationActivity, ConversationView } from '@goblin/contracts'
-import { isClosed, relativeTime } from './threads.ts'
+import { isClosed } from './threads.ts'
 import { type Activity, activityOf } from './workspace/slices.ts'
+import { relativeTime } from './format.ts'
 
 /**
  * Where a subagent is in its life, from the workspace feed: at work (since, in ms), waiting on its own subagents,

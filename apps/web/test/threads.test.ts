@@ -8,7 +8,6 @@ import {
   fromEntry,
   movableEntry,
   isUnread,
-  relativeTime,
   repliesLabel,
   reporterOf,
   rootParts,
@@ -17,6 +16,7 @@ import {
   threadTitle,
   threadsByFork,
 } from '../src/lib/threads.ts'
+import { relativeTime } from '../src/lib/format.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,

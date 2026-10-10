@@ -11,13 +11,14 @@ import {
   WandSparklesIcon,
 } from 'lucide-react'
 import { type NeedsYou, needsYou, unreadChats } from '../../../lib/rail.ts'
-import { relativeTime, threadTitle } from '../../../lib/threads.ts'
+import { threadTitle } from '../../../lib/threads.ts'
 import { useApps, useConversations, useReceipts } from '../../../lib/workspace/hooks.ts'
 import { undoWorkspaceReceiptMutation } from '../../../lib/workspace/mutations.ts'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
 import { undoRefusal } from '../organize.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
+import { relativeTime } from '../../../lib/format.ts'
 
 const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundIcon; readonly label: string }>> = {
   question: { icon: MessageCircleQuestionIcon, label: 'A question for you' },

@@ -5,7 +5,7 @@ import { RepeatIcon } from 'lucide-react'
 import { QueryError } from '../../../lib/query/query-boundary.tsx'
 import { delegates, personaTasks } from '../../../lib/rail.ts'
 import { subagentState } from '../../../lib/subagent-state.ts'
-import { relativeTime, threadTitle } from '../../../lib/threads.ts'
+import { threadTitle } from '../../../lib/threads.ts'
 import { routinesQuery } from '../../../routines/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { SubagentStateIcon, SubagentStateText } from '../../parts/subagent-block.tsx'
@@ -20,8 +20,8 @@ import {
 } from '../../../lib/workspace/hooks.ts'
 import { useMinute } from '../../use-now.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
+import { dateTime, relativeTime } from '../../../lib/format.ts'
 
-const NEXT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const SCHEDULED: readonly RoutineView['state'][] = ['activating', 'active', 'paused']
 
 const STATES: Readonly<Record<PersonaInvocationView['state'], string>> = {
@@ -114,7 +114,7 @@ function Routines({
                     ? 'Paused'
                     : routine.nextFireAt === null
                       ? 'Not scheduled'
-                      : `Next ${NEXT.format(routine.nextFireAt)}`
+                      : `Next ${dateTime(routine.nextFireAt)}`
                 }
               />
             </Link>

@@ -4,9 +4,9 @@ import { use, useState } from 'react'
 import type { RetrievalSource } from '@goblin/contracts'
 import { ChevronRightIcon, LibraryIcon } from 'lucide-react'
 import { sourceTopics } from '../../lib/sources.ts'
-import { relativeTime } from '../../lib/threads.ts'
 import { OpenThread } from './text-part.tsx'
 import { useMinute } from '../use-now.ts'
+import { relativeTime } from '../../lib/format.ts'
 
 /**
  * One source: where it is (the Topic, and the thread when it is not the Topic's channel itself), when it was read, the

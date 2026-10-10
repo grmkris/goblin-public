@@ -5,13 +5,12 @@ import type { ToolView } from '@goblin/contracts'
 import { Switch } from '@goblin/ui'
 import { changeChannelMutation, channelQuery } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { shortDate } from '../lib/format.ts'
 
 const TELEGRAM_TOOLS = ['inbox', 'send_message']
 
 export const hasTelegramTools = (tools: readonly ToolView[]): boolean =>
   TELEGRAM_TOOLS.every((name) => tools.some((tool) => tool.name === name))
-
-const channelDate = (seconds: number): string => new Date(seconds * 1000).toLocaleDateString()
 
 /** One Telegram channel for the owner, shared by every server card. */
 export function useTelegramChannel(onMessage: (message: string) => void) {
@@ -51,8 +50,10 @@ export function TelegramControl({
             <>
               {' '}
               On since{' '}
-              <time dateTime={new Date(status.enabledAt * 1000).toISOString()}>{channelDate(status.enabledAt)}</time>,
-              {status.transport === 'events' ? ' through Events.' : ' through the older doorbell.'}
+              <time dateTime={new Date(status.enabledAt * 1000).toISOString()}>
+                {shortDate(status.enabledAt * 1000)}
+              </time>
+              ,{status.transport === 'events' ? ' through Events.' : ' through the older doorbell.'}
             </>
           )}
         </span>

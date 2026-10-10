@@ -1,6 +1,7 @@
 import type { InspectDetails } from '@goblin/contracts/inspect'
 import { describe, expect, it } from 'vitest'
-import { detailSteps, detailSummary, durationText, relatedText } from '../src/lib/details.ts'
+import { detailSteps, detailSummary, relatedText } from '../src/lib/details.ts'
+import { durationText } from '../src/lib/format.ts'
 
 const DETAILS: InspectDetails = {
   turn: {

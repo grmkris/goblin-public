@@ -31,6 +31,7 @@ import { isString, records, text } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
 import { LinkOffer } from './offers.tsx'
+import { browserZone } from '../../lib/format.ts'
 
 /** An MCP App: its server and `ui://` resource, and the call it shows with its result. */
 export type McpSelection = {
@@ -73,7 +74,7 @@ function device(): Device {
     touch: matchMedia('(pointer: coarse)').matches,
     hover: matchMedia('(hover: hover)').matches,
     locale: navigator.language,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: browserZone(),
   }
 }
 

@@ -9,10 +9,10 @@ import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
 import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../routines/queries.ts'
 import { runStatus, telegramReport } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
+import { dateTime } from '../lib/format.ts'
 
 const LIVE: readonly RoutineRunView['state'][] = ['admitted', 'running', 'waiting_owner']
 const FINISHED: readonly RoutineRunView['state'][] = ['completed', 'failed', 'stopped']
-const when = (at: number) => new Date(at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 /** Whether a finished run's report reached its channel, and Telegram when it was asked to. */
 function reportsOf(run: RoutineRunView): string | undefined {
@@ -38,7 +38,7 @@ function RunRow({
       <div className="run-line">
         <StatusLabel label={runStatus(run.state)} />
         <time className="run-time" dateTime={new Date(run.firedAt).toISOString()}>
-          {when(run.firedAt)}
+          {dateTime(run.firedAt)}
         </time>
         {run.sessionId && (
           <Link className="run-link" to="/c/$chatId" params={{ chatId: run.sessionId }}>

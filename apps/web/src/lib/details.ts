@@ -1,5 +1,6 @@
 import type { InspectDetails, RelatedOperation } from '@goblin/contracts/inspect'
 import { RunAttribute, type RunEvent, type RunEventStatus } from '@goblin/contracts/telemetry'
+import { durationText } from './format.ts'
 
 /** One step of what ran behind a message, in the owner's words: what it was, what it touched, how it ended. */
 export type DetailStep = {
@@ -89,10 +90,3 @@ export function detailSummary(details: InspectDetails): string[] {
 /** A related operation in a line: what it was, and where it stands. */
 export const relatedText = (related: RelatedOperation): string =>
   related.state === undefined ? related.kind : `${related.kind} · ${related.state}`
-
-/** Milliseconds as the owner reads them: under a second in ms, else seconds with one decimal, else minutes. */
-export function durationText(ms: number): string {
-  if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
-  return `${(ms / 60_000).toFixed(1)} min`
-}

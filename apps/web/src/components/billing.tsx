@@ -19,15 +19,15 @@ import { messageOf } from '../lib/query/app-error.ts'
 import { planStatus } from '../lib/labels.ts'
 import { AuthShell } from './auth-shell.tsx'
 import { StatusLabel } from './status-label.tsx'
+import { shortDate } from '../lib/format.ts'
 
-const date = (at: number) => new Date(at).toLocaleDateString()
 /** When the paid period ends or renews, in words. */
 function periodLine(state: BillingState): string {
   if (state.until === null)
     return state.active ? 'Included with your account.' : 'Subscribe to use your personal agent.'
-  if (state.cancelAtPeriodEnd || state.status === 'cancelled') return `Access until ${date(state.until)}.`
-  if (state.status === 'past_due' || state.status === 'on_hold') return `Payment grace until ${date(state.until)}.`
-  return `Renews on ${date(state.until)}.`
+  if (state.cancelAtPeriodEnd || state.status === 'cancelled') return `Access until ${shortDate(state.until)}.`
+  if (state.status === 'past_due' || state.status === 'on_hold') return `Payment grace until ${shortDate(state.until)}.`
+  return `Renews on ${shortDate(state.until)}.`
 }
 
 export function BillingCard() {

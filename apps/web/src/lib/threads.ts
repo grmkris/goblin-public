@@ -47,25 +47,6 @@ export function branchPoints(entries: readonly Record<string, unknown>[]): Reado
   )
 }
 
-const RELATIVE = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-/** Each unit and how many seconds it takes before the next one reads better. */
-const UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number, number])[] = [
-  ['minute', 60, 45 * 60],
-  ['hour', 3600, 22 * 3600],
-  ['day', 86_400, 6 * 86_400],
-  ['week', 7 * 86_400, 4 * 7 * 86_400],
-  ['month', 30 * 86_400, 11 * 30 * 86_400],
-]
-
-/** How long ago `at` was, as people say it: "just now", "2 minutes ago", "yesterday", "3 weeks ago" (both in seconds). */
-export function relativeTime(at: number, now: number): string {
-  const ago = Math.max(0, now - at)
-  if (ago < 45) return 'just now'
-  const unit = UNITS.find(([, , below]) => ago < below)
-  if (unit === undefined) return RELATIVE.format(-Math.round(ago / (365 * 86_400)), 'year')
-  return RELATIVE.format(-Math.max(1, Math.round(ago / unit[1])), unit[0])
-}
-
 /** "3 replies", "1 reply", "No replies yet". */
 export function repliesLabel(count: number): string {
   if (count === 0) return 'No replies yet'

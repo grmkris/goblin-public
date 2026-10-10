@@ -12,10 +12,11 @@ import {
 } from '@goblin/ui'
 import { InfoIcon } from 'lucide-react'
 import { detailsQuery } from '../../inspect/queries.ts'
-import { type DetailStep, detailSteps, detailSummary, durationText, relatedText } from '../../lib/details.ts'
+import { type DetailStep, detailSteps, detailSummary, relatedText } from '../../lib/details.ts'
 import { describeError, withRef } from '../../lib/query/app-error.ts'
 import { QueryError } from '../../lib/query/query-boundary.tsx'
 import { useOpenChat } from './panel.tsx'
+import { durationText } from '../../lib/format.ts'
 
 /** One step: what it was, how it ended and how long it took, and a line of detail under it. */
 function Step({ step }: { readonly step: DetailStep }) {

@@ -1,8 +1,8 @@
 import type { EventHealth } from '@goblin/contracts'
 import { eventStatus } from '../lib/labels.ts'
-import { relativeTime } from '../lib/threads.ts'
 import { StatusLabel } from './status-label.tsx'
 import { useMinute } from './use-now.ts'
+import { relativeTime } from '../lib/format.ts'
 
 const seconds = (ms: number): number => Math.floor(ms / 1000)
 

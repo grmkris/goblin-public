@@ -2,20 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ConversationView } from '@goblin/contracts'
 import { CheckIcon, CopyIcon, MessageSquareReplyIcon } from 'lucide-react'
 import type { Part } from '../../lib/parts.ts'
-import {
-  entryOfPart,
-  isClosed,
-  isUnread,
-  relativeTime,
-  repliesLabel,
-  threadTitle,
-  threadsByFork,
-} from '../../lib/threads.ts'
+import { entryOfPart, isClosed, isUnread, repliesLabel, threadTitle, threadsByFork } from '../../lib/threads.ts'
 import { useActivity, useConversation, useConversations } from '../../lib/workspace/hooks.ts'
 import { useMinute } from '../use-now.ts'
 import { DetailsAction } from './message-details.tsx'
 import { MoveAction, type Mover } from './move-action.tsx'
 import { usePanel } from './panel.tsx'
+import { relativeTime } from '../../lib/format.ts'
 
 /**
  * A chat's threads as its transcript shows them: under the message each started from, its summary (replies and the

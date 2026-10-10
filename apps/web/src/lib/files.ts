@@ -9,6 +9,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { owner, requestId } from './api.ts'
 import { answerRef } from './query/app-error.ts'
+import { pad } from './format.ts'
 
 const NAME_LIMIT = 80
 
@@ -37,8 +38,6 @@ export function freeName(name: string, taken: ReadonlySet<string>): string {
     if (!taken.has(candidate)) return candidate
   }
 }
-
-const pad = (value: number) => String(value).padStart(2, '0')
 
 /** The day's upload folder, by the owner's local date. */
 export function uploadFolder(now: Date): string {

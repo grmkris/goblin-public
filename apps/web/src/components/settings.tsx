@@ -29,9 +29,7 @@ import { clientsQuery, revokeClientMutation } from '../account/queries.ts'
 import { memoryQuery, residentQuery, setResidentMutation, usageQuery } from '../agent/queries.ts'
 import { messageOf, withRef } from '../lib/query/app-error.ts'
 import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
-
-const day = (seconds: number): string =>
-  new Date(seconds * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })
+import { dayAndMonth } from '../lib/format.ts'
 
 /**
  * Today's spend against the daily limit, rolling as it changes. It is read again whenever a run ends, since that is
@@ -157,7 +155,7 @@ function Resident({ id }: { readonly id: string }) {
         <div className="card-line">
           <StatusLabel label={residentStatus(status.state)} />
           {status.state === 'active' && status.expiresAt !== undefined && (
-            <span className="card-line-meta">until {day(status.expiresAt)}</span>
+            <span className="card-line-meta">until {dayAndMonth(status.expiresAt * 1000)}</span>
           )}
         </div>
       </CardContent>
