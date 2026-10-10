@@ -9,7 +9,8 @@ import { CHROME_HEIGHT } from '../../lib/app-stage.ts'
 import { inlineHeight } from '../../lib/host-context.ts'
 import { useNavigation } from '../../lib/navigation.ts'
 import { useOnScreen } from '../on-screen.ts'
-import { type SlotName, useAppHost } from './host.tsx'
+import { useAppHost } from './host.tsx'
+import type { SlotName } from './slot-registry.ts'
 
 /** A ref callback that registers the slot's element under `name` and tells the stages whenever it resizes. */
 export function useSlot(name: SlotName) {
