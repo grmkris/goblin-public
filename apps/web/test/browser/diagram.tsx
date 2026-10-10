@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Diagram } from '@goblin/kit/diagram'
 import { MessageText } from '../../src/components/parts/text-part.tsx'
 import { checkDiagramSafety } from './diagram-safety.ts'
+import { withQueryClient } from './with-query-client.tsx'
 import '../../src/styles.css'
 
 const flow = 'graph LR\n A[Draft] -->|submit| B[Review]\n B --> C[Ship]\n D[Unrelated]'
@@ -57,4 +58,4 @@ function Fixture() {
 }
 const root = document.getElementById('root')
 if (root === null) throw new Error('fixture root missing')
-createRoot(root).render(<Fixture />)
+createRoot(root).render(withQueryClient(<Fixture />))

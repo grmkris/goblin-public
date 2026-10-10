@@ -19,6 +19,7 @@ import {
 } from '@goblin/ui'
 import { MessageComposer } from '../../src/components/composer.tsx'
 import { LinkOffer } from '../../src/components/apps/offers.tsx'
+import { withQueryClient } from './with-query-client.tsx'
 import '../../src/styles.css'
 
 function Fields() {
@@ -111,4 +112,6 @@ function Styles() {
 const mode = new URLSearchParams(location.search).get('mode')
 const root = document.getElementById('root')
 if (root)
-  createRoot(root).render(mode === 'attachments' ? <Attachments /> : mode === 'styles' ? <Styles /> : <Fields />)
+  createRoot(root).render(
+    withQueryClient(mode === 'attachments' ? <Attachments /> : mode === 'styles' ? <Styles /> : <Fields />),
+  )

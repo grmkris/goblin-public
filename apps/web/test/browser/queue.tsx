@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { MessageComposer } from '../../src/components/composer.tsx'
 import { QueuedMessages } from '../../src/components/queued-messages.tsx'
 import { useConversation, useDockInsets } from '../../src/components/use-conversation.ts'
+import { withQueryClient } from './with-query-client.tsx'
 import '../../src/styles.css'
 
 /** Real shared hooks, queue and composer, with HTTP/event fixtures supplied by the browser test. */
@@ -43,8 +44,10 @@ function Dock({ inline }: { readonly inline: boolean }) {
 const root = document.getElementById('root')
 if (root)
   createRoot(root).render(
-    <>
-      <Dock inline={false} />
-      <Dock inline />
-    </>,
+    withQueryClient(
+      <>
+        <Dock inline={false} />
+        <Dock inline />
+      </>,
+    ),
   )

@@ -4,6 +4,7 @@ import { selectionKey, type ComposerSelection } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { MessageComposer } from '../../src/components/composer.tsx'
 import type { ComposerDraft } from '../../src/lib/composer.ts'
+import { withQueryClient } from './with-query-client.tsx'
 import '../../src/styles.css'
 
 function Fixture() {
@@ -55,4 +56,4 @@ function Fixture() {
 
 const root = document.getElementById('root')
 if (root === null) throw new Error('fixture root missing')
-createRoot(root).render(<Fixture />)
+createRoot(root).render(withQueryClient(<Fixture />))

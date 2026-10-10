@@ -1,9 +1,19 @@
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { AppFrame } from '../../src/components/apps/frame.tsx'
+import { AppFrame, type AppSelection } from '../../src/components/apps/frame.tsx'
 import { MessageOffer } from '../../src/components/apps/message-offer.tsx'
 import type { QuestionAnswerReceipt } from '../../src/lib/app-message.ts'
+import { withQueryClient } from './with-query-client.tsx'
 import '../../src/styles.css'
+
+/** The App the page shows, one value for the page's life as the stage keeps it: a new one would reload the frame. */
+const SELECTION: AppSelection = {
+  kind: 'mcp',
+  serverId: 'myplan',
+  uri: 'ui://myplan/question.html',
+  arguments: {},
+  result: { content: [] },
+}
 
 function MessageHost() {
   const [receipt, setReceipt] = useState<QuestionAnswerReceipt>()
@@ -22,13 +32,7 @@ function MessageHost() {
         />
       )}
       <AppFrame
-        selection={{
-          kind: 'mcp',
-          serverId: 'myplan',
-          uri: 'ui://myplan/question.html',
-          arguments: {},
-          result: { content: [] },
-        }}
+        selection={SELECTION}
         placement={{ mode: 'inline', available: ['inline'], width: 360, height: 400 }}
         height={400}
         events={{
@@ -50,4 +54,4 @@ function MessageHost() {
   )
 }
 const root = document.getElementById('root')
-if (root) createRoot(root).render(<MessageHost />)
+if (root) createRoot(root).render(withQueryClient(<MessageHost />))

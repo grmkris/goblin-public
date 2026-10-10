@@ -81,7 +81,7 @@ async function attachments(browser: Browser, origin: string) {
     .setInputFiles({ name: 'example.txt', mimeType: 'text/plain', buffer: NodeBuffer.from('example') })
   const alert = page.getByRole('alert')
   await alert.waitFor()
-  assert((await alert.innerText()).includes('TemporaryFailure'))
+  assert((await alert.innerText()).startsWith('Could not upload example.txt.'))
   assert(await page.getByRole('button', { name: 'Send', exact: true }).isDisabled())
   await page.getByRole('textbox', { name: 'Message' }).press('Control+Enter')
   assert.equal(await page.getByLabel('Sent').innerText(), '0')
