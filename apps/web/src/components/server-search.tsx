@@ -8,7 +8,7 @@ import { Badge, Button, Input, Spinner } from '@goblin/ui'
 import { optionalCatalogQuery, registriesQuery, registryMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
-import { useAddAndConnect } from './server-add.tsx'
+import { useAddAndConnect } from '../mcp/hooks.ts'
 
 const REGISTRY_REFUSED: Record<string, string> = {
   not_a_registry: 'That address does not answer the MCP registry API (/v0.1/servers).',

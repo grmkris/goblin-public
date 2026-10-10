@@ -1,11 +1,12 @@
 // Adding the owner's own MCP servers, by URL or from the servers we suggest. A pasted URL is checked by the runtime (public https only) and
 // labelled from the server's card; it starts disconnected and is connected like any other.
 import { type SubmitEvent, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerSuggestion, ServerView } from '@goblin/contracts'
 import { InvalidInput } from '@goblin/contracts/api'
 import { Button, Field, FieldDescription, FieldGroup, FieldLabel, Input } from '@goblin/ui'
-import { addAndStartConnecting, addServerMutation, serversChanged, suggestedQuery } from '../mcp/queries.ts'
+import { addServerMutation, suggestedQuery } from '../mcp/queries.ts'
+import { useAddAndConnect } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
 
@@ -68,26 +69,6 @@ export function AddByAddress({
       </FieldGroup>
     </form>
   )
-}
-
-/** Where a server came from: a registry entry, recorded with it. */
-export type ServerOrigin = { readonly registry: string; readonly name: string; readonly version?: string }
-
-/** Add a server and start connecting it: off to its sign-in, or connected at once if it needs none. */
-export async function addAndConnect(endpoint: string, title: string, source?: ServerOrigin): Promise<string> {
-  const started = await addAndStartConnecting({ endpoint, ...(source === undefined ? {} : { source }) })
-  if (started.authorizationUrl !== undefined) window.location.assign(started.authorizationUrl)
-  return `Connected ${title}. Choose the tools your agent may use.`
-}
-
-/** `addAndConnect`, then the server list and the suggestions read again. */
-export function useAddAndConnect() {
-  const queryClient = useQueryClient()
-  return async (endpoint: string, title: string, source?: ServerOrigin): Promise<string> => {
-    const done = await addAndConnect(endpoint, title, source)
-    await serversChanged(queryClient)
-    return done
-  }
 }
 
 /** Servers we suggest, checked to work from here: one tap adds and connects; already added ones say so. */

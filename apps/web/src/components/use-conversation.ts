@@ -4,7 +4,6 @@ import type { AppContext, ComposerSelection } from '@goblin/contracts'
 import {
   historyQuery,
   removeQueuedMutation,
-  sendMessage,
   stopMutation,
   streamReads,
   submitMutation,
@@ -42,19 +41,6 @@ export function messageBody(
     ...(selections.length > 0 && { selections }),
     ...(personaOrder !== undefined && { personaOrder }),
   }
-}
-
-/**
- * Submits the owner's message to a conversation. A stable `operationId` makes a retry the same message (answers to a
- * question or permission request); a typed message gets a fresh one.
- */
-export async function postMessage(
-  thread: string,
-  input: string,
-  operationId?: string,
-  context: MessageContext = {},
-): Promise<void> {
-  await sendMessage({ id: thread, message: messageBody(input, operationId ?? crypto.randomUUID(), context) })
 }
 
 /** Every conversation the browser follows, shared by the panes and inline threads that show it. */

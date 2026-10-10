@@ -4,7 +4,6 @@ import type {
   AddServer,
   AppGrantChange,
   AskFirstChange,
-  ConnectStart,
   Grant,
   GrantChange,
   ServerSource,
@@ -78,14 +77,19 @@ export const addServerMutation = mutationOptions({
 
 /**
  * Adds a server and starts connecting it, in one call from wherever the owner said yes (a suggestion, a registry entry,
- * a card in the conversation): the authorization URL to send the owner to, or none when it is connected at once.
+ * a card in the conversation): the authorization URL to send the owner to, or none when it is connected at once. A
+ * page that leaves for the authorization reads the list when it comes back.
  */
-export const addAndStartConnecting = (server: AddServer): Promise<ConnectStart> =>
-  owner.run((api) =>
-    Effect.flatMap(api.mcp.addServer({ payload: server }), (added) =>
-      api.mcp.connect({ params: { id: added.serverId } }),
-    ),
-  )
+export const addAndConnectMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, server: AddServer) =>
+      Effect.flatMap(api.mcp.addServer({ payload: server }), (added) =>
+        api.mcp.connect({ params: { id: added.serverId } }),
+      ),
+  }),
+  onSuccess: (started, _server, _result, { client }) =>
+    started.authorizationUrl === undefined ? serversChanged(client) : undefined,
+})
 
 /** Starts connecting: an authorization URL to send the owner to, or none when the server is connected at once. */
 export const connectMutation = mutationOptions({

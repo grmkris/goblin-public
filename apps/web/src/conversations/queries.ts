@@ -72,12 +72,6 @@ export const submitMutation = owner.apiMutation({
     api.conversations.submit({ params: { id }, payload: message }).pipe(withOperation(message.operationId)),
 })
 
-/** The same send, for a caller outside a component (an App's Continue). */
-export const sendMessage = ({ id, message }: Submission) =>
-  owner.run((api) =>
-    api.conversations.submit({ params: { id }, payload: message }).pipe(withOperation(message.operationId)),
-  )
-
 /**
  * The unified thread operation from chat `id` (ADR 0034): one call makes the Thread once per operation id (Reply at an
  * entry, "+" empty, Start thread at the chat's newest settled entry) and sends its first message, answered there.

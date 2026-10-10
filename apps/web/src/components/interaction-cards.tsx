@@ -25,11 +25,11 @@ import {
 } from '@goblin/ui'
 import { capabilitiesQuery, setCapabilityMutation } from '../capabilities/queries.ts'
 import { toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
+import { useAddAndConnect } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { targetLabel } from '../lib/capabilities.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
-import { addAndConnect } from './server-add.tsx'
 import { ApprovalCard } from './approval-card.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
@@ -103,6 +103,7 @@ function ServerRequestCard({
 }) {
   const { endpoint, name, reason } = interaction
   const { busy, error, replying } = useReplying()
+  const addAndConnect = useAddAndConnect()
   const reply = (yes: boolean) =>
     void replying(async () => {
       await onAnswer(
