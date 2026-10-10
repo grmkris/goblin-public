@@ -3,7 +3,7 @@ import { Effect, Result, Schema } from 'effect'
 import { nextInt } from 'effect/Random'
 import { expect } from 'vitest'
 import { ModelRequest, requestTurns } from './conversation-checks.ts'
-import { callOwner } from './owner-api.ts'
+import { callOwner } from '../owner-client.ts'
 import {
   exchange,
   linesOf,

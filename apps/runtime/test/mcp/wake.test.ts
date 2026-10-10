@@ -6,7 +6,7 @@ import { mcpEventsWake } from '../../src/mcp/wake.ts'
 import { Events } from '../../src/mcp/service.ts'
 import { ReporterLive } from '../../src/observability/report.ts'
 import type { RunProgram } from '../../src/runtime/bridge.ts'
-import { partial } from '../http/api/mcp-serve.ts'
+import { stub } from '../http/api/fixture.ts'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -17,7 +17,7 @@ const wakeWith = async (sweep: Effect.Effect<void, Internal | ResidentInactive>)
   const lines: string[] = []
   vi.spyOn(console, 'error').mockImplementation((line: string) => void lines.push(line))
   vi.spyOn(console, 'warn').mockImplementation((line: string) => void lines.push(line))
-  const events = Layer.succeed(Events, partial<Events['Service']>({ maintain: () => sweep }))
+  const events = stub(Events, { maintain: () => sweep })
   // SAFETY: the wake's program needs only Events, which `events` provides; the cast stands in for the agent's services.
   const run = ((program: Effect.Effect<unknown, Internal | ResidentInactive, Events>) =>
     Effect.runPromise(program.pipe(Effect.provide(Layer.merge(events, ReporterLive))))) as RunProgram

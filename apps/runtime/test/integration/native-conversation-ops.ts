@@ -13,7 +13,7 @@ import { ModelChoiceStore, ModelPicker, modelOptions } from '../../src/models.ts
 import { FlowEvents } from '../../src/observability/flows.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { portServices } from '../chat-fixtures.ts'
-import { callOwner } from './owner-api.ts'
+import { callOwner } from '../owner-client.ts'
 import { ownerCreate, ownerResult, ownerSend, snapshotOf, until, workspaceConversations } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 

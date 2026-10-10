@@ -1,4 +1,4 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -13,16 +13,16 @@ import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import type { AgentServices } from '../src/layers/index.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 import { FixedProfiles } from './fixed-services.ts'
-import { partial, sqliteDb } from './http/api/mcp-serve.ts'
+import { sqliteDb, stub } from './http/api/fixture.ts'
 import { MemoryCredentials, MemoryGrants } from './mcp/memory.ts'
+import { lowLevelServer } from './mcp/low-level-server.ts'
 
 /** The tools the notes server ran, in order. */
 const ran: string[] = []
 
 /** A notes server: `read` is granted, `write` exists but is not, `panel` is for its App only. */
 const notes = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server keeps this fixture's tool list exact.
-  const server = new Server({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
+  const server = lowLevelServer({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler('tools/list', () => ({
     tools: [
       { name: 'read', inputSchema: { type: 'object', properties: {} } },
@@ -48,7 +48,7 @@ const host = new McpHost({
   fetch: fetcher,
 })
 /** Resident authority that is always current. */
-const resident = partial<Resident['Service']>({ require: () => Effect.void })
+const resident = stub(Resident, { require: () => Effect.void })
 // SAFETY: the MCP services read only the catalog's fetch from the instance input; neither tool searches the catalog.
 const instance = { mcpFetch: fetcher } as AgentInputs
 const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
@@ -72,7 +72,7 @@ const layer = Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive, 
       sqliteDb(chatDatabase().db),
     ),
   ),
-  Layer.merge(Layer.succeed(Resident, resident)),
+  Layer.merge(resident),
 )
 const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
   // SAFETY: mcp_call and mcp_list need only the MCP, resident authority and capability services provided here.

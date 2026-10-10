@@ -7,7 +7,7 @@ import { JOB_CALLBACK, type JobSchedules, type JobSlot } from '../../src/agent-a
 import type { AppRunner } from '../../src/agent-apps/queue.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
 import { KeyedLock } from '../../src/observability/lock.ts'
-import { type AgentFetch, type OwnerClient, callOwner } from './owner-api.ts'
+import { type AgentFetch, type OwnerClient, callOwner } from '../owner-client.ts'
 
 /** A runtime with only the per-key lock, for the apps engines a probe makes outside an agent's own runtime. */
 const probeRuntime = ManagedRuntime.make(KeyedLock.layer)

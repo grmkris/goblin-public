@@ -7,15 +7,15 @@ import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import * as HttpApiClient from 'effect/http-api/HttpApiClient'
 
-/** The part of an agent's Durable Object stub the probes call: its `fetch`, as the Worker forwards to it. */
+/** The part of an agent the tests call: its `fetch`, as the Worker forwards to it (a stub's, or a served group's). */
 export type AgentFetch = { readonly fetch: (request: Request) => Promise<Response> }
 
-/** The owner API's typed client, as the probes see it. */
+/** The owner API's typed client, as the tests see it. */
 export type OwnerClient = HttpApiClient.ForApi<typeof OwnerApi>
 
 /**
  * The typed owner API over one agent's own `fetch`, with what the Worker edge adds to a forwarded request: its
- * reference (`x-goblin-ref`). No cookie reaches the agent; the probes stand where the Worker's admission stood.
+ * reference (`x-goblin-ref`). No cookie reaches the agent; the tests stand where the Worker's admission stood.
  */
 export const ownerApi = (agent: AgentFetch, ref = 'integration-probe') =>
   HttpApiClient.make(OwnerApi, {

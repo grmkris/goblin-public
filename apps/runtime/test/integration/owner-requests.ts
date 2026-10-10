@@ -1,7 +1,7 @@
 import type { WorkspaceSnapshot } from '@goblin/contracts'
 import { expect } from 'vitest'
 import { Schema } from 'effect'
-import { workspaceSnapshot } from './owner-api.ts'
+import { workspaceSnapshot } from '../owner-client.ts'
 
 const Signup = Schema.Struct({ user: Schema.Struct({ id: Schema.String }) })
 export interface Person {

@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import { toAppError } from '../../src/http/errors.ts'
 import { encodeExit } from '../../src/http/rpc.ts'
-import { type AgentFetch, type OwnerClient, callOwner } from './owner-api.ts'
+import { type AgentFetch, type OwnerClient, callOwner } from '../owner-client.ts'
 
 /** The owner's routine calls the probes make, through the typed owner API as the Worker forwards them. */
 export const proposeRoutine = (agent: AgentFetch, definition: RoutineDefinition, operationId: string) =>

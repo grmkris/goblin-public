@@ -1,84 +1,28 @@
 import { AppView, type AgentAppLaunch } from '@goblin/contracts'
-import { AgentAppsGroup, AppsGroup, NotFound, SubscriptionRequired, ownerApiOf } from '@goblin/contracts/api'
+import { AgentAppsGroup, AppsGroup, NotFound } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as ManagedRuntime from 'effect/ManagedRuntime'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import * as HttpServer from 'effect/http/HttpServer'
-import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { AgentAppsHandlers } from '../../../src/agent-apps/api.ts'
 import type { AppDetail, AppSummary } from '../../../src/agent-apps/manage.ts'
 import { AppEngine } from '../../../src/agent-apps/service.ts'
 import { AppsHandlers } from '../../../src/apps/api.ts'
 import type { AppOrigin } from '../../../src/apps/registry.ts'
 import { Apps } from '../../../src/apps/service.ts'
-import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
-import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { Home } from '../../../src/home/service.ts'
-import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
-import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { McpConnections, Resident } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
-import { currentResident } from '../../fixed-services.ts'
-import { callOwner } from '../../integration/owner-api.ts'
+import { callOwner } from '../../owner-client.ts'
+import { currentResident, json, plans, post, serve, served, stub } from './fixture.ts'
 
-const PLAN: AccountPlan = {
-  active: true,
-  source: 'override',
-  until: null,
-  dailyCredits: 100,
-  status: 'active',
-  hasCustomer: false,
-  cancelAtPeriodEnd: false,
-}
+/** `Apps` with `overrides`; any other member dies when used, so a test names every call it expects. */
+const fakeApps = (overrides: Partial<Apps['Service']> = {}) => stub(Apps, overrides)
 
-/**
- * Only lane A's two groups, behind the real gate, router and failure rendering (the reference's pattern), so the tests
- * fake the services these handlers read and nothing else.
- */
-const APPS_API = ownerApiOf(AppsGroup, AgentAppsGroup)
-const APPS = HttpApiBuilder.layer(APPS_API).pipe(
-  Layer.provide([AppsHandlers, AgentAppsHandlers]),
-  Layer.provide(OwnerAdmissionLive),
-  Layer.provide(HttpServer.layerServices),
-)
-
-const unused = (what: string) => () => Effect.die(`${what} is not used by this test`)
-
-/** `Apps` with `overrides`; any other method dies, so a test names every call it expects. */
-const fakeApps = (overrides: Partial<Apps['Service']> = {}): Apps['Service'] =>
-  Apps.of({
-    list: Effect.die('Apps.list is not used by this test'),
-    placement: unused('Apps.placement'),
-    register: unused('Apps.register'),
-    update: unused('Apps.update'),
-    launch: unused('Apps.launch'),
-    call: unused('Apps.call'),
-    agentApp: unused('Apps.agentApp'),
-    agentId: unused('Apps.agentId'),
-    removeAgent: unused('Apps.removeAgent'),
-    originOf: unused('Apps.originOf'),
-    ...overrides,
-  })
-
-/** `AppEngine` with `overrides`; any other method dies. */
-const fakeEngine = (overrides: Partial<AppEngine['Service']> = {}): AppEngine['Service'] =>
-  AppEngine.of({
-    info: unused('AppEngine.info'),
-    summaries: Effect.die('AppEngine.summaries is not used by this test'),
-    detail: unused('AppEngine.detail'),
-    change: unused('AppEngine.change'),
-    moveHome: unused('AppEngine.moveHome'),
-    remove: unused('AppEngine.remove'),
-    snapshot: unused('AppEngine.snapshot'),
-    launch: unused('AppEngine.launch'),
-    viewCall: unused('AppEngine.viewCall'),
-    viewError: unused('AppEngine.viewError'),
-    ...overrides,
-  })
+/** `AppEngine` with `overrides`; any other member dies when used. */
+const fakeEngine = (overrides: Partial<AppEngine['Service']> = {}) => stub(AppEngine, overrides)
 
 /** Other lanes' services the programs read, as the parts a test uses; the rest is never touched. */
 type OtherParts = {
@@ -87,70 +31,38 @@ type OtherParts = {
   readonly home?: Pick<Home['Service'], 'appRemoved'>
 }
 
-const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
-
-afterEach(async () => {
-  for (const runtime of runtimes.splice(0)) await runtime.dispose()
-})
-
 /**
  * The apps and agentApps groups behind the real owner gate, over `apps` and `engine` and the other parts given. The
  * gate's plan and resident authority are the only other fakes.
  */
 function appsServer(
   options: {
-    readonly apps?: Apps['Service']
-    readonly engine?: AppEngine['Service']
+    readonly apps?: Layer.Layer<Apps>
+    readonly engine?: Layer.Layer<AppEngine>
     readonly others?: OtherParts
     readonly active?: boolean
   } = {},
 ) {
   const resident = currentResident()
-  const plan = Effect.succeed({ ...PLAN, active: options.active ?? true })
-  const plans: EntitlementPolicy = {
-    state: () => plan,
-    require: () =>
-      Effect.filterOrFail(
-        plan,
-        (current) => current.active,
-        () => new SubscriptionRequired({ subscribe: '/subscribe' }),
-      ),
-  }
   const others = options.others ?? {}
-  const runtime = ManagedRuntime.make(
-    OwnerHttp.serve(APPS_API, APPS).pipe(
+  const { handle, fetch } = serve(
+    served([AppsGroup, AgentAppsGroup], Layer.mergeAll(AppsHandlers, AgentAppsHandlers)).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(Apps, options.apps ?? fakeApps()),
-          Layer.succeed(AppEngine, options.engine ?? fakeEngine()),
-          // SAFETY: the programs under test call only the members `OtherParts` names; a test that leaves one out
-          // never reaches it.
-          Layer.succeed(Conversations, others.conversations as Conversations['Service']),
-          // SAFETY: as above, only `connect`.
-          Layer.succeed(McpConnections, others.connections as McpConnections['Service']),
-          // SAFETY: as above, only `appRemoved`.
-          Layer.succeed(Home, others.home as Home['Service']),
+          options.apps ?? fakeApps(),
+          options.engine ?? fakeEngine(),
+          // The programs under test call only the members `OtherParts` names.
+          stub(Conversations, others.conversations),
+          stub(McpConnections, others.connections),
+          stub(Home, others.home),
           Layer.succeed(Resident, resident.service),
-          Layer.succeed(Entitlements, plans),
+          plans(options.active),
         ),
       ),
     ),
   )
-  runtimes.push(runtime)
-  const handle = (request: Request) => runtime.runPromise(OwnerHttp.use((http) => http.handle(request)))
-  /** The agent's answer, or a failure if the server passed the request on. */
-  const fetch = async (request: Request) =>
-    Option.getOrThrowWith(await handle(request), () => new Error(`not an apps route: ${request.url}`))
   return { handle, fetch, resident }
 }
-
-/** A JSON request to the agent, as the Worker forwards it. */
-const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
-  new Request(`https://agent${path}`, {
-    method,
-    headers: { 'content-type': 'application/json', ...headers },
-    ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  })
 
 const BOARD = 'ui://fixture/board'
 
@@ -211,7 +123,7 @@ describe('the apps group served by the agent', () => {
       apps: registry(registered),
       others: { conversations, connections: { connect: () => Effect.sync(() => connected(uri)) } },
     })
-    const made = await fetch(json('POST', '/api/apps', { conversation: '7', callId: 'call-1' }))
+    const made = await fetch(post('/api/apps', { conversation: '7', callId: 'call-1' }))
     expect(made.status).toBe(201)
     expect(Schema.decodeUnknownSync(AppView)(await made.json())).toEqual(kept)
     expect(registered.at(-1)).toEqual({
@@ -221,9 +133,7 @@ describe('the apps group served by the agent', () => {
     })
     expect(resident.renewals).toHaveLength(1)
     uri = undefined
-    const gone = await fetch(
-      json('POST', '/api/apps', { conversation: '7', callId: 'call-1' }, { 'x-goblin-ref': 'r' }),
-    )
+    const gone = await fetch(post('/api/apps', { conversation: '7', callId: 'call-1' }, { 'x-goblin-ref': 'r' }))
     expect(gone.status).toBe(404)
     expect(await gone.json()).toMatchObject({ error: { code: 'not_found', what: 'app', ref: 'r' } })
   })
@@ -273,11 +183,11 @@ describe('the apps group served by the agent', () => {
       state: { count: 2 },
     })
     const op = '6f1c2d3e-4a5b-4c6d-8e9f-0a1b2c3d4e5f'
-    const called = await fetch(json('POST', '/api/apps/5/call', { name: 'tap', arguments: { by: 1 }, op }))
+    const called = await fetch(post('/api/apps/5/call', { name: 'tap', arguments: { by: 1 }, op }))
     expect(called.status).toBe(200)
     expect(await called.json()).toEqual({ ok: true, revision: 3, release: 'r1', state: { count: 3 } })
     expect(calls).toEqual([['tally', 'tap', { by: 1 }, op]])
-    const reported = await fetch(json('POST', '/api/apps/5/diagnostics', { message: 'TypeError: x' }))
+    const reported = await fetch(post('/api/apps/5/diagnostics', { message: 'TypeError: x' }))
     expect(await reported.json()).toEqual({ kept: true })
     expect((await fetch(json('GET', '/api/apps/6/state'))).status).toBe(404)
   })
@@ -378,16 +288,16 @@ describe('the agentApps group served by the agent', () => {
   it("applies a change and answers with the app after it; a new home is the owner's main or a thread", async () => {
     const seen: string[] = []
     const { fetch } = appsServer(agentApps(seen))
-    const paused = await fetch(json('POST', '/api/agent-apps/tally', { kind: 'pause', action: 'tick', paused: true }))
+    const paused = await fetch(post('/api/agent-apps/tally', { kind: 'pause', action: 'tick', paused: true }))
     expect(paused.status).toBe(200)
     expect(await paused.json()).toEqual({ ...detail, app: '5' })
-    const subagent = await fetch(json('POST', '/api/agent-apps/tally', { kind: 'home', conversation: '8' }))
+    const subagent = await fetch(post('/api/agent-apps/tally', { kind: 'home', conversation: '8' }))
     expect(subagent.status).toBe(400)
     expect(await subagent.json()).toMatchObject({
       error: { code: 'invalid_input', reason: "an app's home is main or a thread" },
     })
-    expect((await fetch(json('POST', '/api/agent-apps/tally', { kind: 'home', conversation: '9' }))).status).toBe(200)
-    expect((await fetch(json('POST', '/api/agent-apps/tally', { kind: 'explode' }))).status).toBe(400)
+    expect((await fetch(post('/api/agent-apps/tally', { kind: 'home', conversation: '9' }))).status).toBe(200)
+    expect((await fetch(post('/api/agent-apps/tally', { kind: 'explode' }))).status).toBe(400)
     expect(seen).toEqual(['engine.change tally pause', 'engine.moveHome tally 9'])
   })
 
@@ -409,7 +319,7 @@ describe('the agentApps group served by the agent', () => {
     const bad = await fetch(json('GET', '/api/agent-apps/Bad_Name'))
     expect(bad.status).toBe(404)
     expect(await bad.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
-    for (const request of [json('PUT', '/api/agent-apps/tally', {}), json('POST', '/api/agent-apps', {})])
+    for (const request of [json('PUT', '/api/agent-apps/tally', {}), post('/api/agent-apps', {})])
       expect(Option.isNone(await handle(request))).toBe(true)
   })
 

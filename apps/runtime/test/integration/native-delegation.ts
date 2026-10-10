@@ -2,7 +2,7 @@ import { PRIMARY_CHAT } from '@goblin/contracts'
 import { FlowRecord, InspectDetails } from '@goblin/contracts/inspect'
 import { Schema } from 'effect'
 import { expect } from 'vitest'
-import { callOwner } from './owner-api.ts'
+import { callOwner } from '../owner-client.ts'
 import { exchange, ownerSend, snapshotOf, transcript, until } from './probe-reads.ts'
 import type { PersonalAgentProbe } from './worker.ts'
 

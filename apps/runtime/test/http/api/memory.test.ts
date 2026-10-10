@@ -1,58 +1,20 @@
 import { MemoryStatus } from '@goblin/contracts'
-import { MemoryGroup, ownerApiOf } from '@goblin/contracts/api'
+import { MemoryGroup } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as HttpServer from 'effect/http/HttpServer'
-import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import * as ManagedRuntime from 'effect/ManagedRuntime'
-import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { afterEach, describe, expect, it } from 'vitest'
-import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
+import { describe, expect, it } from 'vitest'
 import { ChatDirectory } from '../../../src/chats/directory.ts'
-import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
-import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { MemoryHandlers } from '../../../src/memory/api.ts'
 import { ChatMemories } from '../../../src/memory/memory.ts'
 import { Resident } from '../../../src/mcp/service.ts'
 import { appChatMemoryLog, appChatMemoryState } from '../../../src/storage/chat-memory.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
 import { appTopics } from '../../../src/storage/topics.ts'
-import { chatDatabase } from '../../chats-sqlite.ts'
-import { currentResident } from '../../fixed-services.ts'
-import { callOwner } from '../../integration/owner-api.ts'
 import { knowledgeOver } from '../../knowledge-layer.ts'
+import { callOwner } from '../../owner-client.ts'
+import { currentResident, database, get, plans, serve, served } from './fixture.ts'
 
-const plans: EntitlementPolicy = {
-  state: () => Effect.die('the gate only requires the plan'),
-  require: () =>
-    Effect.succeed({
-      active: true,
-      source: 'override',
-      until: null,
-      dailyCredits: 100,
-      status: 'active',
-      hasCustomer: false,
-      cancelAtPeriodEnd: false,
-    }),
-}
-
-/** Only the memory group, behind the real gate, router and failure rendering (owner-http.test.ts's pattern). */
-const MEMORY_API = ownerApiOf(MemoryGroup)
-const MEMORY = HttpApiBuilder.layer(MEMORY_API).pipe(
-  Layer.provide(MemoryHandlers),
-  Layer.provide(OwnerAdmissionLive),
-  Layer.provide(HttpServer.layerServices),
-)
-
-const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
-const closes: (() => void)[] = []
-afterEach(async () => {
-  for (const runtime of runtimes.splice(0)) await runtime.dispose()
-  for (const close of closes.splice(0)) close()
-})
-
-/** `count` remembered messages of `chatId`, from entry 11 on. */
 const remembered = (chatId: string, count: number) =>
   Array.from({ length: count }, (_, idx) => ({ chatId, idx, entryId: 11 + idx, kind: 'user' as const }))
 
@@ -62,8 +24,7 @@ const remembered = (chatId: string, count: number) =>
  * The Memories service is lane K's layer over the legacy instances; the gate's plan and resident authority are fakes.
  */
 const fixture = () => {
-  const { db, close } = chatDatabase()
-  closes.push(close)
+  const db = database()
   db.insert(appTopics)
     .values({ id: 2, name: 'Garden', chatId: '70', createdBy: 'owner', createdAt: 1, updatedAt: 1 })
     .run()
@@ -86,28 +47,21 @@ const fixture = () => {
   const chats = new ChatDirectory(db)
   // SAFETY: `status` reads SQLite only; Pi and the model are never called.
   const memories = new ChatMemories({ db, harness: undefined as never, model: undefined as never, chats }, {}, [])
-  const runtime = ManagedRuntime.make(
-    OwnerHttp.serve(MEMORY_API, MEMORY).pipe(
+  const { fetch } = serve(
+    served([MemoryGroup], MemoryHandlers).pipe(
       Layer.provide(
         Layer.mergeAll(
           knowledgeOver({ db, memories, chats }),
           Layer.succeed(Resident, currentResident().service),
-          Layer.succeed(Entitlements, plans),
+          plans(),
         ),
       ),
     ),
   )
-  runtimes.push(runtime)
-  const fetch = async (request: Request) =>
-    Option.getOrThrowWith(
-      await runtime.runPromise(OwnerHttp.use((http) => http.handle(request))),
-      () => new Error(`not an API route: ${request.url}`),
-    )
   return { fetch }
 }
 
-const status = (path: string) =>
-  new Request(`https://agent/api/agent/memory${path}`, { headers: { 'x-goblin-ref': 'r' } })
+const status = (path: string) => get(`/api/agent/memory${path}`, { 'x-goblin-ref': 'r' })
 
 describe('the memory group', () => {
   it("answers Personal's memory without a chat, and a thread's from the Conversation it sits under", async () => {

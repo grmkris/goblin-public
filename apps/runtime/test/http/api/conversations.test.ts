@@ -1,20 +1,14 @@
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import { ConversationView } from '@goblin/contracts'
-import { ConversationsGroup, InvalidInput, NotFound, UpstreamMcp, ownerApiOf } from '@goblin/contracts/api'
+import { ConversationsGroup, InvalidInput, NotFound, UpstreamMcp } from '@goblin/contracts/api'
 import type { PiHarness } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
-import * as HttpServer from 'effect/http/HttpServer'
-import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import * as ManagedRuntime from 'effect/ManagedRuntime'
-import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Apps } from '../../../src/apps/service.ts'
 import { Budget } from '../../../src/budget.ts'
-import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
-import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { scopeOf } from '../../../src/capabilities/profiles.ts'
 import { Capabilities } from '../../../src/capabilities/service.ts'
 import { ConversationsHandlers } from '../../../src/chats/api.ts'
@@ -22,8 +16,6 @@ import { ChatDirectory, ChatsInstance } from '../../../src/chats/directory.ts'
 import { type ChatMover, MovesInstance } from '../../../src/chats/mover.ts'
 import { type ConversationRegistry, ConversationsInstance } from '../../../src/conversations.ts'
 import { Files } from '../../../src/files/service.ts'
-import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
-import { OwnerHttp } from '../../../src/http/api/server.ts'
 import type { FoundationServices } from '../../../src/layers/core.ts'
 import { ConversationLive } from '../../../src/layers/conversation.ts'
 import { McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
@@ -37,24 +29,23 @@ import { RoutineRuns } from '../../../src/routines/service.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
-import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Skills } from '../../../src/skills/service.ts'
 import type { ThreadAnchor } from '../../../src/chats/service.ts'
 import { appChatOperations, appConversations } from '../../../src/storage/schema.ts'
-import { chatDatabase } from '../../chats-sqlite.ts'
-import { currentResident } from '../../fixed-services.ts'
-import { callOwner } from '../../integration/owner-api.ts'
-
-const PLAN: AccountPlan = {
-  active: true,
-  source: 'override',
-  until: null,
-  dailyCredits: 100,
-  status: 'active',
-  hasCustomer: false,
-  cancelAtPeriodEnd: false,
-}
+import { callOwner } from '../../owner-client.ts'
+import {
+  currentResident,
+  type Database,
+  database,
+  json,
+  plans,
+  post,
+  serve,
+  served,
+  sqliteDb,
+  stub,
+} from './fixture.ts'
 
 /** A stand-in implementing only the members a request here reaches; reaching any other fails the test loudly. */
 const fake = <T>(members: Partial<T>): T =>
@@ -121,7 +112,7 @@ const anchorOf = (anchor: ThreadAnchor): string => (typeof anchor === 'string' ?
  * The registry's writes, recorded; a Thread start registers its Thread in the real directory, as the registry does, and
  * a repeat of its operation finds it.
  */
-const registryWrites = (db: ReturnType<typeof chatDatabase>['db'], calls: Calls): Partial<ConversationRegistry> => ({
+const registryWrites = (db: Database, calls: Calls): Partial<ConversationRegistry> => ({
   createIn: async (channel) => view(NEW, { parent: channel }),
   branch: async (parent, entry) => view(NEW, { parent, forkEntry: entry }),
   update: async (id, change) => ({
@@ -187,51 +178,39 @@ const fakeHarness = (record: PiRecord, calls: Calls): PiHarness => {
 const services = (calls: Calls, personas: readonly PersonaView[]) =>
   Layer.mergeAll(
     // No message here carries files or App context, so neither is read.
-    Layer.succeed(Files, fake<Files['Service']>({})),
-    Layer.succeed(Apps, fake<Apps['Service']>({})),
-    Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void })),
-    Layer.succeed(Models, fake<Models['Service']>({ current: Effect.succeed('fixture-model') })),
-    Layer.succeed(RoutineRuns, fake<RoutineRuns['Service']>({ session: () => Effect.undefined })),
-    Layer.succeed(
-      Invocations,
-      fake<Invocations['Service']>({
-        stopChat: (chat) => Effect.sync(() => calls.push(`invocations:${chat}`)),
-        insert: (asked) =>
-          Effect.sync(() => {
-            calls.push(`asked:${asked.map(({ persona }) => persona).join(',')}`)
-            return []
-          }),
-      }),
-    ),
-    Layer.succeed(
-      Personas,
-      fake<Personas['Service']>({ active: Effect.succeed(personas), offers: () => Effect.succeed(false) }),
-    ),
-    Layer.succeed(
-      Capabilities,
-      fake<Capabilities['Service']>({
-        scope: () => Effect.succeed(scopeOf([], true)),
-        own: () => Effect.succeed([]),
-        inherited: () => Effect.succeed([]),
-      }),
-    ),
+    stub(Files),
+    stub(Apps),
+    stub(Budget, { require: () => Effect.void }),
+    stub(Models, { current: Effect.succeed('fixture-model') }),
+    stub(RoutineRuns, { session: () => Effect.undefined }),
+    stub(Invocations, {
+      stopChat: (chat) => Effect.sync(() => calls.push(`invocations:${chat}`)),
+      insert: (asked) =>
+        Effect.sync(() => {
+          calls.push(`asked:${asked.map(({ persona }) => persona).join(',')}`)
+          return []
+        }),
+    }),
+    stub(Personas, { active: Effect.succeed(personas), offers: () => Effect.succeed(false) }),
+    stub(Capabilities, {
+      scope: () => Effect.succeed(scopeOf([], true)),
+      own: () => Effect.succeed([]),
+      inherited: () => Effect.succeed([]),
+    }),
     // No servers, grants or connections: the switches show none.
-    Layer.succeed(McpServers, fake<McpServers['Service']>({ list: () => Effect.succeed([]) })),
-    Layer.succeed(McpGrants, fake<McpGrants['Service']>({ list: () => Effect.succeed([]) })),
-    Layer.succeed(McpConnections, fake<McpConnections['Service']>({})),
-    Layer.succeed(
-      Skills,
-      fake<Skills['Service']>({
-        catalog: () => Effect.succeed({ skills: [], unavailable: [] }),
-        sources: () => Effect.succeed([]),
-        // A skill on server `down` fails to load over the network; any other is not there.
-        activateSelection: (_session, serverId) =>
-          serverId === 'down'
-            ? Effect.fail(new UpstreamMcp({ serverId, reason: 'transport' }))
-            : Effect.fail(new NotFound({ what: 'skill' })),
-      }),
-    ),
-    Layer.succeed(Retrieval, fake<Retrieval['Service']>({ uses: () => Effect.succeed([]) })),
+    stub(McpServers, { list: () => Effect.succeed([]) }),
+    stub(McpGrants, { list: () => Effect.succeed([]) }),
+    stub(McpConnections),
+    stub(Skills, {
+      catalog: () => Effect.succeed({ skills: [], unavailable: [] }),
+      sources: () => Effect.succeed([]),
+      // A skill on server `down` fails to load over the network; any other is not there.
+      activateSelection: (_session, serverId) =>
+        serverId === 'down'
+          ? Effect.fail(new UpstreamMcp({ serverId, reason: 'transport' }))
+          : Effect.fail(new NotFound({ what: 'skill' })),
+    }),
+    stub(Retrieval, { uses: () => Effect.succeed([]) }),
   )
 
 /** The bridge: the composer's skill checks would run through it, and no request here reaches one. */
@@ -250,28 +229,12 @@ const instance = (harness: PiHarness, calls: Calls) => {
   return fake<AgentInputs>({ harness, applied: new Map(), routines, personas, run, stopping })
 }
 
-/** Only the conversations group, behind the real gate, router and failure rendering. */
-const CONVERSATIONS_API = ownerApiOf(ConversationsGroup)
-const CONVERSATIONS = HttpApiBuilder.layer(CONVERSATIONS_API).pipe(
-  Layer.provide(ConversationsHandlers),
-  Layer.provide(OwnerAdmissionLive),
-  Layer.provide(HttpServer.layerServices),
-)
-
-const runtimes: ManagedRuntime.ManagedRuntime<OwnerHttp, never>[] = []
-const closes: (() => void)[] = []
-afterEach(async () => {
-  for (const runtime of runtimes.splice(0)) await runtime.dispose()
-  for (const close of closes.splice(0)) close()
-})
-
 /**
  * The conversations group as the agent serves it, running the conversation programs over a real chat directory on
  * SQLite. The registry, Pi and the instance are fakes that record what the programs asked of them.
  */
 const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) => {
-  const { db, close } = chatDatabase()
-  closes.push(close)
+  const db = database()
   const chats = Object.values(CHATS).map(({ id, kind, primary }) =>
     primary === true
       ? { chatId: id, piSession: id, kind, role: 'primary' as const, createdAt: 1 }
@@ -283,8 +246,6 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   const record: PiRecord = { submitted: [], writes: [] }
   const harness = fakeHarness(record, calls)
   const resident = currentResident()
-  const plan = Effect.succeed(PLAN)
-  const plans: EntitlementPolicy = { state: () => plan, require: () => plan }
   const registry = fake<ConversationRegistry>({ ...registryReads(), ...registryWrites(db, calls) })
   const mover = fake<ChatMover>({
     move: async (chat, input) => ({ ...input, chat, state: 'settled', thread: NEW }),
@@ -294,13 +255,12 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
     Layer.succeed(ConversationsInstance, registry),
     Layer.succeed(MovesInstance, mover),
     Layer.succeed(Resident, resident.service),
-    Layer.succeed(Entitlements, plans),
+    plans(),
     Layer.succeed(AgentInput, instance(harness, calls)),
   )
   // Lane C's own services as the agent builds them, over the core services and the legacy instances above.
   const core = Layer.mergeAll(
-    // SAFETY: node:sqlite's Drizzle driver runs the same synchronous query builder as the Durable Object's.
-    Layer.succeed(Db, db as never),
+    sqliteDb(db),
     KeyedLock.layer,
     PiSessions.layer.pipe(Layer.provide(legacy)),
     FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
@@ -317,25 +277,14 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
       ),
     ),
   )
-  const runtime = ManagedRuntime.make(
-    OwnerHttp.serve(CONVERSATIONS_API, CONVERSATIONS).pipe(
+  const { fetch } = serve(
+    served([ConversationsGroup], ConversationsHandlers).pipe(
       Layer.provide(Layer.mergeAll(conversation, core, legacy, others)),
     ),
   )
-  runtimes.push(runtime)
-  const handle = (request: Request) => runtime.runPromise(OwnerHttp.use((http) => http.handle(request)))
-  const fetch = async (request: Request) =>
-    Option.getOrThrowWith(await handle(request), () => new Error(`not an API route: ${request.url}`))
   const operations = () => db.select().from(appChatOperations).all()
   return { fetch, calls, record, resident, operations, flows }
 }
-
-const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
-  new Request(`https://agent${path}`, {
-    method,
-    headers: { 'content-type': 'application/json', ...headers },
-    ...(body === undefined ? {} : { body: typeof body === 'string' ? body : JSON.stringify(body) }),
-  })
 
 /** A message that tags a skill of `serverId`. */
 const skill = (serverId: string) => ({
@@ -347,10 +296,10 @@ const skill = (serverId: string) => ({
 describe('the conversations API served by the agent', () => {
   it('creates a Thread with 201, empty or branched from an entry', async () => {
     const { fetch } = fixture()
-    const empty = await fetch(json('POST', '/api/conversations', {}))
+    const empty = await fetch(post('/api/conversations', {}))
     expect(empty.status).toBe(201)
     expect(await empty.json()).toMatchObject({ id: NEW, parent: '1' })
-    const branched = await fetch(json('POST', '/api/conversations', { from: { conversation: '2', entry: 4 } }))
+    const branched = await fetch(post('/api/conversations', { from: { conversation: '2', entry: 4 } }))
     expect(branched.status).toBe(201)
     expect(await branched.json()).toMatchObject({ id: NEW, parent: '2', forkEntry: 4 })
   })
@@ -358,7 +307,7 @@ describe('the conversations API served by the agent', () => {
   it("sends the owner's message with 202 and Pi's receipt, admitted once per operation", async () => {
     const { fetch, record, operations, resident } = fixture()
     const response = await fetch(
-      json('POST', '/api/conversations/2/messages', { input: 'hello', operationId: 'op-1' }, { 'x-goblin-ref': 'r-1' }),
+      post('/api/conversations/2/messages', { input: 'hello', operationId: 'op-1' }, { 'x-goblin-ref': 'r-1' }),
     )
     expect(response.status).toBe(202)
     expect(await response.json()).toEqual({ operationId: 'op-1', session: '2', accepted: true })
@@ -378,7 +327,7 @@ describe('the conversations API served by the agent', () => {
       ['/api/conversations/2/messages', { input: 'hi' }, 400, 'body does not match the expected shape'],
     ] as const
     for (const [path, body, status, reason] of answers) {
-      const response = await fetch(json('POST', path, body))
+      const response = await fetch(post(path, body))
       expect(response.status).toBe(status)
       if (reason !== undefined) expect(await response.json()).toMatchObject({ error: { reason } })
     }
@@ -387,10 +336,10 @@ describe('the conversations API served by the agent', () => {
 
   it('refuses a selection that is not there as its own InvalidInput, but passes any other failure on as it is (C1)', async () => {
     const { fetch, record } = fixture()
-    const gone = await fetch(json('POST', '/api/conversations/2/messages', skill('gone')))
+    const gone = await fetch(post('/api/conversations/2/messages', skill('gone')))
     expect(gone.status).toBe(400)
     expect(await gone.json()).toMatchObject({ error: { reason: 'composer:skill:gone:skill://plan' } })
-    const down = await fetch(json('POST', '/api/conversations/2/messages', skill('down')))
+    const down = await fetch(post('/api/conversations/2/messages', skill('down')))
     expect(down.status).toBeGreaterThanOrEqual(500)
     expect(await down.json()).toMatchObject({ error: { code: 'upstream_mcp', serverId: 'down', reason: 'transport' } })
     expect(record.submitted).toEqual([])
@@ -399,14 +348,14 @@ describe('the conversations API served by the agent', () => {
   it('starts a Thread with 201 in one call: the head goes into the chat, the first message into the Thread', async () => {
     const { fetch, calls, record, operations, flows } = fixture()
     const body = { operationId: 'op-t', anchor: 'latest', message: { input: 'plan it' } }
-    const response = await fetch(json('POST', '/api/conversations/1/threads', body))
+    const response = await fetch(post('/api/conversations/1/threads', body))
     expect(response.status).toBe(201)
     const started = Schema.decodeUnknownSync(Schema.Struct({ thread: ConversationView, receipt: Schema.Unknown }))(
       await response.json(),
     )
     expect(started.thread).toMatchObject({ id: NEW, forkEntry: 3 })
     expect(started.receipt).toEqual({ operationId: 'op-t:first', session: NEW, accepted: true })
-    expect((await fetch(json('POST', '/api/conversations/1/threads', body))).status).toBe(201)
+    expect((await fetch(post('/api/conversations/1/threads', body))).status).toBe(201)
     expect(calls.filter((call) => call.startsWith('start:'))).toEqual(['start:1:op-t:latest', 'start:1:op-t:latest'])
     expect(record.writes).toEqual([
       { conversation: 1, requestId: 'thread-head:op-t', kind: 'app.thread_head' },
@@ -443,14 +392,14 @@ describe('the conversations API served by the agent', () => {
   it('replies at an entry and starts "+" empty with no head; a create with an operation id is the same operation (C4)', async () => {
     const { fetch, calls, record, flows } = fixture()
     const reply = { operationId: 'op-r', anchor: { entry: 4 }, message: { input: 'about this' } }
-    expect((await fetch(json('POST', '/api/conversations/2/threads', reply))).status).toBe(201)
+    expect((await fetch(post('/api/conversations/2/threads', reply))).status).toBe(201)
     const plus = { operationId: 'op-e', anchor: 'empty', message: { input: 'new idea' } }
-    expect((await fetch(json('POST', '/api/conversations/1/threads', plus))).status).toBe(201)
+    expect((await fetch(post('/api/conversations/1/threads', plus))).status).toBe(201)
     expect(record.writes).toEqual([])
     expect(record.submitted.map(({ operationId }) => operationId)).toEqual(['op-r:first', 'op-e:first'])
-    expect((await fetch(json('POST', '/api/conversations', { operationId: 'op-c' }))).status).toBe(201)
+    expect((await fetch(post('/api/conversations', { operationId: 'op-c' }))).status).toBe(201)
     const from = { operationId: 'op-b', from: { conversation: '2', entry: 4 } }
-    expect((await fetch(json('POST', '/api/conversations', from))).status).toBe(201)
+    expect((await fetch(post('/api/conversations', from))).status).toBe(201)
     expect(calls.filter((call) => call.startsWith('start:'))).toEqual([
       'start:2:op-r:4',
       'start:1:op-e:empty',
@@ -477,7 +426,7 @@ describe('the conversations API served by the agent', () => {
     const { fetch, calls, record } = fixture({ personas: [ada] })
     const message = { input: 'compare them', selections: [{ kind: 'persona', personaId: 5 }] }
     const body = { operationId: 'op-p', anchor: 'latest', message, personaOrder: 'sequence' }
-    const response = await fetch(json('POST', '/api/conversations/1/threads', body))
+    const response = await fetch(post('/api/conversations/1/threads', body))
     expect(response.status).toBe(201)
     expect(calls).toEqual(['start:1:op-p:latest', 'asked:5', 'personas:sequence'])
     expect(record.writes.map(({ conversation, kind }) => [conversation, kind])).toEqual([
@@ -489,7 +438,7 @@ describe('the conversations API served by the agent', () => {
 
   it('stops a chat, marks it read and renames it', async () => {
     const { fetch, calls, flows } = fixture()
-    const stop = await fetch(json('POST', '/api/conversations/2/stop', {}))
+    const stop = await fetch(post('/api/conversations/2/stop', {}))
     expect(stop.status).toBe(200)
     expect(await stop.json()).toEqual({ stopped: true })
     expect(calls).toEqual(['subagents:2', 'personas:drop', 'invocations:2', 'abort:2'])
@@ -522,7 +471,7 @@ describe('the conversations API served by the agent', () => {
     expect(await queue.json()).toEqual({ inputs: [{ id: 7, mode: 'followUp', content: 'later' }] })
     const subagent = await fetch(json('GET', '/api/conversations/4/queue'))
     expect(await subagent.json()).toEqual({ inputs: [] })
-    const move = await fetch(json('POST', '/api/conversations/1/move', { entry: 5, operationId: 'move-1' }))
+    const move = await fetch(post('/api/conversations/1/move', { entry: 5, operationId: 'move-1' }))
     expect(await move.json()).toEqual({
       operationId: 'move-1',
       chat: '1',

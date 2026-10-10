@@ -40,7 +40,7 @@ import { permutePrimary, profileEnabled } from './primary-profile.ts'
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { unwrap } from '../../src/http/rpc.ts'
 import { skillsCacheProbe, skillsLearnerRejectionProbe, skillsPersistedRead } from './skills-probe.ts'
-import { callOwner } from './owner-api.ts'
+import { callOwner } from '../owner-client.ts'
 import {
   exchange,
   historyOf,

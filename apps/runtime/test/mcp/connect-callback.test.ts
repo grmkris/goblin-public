@@ -4,7 +4,7 @@ import * as Layer from 'effect/Layer'
 import { describe, expect, it } from 'vitest'
 import { connectCallback } from '../../src/mcp/program.ts'
 import { McpServers, Resident } from '../../src/mcp/service.ts'
-import { partial, plans } from '../http/api/mcp-serve.ts'
+import { plans, stub } from '../http/api/fixture.ts'
 
 /** The callback over a plan, resident authority that counts renewals, and a host whose `finishConnect` is `finish`. */
 const callback = async (
@@ -16,13 +16,10 @@ const callback = async (
   const finished: string[] = []
   const services = Layer.mergeAll(
     plans(active),
-    Layer.succeed(Resident, partial<Resident['Service']>({ renew: () => Effect.sync(() => void renewals.push(1)) })),
-    Layer.succeed(
-      McpServers,
-      partial<McpServers['Service']>({
-        finishConnect: (state: string) => Effect.tap(finish(state), () => Effect.sync(() => void finished.push(state))),
-      }),
-    ),
+    stub(Resident, { renew: () => Effect.sync(() => void renewals.push(1)) }),
+    stub(McpServers, {
+      finishConnect: (state: string) => Effect.tap(finish(state), () => Effect.sync(() => void finished.push(state))),
+    }),
   )
   const target = await Effect.runPromise(
     connectCallback(new URLSearchParams(query), 'https://goblin.test').pipe(Effect.provide(services)),

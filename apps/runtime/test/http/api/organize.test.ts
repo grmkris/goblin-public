@@ -2,8 +2,9 @@ import { OrganizeReceipt } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
-import { callOwner } from '../../integration/owner-api.ts'
-import { json, organizing } from './organizing.ts'
+import { callOwner } from '../../owner-client.ts'
+import { json, post } from './fixture.ts'
+import { organizing } from './organizing.ts'
 
 const scout = {
   name: 'Scout',
@@ -18,33 +19,33 @@ const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)
 describe('the organize group', () => {
   it('undoes a change once, with the body the web sends, and refuses it again as undone', async () => {
     const { fetch, personas, receipts } = organizing()
-    await fetch(json('POST', '/api/personas', { ...scout, operationId: 'op-1' }))
+    await fetch(post('/api/personas', { ...scout, operationId: 'op-1' }))
     await fetch(json('PATCH', '/api/personas/1', { role: 'Scouts ahead', expectedRevision: 1 }))
     const update = receipts.list()[0]
-    const undone = await fetch(json('POST', `/api/organize/${update?.id ?? ''}/undo`, {}))
+    const undone = await fetch(post(`/api/organize/${update?.id ?? ''}/undo`, {}))
     expect(undone.status).toBe(200)
     expect(decodeReceipt(await undone.json())).toMatchObject({ id: update?.id, undoable: false })
     expect(personas.get(1)).toMatchObject({ role: scout.role, revision: 3 })
-    const again = await fetch(json('POST', `/api/organize/${update?.id ?? ''}/undo`))
+    const again = await fetch(post(`/api/organize/${update?.id ?? ''}/undo`))
     expect(again.status).toBe(409)
     expect(await again.json()).toMatchObject({ error: { code: 'conflict', reason: 'undone' } })
   })
 
   it('refuses Undo as touched once the target changed since, and answers 404 for a receipt that is not there', async () => {
     const { fetch, topics, receipts } = organizing()
-    await fetch(json('POST', '/api/topics', { name: 'Garden', operationId: 'topic-1' }))
+    await fetch(post('/api/topics', { name: 'Garden', operationId: 'topic-1' }))
     await fetch(json('PATCH', '/api/topics/2', { name: 'Garden shed' }))
     const rename = receipts.list()[0]
     await fetch(json('PATCH', '/api/topics/2', { searchExcluded: true }))
-    const touched = await fetch(json('POST', `/api/organize/${rename?.id ?? ''}/undo`, {}))
+    const touched = await fetch(post(`/api/organize/${rename?.id ?? ''}/undo`, {}))
     expect(touched.status).toBe(409)
     expect(await touched.json()).toMatchObject({ error: { code: 'conflict', reason: 'touched' } })
     expect(topics.get(2)).toMatchObject({ name: 'Garden shed' })
-    const unknown = await fetch(json('POST', `/api/organize/org_${'0'.repeat(32)}/undo`, {}))
+    const unknown = await fetch(post(`/api/organize/org_${'0'.repeat(32)}/undo`, {}))
     expect(unknown.status).toBe(404)
     expect(await unknown.json()).toMatchObject({ error: { code: 'not_found', what: 'receipt' } })
     for (const id of ['org_1', 'other', `org_${'A'.repeat(32)}`])
-      expect((await fetch(json('POST', `/api/organize/${id}/undo`, {}))).status).toBe(404)
+      expect((await fetch(post(`/api/organize/${id}/undo`, {}))).status).toBe(404)
   })
 
   it("serves the probes' typed client: Undo of a Topic's creation archives it", async () => {
@@ -71,9 +72,9 @@ describe('the organize group', () => {
 
   it('records a refused Topic create and a replayed one as flows', async () => {
     const { fetch, flows } = organizing()
-    await fetch(json('POST', '/api/topics', { name: 'Garden', operationId: 'op-1' }))
-    await fetch(json('POST', '/api/topics', { name: 'Garden', operationId: 'op-1' }))
-    await fetch(json('POST', '/api/topics', { name: 'garden', operationId: 'op-2' }))
+    await fetch(post('/api/topics', { name: 'Garden', operationId: 'op-1' }))
+    await fetch(post('/api/topics', { name: 'Garden', operationId: 'op-1' }))
+    await fetch(post('/api/topics', { name: 'garden', operationId: 'op-2' }))
     expect(flows.map(({ flow, operationId, status, errorType }) => [flow, operationId, status, errorType])).toEqual([
       ['topic_create', 'op-1', 'ok', undefined],
       ['topic_create', 'op-1', 'replayed', undefined],

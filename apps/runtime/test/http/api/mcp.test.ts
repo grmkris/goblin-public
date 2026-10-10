@@ -1,15 +1,11 @@
-import { createMcpHandler, Server } from '@modelcontextprotocol/server'
+import { createMcpHandler } from '@modelcontextprotocol/server'
 import { type ApprovalView, Grant, ServerView, ToolView } from '@goblin/contracts'
-import { McpGroup, ownerApiOf } from '@goblin/contracts/api'
+import { McpGroup } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
-import * as HttpServer from 'effect/http/HttpServer'
-import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
-import { afterEach, describe, expect, it } from 'vitest'
-import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
+import { describe, expect, it } from 'vitest'
 import { NotFound } from '../../../src/http/errors.ts'
-import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { ResidentLive } from '../../../src/layers/core.ts'
 import { McpConnectionsLive, McpGrantsLive, McpServersLive } from '../../../src/layers/mcp.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
@@ -25,10 +21,10 @@ import { Invocations, Personas } from '../../../src/personas/service.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
 import { Skills } from '../../../src/skills/service.ts'
-import { chatDatabase } from '../../chats-sqlite.ts'
-import { callOwner } from '../../integration/owner-api.ts'
 import { MemoryAddedServers, MemoryCredentials, MemoryGrants } from '../../mcp/memory.ts'
-import { json, partial, plans, serve, sqliteDb } from './mcp-serve.ts'
+import { callOwner } from '../../owner-client.ts'
+import { cleanup, database, get, json, plans, post, serve, served, sqliteDb, stub } from './fixture.ts'
+import { lowLevelServer } from '../../mcp/low-level-server.ts'
 
 const BOARD = 'ui://notes/board.html'
 
@@ -37,8 +33,7 @@ const BOARD = 'ui://notes/board.html'
  * A call answers content, structured content and fields this contract does not name, which must reach the owner whole.
  */
 const notes = createMcpHandler(() => {
-  // oxlint-disable-next-line typescript/no-deprecated -- the low-level SDK Server keeps this fixture's tool list exact.
-  const server = new Server({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
+  const server = lowLevelServer({ name: 'notes', version: '1.0.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler('tools/list', () => ({
     tools: [
       { name: 'open', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { resourceUri: BOARD } } },
@@ -58,21 +53,6 @@ const notes = createMcpHandler(() => {
   return server
 })
 
-/** Only the mcp group, behind the real gate, router and failure rendering (`owner-http.test.ts`). */
-const API = ownerApiOf(McpGroup)
-const MCP = HttpApiBuilder.layer(API).pipe(
-  Layer.provide(McpHandlers),
-  Layer.provide(OwnerAdmissionLive),
-  Layer.provide(HttpServer.layerServices),
-)
-
-const hosts: McpHost[] = []
-const closes: (() => void)[] = []
-afterEach(async () => {
-  for (const host of hosts.splice(0)) await host.manager.closeAll()
-  for (const close of closes.splice(0)) close()
-})
-
 const VIEW: ApprovalView = {
   id: 'mcp:7:call-1',
   serverId: 'notes',
@@ -88,8 +68,7 @@ const VIEW: ApprovalView = {
  * call, skills and the services an owner message reaches are not exercised here (`approvals-case` covers them natively).
  */
 const fixture = async () => {
-  const { db, close } = chatDatabase()
-  closes.push(close)
+  const db = database()
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
   const grants = new MemoryGrants()
@@ -106,21 +85,19 @@ const fixture = async () => {
     appUrl: 'https://goblin.test',
     fetch: fetcher,
   })
-  hosts.push(host)
+  cleanup(() => host.manager.closeAll())
   const disabled: (string | undefined)[] = []
-  const events = partial<Events['Service']>({
+  const events = stub(Events, {
     health: () => Effect.succeed([]),
     disableServer: (serverId?: string) => Effect.sync(() => void disabled.push(serverId)),
   })
-  const approvals = partial<Approvals['Service']>({
+  const approvals = stub(Approvals, {
     view: (id: string) => (id === VIEW.id ? Effect.succeed(VIEW) : Effect.fail(new NotFound({ what: 'MCP approval' }))),
   })
-  // SAFETY: the requests here reach none of these: settling a held call, skills and an owner message are not tested.
-  const unread = undefined as never
   // SAFETY: the mcp handlers and services read only `env.STAGE` (suggested servers) and `mcpFetch` (the catalog) here.
   const input = { env: { STAGE: 'test' }, mcpFetch: fetcher } as AgentInputs
   const { fetch } = serve(
-    OwnerHttp.serve(API, MCP).pipe(
+    served([McpGroup], McpHandlers).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mergeAll(McpServersLive, McpGrantsLive, McpConnectionsLive).pipe(
@@ -128,27 +105,15 @@ const fixture = async () => {
               Layer.mergeAll(Layer.succeed(McpHostInstance, host), Layer.succeed(AgentInput, input), sqliteDb(db)),
             ),
           ),
-          Layer.succeed(Events, events),
-          Layer.succeed(Approvals, approvals),
+          events,
+          approvals,
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),
-          Layer.mergeAll(
-            Layer.succeed(ChatOperations, unread),
-            Layer.succeed(Skills, unread),
-            Layer.succeed(Chats, unread),
-            Layer.succeed(RoutineRuns, unread),
-          ),
-          // The owner's message after a decision (agent-program.ts sendOwnerMessage) reads these; no test sends one.
-          Layer.mergeAll(
-            Layer.succeed(Apps, unread),
-            Layer.succeed(Budget, unread),
-            Layer.succeed(Capabilities, unread),
-            Layer.succeed(Conversations, unread),
-            Layer.succeed(Files, unread),
-            Layer.succeed(Invocations, unread),
-            Layer.succeed(Personas, unread),
-            Layer.succeed(PiSessions, unread),
-          ),
+          // Settling a held call, skills and an owner message (agent-program.ts sendOwnerMessage) read these; no test
+          // here reaches them.
+          Layer.mergeAll(stub(ChatOperations), stub(Skills), stub(Chats), stub(RoutineRuns), stub(Apps), stub(Budget)),
+          Layer.mergeAll(stub(Capabilities), stub(Conversations), stub(Files), stub(Invocations), stub(Personas)),
+          stub(PiSessions),
         ),
       ),
     ),
@@ -156,7 +121,6 @@ const fixture = async () => {
   return { fetch, grants, disabled }
 }
 
-const get = (path: string, headers: Record<string, string> = {}) => new Request(`https://agent${path}`, { headers })
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
 const decodeGrants = Schema.decodeUnknownSync(Schema.Array(Grant))
 const decodeTools = Schema.decodeUnknownSync(Schema.Array(ToolView))
@@ -215,7 +179,7 @@ describe('the mcp group', () => {
   it('calls a granted tool by hand and answers the remote result whole; an App may call only what it is offered', async () => {
     const { fetch } = await fixture()
     await fetch(json('PUT', '/api/mcp/app-grants', { serverId: 'notes', uri: BOARD, allowed: true }))
-    const called = await fetch(json('POST', '/api/mcp/notes/tools/call', { name: 'open' }))
+    const called = await fetch(post('/api/mcp/notes/tools/call', { name: 'open' }))
     expect(called.status).toBe(200)
     // `_meta` is a field the contract does not name: it reaches the owner as the server (and the SDK) sent it.
     expect(await called.json()).toMatchObject({
@@ -223,9 +187,9 @@ describe('the mcp group', () => {
       structuredContent: { tool: 'open' },
       _meta: { 'notes/board': 'v1' },
     })
-    const app = await fetch(json('POST', '/api/mcp/notes/tools/call', { name: 'move' }, { 'x-mcp-caller': 'app' }))
+    const app = await fetch(post('/api/mcp/notes/tools/call', { name: 'move' }, { 'x-mcp-caller': 'app' }))
     expect(await app.json()).toMatchObject({ structuredContent: { tool: 'move' } })
-    const ungranted = await fetch(json('POST', '/api/mcp/notes/tools/call', { name: 'delete', arguments: {} }))
+    const ungranted = await fetch(post('/api/mcp/notes/tools/call', { name: 'delete', arguments: {} }))
     expect(ungranted.status).toBe(403)
     expect(await ungranted.json()).toMatchObject({ error: { code: 'grant_denied', serverId: 'notes', name: 'delete' } })
   })
@@ -236,7 +200,7 @@ describe('the mcp group', () => {
     expect(held.status).toBe(200)
     expect(await held.json()).toEqual(VIEW)
     expect((await fetch(get('/api/mcp/approvals/mcp:7:other'))).status).toBe(404)
-    const disconnected = await fetch(json('POST', '/api/mcp/notes/disconnect', {}))
+    const disconnected = await fetch(post('/api/mcp/notes/disconnect', {}))
     expect(disconnected.status).toBe(200)
     expect(await disconnected.json()).toBeNull()
     expect(disabled).toEqual(['notes'])
