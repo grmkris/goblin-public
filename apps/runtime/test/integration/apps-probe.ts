@@ -6,7 +6,7 @@ import { AppFiles } from '../../src/agent-apps/files.ts'
 import { problemText } from '../../src/agent-apps/queue.ts'
 import { runScript } from '../../src/agent-apps/script.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { memorySchedules, probeLocal } from './apps-jobs-probe.ts'
+import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
 import type { SeenRequest } from './model.ts'
 
 const LIB = 'export const bump = (count: number, by: number): number => count + by\n'
@@ -76,11 +76,13 @@ const refusal = (result: { readonly ok: true } | { readonly ok: false; readonly 
  * engine. Plus a one-off script over the owner's files with no network.
  */
 export async function appsEngineProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
-  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
+  const changes: string[] = []
+  const apps = agentApps(storage, env, () => owner, {
+    schedules: memorySchedules(),
+    ...probePorts({}, (app) => changes.push(app)),
+  })
   apps.attach(createRegistry())
   apps.restore()
-  const changes: string[] = []
-  apps.onChange((app) => changes.push(app))
   const caller = { session: '1', callId: 'build-1' }
   const v1 = await apps.build({ name: 'counter', files: { 'app.ts': COUNTER_V1, 'lib.ts': LIB } }, caller)
   const call = (member: string, input: unknown, op: string) =>
@@ -114,7 +116,7 @@ export async function appsEngineProbe(storage: DurableObjectStorage, env: Runtim
   )
   const rolledBack = v1.status === 'active' ? await outcome(() => apps.rollback('counter', v1.release)) : undefined
   const afterRollback = apps.store.state('counter')
-  const fresh = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
+  const fresh = agentApps(storage, env, () => owner, { schedules: memorySchedules(), ...probePorts() })
   fresh.attach(createRegistry())
   fresh.restore()
   const script = await runScript(
@@ -271,29 +273,26 @@ const approvalOf = (built: Awaited<ReturnType<ReturnType<typeof agentApps>['buil
  * agent's services within the app's caps.
  */
 export async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string) {
+  const seen: unknown[] = []
   const apps = agentApps(storage, env, () => owner, {
     schedules: memorySchedules(),
-    local: probeLocal,
+    ...probePorts({
+      tool: async ({ serverId, name, args }) => {
+        seen.push(['tool', serverId, name, args])
+        return { content: [{ type: 'text', text: 'one note' }] }
+      },
+      complete: async (_system, prompt, maxTokens) => {
+        seen.push(['complete', prompt, maxTokens])
+        return 'hi'
+      },
+      notify: async (op, text) => {
+        seen.push(['notify', op, text])
+      },
+    }),
     fetch: internet,
   })
   apps.attach(createRegistry())
   apps.restore()
-  const seen: unknown[] = []
-  apps.connect({
-    authorizeCall: async () => undefined,
-    tool: async ({ serverId, name, args }) => {
-      seen.push(['tool', serverId, name, args])
-      return { content: [{ type: 'text', text: 'one note' }] }
-    },
-    complete: async (system, prompt, maxTokens) => {
-      seen.push(['complete', prompt, maxTokens])
-      return 'hi'
-    },
-    notify: async (op, text) => {
-      seen.push(['notify', op, text])
-    },
-    blocked: async () => undefined,
-  })
   const caller = { session: '1', callId: 'powers-1' }
   const built = await apps.build({ name: 'weather', files: { 'app.ts': WEATHER } }, caller)
   const call = (app: string, member: string, input: unknown, op: string) =>

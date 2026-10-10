@@ -10,6 +10,7 @@ import { ChannelWakes } from './channel/wake.ts'
 import { type RpcResult, encodeExit } from './http/rpc.ts'
 import { filesExtension } from './pi/files.ts'
 import { type AgentApps, agentApps } from './agent-apps/engine.ts'
+import { appPorts } from './agent-apps/ports.ts'
 import { JOB_CALLBACK, type JobSchedules, type JobSlot } from './agent-apps/jobs.ts'
 import { reconcileAppJobs, runAppJob } from './agent-apps/wake.ts'
 import { mcpEventsWake } from './mcp/wake.ts'
@@ -87,7 +88,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
     const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
-    const apps = agentApps(ctx.storage, env, () => this.name, { schedules: this.#jobSchedules(), local: routineRun })
+    const apps = agentApps(ctx.storage, env, () => this.name, {
+      schedules: this.#jobSchedules(),
+      ...appPorts(this.#bridge),
+    })
     this.#apps = apps
     this.#telemetry = agentTelemetry(ctx.storage, () => this.name, routineRun)
     const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps)]

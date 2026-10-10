@@ -25,7 +25,7 @@ import { eraseApp } from './erase.ts'
 import { AppJobs, type JobSchedules, type JobView } from './jobs.ts'
 import type { AppServices } from './ports.ts'
 import { AppPowers } from './powers.ts'
-import { AppCodeError, type AppLock, type AppRunner, appLock, problemText } from './queue.ts'
+import { AppCodeError, type AppLock, problemText } from './queue.ts'
 import { schedulesText, signatures } from './signatures.ts'
 import { AgentAppStore, type UsageKind, isApproved } from './store.ts'
 import { readFiles } from './stored.ts'
@@ -47,8 +47,12 @@ export type AgentAppsDeps = {
   readonly appUrl: string
   /** The agent object's native schedules, which run the apps' jobs. */
   readonly schedules: JobSchedules
-  /** The agent's runtime, where the apps' locks are: the bridge's `local`. */
-  readonly local: AppRunner
+  /** What the apps' powers reach through the agent. */
+  readonly services: AppServices
+  /** Holds an app's lock around the steps that change its state (the runtime's KeyedLock). */
+  readonly lock: AppLock
+  /** An app's state, release, tools or home changed. */
+  readonly changed: (app: string) => void
 }
 
 /** What `app_inspect` can include besides the summary. */
@@ -142,13 +146,11 @@ export class AgentApps {
   readonly #toolset: AppToolset
   readonly #builder: AppBuilder
   readonly #files = new Map<string, AppFiles>()
-  readonly #listeners = new Set<(app: string) => void>()
   readonly #reported = new Map<string, number>()
-  #services: AppServices | undefined
 
   constructor(deps: AgentAppsDeps) {
     this.#deps = deps
-    this.#lock = appLock(deps.local)
+    this.#lock = deps.lock
     this.store = new AgentAppStore(drizzle(deps.storage))
     const isolates = new Isolates(deps.loader)
     this.isolates = isolates
@@ -159,26 +161,23 @@ export class AgentApps {
       lock: this.#lock,
       powers: (request) => this.#powers(request),
       authorize: async ({ session, app }) => {
-        if (session === undefined) return
-        if (this.#services === undefined) throw new InvalidInput({ reason: 'agent is starting' })
-        await this.#services.authorizeCall(session, app)
+        if (session !== undefined) await deps.services.authorizeCall(session, app)
       },
       now: deps.now,
-      changed: (app) => this.#changed(app),
+      changed: deps.changed,
     })
-    this.#toolset = new AppToolset(this.store, this.dispatch, async (session, app) => {
-      if (this.#services === undefined) throw new InvalidInput({ reason: 'agent is starting' })
-      await this.#services.authorizeCall(session, app)
-    })
+    this.#toolset = new AppToolset(this.store, this.dispatch, (session, app) =>
+      deps.services.authorizeCall(session, app),
+    )
     this.jobs = new AppJobs({
       db: drizzle(deps.storage),
       store: this.store,
       manifest: (release) => this.dispatch.manifest(release),
       run: (app, member, input, op) => this.dispatch.call({ app, member, input, op }),
-      blocked: () => this.#services?.blocked() ?? Promise.resolve('the agent is still starting'),
+      blocked: () => deps.services.blocked(),
       schedules: deps.schedules,
       now: deps.now,
-      changed: (app) => this.#changed(app),
+      changed: deps.changed,
     })
     this.#builder = new AppBuilder({
       store: this.store,
@@ -187,15 +186,10 @@ export class AgentApps {
       toolchain: deps.toolchain,
       now: deps.now,
       activated: async (app) => {
-        this.#changed(app)
+        deps.changed(app)
         await this.#reconcile(app)
       },
     })
-  }
-
-  /** Gives the apps' powers what they reach through the agent: called once its services are made. */
-  connect(services: AppServices): void {
-    this.#services = services
   }
 
   /** Gives the toolset Pi's registry: called once, when the harness is made. */
@@ -245,7 +239,7 @@ export class AgentApps {
       `owner ${allowed ? 'approved' : 'revoked'} ${power.kind} ${power.target}`,
       this.#deps.now(),
     )
-    this.#changed(app)
+    this.#deps.changed(app)
     return this.powers(app)
   }
 
@@ -284,12 +278,6 @@ export class AgentApps {
 
   extensions(): readonly Extension[] {
     return this.#toolset.extensions()
-  }
-
-  /** Calls `listener` with an app's name whenever its state, release or tools change. */
-  onChange(listener: (app: string) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
   }
 
   build(request: BuildRequest, caller: BuildCaller): Promise<BuildResult> {
@@ -393,7 +381,7 @@ export class AgentApps {
     if (!fits && snapshot === undefined)
       throw new InvalidInput({ reason: 'the current state does not fit that version, and no snapshot from it does' })
     this.store.rollback({ app, release, state: snapshot?.state, now: this.#deps.now() })
-    this.#changed(app)
+    this.#deps.changed(app)
     await this.#reconcile(app)
     return { release, version: row.seq, restored: snapshot === undefined ? 'kept' : 'snapshot' }
   }
@@ -411,10 +399,7 @@ export class AgentApps {
       if (!this.store.spend(app, kind, amount, cap, now()))
         throw new AppCodeError(`${app} reached today's limit of ${String(cap)} ${kind === 'egress' ? 'fetches' : kind}`)
     }
-    const services = () => {
-      if (this.#services === undefined) throw new AppCodeError('the agent is still starting; try again')
-      return this.#services
-    }
+    const { services } = this.#deps
     let calls = 0
     return new AppPowers({
       files: this.files(app),
@@ -429,13 +414,13 @@ export class AgentApps {
       tool: async (tool, args) => {
         allowed('tool', tool)
         const [serverId = '', name = ''] = tool.split('/', 2)
-        return services().tool({ serverId, name, args, session })
+        return services.tool({ serverId, name, args, session })
       },
       llm: async (prompt, options) => {
         allowed('llm', '*')
         within('tokens', 0, DAILY.tokens - 1)
         const maxTokens = Math.min(Math.max(Math.trunc(options.maxTokens ?? 512), 1), MAX_ANSWER_TOKENS)
-        const answer = await services().complete(options.system ?? '', prompt.slice(0, 20_000), maxTokens)
+        const answer = await services.complete(options.system ?? '', prompt.slice(0, 20_000), maxTokens)
         this.store.spend(app, 'tokens', Math.ceil((prompt.length + answer.length) / 4), Number.MAX_SAFE_INTEGER, now())
         return answer
       },
@@ -443,7 +428,7 @@ export class AgentApps {
         allowed('notify', '*')
         within('notify', 1, DAILY.notify)
         calls += 1
-        await services().notify(`app-${app}-${op}-${String(calls)}`.slice(0, 200), text.slice(0, MAX_NOTIFY))
+        await services.notify(`app-${app}-${op}-${String(calls)}`.slice(0, 200), text.slice(0, MAX_NOTIFY))
       },
       app: async (target, member, input) => {
         allowed('app', target)
@@ -474,7 +459,7 @@ export class AgentApps {
   moveHome(app: string, session: string): void {
     this.dispatch.active(app)
     this.store.setHome(app, session, this.#deps.now())
-    this.#changed(app)
+    this.#deps.changed(app)
   }
 
   /** Moves the home of every app that lived in one of `closed` (conversations the owner closed) to `to`. */
@@ -515,19 +500,13 @@ export class AgentApps {
     this.#files.set(app, files)
     return files
   }
-
-  #changed(app: string): void {
-    for (const listener of this.#listeners) listener(app)
-  }
 }
 
 /**
- * What the agent object lends its apps: its native schedules and its runtime (for the apps' locks); tests also replace
- * the internet and the clock.
+ * What the agent object lends its apps: its native schedules, and from its bridge the powers' services, the apps'
+ * lock and where a change is told (`appPorts`); tests also replace the internet and the clock.
  */
-export type AppPorts = {
-  readonly schedules: JobSchedules
-  readonly local: AppRunner
+export type AppPorts = Pick<AgentAppsDeps, 'schedules' | 'services' | 'lock' | 'changed'> & {
   readonly fetch?: Send
   readonly now?: () => number
 }
@@ -536,7 +515,9 @@ export type AppPorts = {
 export function agentApps(storage: DurableObjectStorage, env: RuntimeEnv, owner: () => string, ports: AppPorts) {
   return new AgentApps({
     schedules: ports.schedules,
-    local: ports.local,
+    services: ports.services,
+    lock: ports.lock,
+    changed: ports.changed,
     storage,
     loader: env.LOADER,
     bucket: env.FILES,

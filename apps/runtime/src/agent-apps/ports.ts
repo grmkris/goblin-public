@@ -8,8 +8,11 @@ import { Forbidden } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
 import { McpConnections, requireResident } from '../mcp/service.ts'
 import { bound } from '../runtime/boundary.ts'
-import type { RunProgram } from '../runtime/bridge.ts'
-import { AppCodeError, problemText, thrownOf } from './queue.ts'
+import type { Bridge, RunProgram } from '../runtime/bridge.ts'
+import { Changes } from '../runtime/changes.ts'
+import { appCompletion } from './completion.ts'
+import type { AppPorts } from './engine.ts'
+import { AppCodeError, appLock, problemText, thrownOf } from './queue.ts'
 
 /** What agent apps reach through their agent (ADR 0021): the owner's MCP tools, the cheap model and Telegram. */
 export type AppServices = {
@@ -105,6 +108,26 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
         () => undefined,
         // expected: a lapsed plan or authority is the answer; the job waits and its status says why
         (cause: unknown) => `waiting for the owner (${problemText(cause)})`,
+      ),
+  }
+}
+
+/**
+ * What the agent object lends its apps from its bridge, made once with the engine (agent.ts): the powers' services
+ * (each enters the runtime through `run`, which checks the plan), the apps' lock (the runtime's KeyedLock, taken
+ * through `local`), and `changed`, which tells the change bus `agent-apps.changed` without waiting for it.
+ */
+export function appPorts({
+  run,
+  local,
+}: Pick<Bridge, 'run' | 'local'>): Pick<AppPorts, 'services' | 'lock' | 'changed'> {
+  return {
+    services: appServices(run, appCompletion),
+    lock: appLock(local),
+    changed: (app) =>
+      void local(Changes.use((changes) => changes.publish('agent-apps.changed', { name: app }))).catch(
+        // expected: the bridge reported why the runtime is down; the App follows the next change once it is up
+        () => undefined,
       ),
   }
 }

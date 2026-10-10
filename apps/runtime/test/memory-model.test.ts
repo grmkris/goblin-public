@@ -1,7 +1,7 @@
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
-import { appAnswer } from '../src/agent-apps/live.ts'
+import { appAnswer } from '../src/agent-apps/completion.ts'
 import { AppCodeError, problemText } from '../src/agent-apps/queue.ts'
 import { UsageStore, utcDay } from '../src/budget.ts'
 import { CheapModelsLive } from '../src/layers/knowledge.ts'

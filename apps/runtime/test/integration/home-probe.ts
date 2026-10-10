@@ -22,7 +22,7 @@ import { HomeService } from '../../src/home/service.ts'
 import { readHome } from '../../src/home/store.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { memorySchedules, probeLocal } from './apps-jobs-probe.ts'
+import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
 
 const APP = `import { defineApp, s } from '@goblin/app'
 export type State = { count: number }
@@ -113,7 +113,10 @@ function mcpPlacementProbe(home: HomeService, apps: AppSources, db: ReturnType<t
 export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, owner: string, _harness: PiHarness) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
-  const engine = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal })
+  const engine = agentApps(storage, env, () => owner, {
+    schedules: memorySchedules(),
+    ...probePorts({}, (name) => agentAppChanged(db, apps, name, 1)),
+  })
   engine.attach(createRegistry())
   engine.restore()
   const apps: AppSources = {
@@ -124,7 +127,6 @@ export async function homeProbe(storage: DurableObjectStorage, env: RuntimeEnv, 
     },
     chats: new ChatDirectory(db),
   }
-  engine.onChange((name) => agentAppChanged(db, apps, name, 1))
   const home = new HomeService(db, engine)
   const edit = (
     operationId: string,

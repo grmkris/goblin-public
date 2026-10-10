@@ -22,13 +22,12 @@ import {
 } from '../apps/registry.ts'
 import { Apps } from '../apps/service.ts'
 import { ChatsInstance } from '../chats/directory.ts'
-import { epochSeconds, nowSeconds as clockSeconds } from '../clock.ts'
+import { epochSeconds } from '../clock.ts'
 import { FilesLive } from '../files/live.ts'
 import type { Files } from '../files/service.ts'
 import { attemptSync } from '../http/errors.ts'
 import type { KeyedLock } from '../observability/lock.ts'
 import { PiSessions } from '../pi/sessions.ts'
-import { syncWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -96,9 +95,8 @@ export const appsOver = (
 
 /**
  * Start step 11: the owner's Apps, over the agent's database. Closing a conversation (`conversations.changed`) closes
- * its MCP Apps, and an agent app's change (a build, a rollback) updates its App, each written at once and told to the
- * change bus inline: the apps engine tells of its change from synchronous code inside its own Promise work, so that
- * notice runs on its stack.
+ * its MCP Apps, and an agent app's change (`agent-apps.changed`: a build, a rollback, a new revision) updates its App,
+ * each written at once and told to the change bus.
  */
 export const AppRegistryLive: Layer.Layer<Apps, never, AgentInput | Db | ChatsInstance | Changes | PiSessions> =
   Layer.effect(
@@ -107,7 +105,6 @@ export const AppRegistryLive: Layer.Layer<Apps, never, AgentInput | Db | ChatsIn
       const { agentApps } = yield* AgentInput
       const db = yield* Db
       const changes = yield* Changes
-      const tell = syncWith(yield* Effect.context<Changes>())
       const sources: AppSources = {
         agents: {
           info: (name) => agentApps.info(name),
@@ -119,18 +116,17 @@ export const AppRegistryLive: Layer.Layer<Apps, never, AgentInput | Db | ChatsIn
       const told = (ids: readonly string[]) =>
         ids.length === 0 ? Effect.void : changes.publish('apps.changed', { ids })
       yield* changes.on('conversations.changed', ({ ids }) =>
-        Effect.suspend(() => told(closeWithConversations(db, sources, ids, clockSeconds()))),
+        Effect.flatMap(epochSeconds, (now) => told(closeWithConversations(db, sources, ids, now))),
       )
-      agentApps.onChange((name) => tell(told(agentAppChanged(db, sources, name, clockSeconds()))))
+      yield* changes.on('agent-apps.changed', ({ name }) =>
+        Effect.flatMap(epochSeconds, (now) => told(agentAppChanged(db, sources, name, now))),
+      )
       return appsOver(db, sources, changes, yield* PiSessions)
     }),
   )
 
-/**
- * The agent's apps and the owner's files after the start. `AppEngine` and `Files` are native over the one engine the
- * agent object made (the engine is connected to the agent's services while this layer is built).
- */
-export const AppsLive: Layer.Layer<AppEngine | Files, never, AgentInput | Changes | KeyedLock> = Layer.mergeAll(
+/** The agent's apps and the owner's files after the start, native over the one engine the agent object made. */
+export const AppsLive: Layer.Layer<AppEngine | Files, never, AgentInput | KeyedLock> = Layer.mergeAll(
   AgentAppsLive,
   FilesLive,
 )

@@ -5,6 +5,13 @@ import type { AppError } from '../http/errors.ts'
 import type { AgentAppInfo } from './engine.ts'
 import type { AppDetail, AppSummary } from './manage.ts'
 
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** An agent app's state, release, tools or home changed, by name (ADR 0021). */
+    'agent-apps.changed': { readonly name: string }
+  }
+}
+
 /**
  * The agent's apps (ADR 0021) as the owner and the rest of the agent reach them: the Apps page's list and changes, and
  * a view's launch, state, action calls and reported failures. The agent's own tools (build, inspect, roll back) and the

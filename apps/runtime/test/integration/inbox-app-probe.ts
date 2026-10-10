@@ -7,7 +7,7 @@ import { type AppSources, agentAppChanged, agentAppId, agentAppName, appList } f
 import { ChatDirectory } from '../../src/chats/directory.ts'
 import { HomeService } from '../../src/home/service.ts'
 import type { RuntimeEnv } from '../../src/env.ts'
-import { memorySchedules, probeLocal } from './apps-jobs-probe.ts'
+import { memorySchedules, probePorts } from './apps-jobs-probe.ts'
 import { InboxMcpFixture } from './inbox-mcp.ts'
 import { INBOX_APP, INBOX_VIEW } from './inbox-source.ts'
 
@@ -24,20 +24,22 @@ export async function inboxAppProbe(
     new StreamableHTTPClientTransport(new URL('https://inbox-fixture.test/mcp'), { fetch: fixture.fetch }),
   )
   let now = Date.now()
-  const apps = agentApps(storage, env, () => owner, { schedules: memorySchedules(), local: probeLocal, now: () => now })
+  const db = drizzle(storage)
+  const apps = agentApps(storage, env, () => owner, {
+    schedules: memorySchedules(),
+    ...probePorts(
+      {
+        tool: async ({ serverId, name, args }) => {
+          if (serverId !== 'myinbox') throw new Error('unexpected inbox server')
+          return client.callTool({ name, arguments: args })
+        },
+      },
+      (name) => agentAppChanged(db, sources, name, 1),
+    ),
+    now: () => now,
+  })
   apps.attach(createRegistry())
   apps.restore()
-  apps.connect({
-    authorizeCall: async () => undefined,
-    tool: async ({ serverId, name, args }) => {
-      if (serverId !== 'myinbox') throw new Error('unexpected inbox server')
-      return client.callTool({ name, arguments: args })
-    },
-    complete: async () => '',
-    notify: async () => undefined,
-    blocked: async () => undefined,
-  })
-  const db = drizzle(storage)
   const sources: AppSources = {
     agents: {
       info: (name) => apps.info(name),
@@ -46,7 +48,6 @@ export async function inboxAppProbe(
     },
     chats: new ChatDirectory(db),
   }
-  apps.onChange((name) => agentAppChanged(db, sources, name, 1))
   const built = await apps.build(
     { name: 'inbox-glance', files: { 'app.ts': INBOX_APP, 'view.tsx': INBOX_VIEW } },
     { session: '1', callId: 'inbox-build' },
