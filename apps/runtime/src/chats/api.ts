@@ -54,9 +54,8 @@ const submit = ({ params, payload }: ChatWrite<SendMessage>) =>
   sendOwnerMessage(params.id, { text: payload.input, operationId: payload.operationId, context: contextOf(payload) })
 
 /**
- * The unified thread operation from a chat (ADR 0034): Reply at an entry, "+" empty, or Start thread at the chat's
- * newest settled entry, the first message answered in the Thread, its Personas in the order it asks (the Worker's old
- * route dropped `personaOrder`, H1).
+ * The thread operation from a chat (ADR 0034): Reply at an entry, "+" empty, or Start thread at the chat's newest
+ * settled entry, the first message answered in the Thread, its Personas in the order it asks (`personaOrder`).
  */
 const threadStart = ({ params, payload }: ChatWrite<StartThread>) =>
   startThread({
@@ -114,8 +113,8 @@ const events = ({ params }: ChatRequest) =>
   })
 
 /**
- * The `conversations` group (ADRs 0030, 0032, 0034). The owner gate has already admitted the request; the instance's
- * pieces (Pi, the routine controller, Stop) come from `AgentInput`.
+ * The `conversations` group (ADRs 0030, 0032, 0034). Owner admission has already admitted the request; the
+ * conversation services do the work, and a chat's snapshot is read from Pi through `AgentInput`.
  */
 export const ConversationsHandlers = HttpApiBuilder.group(OwnerApi, 'conversations', (handlers) =>
   handlers

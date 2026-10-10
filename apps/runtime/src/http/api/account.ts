@@ -133,7 +133,7 @@ const signedIn = AccountRequest.use(({ records, userId }) =>
 const stamp = (error: AppError | BillingRefused, ref: string): Effect.Effect<AppError | BillingRefused> =>
   error instanceof BillingRefused ? Effect.succeed(new BillingRefused({ code: error.code, ref })) : withRef(ref)(error)
 
-/** `self`, its failure quoting the request's reference, as the owner gate quotes it. */
+/** `self`, its failure quoting the request's reference, as owner admission quotes it. */
 const quoted = <A, E extends AppError | BillingRefused, R>(self: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
   Effect.flatMap(Effect.serviceOption(RequestContext), (context) => {
     const ref = Option.getOrUndefined(context)?.ref

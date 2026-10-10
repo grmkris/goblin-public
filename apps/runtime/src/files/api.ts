@@ -40,7 +40,7 @@ const upload = (request: HttpServerRequest.HttpServerRequest, path: string) =>
   })
 
 /**
- * The `files` group (ADR 0022). The owner gate has already admitted the request. The bytes go through unbuffered both
+ * The `files` group (ADR 0022). Owner admission has already admitted the request. The bytes go through unbuffered both
  * ways: an upload streams into the store, a download streams out of it.
  */
 export const FilesHandlers = HttpApiBuilder.group(OwnerApi, 'files', (handlers) =>

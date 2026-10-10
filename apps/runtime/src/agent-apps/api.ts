@@ -3,8 +3,8 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { agentAppDetail, agentAppList, changeAgentApp, deleteAgentApp } from '../apps/program.ts'
 
 /**
- * The `agentApps` group (ADR 0021): each handler runs the program its Durable Object RPC method ran. The owner gate
- * has already admitted the request, and a program's `AppError` is answered in its envelope.
+ * The `agentApps` group (ADR 0021): each handler runs its program. Owner admission has already admitted the request,
+ * and a program's `AppError` is answered in its envelope.
  */
 export const AgentAppsHandlers = HttpApiBuilder.group(OwnerApi, 'agentApps', (handlers) =>
   handlers

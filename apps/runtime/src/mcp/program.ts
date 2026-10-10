@@ -34,10 +34,11 @@ export const disconnectOwnerServer = (serverId: string) =>
   })
 
 /**
- * Where an outbound sign-in comes back (`GET /api/mcp/oauth/callback`, a raw route: it answers a redirect, not JSON).
- * The owner lands on Connections with `connected=<serverId>`, or with `error=` and the authorization server's own
- * error, `authorization_failed` for an incomplete callback, or the tag of the failure that stopped it. Finishing is an
- * owner request, admitted as the RPC method was: the plan, then a renewal of resident authority.
+ * Where an outbound sign-in comes back (`GET /api/mcp/oauth/callback`, the `mcp` group's raw `oauthCallback`: it
+ * answers a redirect, not JSON). The owner lands on Connections with `connected=<serverId>`, or with `error=` and the
+ * authorization server's own error, `authorization_failed` for an incomplete callback, or the tag of the failure that
+ * stopped it. Finishing is an owner request: owner admission checks the plan and, as for every raw endpoint, does not
+ * renew resident authority.
  */
 export const connectCallback = (
   params: URLSearchParams,

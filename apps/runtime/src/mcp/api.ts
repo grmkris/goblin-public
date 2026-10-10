@@ -13,7 +13,7 @@ import { approvalView, decideOwnerApproval, ownerResource, setAskFirst } from '.
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
 import { McpConnections, McpGrants, McpServers } from './service.ts'
 
-/** The mcp group's endpoints as the owner API serves them: behind the owner gate, which may answer any failure. */
+/** The mcp group's endpoints as the owner API serves them: behind owner admission, which may answer any failure. */
 type Endpoints = (typeof OwnerApi.groups)['mcp']['endpoints']
 
 /** The handler of the endpoint `name`, typed by the contract: each is written once below, then the group lists them. */
@@ -92,9 +92,9 @@ const oauthCallback = ({ request }: { readonly request: HttpServerRequest.HttpSe
   })
 
 /**
- * The `mcp` group (ADRs 0003, 0005, 0006, 0008, 0028): each handler runs the program its Durable Object RPC method
- * ran, behind the owner gate. A decided held call goes on to its conversation as the owner's message, composed into
- * the decision rather than sent through the agent's own `submit`.
+ * The `mcp` group (ADRs 0003, 0005, 0006, 0008, 0028): each handler runs its program, behind owner admission. A
+ * decided held call goes on to its conversation as the owner's message, composed into the decision rather than sent
+ * through the agent's own `submit`.
  */
 export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
   handlers

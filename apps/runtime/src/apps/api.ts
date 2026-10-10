@@ -10,8 +10,8 @@ import {
 } from './program.ts'
 
 /**
- * The `apps` group (ADRs 0020, 0021): each handler runs the program its Durable Object RPC method ran. The owner gate
- * has already admitted the request, and a program's `AppError` is answered in its envelope.
+ * The `apps` group (ADRs 0020, 0021): each handler runs its program. Owner admission has already admitted the
+ * request, and a program's `AppError` is answered in its envelope.
  */
 export const AppsHandlers = HttpApiBuilder.group(OwnerApi, 'apps', (handlers) =>
   handlers

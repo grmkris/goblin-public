@@ -48,8 +48,8 @@ const FlowsLive = Layer.unwrap(
 )
 
 /**
- * The account's plan as the agent checks it, an active one kept a minute (`cachedPolicy`): for the bridge, the owner
- * gate, the MCP host and Events, and every program that reads `Entitlements` when it runs.
+ * The account's plan as the agent checks it, an active one kept a minute (`cachedPolicy`): for the bridge, owner
+ * admission and the internal gate, the MCP host and Events, and every program that reads `Entitlements` when it runs.
  */
 export const EntitlementsLive: Layer.Layer<Entitlements, never, AgentInput> = Layer.effect(
   Entitlements,

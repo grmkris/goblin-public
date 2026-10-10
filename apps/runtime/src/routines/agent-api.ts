@@ -10,8 +10,8 @@ import { AgentInput } from '../runtime/input.ts'
 import { epochSeconds } from '../clock.ts'
 
 /**
- * The `agent` group: today's usage, the model and the Telegram channel. Each handler runs the program its Durable
- * Object RPC method ran; the owner gate has already admitted the request.
+ * The `agent` group: today's usage, the model and the Telegram channel. Each handler runs its program; owner
+ * admission has already admitted the request.
  */
 export const AgentHandlers = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) =>
   handlers

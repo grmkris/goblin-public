@@ -7,8 +7,8 @@ import { runView } from './runs.ts'
 import { RoutineControl, RoutineRuns, Routines } from './service.ts'
 
 /**
- * The `routines` group (ADR 0012): each handler runs the program its Durable Object RPC method ran. The owner gate has
- * already admitted the request; a program's `AppError` is answered in its envelope.
+ * The `routines` group (ADR 0012): each handler runs its program. Owner admission has already admitted the request;
+ * a program's `AppError` is answered in its envelope.
  */
 export const RoutinesHandlers = HttpApiBuilder.group(OwnerApi, 'routines', (handlers) =>
   handlers

@@ -3,7 +3,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { Inspection } from './service.ts'
 
 /**
- * The `inspect` group (ADR 0024). The owner gate has already admitted the request. `details` reads the operation
+ * The `inspect` group (ADR 0024). Owner admission has already admitted the request. `details` reads the operation
  * behind one message of the chat: the one the query names, or the one whose answer or tool result the entry is.
  */
 export const InspectHandlers = HttpApiBuilder.group(OwnerApi, 'inspect', (handlers) =>
