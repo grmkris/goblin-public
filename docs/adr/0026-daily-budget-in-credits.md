@@ -37,3 +37,6 @@ Consequences:
   amended). An operator's change to `daily_credits` reaches a running Agent within a minute. A budget check that cannot
   read the plan or the ledger is not "budget exhausted": the tool is blocked with its own message (the budget could
   not be checked) and the failure is reported; an account without a plan is told to subscribe.
+- **2026-10-10, later: one plan for inbound calls and hooks.** An MCP client's ask and a hook reach the Agent on the
+  plan it keeps (ADR 0015, amended), so the internal gate's check and the budget's allowance read the same cached
+  plan; the Worker reads none before them.

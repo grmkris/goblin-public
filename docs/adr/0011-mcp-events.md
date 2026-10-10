@@ -31,3 +31,9 @@ Amended 2026-10-09: ingress answers 410 only for the owner's own refusal (`Subsc
 `Forbidden`); any other failure of its authority check is reported and answers 503, so a transient failure no longer
 ends a subscription. A subscription is invalid only when its server is `NotFound` or its grant or endpoint changed; any
 other lookup failure propagates. A failed maintenance sweep is reported before it is rescheduled.
+
+Amended 2026-10-10: the Worker's Events route bounds the body and checks the user-bound route token, then delivers the
+webhook to the agent's internal API (`POST /internal/mcp-events`, ADR 0038), whose gate checks the plan the agent keeps
+(ADR 0015, amended); the Worker reads no plan of its own. An account without a plan is refused there (402) before
+ingress reads anything; a failed plan lookup answers 503, like ingress's own transient failures. Ingress's authority
+check reads the same cached plan, then resident authority.
