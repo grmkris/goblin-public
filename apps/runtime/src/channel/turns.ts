@@ -8,7 +8,7 @@ import { authoredContent } from '../pi/content.ts'
 import { askedText, cutOff } from '../pi/transcript.ts'
 import { type AppError, toAppError } from '../http/errors.ts'
 import { type PiFailure, PiSessions } from '../pi/sessions.ts'
-import { McpConnections, Resident } from '../mcp/service.ts'
+import { McpConnections, requireResident } from '../mcp/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { type ChannelPorts, channelTool } from './channel.ts'
 import { Channel } from './service.ts'
@@ -89,7 +89,7 @@ export const onChannel = <A, E, R>(
   work: (channel: typeof Channel.Service, ports: ChannelPorts) => Effect.Effect<A, E, R>,
 ) =>
   Effect.gen(function* () {
-    yield* (yield* Resident).require()
+    yield* requireResident
     const channel = yield* Channel
     const status = yield* channel.status
     if (status === null) return Option.none<A>()

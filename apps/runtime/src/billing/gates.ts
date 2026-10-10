@@ -20,14 +20,20 @@ export interface EntitlementPolicy {
 export const accountEntitlements = (env: RuntimeEnv, userId: () => string): EntitlementPolicy => {
   const store = makeBillingStore(env.AUTH_DB)
   const state = () => planOf(store, userId(), env.STAGE ?? 'test', billingMode(env))
-  return { state, require: () => requirePlan(state()) }
+  return { state, require: () => activePlan(state()) }
 }
 export class Entitlements extends Context.Service<Entitlements, EntitlementPolicy>()('goblin/Entitlements') {
   static layer(env: RuntimeEnv, userId: () => string) {
     return Layer.succeed(Entitlements, accountEntitlements(env, userId))
   }
 }
-const requirePlan = (state: Effect.Effect<AccountPlan, Internal>) =>
+
+/** The plan the agent keeps, `SubscriptionRequired` unless it is active (with `feature`, when one is named). */
+export const requirePlan = (
+  feature?: 'agent' | 'routines' | 'subagents',
+): Effect.Effect<AccountPlan, Internal | SubscriptionRequired, Entitlements> =>
+  Entitlements.use((plans) => plans.require(feature))
+const activePlan = (state: Effect.Effect<AccountPlan, Internal>) =>
   state.pipe(
     Effect.flatMap((plan) =>
       plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),

@@ -1,7 +1,7 @@
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import type * as ManagedRuntime from 'effect/ManagedRuntime'
-import { Entitlements } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { type AppError, toAppError } from '../http/errors.ts'
 import { encodeExit, unwrap } from '../http/rpc.ts'
 import { reportAndRecover } from '../observability/report.ts'
@@ -18,7 +18,7 @@ export type RunProgram = <A>(program: Program<A>) => Promise<A>
 export type ExitProgram = <A>(program: Program<A>) => Promise<Exit.Exit<A, AppError>>
 
 export interface Bridge {
-  /** Checks the account's plan (`Entitlements.require()`), then runs the program. */
+  /** Checks the account's plan (`requirePlan()`), then runs the program. */
   readonly run: RunProgram
   /** Runs the program with no plan check: the ledger, budget records, routine gates and diagnose. */
   readonly local: RunProgram
@@ -45,9 +45,7 @@ export function makeBridge(
   const settle =
     (checkPlan: boolean): RunProgram =>
     async (program) => {
-      const result = await exit(
-        Effect.andThen(checkPlan ? Entitlements.use((plans) => plans.require()) : Effect.void, program),
-      )
+      const result = await exit(Effect.andThen(checkPlan ? requirePlan() : Effect.void, program))
       if (Exit.isSuccess(result)) return result.value
       return unwrap(encodeExit(result))
     }

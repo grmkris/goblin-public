@@ -1,10 +1,10 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { Entitlements } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { Channel } from '../channel/service.ts'
 import { Forbidden, toAppError } from '../http/errors.ts'
-import { McpConnections, Resident } from '../mcp/service.ts'
+import { McpConnections, requireResident } from '../mcp/service.ts'
 import { reportFailure } from '../observability/report.ts'
 import { definitionOf, type RoutineRun } from './runs.ts'
 import { RoutineRuns } from './service.ts'
@@ -15,8 +15,8 @@ const Receipt = Schema.Struct({
   delivery: Schema.optional(Schema.String.check(Schema.isMaxLength(40))),
 })
 const authority = Effect.gen(function* () {
-  yield* Entitlements.use((plans) => plans.require('routines'))
-  yield* Resident.use((resident) => resident.require())
+  yield* requirePlan('routines')
+  yield* requireResident
 })
 /** Checked again right before the call leaves: the plan, resident authority, and that the channel is still `serverId`. */
 const stillAuthorized = (serverId: string) =>

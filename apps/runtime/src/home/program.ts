@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import { Apps } from '../apps/service.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { toolAppResource } from '../mcp/connection.ts'
-import { McpConnections, Resident } from '../mcp/service.ts'
+import { McpConnections, requireResident } from '../mcp/service.ts'
 import { Home } from './service.ts'
 
 /** Read the cached call and current declaration before entering the layout transaction. */
@@ -29,7 +29,6 @@ const verifyMcpApps = (input: HomeEdit) =>
   )
 
 /** Fails with `ResidentInactive` unless the owner's resident authority is current. */
-const requireResident = Resident.use((resident) => resident.require())
 
 export const readHomeLayout = Effect.andThen(
   requireResident,

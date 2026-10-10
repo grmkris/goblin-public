@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import { Capabilities } from './capabilities/service.ts'
 import { Conversations } from './chats/service.ts'
 import { type AppError, InvalidInput, NotFound } from './http/errors.ts'
-import { McpServers, Resident } from './mcp/service.ts'
+import { McpServers, Resident, requireResident } from './mcp/service.ts'
 import { Personas } from './personas/service.ts'
 import type { RunProgram } from './runtime/bridge.ts'
 import { Skills } from './skills/service.ts'
@@ -12,7 +12,7 @@ import { Skills } from './skills/service.ts'
 const authorize = (run: RunProgram, session: string) => (serverId: string) =>
   run(
     Effect.gen(function* () {
-      yield* (yield* Resident).require()
+      yield* requireResident
       const scope = yield* (yield* Capabilities).scope(session)
       if (!scope.skills(serverId)) return yield* new NotFound({ what: 'skill scope' })
     }),
@@ -29,7 +29,7 @@ export const composerOptions = (
   Effect.gen(function* () {
     const conversations = yield* Conversations
     const session = yield* conversations.require(chat)
-    yield* (yield* Resident).require()
+    yield* requireResident
     const scope = yield* (yield* Capabilities).scope(session)
     const catalog = yield* (yield* Skills).catalog({ timeout: 5000, authorize: authorize(run, session) }, (id) =>
       scope.skills(id),

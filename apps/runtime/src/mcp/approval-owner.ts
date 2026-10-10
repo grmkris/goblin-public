@@ -1,7 +1,7 @@
 import type { ApprovalView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { Entitlements } from '../billing/gates.ts'
+import { Entitlements, requirePlan } from '../billing/gates.ts'
 import { type OwnerSubmitServices, sendOwnerMessage } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
 import { type AppError, NotFound, attempt } from '../http/errors.ts'
@@ -57,7 +57,7 @@ export const decideOwnerApproval = (
   Effect.gen(function* () {
     const { run, routines } = yield* AgentInput
     const admit = Effect.andThen(
-      Entitlements.use((plans) => plans.require()),
+      requirePlan(),
       Resident.use((resident) => resident.renew()),
     )
     return yield* decideApproval({

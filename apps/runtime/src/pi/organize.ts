@@ -6,7 +6,7 @@ import * as Schema from 'effect/Schema'
 import type { StopRuntime } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
 import { NotFound, attempt } from '../http/errors.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { createPersona, updatePersona } from '../personas/program.ts'
 import { defaultAvatar } from '../personas/registry.ts'
 import { Personas } from '../personas/service.ts'
@@ -42,7 +42,6 @@ const operationOf = (api: { readonly conversationId: unknown; readonly callId: s
 export type OrganizeRuntime = () => StopRuntime
 
 /** Fails with `ResidentInactive` unless the owner's resident authority is current. */
-const requireResident = Resident.use((resident) => resident.require())
 
 /** The chat the calling run belongs to, which a receipt records. */
 const chatOf = (api: { readonly conversationId: unknown }) =>

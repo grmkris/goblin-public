@@ -4,10 +4,10 @@ import type { FlowStatus, FlowVia } from '@goblin/contracts/telemetry'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { nextInt } from 'effect/Random'
-import { Entitlements } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { Conversations } from '../chats/service.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { Models } from '../models.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { reportFailure, safeErrorType } from '../observability/report.ts'
@@ -72,8 +72,8 @@ const reportFlow = (record: RoutineRun, topic: number | undefined, status: FlowS
  * other failure (auth D1, storage) fails the admission and is reported, so an outage never skips a firing (R3).
  */
 export const admissionSkip = Effect.gen(function* () {
-  yield* Entitlements.use((plans) => plans.require('routines'))
-  yield* Resident.use((resident) => resident.require())
+  yield* requirePlan('routines')
+  yield* requireResident
   yield* requireBudget
 }).pipe(
   Effect.as(undefined),

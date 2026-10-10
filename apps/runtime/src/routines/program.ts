@@ -3,7 +3,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { nextInt } from 'effect/Random'
-import { Entitlements } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { Chats } from '../chats/service.ts'
 import { Routines } from './service.ts'
 
@@ -17,7 +17,7 @@ export const proposeRoutine = Effect.fn('routines.propose')(function* (
   operationId: string,
   topic?: number,
 ) {
-  yield* Entitlements.use((plans) => plans.require('routines'))
+  yield* requirePlan('routines')
   const store = yield* Routines
   const at = yield* Clock.currentTimeMillis
   const suffix = yield* nextInt
@@ -46,7 +46,7 @@ export const changeRoutine = Effect.fn('routines.changeRevision')(function* (
   input: RoutineRevision,
   action: 'confirm' | 'pause' | 'archive',
 ) {
-  yield* Entitlements.use((plans) => plans.require('routines'))
+  yield* requirePlan('routines')
   const store = yield* Routines
   const at = yield* Clock.currentTimeMillis
   return (yield* store[action](id, input.revision, input.operationId, at)).routine

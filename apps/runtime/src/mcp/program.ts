@@ -1,7 +1,7 @@
 import * as Cause from 'effect/Cause'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { Entitlements } from '../billing/gates.ts'
+import { Entitlements, requirePlan } from '../billing/gates.ts'
 import { Events, McpServers, Resident } from './service.ts'
 import type { Stage } from './suggested.ts'
 
@@ -53,7 +53,7 @@ export const connectCallback = (
     }
     const issuer = params.get('iss') ?? undefined
     const finish = Effect.gen(function* () {
-      yield* Entitlements.use((plans) => plans.require())
+      yield* requirePlan()
       yield* Resident.use((resident) => resident.renew())
       return yield* McpServers.use((servers) => servers.finishConnect(state, code, issuer))
     })

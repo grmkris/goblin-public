@@ -1,16 +1,16 @@
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
-import { Entitlements } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { BudgetExhausted, Forbidden } from '../http/errors.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { definitionOf } from './runs.ts'
 import { RoutineRuns, RoutineUsage } from './service.ts'
 
 /** The dedicated routine provider resolves this before every model dispatch, including recovery and compaction. */
 export const requireRoutine = Effect.fn('routines.requireRoutine')(function* (runId: string) {
-  yield* Entitlements.use((plans) => plans.require('routines'))
-  yield* Resident.use((resident) => resident.require())
+  yield* requirePlan('routines')
+  yield* requireResident
   const store = yield* RoutineRuns
   const at = yield* Clock.currentTimeMillis
   const run = yield* store.get(runId)

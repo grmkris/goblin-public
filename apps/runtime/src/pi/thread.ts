@@ -1,21 +1,14 @@
 import { GenerationTask, defineExtension, hook, section } from '@earendil-works/pi-durable'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { Entitlements } from '../billing/gates.ts'
-import { Budget } from '../budget.ts'
+import { requirePlan } from '../billing/gates.ts'
+import { requireBudget } from '../budget.ts'
 import { Chats, Conversations } from '../chats/service.ts'
 import { NotFound } from '../http/errors.ts'
 import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
-
-/** Fails with `BudgetExhausted` once today's model budget is spent. */
-const requireBudget = Effect.gen(function* () {
-  const now = Math.floor((yield* Clock.currentTimeMillis) / 1000)
-  yield* (yield* Budget).require(now)
-})
 
 const THREAD = [
   'This is a side thread, apart from the conversation it branched from (your main conversation with the owner, unless',
@@ -42,7 +35,7 @@ export function threadExtension(run: RunProgram) {
         // The write carries the call's id as its request id, so a rerun finds the same note.
         replay: 'safe',
         execute: async ({ note }, api) => {
-          await run(Entitlements.use((plans) => plans.require()))
+          await run(requirePlan())
           const parent = await run(
             Effect.gen(function* () {
               const chat = yield* (yield* Chats).chatOf(String(api.conversationId))

@@ -17,10 +17,10 @@ import { type HelperExclusion, type PersonaAnswerData, type PersonaAvatar } from
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { Budget } from '../budget.ts'
+import { requireBudget } from '../budget.ts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Conversations } from '../chats/service.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { recordFlow } from '../organize/flows.ts'
 import { Invocations } from '../personas/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
@@ -202,8 +202,8 @@ const registerFork = (input: Input, fork: ConversationId) =>
 
 /** What the fork may do before the model is asked: the owner's authority is current and the day's budget is not spent. */
 const mayAnswer = Effect.gen(function* () {
-  yield* (yield* Resident).require()
-  yield* (yield* Budget).require(yield* epochSeconds)
+  yield* requireResident
+  yield* requireBudget
 })
 
 type Phase<P extends State['phase']> = PhaseHandler<Input, Extract<State, { phase: P }>, State, null, object>

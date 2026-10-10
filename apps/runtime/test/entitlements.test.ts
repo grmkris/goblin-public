@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import * as TestClock from 'effect/testing/TestClock'
-import { type EntitlementPolicy, cachedPolicy } from '../src/billing/gates.ts'
+import { type EntitlementPolicy, Entitlements, cachedPolicy, requirePlan } from '../src/billing/gates.ts'
 import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Internal, SubscriptionRequired } from '../src/http/errors.ts'
 
@@ -74,6 +74,28 @@ describe('the plan as the agent checks it', () => {
       expect(yield* plans.require()).toEqual(PLAN)
       yield* plans.require()
       expect(reads()).toBe(2)
+    }),
+  )
+})
+
+describe('requirePlan', () => {
+  it.effect("asks the agent's plan for the named feature, and refuses one that is not active", () =>
+    Effect.gen(function* () {
+      const asked: (string | undefined)[] = []
+      const policy = (plan: AccountPlan): EntitlementPolicy => ({
+        state: () => Effect.succeed(plan),
+        require: (feature) => {
+          asked.push(feature)
+          return plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' }))
+        },
+      })
+      expect(yield* requirePlan('routines').pipe(Effect.provideService(Entitlements, policy(PLAN)))).toBe(PLAN)
+      const lapsed = yield* requirePlan().pipe(
+        Effect.provideService(Entitlements, policy({ ...PLAN, active: false })),
+        Effect.flip,
+      )
+      expect(lapsed).toBeInstanceOf(SubscriptionRequired)
+      expect(asked).toEqual(['routines', undefined])
     }),
   )
 })

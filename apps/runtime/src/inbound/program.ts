@@ -2,12 +2,12 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import type { Applied } from '../agent-model.ts'
-import { Entitlements } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
 import { settledWithin } from '../chats/instance.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
 import { type AppError, attempt } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { authoredContent } from '../pi/content.ts'
 import { BACKGROUND, conversationId } from '../pi/context.ts'
 import { recentMessages } from '../pi/transcript.ts'
@@ -15,10 +15,7 @@ import type { RunProgram } from '../runtime/bridge.ts'
 
 /** An inbound request checks entitlement without renewing resident authority. */
 export const clientRequest = <A>(program: Effect.Effect<A, AppError, AgentServices>) =>
-  Effect.andThen(
-    Entitlements.use((plans) => plans.require()),
-    program,
-  )
+  Effect.andThen(requirePlan(), program)
 
 /**
  * An inbound client's question in main, answered when it settles within `waitMs`. `_run` is no longer read: the
@@ -36,7 +33,7 @@ export const askClient = (
   _run?: RunProgram,
 ) =>
   Effect.gen(function* () {
-    yield* (yield* Resident).require()
+    yield* requireResident
     const chats = yield* Chats
     const { session } = yield* (yield* ChatOperations).send({
       chat: chats.primary,

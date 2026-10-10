@@ -19,7 +19,7 @@ import * as Schema from 'effect/Schema'
 import { HelperExclusions, type HelperExclusion } from '@goblin/contracts'
 import { Capabilities } from '../capabilities/service.ts'
 import { Chats, Conversations } from '../chats/service.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { AgentInput } from '../runtime/input.ts'
@@ -256,7 +256,7 @@ const configTool = (run: RunProgram, roster: (api: Api, context: CallContext) =>
  */
 function subagentTools(run: RunProgram, deliver: Deliver): readonly ToolRegistration[] {
   const roster = async (api: Api, context: CallContext): Promise<Agents> => {
-    await run(Resident.use((resident) => resident.require()))
+    await run(requireResident)
     return (await api.snapshot(Subagents, api.conversationId, context))?.agents ?? {}
   }
   /** Pi's tool filter hides these tools where subagents are switched off; a call that still arrives starts nothing. */

@@ -10,10 +10,9 @@ import {
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Apps } from './apps/service.ts'
-import type { Budget } from './budget.ts'
+import { type Budget, requireBudget } from './budget.ts'
 import type { Capabilities } from './capabilities/service.ts'
 import type { SessionId } from './chats/directory.ts'
-import { withinBudget } from './chats/instance.ts'
 import { epochSeconds } from './clock.ts'
 import { ChatOperations, Conversations } from './chats/service.ts'
 import { resolveSelections, type ResolvedSelections } from './composer.ts'
@@ -241,7 +240,7 @@ export const submitOwner = (input: OwnerSubmit): Effect.Effect<PiReceipt, AppErr
     } = input.context
     const personaIds = tagged.flatMap((selection) => (selection.kind === 'persona' ? [selection.personaId] : []))
     const picks = tagged.filter((selection) => selection.kind !== 'persona')
-    yield* withinBudget
+    yield* requireBudget
     const conversations = yield* Conversations
     const session = yield* conversations.requireOpen(input.thread)
     if (input.text.trim() === '' && !picks.some((selection) => selection.kind === 'skill'))

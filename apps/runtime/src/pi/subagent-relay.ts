@@ -22,7 +22,7 @@ import { type DelegateResultData, type HelperExclusion, HelperExclusions } from 
 import { Channel } from '../channel/service.ts'
 import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
 import { attempt } from '../http/errors.ts'
-import { Resident } from '../mcp/service.ts'
+import { requireResident } from '../mcp/service.ts'
 import { recordFlow } from '../organize/flows.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { authoredContent } from './content.ts'
@@ -382,7 +382,6 @@ export function relayTask(run: RunProgram): Relay {
 }
 
 /** Fails with `ResidentInactive` unless the owner's resident authority is current. */
-const requireResident = Resident.use((resident) => resident.require())
 
 /** Lists a subagent under its spawner; each relay repeats it, so it is idempotent. */
 const register = (session: string, parent: string, name: string, exclusions: readonly HelperExclusion[]) =>
