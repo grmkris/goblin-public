@@ -12,7 +12,7 @@ const ChannelPick = Schema.Struct({ serverId: NonEmptyString(64) })
 
 /**
  * The agent itself: today's usage, its model, and its Telegram channel. Paths are relative to the API's `/api` prefix;
- * every endpoint can also answer the owner gate's failures, and `error` names the ones the endpoint itself produces.
+ * every endpoint can also answer owner admission's failures, and `error` names the ones the endpoint itself produces.
  *
  * - `usage`: `GET /api/agent/usage`, today's spend and allowance in Credits (ADR 0026).
  * - `model`, `chooseModel`: `GET`/`PUT /api/agent/model`. A pick moves main at once; other threads follow on their

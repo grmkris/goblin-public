@@ -1,4 +1,4 @@
-import { AgentAppsGroup, NotFound, OwnerApi, OwnerGate, ownerApiOf } from '@goblin/contracts/api'
+import { AgentAppsGroup, NotFound, OwnerApi, OwnerAdmission, ownerApiOf } from '@goblin/contracts/api'
 import type { AgentAppChange, AgentAppDetail } from '@goblin/contracts'
 import { MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
@@ -65,7 +65,7 @@ const fakeAgentApps = () => {
         return Effect.succeed({ deleted: params.name })
       }),
   )
-  const gate = Layer.succeed(OwnerGate, (handler) => handler)
+  const gate = Layer.succeed(OwnerAdmission, (handler) => handler)
   const server = fakeHttpApi(ownerApiOf(AgentAppsGroup), group.pipe(Layer.provide(gate)))
   return {
     ...server,

@@ -7,7 +7,7 @@ import * as Schema from 'effect/Schema'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach, describe, expect, it } from 'vitest'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { ResidentLive } from '../../../src/layers/core.ts'
 import { ResidentHandlers } from '../../../src/mcp/resident-api.ts'
@@ -20,7 +20,7 @@ import { json, partial, plans, serve, sqliteDb } from './mcp-serve.ts'
 const API = ownerApiOf(ResidentGroup)
 const RESIDENT = HttpApiBuilder.layer(API).pipe(
   Layer.provide(ResidentHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

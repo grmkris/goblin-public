@@ -20,8 +20,8 @@ const RoutineParam = Schema.String.check(Schema.isPattern(/^rt_[\w-]{1,100}$/u))
 const params = { id: RoutineParam }
 
 /**
- * The owner's routines (ADR 0012). Paths are relative to the API's `/api` prefix; every endpoint can also answer the
- * owner gate's failures, and `error` names the ones the endpoint itself produces. Every change carries the revision it
+ * The owner's routines (ADR 0012). Paths are relative to the API's `/api` prefix; every endpoint can also answer
+ * owner admission's failures, and `error` names the ones the endpoint itself produces. Every change carries the revision it
  * was made against and an operation id: a stale revision is a conflict, and the same operation answers the same result.
  *
  * - `list`: `GET /api/routines`, every routine but the archived ones.

@@ -16,7 +16,7 @@ import { RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { HomeService } from '../../../src/home/service.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { delegationServices } from '../../../src/layers/delegation.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
@@ -48,7 +48,7 @@ const PLAN: AccountPlan = {
 const API = ownerApiOf(TopicsGroup, PersonasGroup, OrganizeGroup)
 const LAYER = HttpApiBuilder.layer(API).pipe(
   Layer.provide([TopicsHandlers, PersonasHandlers, OrganizeHandlers]),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

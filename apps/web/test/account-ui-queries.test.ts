@@ -1,5 +1,5 @@
 import type { ModelChoice, RoutineSettings, RoutineView } from '@goblin/contracts'
-import { AgentGroup, InvalidInput, OwnerApi, OwnerGate, RoutinesGroup, ownerApiOf } from '@goblin/contracts/api'
+import { AgentGroup, InvalidInput, OwnerApi, OwnerAdmission, RoutinesGroup, ownerApiOf } from '@goblin/contracts/api'
 import { MutationObserver, QueryObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -81,8 +81,8 @@ const fakeOwner = () => {
       .handle('runs', unused),
   )
   const gate = Layer.succeed(
-    OwnerGate,
-    OwnerGate.of((handler) => handler),
+    OwnerAdmission,
+    OwnerAdmission.of((handler) => handler),
   )
   const server = fakeHttpApi(
     ownerApiOf(AgentGroup, RoutinesGroup),

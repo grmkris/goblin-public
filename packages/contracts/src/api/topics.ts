@@ -10,7 +10,7 @@ const TopicParam = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 999_
 
 /**
  * The owner's Topics (ADR 0032), the reference group the others copy. Paths are relative to the API's `/api` prefix.
- * Every owner endpoint can also answer the owner gate's failures (`OwnerGate` in `owner.ts`); `error` names the ones
+ * Every owner endpoint can also answer owner admission's failures (`OwnerAdmission` in `owner.ts`); `error` names the ones
  * the endpoint itself produces.
  *
  * - `create`: `POST /api/topics`, 201 with the Topic as it is now. The same operation id finds the same Topic.

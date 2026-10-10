@@ -7,7 +7,7 @@ import * as Schema from 'effect/Schema'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach, describe, expect, it } from 'vitest'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { NotFound } from '../../../src/http/errors.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { ResidentLive } from '../../../src/layers/core.ts'
@@ -62,7 +62,7 @@ const notes = createMcpHandler(() => {
 const API = ownerApiOf(McpGroup)
 const MCP = HttpApiBuilder.layer(API).pipe(
   Layer.provide(McpHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

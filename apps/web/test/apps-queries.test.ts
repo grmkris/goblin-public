@@ -1,4 +1,4 @@
-import { AppsGroup, McpGroup, NotFound, OwnerApi, OwnerGate, ownerApiOf } from '@goblin/contracts/api'
+import { AppsGroup, McpGroup, NotFound, OwnerApi, OwnerAdmission, ownerApiOf } from '@goblin/contracts/api'
 import type { AppLaunch } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -83,7 +83,7 @@ const fakeApps = () => {
         return Effect.succeed({ contents: [{ uri: payload.uri, text: '<p>App</p>' }] })
       }),
   )
-  const gate = Layer.succeed(OwnerGate, (handler) => handler)
+  const gate = Layer.succeed(OwnerAdmission, (handler) => handler)
   const server = fakeHttpApi(ownerApiOf(AppsGroup, McpGroup), Layer.mergeAll(apps, mcp).pipe(Layer.provide(gate)))
   return {
     ...server,

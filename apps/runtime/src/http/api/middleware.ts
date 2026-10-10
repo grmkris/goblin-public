@@ -1,4 +1,4 @@
-import { AppError, OwnerGate, RenewsResident, withRef } from '@goblin/contracts/api'
+import { AppError, OwnerAdmission, RenewsResident, withRef } from '@goblin/contracts/api'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -11,13 +11,13 @@ import { RequestContext } from './context.ts'
 const isAppError = Schema.is(AppError)
 
 /**
- * The owner gate (`OwnerGate` in the contract) as `ownerRequest` ran it for each owner RPC method: the account's plan,
+ * Owner admission (`OwnerAdmission` in the contract) as `ownerRequest` ran it for each owner RPC method: the account's plan,
  * then a renewal of resident authority unless the endpoint says otherwise (`RenewsResident`: changing it must not renew
  * first), then the handler. Its logs carry the endpoint, the operation and the request's reference, and every typed
  * failure it answers quotes that reference.
  */
-export const OwnerGateLive = Layer.effect(
-  OwnerGate,
+export const OwnerAdmissionLive = Layer.effect(
+  OwnerAdmission,
   Effect.gen(function* () {
     const plans = yield* Entitlements
     const resident = yield* Resident
@@ -26,7 +26,7 @@ export const OwnerGateLive = Layer.effect(
         yield* plans.require()
         if (renews) yield* resident.renew()
       })
-    return OwnerGate.of((handler, { group, endpoint }) =>
+    return OwnerAdmission.of((handler, { group, endpoint }) =>
       Effect.flatMap(Effect.serviceOption(RequestContext), (context) => {
         const { ref, operation } = Option.getOrUndefined(context) ?? {}
         return Effect.andThen(admit(Context.get(endpoint.annotations, RenewsResident)), handler).pipe(

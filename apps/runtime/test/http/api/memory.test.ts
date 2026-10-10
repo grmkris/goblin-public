@@ -10,7 +10,7 @@ import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import { ChatDirectory } from '../../../src/chats/directory.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { MemoryHandlers } from '../../../src/memory/api.ts'
 import { ChatMemories } from '../../../src/memory/memory.ts'
@@ -41,7 +41,7 @@ const plans: EntitlementPolicy = {
 const MEMORY_API = ownerApiOf(MemoryGroup)
 const MEMORY = HttpApiBuilder.layer(MEMORY_API).pipe(
   Layer.provide(MemoryHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

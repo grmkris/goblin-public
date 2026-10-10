@@ -251,7 +251,7 @@ export const ApiErrors = {
   upstreamTimeout: envelope(504, [UpstreamMcp]),
 }
 
-/** Every envelope: the owner gate's error schema, so any owner endpoint can answer any `AppError`. */
+/** Every envelope: owner admission's error schema, so any owner endpoint can answer any `AppError`. */
 export const API_ERRORS = [
   ApiErrors.invalidInput,
   ApiErrors.unauthenticated,

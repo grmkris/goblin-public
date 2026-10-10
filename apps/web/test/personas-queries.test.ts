@@ -3,7 +3,7 @@ import {
   Conflict,
   NotFound,
   OwnerApi,
-  OwnerGate,
+  OwnerAdmission,
   PersonasGroup,
   Unauthenticated,
   ownerApiOf,
@@ -56,8 +56,8 @@ const fakeOwner = () => {
     state.signedIn ? Effect.void : Effect.fail(new Unauthenticated({ reason: 'no_session' })),
   )
   const gate = Layer.succeed(
-    OwnerGate,
-    OwnerGate.of((handler) => Effect.andThen(admit, handler)),
+    OwnerAdmission,
+    OwnerAdmission.of((handler) => Effect.andThen(admit, handler)),
   )
   const server = fakeHttpApi(ownerApiOf(PersonasGroup), Personas.pipe(Layer.provide(gate)))
   return {

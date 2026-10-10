@@ -14,7 +14,7 @@ import { Invocations } from '../../../src/personas/service.ts'
 import { RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { KeyedLock } from '../../../src/observability/lock.ts'
@@ -47,7 +47,7 @@ const PLAN: AccountPlan = {
 const TOPICS_API = ownerApiOf(TopicsGroup)
 const TOPICS = HttpApiBuilder.layer(TOPICS_API).pipe(
   Layer.provide(TopicsHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

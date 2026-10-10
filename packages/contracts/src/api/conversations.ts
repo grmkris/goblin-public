@@ -56,7 +56,7 @@ const HistoryQuery = {
 
 /**
  * The owner's conversations and threads (ADRs 0030, 0032, 0034), as the Worker's routes have always served them. Paths
- * are relative to the API's `/api` prefix; every endpoint can also answer the owner gate's failures (`OwnerGate` in
+ * are relative to the API's `/api` prefix; every endpoint can also answer owner admission's failures (`OwnerAdmission` in
  * `owner.ts`), and `error` names the ones the endpoint itself produces.
  *
  * - `create`: `POST /api/conversations`, 201: a Thread branched from an entry of an open chat, or an empty one; with an

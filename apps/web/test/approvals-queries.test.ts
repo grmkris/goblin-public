@@ -1,5 +1,5 @@
 import type { ApprovalView } from '@goblin/contracts'
-import { McpGroup, OwnerApi, OwnerGate, ownerApiOf } from '@goblin/contracts/api'
+import { McpGroup, OwnerApi, OwnerAdmission, ownerApiOf } from '@goblin/contracts/api'
 import { MutationObserver, QueryObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -50,8 +50,8 @@ const fakeOwner = () => {
       .handle('readResource', unused),
   )
   const gate = Layer.succeed(
-    OwnerGate,
-    OwnerGate.of((handler) => handler),
+    OwnerAdmission,
+    OwnerAdmission.of((handler) => handler),
   )
   return fakeHttpApi(ownerApiOf(McpGroup), Mcp.pipe(Layer.provide(gate)))
 }

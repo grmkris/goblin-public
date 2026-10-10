@@ -14,7 +14,7 @@ import { PersonasHandlers } from '../../personas/api.ts'
 import { AgentHandlers } from '../../routines/agent-api.ts'
 import { RoutinesHandlers } from '../../routines/api.ts'
 import { TopicsHandlers } from '../../topics/api.ts'
-import { OwnerGateLive } from './middleware.ts'
+import { OwnerAdmissionLive } from './middleware.ts'
 
 /** Every owner group's handlers behind the owner gate: the routes the agent serves (`server.ts`). */
 export const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
@@ -32,6 +32,6 @@ export const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
     AgentAppsHandlers,
     InspectHandlers,
   ]),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )

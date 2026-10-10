@@ -8,7 +8,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { InspectHandlers } from '../../../src/inspect/api.ts'
 import { Resident } from '../../../src/mcp/service.ts'
@@ -31,7 +31,7 @@ const PLAN: AccountPlan = {
 const INSPECT_API = ownerApiOf(InspectGroup)
 const INSPECT = HttpApiBuilder.layer(INSPECT_API).pipe(
   Layer.provide(InspectHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

@@ -11,7 +11,7 @@ import * as Schema from 'effect/Schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates.ts'
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { Resident } from '../../../src/mcp/service.ts'
 import { RoutinesHandlers } from '../../../src/routines/api.ts'
@@ -50,7 +50,7 @@ const DEFINITION: RoutineDefinition = {
 const API = ownerApiOf(RoutinesGroup)
 const SERVED = HttpApiBuilder.layer(API).pipe(
   Layer.provide(RoutinesHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

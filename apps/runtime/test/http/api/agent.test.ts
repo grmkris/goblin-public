@@ -16,7 +16,7 @@ import { ModelBudget, UsageStore } from '../../../src/budget.ts'
 import { TelegramChannel } from '../../../src/channel/channel.ts'
 import { Channel } from '../../../src/channel/service.ts'
 import { ChatDirectory, registerPrimary } from '../../../src/chats/directory.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
@@ -44,7 +44,7 @@ const PLAN: AccountPlan = {
 const API = ownerApiOf(AgentGroup)
 const SERVED = HttpApiBuilder.layer(API).pipe(
   Layer.provide(AgentHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

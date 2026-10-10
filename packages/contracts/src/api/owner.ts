@@ -21,7 +21,9 @@ import { TopicsGroup } from './topics.ts'
  * resident authority. Its implementation lives in the runtime (`http/api/middleware.ts`); clients need none. Its error
  * schema is every envelope, so a handler may fail with any `AppError` and the client decodes it.
  */
-export class OwnerGate extends HttpApiMiddleware.Service<OwnerGate>()('goblin/api/OwnerGate', { error: API_ERRORS }) {}
+export class OwnerAdmission extends HttpApiMiddleware.Service<OwnerAdmission>()('goblin/api/OwnerAdmission', {
+  error: API_ERRORS,
+}) {}
 
 /**
  * The owner's API, served by their own agent (the Durable Object) behind the Worker's session, origin, CSRF and plan
@@ -43,7 +45,7 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
     InspectGroup,
   )
   .prefix('/api')
-  .middleware(OwnerGate) {}
+  .middleware(OwnerAdmission) {}
 
 /**
  * The owner API with only `groups`, under the same id, prefix and gate: a test serves one area's handlers with only
@@ -53,4 +55,4 @@ export const ownerApiOf = <const A extends NonEmptyReadonlyArray<HttpApiGroup.Co
   HttpApi.make('goblin-owner')
     .add(...groups)
     .prefix('/api')
-    .middleware(OwnerGate)
+    .middleware(OwnerAdmission)

@@ -22,7 +22,7 @@ import { ChatDirectory, ChatsInstance } from '../../../src/chats/directory.ts'
 import { type ChatMover, MovesInstance } from '../../../src/chats/mover.ts'
 import { type ConversationRegistry, ConversationsInstance } from '../../../src/conversations.ts'
 import { Files } from '../../../src/files/service.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import type { FoundationServices } from '../../../src/layers/core.ts'
 import { ConversationLive } from '../../../src/layers/conversation.ts'
@@ -254,7 +254,7 @@ const instance = (harness: PiHarness, calls: Calls) => {
 const CONVERSATIONS_API = ownerApiOf(ConversationsGroup)
 const CONVERSATIONS = HttpApiBuilder.layer(CONVERSATIONS_API).pipe(
   Layer.provide(ConversationsHandlers),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

@@ -1,5 +1,5 @@
 export * from './errors.ts'
-export { OwnerApi, OwnerGate, ownerApiOf } from './owner.ts'
+export { OwnerApi, OwnerAdmission, ownerApiOf } from './owner.ts'
 export { AccountApi } from './account.ts'
 // Each area's group, so a test can serve one area's handlers (`ownerApiOf(TopicsGroup)`).
 export { AgentGroup } from './agent.ts'

@@ -42,7 +42,7 @@ const REMOTE = [ApiErrors.upstream, ApiErrors.upstreamTimeout, ApiErrors.conflic
 /**
  * The owner's MCP servers (ADRs 0003, 0005, 0006, 0008, 0028): the offered servers and the catalog to add more from,
  * signing in, exact grants, held calls, and calling a server by hand or from an App. Paths are relative to the API's
- * `/api` prefix. Every owner endpoint can also answer the owner gate's failures; `error` names the ones the endpoint
+ * `/api` prefix. Every owner endpoint can also answer owner admission's failures; `error` names the ones the endpoint
  * itself produces. Remote results are the server's, untrusted, and answered whole.
  *
  * `GET /api/mcp/oauth/callback` is not here: it answers a redirect to `/connections`, not JSON, and stays a raw route.

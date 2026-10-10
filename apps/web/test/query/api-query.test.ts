@@ -4,7 +4,7 @@ import {
   ERROR_COPY,
   MemoryGroup,
   OwnerApi,
-  OwnerGate,
+  OwnerAdmission,
   TopicsGroup,
   ownerApiOf,
 } from '@goblin/contracts/api'
@@ -54,7 +54,7 @@ const fakeOwner = () => {
       })
       .handle('update', () => Effect.die('not used')),
   )
-  const gate = Layer.succeed(OwnerGate, (handler) => handler)
+  const gate = Layer.succeed(OwnerAdmission, (handler) => handler)
   const server = fakeHttpApi(
     ownerApiOf(TopicsGroup, MemoryGroup),
     Layer.mergeAll(Topics, Memory).pipe(Layer.provide(gate)),

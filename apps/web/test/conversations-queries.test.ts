@@ -1,4 +1,4 @@
-import { ConversationsGroup, OwnerApi, OwnerGate, ownerApiOf } from '@goblin/contracts/api'
+import { ConversationsGroup, OwnerApi, OwnerAdmission, ownerApiOf } from '@goblin/contracts/api'
 import { InfiniteQueryObserver, MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -39,8 +39,8 @@ const fakeOwner = () => {
       .handle('sources', unused),
   )
   const gate = Layer.succeed(
-    OwnerGate,
-    OwnerGate.of((handler) => handler),
+    OwnerAdmission,
+    OwnerAdmission.of((handler) => handler),
   )
   return fakeHttpApi(ownerApiOf(ConversationsGroup), Conversations.pipe(Layer.provide(gate)))
 }

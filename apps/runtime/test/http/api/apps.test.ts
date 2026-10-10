@@ -18,7 +18,7 @@ import { Entitlements, type EntitlementPolicy } from '../../../src/billing/gates
 import type { AccountPlan } from '../../../src/billing/reconcile.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { Home } from '../../../src/home/service.ts'
-import { OwnerGateLive } from '../../../src/http/api/middleware.ts'
+import { OwnerAdmissionLive } from '../../../src/http/api/middleware.ts'
 import { OwnerHttp } from '../../../src/http/api/server.ts'
 import { McpConnections, Resident } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
@@ -42,7 +42,7 @@ const PLAN: AccountPlan = {
 const APPS_API = ownerApiOf(AppsGroup, AgentAppsGroup)
 const APPS = HttpApiBuilder.layer(APPS_API).pipe(
   Layer.provide([AppsHandlers, AgentAppsHandlers]),
-  Layer.provide(OwnerGateLive),
+  Layer.provide(OwnerAdmissionLive),
   Layer.provide(HttpServer.layerServices),
 )
 

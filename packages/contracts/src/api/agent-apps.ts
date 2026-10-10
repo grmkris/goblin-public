@@ -9,7 +9,7 @@ const NameParam = { name: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{
 
 /**
  * The owner's agent apps (ADR 0021), by name. Paths are relative to the API's `/api` prefix; `error` names the failures
- * each endpoint produces itself, besides the owner gate's.
+ * each endpoint produces itself, besides owner admission's.
  *
  * - `list`: `GET /api/agent-apps`, every agent app, newest change first, each with its App id once it has a view.
  * - `detail`: `GET /api/agent-apps/:name`, one in full.

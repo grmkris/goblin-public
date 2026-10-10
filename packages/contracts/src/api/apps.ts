@@ -20,7 +20,7 @@ const AppParam = { id: AppId }
 
 /**
  * The owner's kept Apps (ADRs 0020, 0021). Paths are relative to the API's `/api` prefix; `error` names the failures
- * each endpoint produces itself, besides the owner gate's.
+ * each endpoint produces itself, besides owner admission's.
  *
  * - `create`: `POST /api/apps`, 201 with the App kept from a tool call in one of the owner's conversations (one from
  *   before Apps were kept, or one the owner closed). The same call keeps the same App. Its server must still render it.

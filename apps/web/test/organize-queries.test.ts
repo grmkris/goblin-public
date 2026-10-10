@@ -1,5 +1,5 @@
 import type { OrganizeReceipt, TopicView } from '@goblin/contracts'
-import { Conflict, OrganizeGroup, OwnerApi, OwnerGate, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
+import { Conflict, OrganizeGroup, OwnerApi, OwnerAdmission, TopicsGroup, ownerApiOf } from '@goblin/contracts/api'
 import { MutationObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -58,8 +58,8 @@ const fakeOwner = () => {
     }),
   )
   const gate = Layer.succeed(
-    OwnerGate,
-    OwnerGate.of((handler) => handler),
+    OwnerAdmission,
+    OwnerAdmission.of((handler) => handler),
   )
   const server = fakeHttpApi(
     ownerApiOf(TopicsGroup, OrganizeGroup),
