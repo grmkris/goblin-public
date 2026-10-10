@@ -1,6 +1,6 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import { describe, expect, it } from 'vitest'
-import { tailTokens } from '../src/memory/memory.ts'
+import { tailTokens } from '../src/memory/chat-memory.ts'
 import type { TextCompletion } from '../src/memory/model.ts'
 import { summarize } from '../src/memory/summarize.ts'
 import { NODE_BYTES, byteLength } from '../src/memory/tree.ts'

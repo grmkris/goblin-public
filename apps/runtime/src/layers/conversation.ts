@@ -32,7 +32,6 @@ import { ChatMover, MovesInstance } from '../chats/mover.ts'
 import { ChatOperations, Chats, Conversations, Moves, type RoutineReport, type ThreadAnchor } from '../chats/service.ts'
 import { epochSeconds, nowSeconds } from '../clock.ts'
 import { ConversationRegistry, ConversationsInstance } from '../conversations.ts'
-import { MemoriesInstance } from '../memory/memory.ts'
 import { CheapModels } from '../memory/model.ts'
 import type { Models } from '../models.ts'
 import { attempt, attemptSync } from '../http/errors.ts'
@@ -59,7 +58,7 @@ export const ChatDirectoryLive: Layer.Layer<ChatsInstance, never, Db> = Layer.ef
 export const ConversationRegistryLive: Layer.Layer<
   ConversationsInstance,
   never,
-  AgentInput | Db | Changes | MemoriesInstance | CheapModels
+  AgentInput | Db | Changes | CheapModels
 > = Layer.effect(
   ConversationsInstance,
   Effect.gen(function* () {
@@ -68,7 +67,6 @@ export const ConversationRegistryLive: Layer.Layer<
     const kit = {
       thread: input.thread,
       recall: input.memory.recall,
-      memories: yield* MemoriesInstance,
       namer: cheap('naming'),
       subagentTools: input.subagentTools,
     }
@@ -84,30 +82,27 @@ export const ConversationRegistryLive: Layer.Layer<
  * Start step 13: Move to thread, the one mover. A move a restart interrupted finishes once the services are up again
  * (ADR 0034); it never holds up the start, so its reconcile runs on while the steps after this one are built.
  */
-export const MoverLive: Layer.Layer<MovesInstance, never, AgentInput | Db | ConversationsInstance | MemoriesInstance> =
-  Layer.effect(
-    MovesInstance,
-    Effect.gen(function* () {
-      const input = yield* AgentInput
-      const moves = new ChatMover({
-        db: yield* Db,
-        harness: input.harness,
-        // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
-        withChat: (chat, run) =>
-          input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
-        conversations: yield* ConversationsInstance,
-        subagentTools: input.subagentTools,
-        memories: yield* MemoriesInstance,
-        thread: input.thread,
-        recall: input.memory.recall,
-        ...input.moves,
-      })
-      moves.reconcile().catch((error: unknown) => {
-        writeLine('error', { event: 'failure', where: 'moves.reconcile', 'error.type': safeErrorType(error) })
-      })
-      return moves
-    }),
-  )
+export const MoverLive: Layer.Layer<MovesInstance, never, AgentInput | Db | ConversationsInstance> = Layer.effect(
+  MovesInstance,
+  Effect.gen(function* () {
+    const input = yield* AgentInput
+    const moves = new ChatMover({
+      db: yield* Db,
+      harness: input.harness,
+      // The mover is Promise code: it takes the chat's one lock through the bridge (no plan check).
+      withChat: (chat, run) => input.local(ChatOperations.use((operations) => operations.withChat(chat, attempt(run)))),
+      conversations: yield* ConversationsInstance,
+      subagentTools: input.subagentTools,
+      thread: input.thread,
+      recall: input.memory.recall,
+      ...input.moves,
+    })
+    moves.reconcile().catch((error: unknown) => {
+      writeLine('error', { event: 'failure', where: 'moves.reconcile', 'error.type': safeErrorType(error) })
+    })
+    return moves
+  }),
+)
 
 /** One of the directory's reads (chats/directory.ts). */
 type Lookup<Args extends readonly unknown[], A> = (db: ChatDb, ...args: Args) => A

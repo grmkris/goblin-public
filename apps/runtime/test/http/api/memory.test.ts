@@ -6,7 +6,6 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { ChatDirectory } from '../../../src/chats/directory.ts'
 import { MemoryHandlers } from '../../../src/memory/api.ts'
-import { ChatMemories } from '../../../src/memory/memory.ts'
 import { Resident } from '../../../src/mcp/service.ts'
 import { appChatMemoryLog, appChatMemoryState } from '../../../src/storage/chat-memory.ts'
 import { appConversations } from '../../../src/storage/schema.ts'
@@ -45,16 +44,10 @@ const fixture = () => {
     ])
     .run()
   const chats = new ChatDirectory(db)
-  // SAFETY: `status` reads SQLite only; Pi and the model are never called.
-  const memories = new ChatMemories({ db, harness: undefined as never, model: undefined as never, chats }, {}, [])
   const { fetch } = serve(
     served([MemoryGroup], MemoryHandlers).pipe(
       Layer.provide(
-        Layer.mergeAll(
-          knowledgeOver({ db, memories, chats }),
-          Layer.succeed(Resident, currentResident().service),
-          plans(),
-        ),
+        Layer.mergeAll(knowledgeOver({ db, chats }), Layer.succeed(Resident, currentResident().service), plans()),
       ),
     ),
   )

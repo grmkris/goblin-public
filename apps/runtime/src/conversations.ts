@@ -20,7 +20,7 @@ import {
 } from './chats/directory.ts'
 import { ChatStops } from './chats/stops.ts'
 import { Conflict, InvalidInput, NotFound } from './http/errors.ts'
-import type { ChatMemories } from './memory/memory.ts'
+import { rememberedThrough } from './memory/store.ts'
 import type { CheapModel } from './memory/model.ts'
 import { authoredContent, threadStartedContent } from './pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from './pi/context.ts'
@@ -67,13 +67,12 @@ const labelOf = (row: Row): string => (row.title === null ? `${row.kind} (untitl
 
 /**
  * What threads need beyond the registry: their own extension, `recall` for the ones that see a Conversation's history
- * (they start with its memory view), the memories that bound their zooms, the cheap model that names them, and the
- * switches a new thread copies from the conversation it came from.
+ * (they start with its memory view), the cheap model that names them, and the subagent tools a new thread's Pi filter
+ * removes where its switches turn subagents off.
  */
 export type ThreadKit = {
   readonly thread: Extension
   readonly recall: Extension
-  readonly memories: ChatMemories
   readonly namer: CheapModel
   /** The tools Pi's filter removes where subagents are switched off. */
   readonly subagentTools: readonly ToolRegistration[]
@@ -300,9 +299,9 @@ export class ConversationRegistry {
    * one (a subagent, a "+" thread).
    */
   #recallAt(from: Row, entry: number): number | null {
-    const memory = this.#kit.memories.of(conversationAbove(this.#db, from.chatId))
-    if (isChannel(from)) return memory.sizeAt(entry)
-    return from.recallThrough === null ? null : Math.min(from.recallThrough, memory.sizeAt(entry))
+    const sizeAt = rememberedThrough(this.#db, conversationAbove(this.#db, from.chatId), entry)
+    if (isChannel(from)) return sizeAt
+    return from.recallThrough === null ? null : Math.min(from.recallThrough, sizeAt)
   }
 
   /**

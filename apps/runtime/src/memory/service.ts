@@ -3,7 +3,7 @@ import type { MemoryStatus } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
-import type { StepResult } from './memory.ts'
+import type { StepResult } from './chat-memory.ts'
 
 /** A line of a memory's view as `zoom` names it, `id+n`: the `n` messages from message `id` on. */
 export type MemoryLine = { readonly id: number; readonly n: number }

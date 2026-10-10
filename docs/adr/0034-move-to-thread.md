@@ -71,7 +71,7 @@ answers the same. Then, still under the lock:
    the turn's own `pi.user`, `pi.assistant` and `pi.tool-result` entries from the chat's model context. Passive
    notes that landed in the turn (a share-back, a routine report) stay in the chat.
 4. **Memory and index**: the chat's memory (ADR 0032) forgets every message from the moved one on, with every summary
-   over them (`ChatMemories.truncate` at the memory's size before the message), and its collector skips entries a
+   over them (`forgetFrom` at the memory's size before the message), and its collector skips entries a
    later entry omits, so the turn is never remembered again. The memory builder does not start while the chat has a
    move in flight. The cross-Topic index (ADR 0035) gives the session's entries from the moved message on to the
    Thread (`reassignExcerpts`).

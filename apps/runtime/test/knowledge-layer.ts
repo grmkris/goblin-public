@@ -1,10 +1,10 @@
+import type { PiHarness } from 'agents/harness/pi'
 import * as Layer from 'effect/Layer'
 import type { ChatDirectory } from '../src/chats/directory.ts'
 import { ChatOperations, Chats } from '../src/chats/service.ts'
 import { attemptSync } from '../src/http/errors.ts'
 import { KnowledgeLive } from '../src/layers/knowledge.ts'
 import { learnerOver, skillsOver } from '../src/layers/skills.ts'
-import { type ChatMemories, MemoriesInstance } from '../src/memory/memory.ts'
 import { CheapModels } from '../src/memory/model.ts'
 import { KeyedLock } from '../src/observability/lock.ts'
 import { Db } from '../src/runtime/db.ts'
@@ -20,7 +20,10 @@ type Given = {
   readonly db?: ReturnType<typeof chatDatabase>['db']
   /** The chats, as the memory's status reads them: Personal, and the Conversation a chat sits under. */
   readonly chats?: ChatDirectory
-  readonly memories?: ChatMemories
+  /** Pi, as the memory's builder reads it. */
+  readonly harness?: PiHarness
+  /** The memory's fold threshold (`MEMORY_FOLD_TOKENS`), the deployment's by default. */
+  readonly foldTokens?: number
   readonly skills?: SkillLibrary
   readonly learner?: SkillLearner
   /** The chat operations, where a memory's view is placed; none of its operations by default. */
@@ -35,6 +38,11 @@ export const knowledgeOver = (given: Given) => {
   // SAFETY: a layer only holds what it is given until one of its methods runs; a test reaches only the ones it gave.
   const unread = undefined as never
   const { chats } = given
+  const input: Pick<AgentInputs, 'harness' | 'memory'> & { readonly env: Partial<AgentInputs['env']> } = {
+    harness: given.harness ?? unread,
+    env: given.foldTokens === undefined ? {} : { MEMORY_FOLD_TOKENS: String(given.foldTokens) },
+    memory: { memory: unread, recall: unread },
+  }
   const services = KnowledgeLive.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -46,9 +54,9 @@ export const knowledgeOver = (given: Given) => {
               primary: chats.primary(),
               conversationAbove: (chat: string) => attemptSync(() => chats.conversationAbove(chat)),
             }),
-        Layer.succeed(MemoriesInstance, given.memories ?? unread),
-        // SAFETY: retrieval reads only Pi's harness from the instance input, and only when a test searches.
-        Layer.succeed(AgentInput, {} as AgentInputs),
+        // SAFETY: memory and retrieval read only Pi, the fold threshold and the memory extensions from the instance
+        // input, and Pi only when a test steps a memory or searches.
+        Layer.succeed(AgentInput, input as AgentInputs),
         Layer.succeed(CheapModels, () => unread),
         given.operations ?? Layer.mock(ChatOperations)({}),
         KeyedLock.layer,

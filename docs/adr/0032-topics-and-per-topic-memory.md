@@ -83,9 +83,10 @@ migration `20261026000100_chat_memory` creates `app_chat_memory_log`, `app_chat_
 idx, entry id and node unchanged. The old tables stay, no longer read.
 
 `ChatMemory(chat)` is the old `MainMemory` with every query keyed by chat id and the chat's Pi session resolved on each
-use, so a rebind moves no row. `ChatMemories` (the `Memories` service) holds them: `of(chat)`, `activate(chat)` (the
-`goblin.memory` and `goblin.recall` extensions, once) and `truncate(chat, size)`, which forgets the messages from
-`size` on and every summary covering one, and pulls the view back to `size` at most; Move to thread uses it.
+use, so a rebind moves no row. The `Memories` service serves them: `activate(chat)` (the `goblin.memory` and
+`goblin.recall` extensions, once) and `truncate(chat, size)` (`forgetFrom` in `memory/store.ts`), which forgets the
+messages from `size` on and every summary covering one, and pulls the view back to `size` at most; Move to thread uses
+it.
 Composition activates every Conversation without memory (a fresh agent's Personal, or a Topic whose activation a crash
 cut short), and creating a Topic activates its Conversation, again on a retry with the same operation id.
 

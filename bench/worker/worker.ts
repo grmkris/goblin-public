@@ -15,7 +15,6 @@ import {
   LITELLM_STREAMS,
   runApplicationMigrations,
   registerPrimary,
-  ChatDirectory,
   appMetadata,
   recallExtension,
 } from '@goblin/runtime/memory'
@@ -57,7 +56,7 @@ const benchMemory = (
 ) =>
   new ChatMemory(
     '1',
-    { db, harness, model, chats: new ChatDirectory(db) },
+    { db, harness, model },
     {
       foldTokens: 0,
       ...(manifest.profile === 'controlled' ? { viewBytes: manifest.pressure.viewBytes } : {}),

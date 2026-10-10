@@ -6,7 +6,7 @@ import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { copyExclusions, piToolsFor } from '../capabilities/profiles.ts'
 import { nowSeconds } from '../clock.ts'
 import type { ConversationRegistry } from '../conversations.ts'
-import type { ChatMemories } from '../memory/memory.ts'
+import { forgetFrom, rememberedThrough } from '../memory/store.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { movedToThreadContent } from '../pi/content.ts'
 import { BACKGROUND, conversationId, entryId } from '../pi/context.ts'
@@ -36,8 +36,6 @@ export type MoverPorts = {
   readonly conversations: ConversationRegistry
   /** The tools Pi's filter removes where subagents are switched off. */
   readonly subagentTools: readonly ToolRegistration[]
-  /** Each Topic Conversation's memory: a move forgets the turn there. */
-  readonly memories: ChatMemories
   readonly thread: Extension
   readonly recall: Extension
   readonly handover: SubagentKit['handover']
@@ -202,8 +200,9 @@ export class ChatMover {
     const omit = await turnEntries(pi, { source: conversationId(source), message: row.messageEntry, end })
     const title = (await this.#ports.conversations.view(fork))?.title ?? titleOf(words.text)
     await submitThreadHead(conversation, head, movedToThreadContent(title), omit)
-    const { memories } = this.#ports
-    memories.truncate(row.chatId, memories.of(row.chatId).sizeAt(row.messageEntry - 1))
+    // The chat's memory forgets the turn: every message from the moved one on.
+    const { db } = this.#ports
+    forgetFrom(db, row.chatId, rememberedThrough(db, row.chatId, row.messageEntry - 1))
     await this.#ports.after?.('head', row.operationId)
   }
 

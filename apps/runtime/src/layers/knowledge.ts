@@ -3,21 +3,20 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { UsageStore, recordUse } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
-import { ChatsInstance } from '../chats/directory.ts'
 import { ChatOperations, Chats } from '../chats/service.ts'
 import { nowSeconds } from '../clock.ts'
 import { attempt } from '../http/errors.ts'
 import {
   ChatMemories,
   MemoriesInstance,
-  forgetFrom,
-  recordView,
-  rememberedCount,
-  rememberedThrough,
-  viewReach,
+  type MemoryEngine,
+  activateConversations,
+  activateMemory,
+  memoryOf,
 } from '../memory/memory.ts'
 import { CheapModel, CheapModels } from '../memory/model.ts'
 import { Memories, type MemoryLine } from '../memory/service.ts'
+import { forgetFrom, recordView, rememberedCount, rememberedThrough, viewReach } from '../memory/store.ts'
 import { memoryModelId, modelOptions } from '../models.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { piTranscripts } from '../retrieval/index.ts'
@@ -27,11 +26,10 @@ import { AgentInput } from '../runtime/input.ts'
 import { auxReporter } from '../telemetry/report.ts'
 
 // The knowledge layers. Three are steps of the agent's start, in its order (layers/index.ts): the cheap models (step
-// 3), the memory engine (5) and the memory's activation of every Topic Conversation (14). The memory engine is shared
-// with the conversations, Topics and the mover by its instance tag (`MemoriesInstance`). After the start,
-// `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its view reaches and what a Move forgets
-// over the agent's database, a view placed through the chat's passive write, and the transcript index over the agent's
-// database, every catch-up on its session's turn of the agent's KeyedLock.
+// 3), the memory object a Topic's ports turn memory on with (5) and the memory's activation of every Topic
+// Conversation (14). After the start, `KnowledgeLive` serves memory and retrieval: what a memory remembers, how far its
+// view reaches and what a Move forgets over the agent's database, a view placed through the chat's passive write, and
+// the transcript index over the agent's database, every catch-up on its session's turn of the agent's KeyedLock.
 
 /**
  * Start step 3: the deployment's cheap model (`GOBLIN_MEMORY_MODEL`), one per housekeeping purpose. Its tokens count in
@@ -57,35 +55,39 @@ export const CheapModelsLive: Layer.Layer<CheapModels, never, AgentInput | Db> =
 )
 
 /**
- * Start step 5: each Topic Conversation's memory, the one engine, with the memory extensions it turns on and the
- * native fixture's fold override.
+ * Each Topic Conversation's memory as the agent makes it: the agent's database and Pi, the cheap model that
+ * summarizes, the memory extensions a Conversation gets, and the native fixture's fold override.
  */
-export const MemoryEngineLive: Layer.Layer<MemoriesInstance, never, AgentInput | Db | ChatsInstance | CheapModels> =
-  Layer.effect(
-    MemoriesInstance,
-    Effect.gen(function* () {
-      const input = yield* AgentInput
-      const cheap = yield* CheapModels
-      const fold = Number(input.env.MEMORY_FOLD_TOKENS ?? Number.NaN)
-      const options = Number.isFinite(fold) ? { foldTokens: fold } : {}
-      const deps = { db: yield* Db, harness: input.harness, model: cheap('memory'), chats: yield* ChatsInstance }
-      return new ChatMemories(deps, options, [input.memory.memory, input.memory.recall])
-    }),
-  )
+const memoryEngine: Effect.Effect<MemoryEngine, never, AgentInput | Db | CheapModels> = Effect.gen(function* () {
+  const input = yield* AgentInput
+  const cheap = yield* CheapModels
+  const fold = Number(input.env.MEMORY_FOLD_TOKENS ?? Number.NaN)
+  return {
+    deps: { db: yield* Db, harness: input.harness, model: cheap('memory') },
+    options: Number.isFinite(fold) ? { foldTokens: fold } : {},
+    extensions: [input.memory.memory, input.memory.recall],
+  }
+})
 
-/** Start step 14: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
-export const ActivateMemoriesLive: Layer.Layer<never, never, MemoriesInstance> = Layer.effectDiscard(
-  Effect.flatMap(MemoriesInstance, (memories) => Effect.promise(() => memories.activateConversations())),
+/** Start step 5: turning a Topic Conversation's memory on, as one object for a Topic's ports. */
+export const MemoryEngineLive: Layer.Layer<MemoriesInstance, never, AgentInput | Db | CheapModels> = Layer.effect(
+  MemoriesInstance,
+  Effect.map(memoryEngine, (engine) => new ChatMemories(engine)),
 )
 
-/** Each Topic Conversation's memory: its counts over the database, its engine's work through the one engine. */
+/** Start step 14: every Topic Conversation without memory yet is given it, after main is registered (step 10). */
+export const ActivateMemoriesLive: Layer.Layer<never, never, AgentInput | Db | CheapModels> = Layer.effectDiscard(
+  Effect.flatMap(memoryEngine, (engine) => Effect.promise(() => activateConversations(engine))),
+)
+
+/** Each Topic Conversation's memory: its counts over the database, its building, views and zooms over its engine. */
 const MemoriesLive = Layer.effect(
   Memories,
   Effect.gen(function* () {
     const db = yield* Db
     const chats = yield* Chats
     const operations = yield* ChatOperations
-    const engine = yield* MemoriesInstance
+    const engine = yield* memoryEngine
     return Memories.of({
       status: Effect.fn('Memories.status')(function* (chat?: string) {
         const target = chat === undefined ? chats.primary : yield* chats.conversationAbove(chat)
@@ -98,10 +100,10 @@ const MemoriesLive = Layer.effect(
         return yield* Effect.sync(() => rememberedThrough(db, chat, entry))
       }),
       activate: Effect.fn('Memories.activate')(function* (chat: string) {
-        yield* attempt(() => engine.activate(chat))
+        yield* attempt(() => activateMemory(engine, chat))
       }),
       activateConversations: Effect.fn('Memories.activateConversations')(function* () {
-        yield* attempt(() => engine.activateConversations())
+        yield* attempt(() => activateConversations(engine))
       }),
       truncate: Effect.fn('Memories.truncate')(function* (chat: string, size: number) {
         yield* Effect.sync(() => forgetFrom(db, chat, size))
@@ -109,17 +111,17 @@ const MemoriesLive = Layer.effect(
       // A view is placed as a passive write under the chat's admission lock, never beside a send (K1), and recorded
       // only once the write was admitted: a failed write is placed again by the next step.
       step: Effect.fn('Memories.step')(function* (chat: string, signal: AbortSignal) {
-        const next = yield* attempt(() => engine.of(chat).advance(signal))
+        const next = yield* attempt(() => memoryOf(engine, chat).advance(signal))
         if (next === 'more' || next === 'done') return next
         yield* operations.passiveWrite(chat, next.write)
         yield* Effect.sync(() => recordView(db, chat, next.through))
         return 'done' as const
       }),
       startBuilder: Effect.fn('Memories.startBuilder')(function* (chat: string, start: (tx: Tx) => Promise<void>) {
-        yield* attempt(() => engine.of(chat).startBuilder(start))
+        yield* attempt(() => memoryOf(engine, chat).startBuilder(start))
       }),
       zoom: Effect.fn('Memories.zoom')(function* (chat: string, line: MemoryLine, limit: number) {
-        return yield* attempt(() => engine.of(chat).zoom(line.id, line.n, limit))
+        return yield* attempt(() => memoryOf(engine, chat).zoom(line.id, line.n, limit))
       }),
     })
   }),
@@ -143,5 +145,5 @@ const RetrievalLive = Layer.effect(
 export const KnowledgeLive: Layer.Layer<
   Memories | Retrieval,
   never,
-  AgentInput | Db | Chats | ChatOperations | MemoriesInstance | CheapModels | KeyedLock
+  AgentInput | Db | Chats | ChatOperations | CheapModels | KeyedLock
 > = Layer.mergeAll(MemoriesLive, RetrievalLive)

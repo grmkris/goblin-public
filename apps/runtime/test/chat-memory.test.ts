@@ -2,11 +2,11 @@ import type { Submission } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ChatDirectory } from '../src/chats/directory.ts'
 import { ChatOperations, type PassiveWrite } from '../src/chats/service.ts'
 import { Internal } from '../src/http/errors.ts'
-import { ChatMemories } from '../src/memory/memory.ts'
+import { ChatMemory } from '../src/memory/chat-memory.ts'
 import { Memories } from '../src/memory/service.ts'
+import { forgetFrom, viewReach } from '../src/memory/store.ts'
 import { appChatMemoryLog, appChatMemoryNodes, appChatMemoryState } from '../src/storage/chat-memory.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
@@ -75,19 +75,16 @@ describe('per-Topic memory (ADR 0032)', () => {
       ])
       .run()
     // SAFETY: size, sizeAt, viewThrough and truncate use SQLite only; Pi and the model are never called.
-    const memories = new ChatMemories(
-      { db, harness: undefined as never, model: undefined as never, chats: new ChatDirectory(db) },
-      {},
-      [],
-    )
-    expect([memories.of('1').size(), memories.of('70').size()]).toEqual([4, 5])
-    expect([memories.of('1').sizeAt(13), memories.of('70').sizeAt(23)]).toEqual([3, 3])
-    expect(memories.of('1').sizeAt(23)).toBe(4)
-    expect(memories.of('70').active()).toBe(true)
-    expect(memories.of('71').active()).toBe(false)
-    memories.truncate('70', 2)
-    expect(memories.of('70').size()).toBe(2)
-    expect(memories.of('70').viewThrough()).toBe(2)
+    const memory = (chat: string) =>
+      new ChatMemory(chat, { db, harness: undefined as never, model: undefined as never })
+    expect([memory('1').size(), memory('70').size()]).toEqual([4, 5])
+    expect([memory('1').sizeAt(13), memory('70').sizeAt(23)]).toEqual([3, 3])
+    expect(memory('1').sizeAt(23)).toBe(4)
+    expect(memory('70').active()).toBe(true)
+    expect(memory('71').active()).toBe(false)
+    forgetFrom(db, '70', 2)
+    expect(memory('70').size()).toBe(2)
+    expect(memory('70').viewThrough()).toBe(2)
     // Node (level, idx) covers messages [idx·2^level, (idx+1)·2^level): only those wholly before 2 stay.
     expect(
       db.select({ level: appChatMemoryNodes.level, idx: appChatMemoryNodes.idx }).from(appChatMemoryNodes).all(),
@@ -97,7 +94,7 @@ describe('per-Topic memory (ADR 0032)', () => {
       { level: 0, idx: 1 },
       { level: 1, idx: 0 },
     ])
-    expect([memories.of('1').size(), memories.of('1').viewThrough()]).toEqual([4, 3])
+    expect([memory('1').size(), memory('1').viewThrough()]).toEqual([4, 3])
   })
 
   it('names what is missing when a zoom reaches a message the memory no longer holds, never its words', async () => {
@@ -107,13 +104,9 @@ describe('per-Topic memory (ADR 0032)', () => {
       .values(log('1', [11, 12]))
       .run()
     // SAFETY: the missing row is found in SQLite before Pi or the model would be asked.
-    const memories = new ChatMemories(
-      { db, harness: undefined as never, model: undefined as never, chats: new ChatDirectory(db) },
-      {},
-      [],
-    )
-    await expect(memories.of('1').zoom(5, 1, 10)).rejects.toMatchObject({ _tag: 'MemoryMissing', what: 'message' })
-    expect(await memories.of('1').zoom(5, 1, 4)).toBe('No line 5+1.')
+    const memory = new ChatMemory('1', { db, harness: undefined as never, model: undefined as never })
+    await expect(memory.zoom(5, 1, 10)).rejects.toMatchObject({ _tag: 'MemoryMissing', what: 'message' })
+    expect(await memory.zoom(5, 1, 4)).toBe('No line 5+1.')
   })
 
   describe('placing a view (K1)', () => {
@@ -137,24 +130,19 @@ describe('per-Topic memory (ADR 0032)', () => {
       const pi = { conversation: async () => ({ entries: async () => ({ items: [], next: undefined }) }) }
       // SAFETY: a step reads only `pi().conversation().entries()`, answered empty here.
       const harness = { pi: async () => pi } as never
-      // SAFETY: every remembered message is summarized already, so no step asks the model.
-      const memories = new ChatMemories(
-        { db, harness, model: undefined as never, chats: new ChatDirectory(db) },
-        { foldTokens: 0 },
-        [],
-      )
+      // Every remembered message is summarized already, so no step asks the model.
       const operations = Layer.mock(ChatOperations)({ passiveWrite: write })
       const step = Memories.use((service) => service.step('1', new AbortController().signal)).pipe(
-        Effect.provide(knowledgeOver({ db, memories, chats: new ChatDirectory(db), operations })),
+        Effect.provide(knowledgeOver({ db, harness, foldTokens: 0, operations })),
       )
-      return { memories, step }
+      return { db, step }
     }
 
     it("goes through the chat's passive write and is recorded once it is in", async () => {
       const writes: { chat: string; write: PassiveWrite }[] = []
       // SAFETY: the step only awaits the write; it never reads the submission back.
       const submitted = {} as Submission
-      const { memories, step } = placing((chat, write) =>
+      const { db, step } = placing((chat, write) =>
         Effect.sync(() => {
           writes.push({ chat, write })
           return submitted
@@ -174,13 +162,13 @@ describe('per-Topic memory (ADR 0032)', () => {
           },
         },
       ])
-      expect(memories.of('1').viewThrough()).toBe(2)
+      expect(viewReach(db, '1')).toBe(2)
     })
 
     it('records nothing when the write fails, so the next step places the view again', async () => {
-      const { memories, step } = placing(() => Effect.fail(new Internal({ reason: 'unexpected' })))
+      const { db, step } = placing(() => Effect.fail(new Internal({ reason: 'unexpected' })))
       expect(await Effect.runPromise(Effect.flip(step))).toMatchObject({ _tag: 'Internal' })
-      expect(memories.of('1').viewThrough()).toBe(0)
+      expect(viewReach(db, '1')).toBe(0)
     })
   })
 })

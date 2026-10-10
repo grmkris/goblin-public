@@ -307,7 +307,7 @@ Topic; the chat keeps its session and gets an `app.thread_head` (`moved: true`, 
 model text is only `[moved to thread "<title>"]` and whose Pi `edits` omit the turn's own entries from the chat's
 model context. Helpers the turn started report to the Thread from then on (their relays are handed over), the threads
 branched from the turn and its App placements move under it, the chat's memory forgets the turn
-(`ChatMemories.truncate`; its collector skips omitted entries), and the transcript index gives it to the Thread. A
+(`forgetFrom`; its collector skips omitted entries), and the transcript index gives it to the Thread. A
 turn still running, an older turn, a turn already moved and a turn waiting on an MCP approval are refused with a
 reason (`streaming`, `not_latest`, `moved`, `awaiting_approval`). Each move is an `app_chat_moves` row (`requested`,
 `forked`, `settled` or `refused`) that a restart finishes. The running-turn identity swap was built and measured
@@ -873,10 +873,11 @@ retries and recoveries re-inject the same sources without another rerank. No tra
 
 ## Topic memory
 
-Every Topic's Conversation (Personal's is Main) keeps its own memory (ADR 0032): `ChatMemory` (`memory/memory.ts`)
-keys every row by chat id, and `ChatMemories` (the `Memories` service) gives each chat's (`of`), turns one on with
-the `goblin.memory` and `goblin.recall` extensions (`activate`, once; composition activates every Conversation that
-has none yet, and creating a Topic activates its Conversation) and forgets a moved turn (`truncate(chat, size)`).
+Every Topic's Conversation (Personal's is Main) keeps its own memory (ADR 0032): `ChatMemory`
+(`memory/chat-memory.ts`) keys every row by chat id (its tables are functions of the agent's database in
+`memory/store.ts`), and the `Memories` service turns one on with the `goblin.memory` and `goblin.recall` extensions
+(`activate`, once; composition activates every Conversation that has none yet, and creating a Topic activates its
+Conversation) and forgets a moved turn (`truncate(chat, size)`).
 Activation, entry reads and builder writes resolve the chat's current Pi session on each use, so no memory row
 names a session. The Builder document uses the generation API's `conversationId`; the builder works only for a
 Conversation (`chatOf`, then `isConversation`). The additive migration `20261026000100_chat_memory` copied Main's
