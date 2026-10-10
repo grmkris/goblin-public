@@ -7,13 +7,13 @@ import type {
   Submission,
   UserInput,
 } from '@earendil-works/pi-durable'
-import type { PiOperationResult, PiReceipt, PiSubmitOptions } from 'agents/harness/pi'
+import type { PiModel, PiOperationResult, PiReceipt, PiSubmitOptions } from 'agents/harness/pi'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { NotFound } from '../http/errors.ts'
+import { type AppError, NotFound, toAppError } from '../http/errors.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 
@@ -27,6 +27,7 @@ const PiOperation = Schema.Literals([
   'messages',
   'busy',
   'events',
+  'setModel',
 ])
 
 /**
@@ -37,6 +38,10 @@ export class PiFailure extends Schema.TaggedError<PiFailure>()('PiFailure', {
   operation: PiOperation,
   cause: Schema.Defect(),
 }) {}
+
+/** A Pi call whose only failure is Pi's, as the programs take it: Pi's own error through `toAppError`. */
+export const fromPi = <A, R>(effect: Effect.Effect<A, PiFailure, R>): Effect.Effect<A, AppError, R> =>
+  effect.pipe(Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))))
 
 /** A passive entry for a conversation: its model sees it at its next turn and no run starts. */
 type PassiveWrite = { readonly requestId: string; readonly entry: EntryDraft }
@@ -68,6 +73,8 @@ export class PiSessions extends Context.Service<
     /** The session's active transcript, as Pi's entries. */
     readonly messages: (session: string) => Effect.Effect<EntryRecord[], PiFailure>
     readonly busy: (session: string) => Effect.Effect<boolean, PiFailure>
+    /** Puts `session` on `model` for its next turns. */
+    readonly setModel: (session: string, model: PiModel) => Effect.Effect<void, PiFailure>
     /** Pi's agent events for `session`: a snapshot, then one batch per commit, until the stream is stopped. */
     readonly events: (session: string) => Effect.Effect<AgentEventStream, PiFailure>
   }
@@ -115,6 +122,9 @@ export class PiSessions extends Context.Service<
         }),
         events: Effect.fn('PiSessions.events')(function* (session: string) {
           return yield* call('events', () => harness.session(session).events())
+        }),
+        setModel: Effect.fn('PiSessions.setModel')(function* (session: string, model: PiModel) {
+          return yield* call('setModel', () => harness.session(session).setModel(model))
         }),
       })
     }),

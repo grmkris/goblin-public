@@ -1,5 +1,4 @@
 import { ModelChoice } from '@goblin/contracts'
-import type { PiHarness } from 'agents/harness/pi'
 import { AgentGroup } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -15,6 +14,7 @@ import { AgentHandlers } from '../../../src/routines/agent-api.ts'
 import { ChatsLive } from '../../../src/layers/conversation.ts'
 import { ModelBudgetLive } from '../../../src/layers/budget.ts'
 import { Events, McpConnections, McpGrants, McpServers, Resident } from '../../../src/mcp/service.ts'
+import { PiSessions } from '../../../src/pi/sessions.ts'
 import { Db } from '../../../src/runtime/db.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { callOwner } from '../../owner-client.ts'
@@ -27,12 +27,6 @@ const fixture = () => {
   registerPrimary(db, 1)
   const budget = new ModelBudget(usageLedger(sqlite), 100)
   const pinned: string[] = []
-  // Choosing a model only puts the primary session on it; nothing else of Pi is reached.
-  const harness: PiHarness = Object.assign(Object.create(null), {
-    session: (session: string) => ({
-      setModel: async ({ id }: { id: string }) => void pinned.push(`${session} ${id}`),
-    }),
-  })
   const applied: Applied = new Map()
   const entitlements: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
   const legacy = Layer.mergeAll(
@@ -50,11 +44,12 @@ const fixture = () => {
     Layer.succeed(Db, sqlite),
     Layer.succeed(Resident, currentResident().service),
     plans(),
+    // Choosing a model only puts the primary session on it; nothing else of Pi is reached.
+    stub(PiSessions, { setModel: (session, { id }) => Effect.sync(() => void pinned.push(`${session} ${id}`)) }),
     // The agent handlers read only these from the instance input.
     Layer.succeed(
       AgentInput,
       Object.assign(Object.create(null), {
-        harness,
         applied,
         entitlements,
         env: { APP_URL: 'https://goblin.test', CREDENTIAL_KEY: 'unused', MODELS: 'model-b', MODEL_ID: 'model-a' },

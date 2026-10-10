@@ -1,5 +1,5 @@
 import type { FlowEvent } from '@goblin/contracts/telemetry'
-import type { PiHarness, PiReceipt } from 'agents/harness/pi'
+import type { PiReceipt } from 'agents/harness/pi'
 import * as Cause from 'effect/Cause'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
@@ -12,7 +12,7 @@ import { Models } from '../models.ts'
 import { FlowEvents, failedFlow } from '../observability/flows.ts'
 import { KeyedLock } from '../observability/lock.ts'
 import { safeErrorType } from '../observability/report.ts'
-import { type PiFailure, PiSessions } from '../pi/sessions.ts'
+import { PiSessions, fromPi } from '../pi/sessions.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { SessionId, chatSession, openChatSession } from './directory.ts'
@@ -26,13 +26,6 @@ import {
   relatedReceipts,
 } from './receipts.ts'
 import { type Admission, type Admitted, ChatOperations, type PassiveWrite, type Submit } from './service.ts'
-
-/** A Pi call's failure as the programs take one: Pi's own error through `toAppError`. */
-const asAppError = (failure: PiFailure) => Effect.fail(toAppError(failure.cause))
-
-/** A Pi call whose only failure is Pi's, taken as `asAppError`. */
-export const fromPi = <A, R>(effect: Effect.Effect<A, PiFailure, R>): Effect.Effect<A, AppError, R> =>
-  effect.pipe(Effect.catchTag('PiFailure', asAppError))
 
 /** Each chat's admission lock: `KeyedLock`'s, first come first served. */
 const chatLock =
@@ -99,7 +92,9 @@ const writeHeld = (receipts: Receipts, pi: PiSessions['Service']) =>
     const { requestId, entry, origin = 'system', parentOp } = write
     const receipt = { kind: `write:${entry.kind}`, origin, ...(parentOp === undefined ? {} : { parentOp }) } as const
     const { session } = yield* receipts.record(chat, requestId, receipt)
-    const submission = yield* pi.write(session, { requestId, entry }).pipe(Effect.catchTag('PiFailure', asAppError))
+    const submission = yield* pi
+      .write(session, { requestId, entry })
+      .pipe(Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))))
     yield* receipts.advance(chat, requestId, { state: 'written' })
     return submission
   })
@@ -155,13 +150,12 @@ type Sending = {
   readonly budget: Budget['Service']
   readonly models: Models['Service']
   readonly pi: PiSessions['Service']
-  readonly harness: PiHarness
   readonly applied: Applied
 }
 
 /** `ChatOperations.send`: the one admission sequence of an input (plan §3). */
 const sendWith =
-  ({ admit, budget, models, pi, harness, applied }: Sending) =>
+  ({ admit, budget, models, pi, applied }: Sending) =>
   <R = never>(input: Submit<R>): Effect.Effect<PiReceipt, AppError, R> =>
     Effect.gen(function* () {
       yield* budget.require(yield* epochSeconds)
@@ -170,7 +164,7 @@ const sendWith =
         Effect.gen(function* () {
           if (answer !== undefined && (yield* answer(session)))
             return { session, operationId, accepted: true } satisfies PiReceipt
-          yield* useModel(harness, applied, session).pipe(Effect.provideService(Models, models))
+          yield* useModel(pi, applied, session).pipe(Effect.provideService(Models, models))
           if (relay !== undefined) return yield* relay(session)
           return yield* fromPi(pi.submit(session, content, { operationId }))
         }),
@@ -185,13 +179,13 @@ export const makeChatOperations = Effect.gen(function* () {
   const db = yield* Db
   const pi = yield* PiSessions
   const flows = yield* FlowEvents
-  const { harness, applied } = yield* AgentInput
+  const { applied } = yield* AgentInput
   const withChat = chatLock(yield* KeyedLock)
   const receipts = receiptsOf(db)
   const written = writeHeld(receipts, pi)
   const tracked = trackedWith(receipts)
   const admit = admitWith({ withChat, tracked, flows, requireOpen: (chat) => openChatSession(db, chat) })
-  const sending = { admit, budget: yield* Budget, models: yield* Models, pi, harness, applied }
+  const sending = { admit, budget: yield* Budget, models: yield* Models, pi, applied }
   return ChatOperations.of({
     ...receipts,
     tracked,

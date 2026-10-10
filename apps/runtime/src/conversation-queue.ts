@@ -3,11 +3,10 @@ import { ConversationQueue, type QueueRemoval, type QueueRemovalResult } from '@
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { attempt } from './http/errors.ts'
-import { fromPi } from './chats/operations.ts'
 import { Conversations } from './chats/service.ts'
 import { RoutineRuns } from './routines/service.ts'
 import { BACKGROUND, conversationId, submissionId } from './pi/context.ts'
-import { PiSessions } from './pi/sessions.ts'
+import { PiSessions, fromPi } from './pi/sessions.ts'
 
 /** Read Pi's supported inbox document; neither the transcript nor application storage owns these inputs. */
 export async function queuedInputs(pi: Harness, session: string): Promise<ConversationQueue> {

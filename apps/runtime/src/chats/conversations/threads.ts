@@ -24,7 +24,7 @@ import {
   registerChat,
   topicOfChat,
 } from '../directory.ts'
-import { fromPi } from '../operations.ts'
+import { fromPi } from '../../pi/sessions.ts'
 import type { ChatOperations, ThreadAnchor } from '../service.ts'
 import {
   type RegistryCore,

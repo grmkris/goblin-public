@@ -17,9 +17,7 @@ export const AgentHandlers = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) 
   handlers
     .handle('usage', () => Effect.flatMap(epochSeconds, (now) => Budget.use((budget) => budget.today(now))))
     .handle('model', () => Models.use((models) => models.choice))
-    .handle('chooseModel', ({ payload }) =>
-      AgentInput.use(({ harness, applied }) => chooseOwnerModel(harness, applied, payload.model)),
-    )
+    .handle('chooseModel', ({ payload }) => chooseOwnerModel(payload.model))
     .handle('channel', () => Channel.use((channel) => channel.status))
     .handle('enableChannel', ({ payload }) =>
       AgentInput.use(({ env, userId, schedulePull }) =>
