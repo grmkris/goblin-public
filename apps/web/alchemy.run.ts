@@ -18,6 +18,16 @@ const modelEnv = {
   MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
 }
 
+/** What the Website build reads: a change to any of them builds again. */
+const BUILD_INPUTS = [
+  'src/**',
+  'vite.config.ts',
+  'vite.react.ts',
+  'package.json',
+  '../../apps/runtime/src/**',
+  '../../packages/**',
+]
+
 const runtimeStage = (name: string) => (name === 'local' || name === 'dev' || name === 'prod' ? name : 'test')
 
 export default Alchemy.Stack(
@@ -68,7 +78,7 @@ export default Alchemy.Stack(
       observability: stage.observability,
       dev: { port: 18971, strictPort: true },
       memo: {
-        include: ['src/**', 'vite.config.ts', 'package.json', '../../apps/runtime/src/**', '../../packages/**'],
+        include: BUILD_INPUTS,
         lockfile: true,
       },
       env: {

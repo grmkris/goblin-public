@@ -66,6 +66,8 @@
         "test/browser/*.tsx!",
         "test/browser/question-app.ts!",
         "test/browser/vite.config.ts!",
+        "test/perf/*.tsx!",
+        "test/perf/vite.config.ts!",
       ],
     },
     "packages/app": {
