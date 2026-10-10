@@ -516,8 +516,15 @@ message from an MCP client, a subagent, a routine or a thread's share-back arriv
 snapshot arrives a chat shows nothing. Conversations open at their end. A turn map in the transcript's right gutter
 (`components/turn-map.tsx`) marks each of the owner's turns where it sits, with a band for what is on screen; hovering it
 lists the turns and a click jumps to one. Without a fine pointer, or in a narrow window, an edge tab opens the list as a
-bottom drawer that a swipe down closes. The view follows a streaming reply only while the reader is at the end, and
-otherwise offers a jump back. The chat's bar and the composer float over the transcript as translucent chrome. Assistant Markdown is parsed by Streamdown (`components/parts/markdown.tsx`) and set by shadcn/typeset, whose append-stable rules keep earlier blocks still
+bottom drawer that a swipe down closes. A new turn of the owner's pins near the top while its reply fits beneath it; once the turn is answered
+past the fold, whether the reply grew there or arrived with it (a snapshot after the tab was away, a Telegram turn),
+the view follows the bottom. It follows a streaming reply only while the reader is at the end, and otherwise offers a
+jump back. A message just sent shows at once, before the stream confirms it (`lib/echo.ts`; the server's entry takes
+its row), and a `Thinking…` row stands in after it and after every tool result until the model's thinking, answer or
+next tool arrives, because a model's first content can take tens of seconds. A turn's thinking and tool calls fold into one
+line each (`lib/work-groups.ts`): while it runs it names the step, settled it counts them, and it opens to the rows,
+with calls in a row to one MCP server merged. A failed call, a request to the owner, a subagent, an App build and a
+call whose App is open stay in the flow. The chat's bar and the composer float over the transcript as translucent chrome. Assistant Markdown is parsed by Streamdown (`components/parts/markdown.tsx`) and set by shadcn/typeset, whose append-stable rules keep earlier blocks still
 while a reply streams. Streamdown splits a reply into blocks and renders each on its own, so a streamed batch renders
 only the block being written; it stays in streaming mode once the reply settles, so the blocks are not remounted. Every
 Streamdown renderer is replaced by its plain element. A reply may use a little HTML (`lib/reply-html.ts`: line breaks,
