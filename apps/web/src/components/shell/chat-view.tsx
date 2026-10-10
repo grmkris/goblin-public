@@ -1,11 +1,12 @@
-import { type ReactNode, useEffect, useMemo, useRef } from 'react'
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { ConversationView } from '@goblin/contracts'
+import type { AppView, ConversationView } from '@goblin/contracts'
 import { GitBranchIcon, MessageCircleIcon } from 'lucide-react'
 import { modelQuery } from '../../agent/queries.ts'
 import { type Part, partKey } from '../../lib/parts.ts'
 import { closedBy, entryOfPart, movableEntry, repliesLabel, rootParts, threadTitle } from '../../lib/threads.ts'
-import { useConversation as useFeedConversation, useFeedStatus } from '../../lib/workspace/hooks.ts'
+import { groupWork } from '../../lib/work-groups.ts'
+import { useApps, useConversation as useFeedConversation, useFeedStatus } from '../../lib/workspace/hooks.ts'
 import { updateWorkspaceConversationMutation } from '../../lib/workspace/mutations.ts'
 import { Conversation } from '../conversation.tsx'
 import { ConversationDock } from '../conversation-dock.tsx'
@@ -93,6 +94,20 @@ function useLead(view: ConversationView, parts: readonly Part[], earlier: boolea
   return { lead, shown }
 }
 
+/** `parts` with each run of quiet work folded to one line; a call whose App is open stays in the flow with it. */
+function useFolded(id: string, parts: readonly Part[]): Part[] {
+  const openApps = useApps(
+    useCallback(
+      (apps: readonly AppView[]) =>
+        apps.flatMap((app) =>
+          app.conversation === id && app.closedAt === undefined && app.source.kind === 'mcp' ? [app.source.callId] : [],
+        ),
+      [id],
+    ),
+  )
+  return useMemo(() => groupWork(parts, { appCalls: new Set(openApps) }), [parts, openApps])
+}
+
 /**
  * One chat, a channel or a thread: its header, its transcript (each message with the threads it started, or Reply in
  * thread) and its dock. A thread in the panel starts at the message it came from and reads none of the history before
@@ -144,6 +159,7 @@ export function ChatView({
   const startThread = useThreadStart(id)
   const { lead, shown } = useLead(view, parts, earlier !== undefined, hideRoot)
   const extras = useChatExtras(id, shown)
+  const rows = useFolded(id, shown)
   const heads = useMemo(
     () => parts.flatMap((part) => (part.kind === 'thread-head' ? [part.thread] : [])).join(' '),
     [parts],
@@ -154,7 +170,7 @@ export function ChatView({
       {header}
       <AppsIn conversation={id}>
         <Conversation
-          parts={shown}
+          parts={rows}
           canSwitchModel={models > 1}
           threads={threads}
           onOpen={openChat}

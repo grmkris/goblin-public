@@ -47,6 +47,20 @@ export type ToolPart = {
   readonly endedAt?: number
   readonly built?: AppBuilt
 }
+export type ReasoningPart = {
+  readonly kind: 'reasoning'
+  readonly id: string
+  readonly key?: string
+  readonly text: string
+  readonly live: boolean
+}
+/**
+ * The turn is under way and nothing of it shows: the message was just sent, or a tool finished and the model has not
+ * answered yet. It is a model's slow start (seconds, sometimes tens of them), not an error, so the row says so.
+ */
+export type WorkingPart = { readonly kind: 'working'; readonly id: string }
+/** The quiet work of a turn that a `work` part folds: its thinking, its tool calls, and the row that says it is under way. */
+export type WorkStep = ReasoningPart | WorkingPart | ToolPart
 /** What the transcript renders, in order. Every part has a stable id for the scroller. */
 export type Part =
   | {
@@ -64,19 +78,20 @@ export type Part =
       /** When it was written (epoch ms), where Pi knows. */
       readonly at?: number
     }
+  | ReasoningPart
+  | { readonly kind: 'text'; readonly id: string; readonly key?: string; readonly text: string; readonly live: boolean }
+  | WorkingPart
+  /**
+   * A run of a turn's quiet work (thinking and tool calls) folded to one line that opens to them (`work-groups.ts`).
+   * `live`: something in it is still under way, and the line says what.
+   */
   | {
-      readonly kind: 'reasoning'
+      readonly kind: 'work'
       readonly id: string
-      readonly key?: string
-      readonly text: string
+      readonly key: string
+      readonly steps: readonly WorkStep[]
       readonly live: boolean
     }
-  | { readonly kind: 'text'; readonly id: string; readonly key?: string; readonly text: string; readonly live: boolean }
-  /**
-   * The turn is under way and nothing of it shows: the message was just sent, or a tool finished and the model has not
-   * answered yet. It is a model's slow start (seconds, sometimes tens of them), not an error, so the row says so.
-   */
-  | { readonly kind: 'working'; readonly id: string }
   | ToolPart
   | { readonly kind: 'failure'; readonly id: string; readonly failure: TurnFailure }
   /** A thread the owner started with "+", where main noted it. */
@@ -123,7 +138,15 @@ export type Part =
     }
 
 /** The parts drawn from an entry of the app's own (a thread head, a Persona's answer…), which never change once written. */
-const DRAWN = new Set<Part['kind']>(['thread-head', 'persona-ask', 'persona-answer', 'topic-seed', 'delegate-result'])
+const DRAWN = new Set<Part['kind']>([
+  'thread-head',
+  'persona-ask',
+  'persona-answer',
+  'topic-seed',
+  'delegate-result',
+  // Nothing varies in it: the row only says the turn is under way.
+  'working',
+])
 
 /**
  * A turn the owner took: words typed in this app or sent from Telegram. Messages from an MCP client, a subagent's
@@ -147,12 +170,23 @@ export function samePart(a: Part, b: Part): boolean {
   if (a.kind === 'user') return b.kind === 'user' && sameUser(a, b)
   if (a.kind === 'failure') return b.kind === 'failure' && a.failure === b.failure
   if (a.kind === 'thread-started') return b.kind === 'thread-started' && a.thread === b.thread
-  if (a.kind === 'working') return true
-  if (a.kind === 'text' || a.kind === 'reasoning')
-    return (b.kind === 'text' || b.kind === 'reasoning') && a.text === b.text && a.live === b.live
+  if (a.kind === 'work') return b.kind === 'work' && sameWork(a, b)
+  if (a.kind === 'text' || a.kind === 'reasoning') return sameWords(a, b)
   // An entry the app wrote itself never changes: the same id draws the same thing.
   return DRAWN.has(a.kind)
 }
+
+const sameWords = (a: ReasoningPart | Extract<Part, { kind: 'text' }>, b: Part) =>
+  (b.kind === 'text' || b.kind === 'reasoning') && a.text === b.text && a.live === b.live
+
+type WorkPart = Extract<Part, { kind: 'work' }>
+const sameWork = (a: WorkPart, b: WorkPart) =>
+  a.live === b.live &&
+  a.steps.length === b.steps.length &&
+  a.steps.every((step, index) => {
+    const other = b.steps[index]
+    return other !== undefined && samePart(step, other)
+  })
 
 type UserPart = Extract<Part, { kind: 'user' }>
 const sameUser = (a: UserPart, b: UserPart) =>

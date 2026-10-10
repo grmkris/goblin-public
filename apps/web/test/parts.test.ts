@@ -267,12 +267,13 @@ describe('app builds in the transcript', () => {
   })
 })
 
+const answered = (id: number, text: string) => ({
+  id,
+  model: [{ role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop', timestamp: 2_000 }],
+})
+
 describe('the working row and the echo of a sent message', () => {
   const owner = { id: 1, model: [{ role: 'user', content: 'hello' }] }
-  const answered = (id: number, text: string) => ({
-    id,
-    model: [{ role: 'assistant', content: [{ type: 'text', text }], stopReason: 'stop', timestamp: 2_000 }],
-  })
   it('says the turn is under way after the owner’s message and after a tool result, until something streams', () => {
     const afterMessage = conversationParts(snapshot([owner], { run: {} }))
     expect(afterMessage.map((part) => part.kind)).toEqual(['user', 'working'])
@@ -309,7 +310,7 @@ describe('the working row and the echo of a sent message', () => {
       ['working', 'working', 'working'],
     ])
     // The same row throughout: the echo's key is the server's entry's key.
-    expect(partKey(sending[0] as Part)).toBe(partKey(delivered[0] as Part))
+    expect(sending.map(partKey)[0]).toBe(delivered.map(partKey)[0])
   })
   it('leaves an older message alone when the echo’s own has not arrived', () => {
     const echo = { id: 'echo:op-2', text: 'again', after: 1 }
@@ -318,9 +319,10 @@ describe('the working row and the echo of a sent message', () => {
   })
 })
 
+const toolOf = (state: ReturnType<typeof snapshot>) =>
+  conversationParts(state).find((part): part is ToolPart => part.kind === 'tool')
+
 describe('a tool row’s time', () => {
-  const tool = (state: ReturnType<typeof snapshot>) =>
-    conversationParts(state).find((part): part is ToolPart => part.kind === 'tool')
   it('keeps the start and end this browser saw after the run ends, not the asking message’s start and the server’s end', () => {
     // The asking message began at 1_000 and the server stamped the result 4_500; the tool ran 10_000 to 19_500 here.
     let state = snapshot([{ id: 1, model: [{ role: 'user', content: 'go' }] }], { run: {} })
@@ -331,12 +333,12 @@ describe('a tool row’s time', () => {
       10_000,
     )
     state = projectBatch(state, [{ type: 'tool_execution_end', toolCallId: 'c1', entry: result(3, 'c1') }], 19_500)
-    expect(tool(state)).toMatchObject({ state: 'done', startedAt: 10_000, endedAt: 19_500 })
+    expect(toolOf(state)).toMatchObject({ state: 'done', startedAt: 10_000, endedAt: 19_500 })
     const ended = projectBatch(state, [{ type: 'run_end' }], 20_000)
-    expect(tool(ended)).toMatchObject({ state: 'done', startedAt: 10_000, endedAt: 19_500 })
+    expect(toolOf(ended)).toMatchObject({ state: 'done', startedAt: 10_000, endedAt: 19_500 })
   })
   it('falls back to the asking message and the result’s own stamp for a tool this browser did not see run', () => {
     const state = snapshot([asking(2, [call('c1')]), result(3, 'c1')])
-    expect(tool(state)).toMatchObject({ startedAt: 1_000, endedAt: 4_500 })
+    expect(toolOf(state)).toMatchObject({ startedAt: 1_000, endedAt: 4_500 })
   })
 })

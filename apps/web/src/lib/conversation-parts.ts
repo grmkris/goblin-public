@@ -178,43 +178,53 @@ function placeApps(parts: readonly Part[]): Part[] {
     .toReversed()
 }
 
-/**
- * The transcript as render parts: each tool result folds into the call that asked for it. `echo` is a message just
- * sent that the stream has not delivered yet; it shows until it has, and the server's entry then takes its key.
- */
-export function conversationParts(projection: ConversationProjection, echo?: Echo): Part[] {
+function contextOf(projection: ConversationProjection): Context {
   const results = new Map<string, ToolResultMessage>()
   for (const message of projection.messages) if (message.role === 'tool') results.set(message.toolCallId, message)
-  const context: Context = {
+  return {
     results,
     live: new Map(projection.tools.map((tool) => [tool.callId, tool])),
     times: projection.toolTimes ?? new Map(),
     running: projection.running,
   }
-  const seen = new Set<string>()
-  const parts: Part[] = []
-  const landed = echo === undefined ? undefined : delivered(echo, projection.messages)
-  for (const message of projection.messages) {
-    if (message.role === 'user') {
-      const part = userPart(message)
-      parts.push(echo !== undefined && message === landed && part.kind === 'user' ? { ...part, key: echo.id } : part)
-    } else if (message.role === 'assistant') {
-      for (const call of message.toolCalls) seen.add(call.id)
-      parts.push(...assistantParts(message, context))
-    } else if (message.role === 'tool') {
-      // A result whose call is not in the transcript (compacted away) still shows on its own.
-      if (!seen.has(message.toolCallId))
-        parts.push(
-          toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp),
-        )
-    } else parts.push(drawnPart(message))
+}
+
+/**
+ * The parts of one message. `seen` gathers the calls the assistant asked for; `key` is the echo's, when this is the
+ * owner's message that the echo stood for.
+ */
+function messageParts(message: ChatMessage, context: Context, seen: Set<string>, key: string | undefined): Part[] {
+  if (message.role === 'user') {
+    const part = userPart(message)
+    return [key !== undefined && part.kind === 'user' ? { ...part, key } : part]
   }
-  if (echo !== undefined && landed === undefined)
-    parts.push({ kind: 'user', id: echo.id, key: echo.id, text: echo.text })
-  const shown = [...parts, ...liveParts(projection, context, seen)]
-  return uniqueKeys(
-    placeApps([...shown, ...workingParts(projection, shown, echo !== undefined && landed === undefined)]),
+  if (message.role === 'assistant') {
+    for (const call of message.toolCalls) seen.add(call.id)
+    return assistantParts(message, context)
+  }
+  // A result whose call is not in the transcript (compacted away) still shows on its own.
+  if (message.role === 'tool')
+    return seen.has(message.toolCallId)
+      ? []
+      : [toolPart({ id: message.toolCallId, name: message.toolName, arguments: {} }, context, message.timestamp)]
+  return [drawnPart(message)]
+}
+
+/**
+ * The transcript as render parts: each tool result folds into the call that asked for it. `echo` is a message just
+ * sent that the stream has not delivered yet; it shows until it has, and the server's entry then takes its key.
+ */
+export function conversationParts(projection: ConversationProjection, echo?: Echo): Part[] {
+  const context = contextOf(projection)
+  const seen = new Set<string>()
+  const landed = echo === undefined ? undefined : delivered(echo, projection.messages)
+  const parts = projection.messages.flatMap((message) =>
+    messageParts(message, context, seen, message === landed ? echo?.id : undefined),
   )
+  const sending = echo !== undefined && landed === undefined
+  if (sending) parts.push({ kind: 'user', id: echo.id, key: echo.id, text: echo.text })
+  const shown = [...parts, ...liveParts(projection, context, seen)]
+  return uniqueKeys(placeApps([...shown, ...workingParts(projection, shown, sending)]))
 }
 
 type DrawnMessage = Exclude<ChatMessage, { readonly role: 'user' | 'assistant' | 'tool' }>
