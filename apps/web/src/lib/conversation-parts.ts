@@ -259,6 +259,10 @@ function drawnPart(message: DrawnMessage): Part {
       return { kind: 'topic-seed', id: message.id, ...message.seed }
     case 'delegate-result':
       return { kind: 'delegate-result', id: message.id, ...message.result, ...at }
+    case 'notice': {
+      const { notice: _notice, routine: _routine, ...said } = message.notice
+      return { kind: 'notice', id: message.id, ...said, ...at }
+    }
   }
 }
 

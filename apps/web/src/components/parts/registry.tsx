@@ -28,7 +28,14 @@ import { liveLabel, stepCount, stepLines } from '../../lib/work-groups.ts'
 import { ThreadStartedRow } from '../shell/thread-summary.tsx'
 import { useNow } from '../use-now.ts'
 import { AppBuildPart } from './app-build-part.tsx'
-import { DelegateResultPart, PersonaAnswerPart, PersonaAskPart, ThreadHeadPart, TopicSeedPart } from './drawn-parts.tsx'
+import {
+  DelegateResultPart,
+  NoticePart,
+  PersonaAnswerPart,
+  PersonaAskPart,
+  ThreadHeadPart,
+  TopicSeedPart,
+} from './drawn-parts.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
 import { SubagentBlock } from './subagent-block.tsx'
@@ -263,6 +270,8 @@ function PartRow({ part, canSwitchModel }: { readonly part: Part; readonly canSw
       return <TopicSeedPart part={part} />
     case 'delegate-result':
       return <DelegateResultPart part={part} />
+    case 'notice':
+      return <NoticePart part={part} />
     case 'failure':
       return (
         <Aside>

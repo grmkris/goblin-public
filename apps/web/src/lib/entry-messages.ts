@@ -1,7 +1,14 @@
 // A conversation's Pi entries as transcript messages: the model's own messages, the entries the shell draws itself
 // (thread heads, Persona answers and asks, Topic seeds, Delegate results, "+" notes), and none for what a marker or a
 // later edit leaves out. Committed entries never change, so each is projected once.
-import { DelegateResultData, PersonaAnswerData, PersonaAskData, ThreadHeadData, TopicSeedData } from '@goblin/contracts'
+import {
+  DelegateResultData,
+  NoticeData,
+  PersonaAnswerData,
+  PersonaAskData,
+  ThreadHeadData,
+  TopicSeedData,
+} from '@goblin/contracts'
 import { Option, Schema } from 'effect'
 import { type ChatMessage, entryMessage, stamped } from './chat-messages.ts'
 import { identifier, isNumber, isString, record, records } from './values.ts'
@@ -28,6 +35,7 @@ const decodeAnswer = Schema.decodeUnknownOption(PersonaAnswerData)
 const decodeSeed = Schema.decodeUnknownOption(TopicSeedData)
 const decodeResult = Schema.decodeUnknownOption(DelegateResultData)
 const decodeAsk = Schema.decodeUnknownOption(PersonaAskData)
+const decodeNotice = Schema.decodeUnknownOption(NoticeData)
 
 /** The one message a decoded entry makes, or none when its data did not decode. */
 const one = <A>(decoded: Option.Option<A>, message: (data: A) => ChatMessage): ChatMessage[] =>
@@ -46,6 +54,8 @@ function drawnEntry(entry: Record<string, unknown>): ChatMessage[] | undefined {
       return one(decodeSeed(entry.data), (seed) => ({ id, role: 'topic-seed', seed, ...at }))
     case 'app.delegate_result':
       return one(decodeResult(entry.data), (result) => ({ id, role: 'delegate-result', result, ...at }))
+    case 'app.notice':
+      return one(decodeNotice(entry.data), (notice) => ({ id, role: 'notice', notice, ...at }))
     default:
       return undefined
   }

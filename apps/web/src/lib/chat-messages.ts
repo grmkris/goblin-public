@@ -4,6 +4,7 @@ import type {
   Attachment,
   ComposerOption,
   DelegateResultData,
+  NoticeData,
   PersonaAnswerData,
   PersonaAskData,
   ThreadHeadData,
@@ -74,6 +75,8 @@ export type ChatMessage =
   | { readonly id: string; readonly role: 'persona'; readonly answer: PersonaAnswerData; readonly timestamp?: number }
   /** The brief and frozen sources a Topic made from a discussion starts with (`app.topic_seed`). */
   | { readonly id: string; readonly role: 'topic-seed'; readonly seed: TopicSeedData; readonly timestamp?: number }
+  /** A routine's notice (ADR 0041): who it is from and what it says, the producer's words. */
+  | { readonly id: string; readonly role: 'notice'; readonly notice: NoticeData; readonly timestamp?: number }
   /** A Delegate's attributed result, in the chat that assigned it (`app.delegate_result`). */
   | {
       readonly id: string

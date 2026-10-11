@@ -2,7 +2,7 @@
 // Personas, a Persona's answer, a Topic's brief and a Delegate's result. Who wrote each shows first, as Slack shows a
 // bot's name on its message; Goblin's own answers carry no name, because Goblin answers unless someone else was asked.
 import { type ReactNode, use } from 'react'
-import { BotIcon, SparklesIcon } from 'lucide-react'
+import { BellIcon, BotIcon, ExternalLinkIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 import type { Part } from '../../lib/parts.ts'
 import { MessageFiles } from '../attachments.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
@@ -129,6 +129,35 @@ export function DelegateResultPart({ part }: { readonly part: Of<'delegate-resul
         <button type="button" className="cause-link attributed-open" onClick={() => open(part.delegate)}>
           Open the task
         </button>
+      )}
+    </Attributed>
+  )
+}
+
+const NOTICE_TAG = { event: 'Notice', reminder: 'Reminder', digest: 'Notice' } as const
+
+/**
+ * A routine's notice (ADR 0041), as a bot's message: from the connection it came from (or the routine, for a
+ * reminder), the producer's title and words as plain text, and its one link, opened outside the app.
+ */
+export function NoticePart({ part }: { readonly part: Of<'notice'> }) {
+  return (
+    <Attributed
+      mark={
+        <span className="delegate-mark">
+          {part.source === 'reminder' ? <BellIcon aria-hidden /> : <PlugIcon aria-hidden />}
+        </span>
+      }
+      name={part.from.label}
+      tag={NOTICE_TAG[part.source]}
+    >
+      <p className="message-text font-medium">{part.title}</p>
+      {part.body !== undefined && <p className="message-text">{part.body}</p>}
+      {part.url !== undefined && (
+        <a className="cause-link attributed-open" href={part.url} target="_blank" rel="noopener noreferrer nofollow">
+          <ExternalLinkIcon aria-hidden />
+          {new URL(part.url).host}
+        </a>
       )}
     </Attributed>
   )

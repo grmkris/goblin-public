@@ -1,6 +1,7 @@
 import {
   type Attachment,
   type ComposerOption,
+  type NoticeData,
   type PersonaAnswerData,
   type PersonaTag,
   TELEGRAM_AUTHOR,
@@ -126,6 +127,8 @@ export type Part =
     >)
   /** The brief and frozen sources a Topic made from a discussion starts with. */
   | ({ readonly kind: 'topic-seed'; readonly id: string } & TopicSeedData)
+  /** A routine's notice (ADR 0041): who it is from, what kind it is, its words and its one link. */
+  | ({ readonly kind: 'notice'; readonly id: string; readonly at?: number } & Omit<NoticeData, 'notice' | 'routine'>)
   /** A Delegate's result posted back here: who did it, how it ended, and its report. */
   | {
       readonly kind: 'delegate-result'
@@ -144,6 +147,7 @@ const DRAWN = new Set<Part['kind']>([
   'persona-answer',
   'topic-seed',
   'delegate-result',
+  'notice',
   // Nothing varies in it: the row only says the turn is under way.
   'working',
 ])

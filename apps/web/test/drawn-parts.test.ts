@@ -81,6 +81,39 @@ describe('entries the app writes into a chat', () => {
     expect(parts[4]).toMatchObject({ delegate: '21', name: 'Researcher', status: 'done', text: 'Three options.' })
   })
 
+  it("draws a routine's notice from its connection, never as the owner's turn (ADR 0041)", () => {
+    const notice = {
+      notice: 'notice:rt_1:evt-1',
+      routine: 'rt_1',
+      source: 'event',
+      from: { connectionId: 'sidequest-worker', label: 'Sidequest · Worker' },
+      title: 'You were picked',
+      body: 'Job 12: Write docs',
+      url: 'https://sidequest.test/jobs/12',
+    }
+    const [part] = conversationParts(
+      snapshot([
+        {
+          id: 6,
+          kind: 'app.notice',
+          data: notice,
+          model: [{ role: 'user', content: '[notice from "Sidequest · Worker"]', timestamp: 9000 }],
+        },
+      ]),
+    )
+    expect(part).toEqual({
+      kind: 'notice',
+      id: '6:0',
+      source: 'event',
+      from: { connectionId: 'sidequest-worker', label: 'Sidequest · Worker' },
+      title: 'You were picked',
+      body: 'Job 12: Write docs',
+      url: 'https://sidequest.test/jobs/12',
+      at: 9000,
+    })
+    expect(part !== undefined && isOwnTurn(part)).toBe(false)
+  })
+
   it("marks a moved turn's head as moved and keeps who wrote it", () => {
     const [part] = conversationParts(snapshot([{ id: 9, kind: 'app.thread_head', data: moved }]))
     expect(part).toMatchObject({ kind: 'thread-head', thread: '13', moved: true, author: 'Kris' })
