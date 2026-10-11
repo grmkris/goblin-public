@@ -13,6 +13,7 @@ import {
   fits,
   lifecycle,
   managerState,
+  refreshTools,
   remote,
   serverOf,
 } from './connections.ts'
@@ -72,7 +73,11 @@ const callTool = (manager: Manager, call: ToolCall, args: Record<string, unknown
     const live = yield* authorized(manager, connectionId, { capability: 'tool', name }, request)
     yield* checks.guard(false)
     yield* checks.granted
-    const tool = live.snapshot.tools.find((item) => item.name === name)
+    // A tool goblin does not list may be one the server added since: list once more before refusing (ADR 0042).
+    const listed = live.snapshot.tools.some((item) => item.name === name)
+      ? live.snapshot
+      : yield* refreshTools(manager, live)
+    const tool = listed.tools.find((item) => item.name === name)
     if (tool === undefined || !toolOffered(tool, caller)) return yield* new NotFound({ what: `tool ${name}` })
     yield* fits(connectionId, args, manager.maxResultBytes)
     return yield* remote(manager, live, () =>

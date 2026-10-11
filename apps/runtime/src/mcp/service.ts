@@ -161,6 +161,14 @@ export class McpConnections extends Context.Service<
       connectionId: string,
       options?: McpRequestOptions,
     ) => Effect.Effect<McpConnectionSnapshot, AppError>
+    /**
+     * Connects (or reuses the live connection) and lists its tools again, keeping them (ADR 0042): a tool the server
+     * added since it was discovered is then known.
+     */
+    readonly refreshTools: (
+      connectionId: string,
+      options?: McpRequestOptions,
+    ) => Effect.Effect<McpConnectionSnapshot, AppError>
     /** Drops the live connection and discovers again over a fresh handshake. */
     readonly reconnect: (connectionId: string) => Effect.Effect<McpConnectionSnapshot, AppError>
     /** Closes the server's connection, if it has one. */

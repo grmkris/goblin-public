@@ -20,7 +20,14 @@ import type { McpConnectionSnapshot, McpManagerOptions, McpRequestOptions, McpSe
 export type Connection = {
   readonly client: Client
   readonly server: McpServerConfig
-  readonly snapshot: McpConnectionSnapshot
+  /** This connection among every one the manager opened: its re-lists are one flight, never another's. */
+  readonly serial: number
+  /** What it discovered, its tools replaced in place by each whole re-list (ADR 0042). */
+  snapshot: McpConnectionSnapshot
+  /** The server said its tools changed (or a call missed one) since the last re-list began. */
+  toolsChanged: boolean
+  /** A re-list failed, so its tools are not known: the next use opens it again. */
+  stale: boolean
   /** When it was last used, in Clock milliseconds; it closes once idle that long. */
   usedAt: number
   /** The fiber that closes it when it has been idle long enough. */
@@ -40,6 +47,8 @@ export type Manager = {
   readonly maxPages: number
   readonly maxResultBytes: number
   readonly idleMs: number
+  /** How many connections it has opened. */
+  opened: number
 }
 
 /** The connections as the host that owns them uses them: also adding and removing the servers offered. */
@@ -102,13 +111,27 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
       catch: (error) => mapMcpError(error, server.connectionId),
     })
     const usedAt = yield* Clock.currentTimeMillis
-    const connection: Connection = { client, server, snapshot, usedAt, idle: undefined }
+    manager.opened += 1
+    const serial = manager.opened
+    const connection: Connection = {
+      client,
+      server,
+      serial,
+      snapshot,
+      toolsChanged: false,
+      stale: false,
+      usedAt,
+      idle: undefined,
+    }
     manager.connections.set(server.connectionId, connection)
     connection.idle = yield* Effect.forkIn(idleClose(manager, connection), manager.scope)
     return connection
   })
 
-/** The live connection, its idle time restarted, or one flight (`mcp.connect:<server>`) that opens it. */
+/**
+ * The live connection, its idle time restarted, or one flight (`mcp.connect:<server>`) that opens it. A stale one (its
+ * tools could not be re-listed) is closed and opened again.
+ */
 export const connectionOf = (
   manager: Manager,
   connectionId: string,
@@ -116,6 +139,8 @@ export const connectionOf = (
 ): Effect.Effect<Connection, AppError> =>
   Effect.suspend(() => {
     const existing = manager.connections.get(connectionId)
+    if (existing?.stale === true)
+      return Effect.andThen(close(manager, connectionId), connectionOf(manager, connectionId, request))
     if (existing !== undefined)
       return Effect.map(Clock.currentTimeMillis, (now) => {
         existing.usedAt = now
@@ -127,6 +152,49 @@ export const connectionOf = (
         timed({ step: 'connect', connectionId, sharedConnection: true }, manager.options.report),
       ),
     )
+  })
+
+/** One whole list of the connection's tools, bounded as discovery is: the snapshot with those tools. */
+const listTools = (manager: Manager, connection: Connection) => {
+  const connectionId = connection.server.connectionId
+  return Effect.tryPromise({
+    try: async () => {
+      const options = { cacheMode: 'refresh' as const, timeout: manager.requestTimeoutMs }
+      const { tools } = await connection.client.listTools(undefined, options)
+      return bounded(connectionId, { ...connection.snapshot, tools }, manager.maxResultBytes)
+    },
+    catch: (error) => mapMcpError(error, connectionId),
+  })
+}
+
+/**
+ * Lists the connection's tools again and keeps them in its snapshot (ADR 0042): one flight per connection, which lists
+ * again while the server says they changed during a list. A list that fails or overflows is never kept in part; the
+ * connection is marked stale instead, so its next use opens it again.
+ */
+export const refreshTools = (
+  manager: Manager,
+  connection: Connection,
+): Effect.Effect<McpConnectionSnapshot, AppError> =>
+  Effect.suspend(() => {
+    const connectionId = connection.server.connectionId
+    if (connection.snapshot.capabilities.tools === undefined) return Effect.succeed(connection.snapshot)
+    connection.toolsChanged = true
+    const relist = Effect.gen(function* () {
+      while (connection.toolsChanged) {
+        connection.toolsChanged = false
+        connection.snapshot = yield* listTools(manager, connection)
+      }
+      return connection.snapshot
+    }).pipe(
+      Effect.tapError(() =>
+        Effect.sync(() => {
+          connection.stale = true
+        }),
+      ),
+      timed({ step: 'tools', connectionId }, manager.options.report),
+    )
+    return manager.flights.run(`mcp.tools:${String(connection.serial)}`, relist)
   })
 
 /** A connection for a capability the owner granted; nothing is opened for one they did not. */
@@ -184,6 +252,13 @@ export const lifecycle = (manager: Manager) => ({
       ? opened
       : opened.pipe(timed({ step: 'connect', connectionId, scope: runContext }, manager.options.report))
   }),
+  refreshTools: Effect.fn('McpConnections.refreshTools')(function* (
+    connectionId: string,
+    options: McpRequestOptions = {},
+  ) {
+    const { runContext: _, ...request } = options
+    return yield* refreshTools(manager, yield* connectionOf(manager, connectionId, request))
+  }),
   reconnect: Effect.fn('McpConnections.reconnect')(function* (connectionId: string) {
     yield* close(manager, connectionId)
     return (yield* connectionOf(manager, connectionId, {})).snapshot
@@ -224,6 +299,7 @@ export const managerState = Effect.fnUntraced(function* (options: McpManagerOpti
     maxPages: options.maxPages ?? 64,
     maxResultBytes: options.maxResultBytes ?? 1_048_576,
     idleMs: options.idleMs ?? 300_000,
+    opened: 0,
   }
   yield* Effect.addFinalizer(() => closeAll(manager))
   return manager

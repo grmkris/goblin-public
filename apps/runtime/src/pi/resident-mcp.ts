@@ -35,11 +35,16 @@ const dispatchAuthority = (session: string, input: { connectionId: string; name:
 
 /**
  * A call the owner has not granted becomes a request for their decision, but only for a tool that exists and the
- * model may call: anything else stays NotFound, so the owner is never asked about a tool that is not there.
+ * model may call: anything else stays NotFound, so the owner is never asked about a tool that is not there. A tool the
+ * connection does not list yet is listed once more first: the server may have just added it (ADR 0042).
  */
 const grantRequired = (denied: GrantDenied, options: McpRequestOptions) =>
   Effect.gen(function* () {
-    const snapshot = yield* (yield* McpConnections).connect(denied.connectionId, options)
+    const connections = yield* McpConnections
+    const known = yield* connections.connect(denied.connectionId, options)
+    const snapshot = known.tools.some(({ name }) => name === denied.name)
+      ? known
+      : yield* connections.refreshTools(denied.connectionId, options)
     const tool = snapshot.tools.find((item) => item.name === denied.name)
     if (tool === undefined || !toolOffered(tool, 'model')) return yield* new NotFound({ what: `tool ${denied.name}` })
     const labels = yield* (yield* McpServers).labels()
