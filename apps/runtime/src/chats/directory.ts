@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import * as Brand from 'effect/Brand'
 import { InvalidInput, NotFound } from '../http/errors.ts'
+import { appPersonaChats } from '../storage/personas.ts'
 import { appConversations } from '../storage/schema.ts'
 import { appTopics } from '../storage/topics.ts'
 import { receiptIn } from './receipts.ts'
@@ -89,6 +90,18 @@ export const isConversationChat = (db: ChatDb, chat: string): boolean => isChann
 /** Whether `chat` is a Persona's hidden fork (ADR 0033): never listed, never reported on its own. */
 export const isHiddenChat = (db: ChatDb, chat: string): boolean => chatRow(db, chat)?.role === 'persona'
 
+/** A Persona's fork as its resume reads it: the chat it answers in, and the Persona at the revision it answers with. */
+export type PersonaFork = { readonly parent: ChatId; readonly persona: number; readonly revision: number }
+
+/** The Persona fork `chat` is, if it is one (ADR 0033): its parent chat and its Persona binding. */
+export const personaForkOf = (db: ChatDb, chat: string): PersonaFork | undefined => {
+  const row = chatRow(db, chat)
+  if (row?.role !== 'persona' || row.parentSession === null) return undefined
+  const binding = db.select().from(appPersonaChats).where(eq(appPersonaChats.chatId, chat)).get()
+  if (binding === undefined) return undefined
+  return { parent: ChatId(row.parentSession), persona: binding.personaId, revision: binding.revision }
+}
+
 /** The Topic a registered chat belongs to. */
 export const topicOfChat = (db: ChatDb, chat: string): number => registeredRow(db, chat).topicId
 
@@ -127,6 +140,18 @@ export const openChatSession = (db: ChatDb, chat: string): SessionId => {
   const topic = db.select({ at: appTopics.archivedAt }).from(appTopics).where(eq(appTopics.id, row.topicId)).get()
   if (topic === undefined) throw new NotFound({ what: 'topic' })
   if (topic.at !== null) throw new InvalidInput({ reason: 'topic_archived' })
+  return chatSession(db, chat)
+}
+
+/**
+ * The Pi session of a registered chat whose agent may act now: an open chat that takes new work, or a Persona's fork
+ * while the chat it answers in is (ADR 0041), so a call the Persona makes can be held for the owner and dispatched.
+ */
+export const actingChatSession = (db: ChatDb, chat: string): SessionId => {
+  const row = chatRow(db, chat)
+  if (row?.role !== 'persona') return openChatSession(db, chat)
+  if (row.parentSession === null) throw new NotFound({ what: 'conversation' })
+  openChatSession(db, row.parentSession)
   return chatSession(db, chat)
 }
 

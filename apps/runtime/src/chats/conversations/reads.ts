@@ -7,6 +7,7 @@ import { BACKGROUND, conversationId, entryId } from '../../pi/context.ts'
 import { Subagents, answerText } from '../../pi/subagent-relay.ts'
 import { appConversations } from '../../storage/schema.ts'
 import {
+  actingChatSession,
   type ChatDb,
   type StoredChat,
   chatOfSession,
@@ -127,6 +128,8 @@ export const registryReads = (core: RegistryCore) => {
     require: (chat: string) => requireChat(core, chat),
     requireOpen: (chat: string) =>
       attemptSync(() => openChatSession(db, chat)).pipe(Effect.withSpan('Conversations.requireOpen')),
+    requireActing: (chat: string) =>
+      attemptSync(() => actingChatSession(db, chat)).pipe(Effect.withSpan('Conversations.requireActing')),
     kindOf: (chat: string) =>
       Effect.map(registered(core, chat), (row) => row.kind).pipe(Effect.withSpan('Conversations.kindOf')),
     spawnerSession: (chat: string) => spawnerOf(core, chat),

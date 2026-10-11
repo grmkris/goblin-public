@@ -4,7 +4,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import type { AgentApps } from '../../../src/agent-apps/engine.ts'
-import { Conversations } from '../../../src/chats/service.ts'
+import { Chats, Conversations } from '../../../src/chats/service.ts'
 import { RoutineControl, RoutineRuns } from '../../../src/routines/service.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
@@ -113,6 +113,8 @@ export const organizing = (options: { readonly active?: boolean } = {}) => {
           lane,
           conversations,
           stub(AgentInput),
+          // No chat here is a Persona's fork: a reply to a hold finds none.
+          stub(Chats, { personaFork: () => Effect.succeed(Option.none()) }),
           stub(PiSessions),
           stub(RoutineRuns),
           stub(RoutineControl),

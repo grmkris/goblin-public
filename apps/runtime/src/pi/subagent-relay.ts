@@ -41,7 +41,7 @@ export const SUBAGENT_RELAY = 'goblin.subagent-relay'
  * fork, or the chat Personas were asked in. Never expected; `missing` names which, and nothing else is carried.
  */
 export class ConversationMissing extends Schema.TaggedError<ConversationMissing>()('ConversationMissing', {
-  missing: Schema.Literals(['spawner', 'spawner_chat', 'subagent', 'move_fork', 'persona_ask']),
+  missing: Schema.Literals(['spawner', 'spawner_chat', 'subagent', 'move_fork', 'persona_ask', 'persona_resume']),
 }) {}
 
 export type Subagent = {

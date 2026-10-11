@@ -1,7 +1,7 @@
 import * as Effect from 'effect/Effect'
 import type { PersonaBinding } from '../chats/service.ts'
+import { frozenAt } from '../personas/ask.ts'
 import { Personas } from '../personas/service.ts'
-import type { FrozenPersona } from '../pi/persona-turn.ts'
 import type { RoutineRun } from './runs.ts'
 import { Routines } from './service.ts'
 import { definitionOf } from './store.ts'
@@ -27,20 +27,7 @@ export const personaHold = Effect.fn('routines.personaHold')(function* (routineI
 export const runPersona = Effect.fn('routines.runPersona')(function* (record: RoutineRun) {
   const { handTo } = definitionOf(record)
   if (handTo.kind !== 'persona') return undefined
-  const personas = yield* Personas
-  const pinned = yield* personas.revision(handTo.persona, handTo.revision)
-  const { name, avatar, role, instructions, setup, model } = pinned
-  const offered = model !== undefined && (yield* personas.offers(model))
-  return {
-    id: handTo.persona,
-    revision: handTo.revision,
-    name,
-    avatar,
-    role,
-    instructions,
-    setup,
-    ...(offered ? { model } : {}),
-  } satisfies FrozenPersona
+  return yield* frozenAt(handTo.persona, handTo.revision)
 })
 
 /** The Persona a run's conversation is bound to, with the setup it adds there (ADR 0040); none for Goblin's run. */

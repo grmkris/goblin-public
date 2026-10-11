@@ -12,6 +12,7 @@ import {
   conversationOfTopic,
   isConversationChat,
   isHiddenChat,
+  personaForkOf,
   primaryChat,
   registerChat,
   registerPrimary,
@@ -66,6 +67,8 @@ export const ChatsLive = Layer.effect(
       conversationAbove: read(db, 'Chats.conversationAbove', conversationAbove),
       isConversation: read(db, 'Chats.isConversation', isConversationChat),
       isHidden: read(db, 'Chats.isHidden', isHiddenChat),
+      personaFork: (chat: string) =>
+        Effect.map(read(db, 'Chats.personaFork', personaForkOf)(chat), Option.fromNullishOr),
       register: read(db, 'Chats.register', (database, row: ChatRow, again: 'fail' | 'keep' = 'fail') =>
         registerChat(database, row, again),
       ),

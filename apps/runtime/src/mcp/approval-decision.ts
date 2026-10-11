@@ -21,7 +21,7 @@ const authority = (row: ApprovalRow) =>
     const session = row.sessionId
     const chat = yield* (yield* Chats).chatOf(session)
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
-    yield* (yield* Conversations).requireOpen(chat.value)
+    yield* (yield* Conversations).requireActing(chat.value)
     yield* requireRoutineSession(session)
     if (!(yield* (yield* Setups).scope(session)).tool(row.connectionId, row.name))
       return yield* new NotFound({ what: 'tool scope' })

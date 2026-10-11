@@ -1,9 +1,10 @@
 import type { TextContent } from '@earendil-works/pi-ai'
 import type { PersonaAskData } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
 import { epochSeconds } from '../clock.ts'
-import { ChatOperations } from '../chats/service.ts'
-import { InvalidInput, attempt, toAppError } from '../http/errors.ts'
+import { ChatOperations, Chats, Conversations } from '../chats/service.ts'
+import { InvalidInput, NotFound, attempt, toAppError } from '../http/errors.ts'
 import { conversationId } from '../pi/context.ts'
 import { PiSessions } from '../pi/sessions.ts'
 import type { FrozenPersona } from '../pi/persona-turn.ts'
@@ -19,6 +20,24 @@ export function addressedTo(names: readonly string[], content: string | TextCont
     ? [{ type: 'text', text: tag.trimEnd() }]
     : [{ ...first, text: `${tag}${first.text}` }, ...rest]
 }
+
+/** Persona `id` at `revision`, frozen for a turn: its words, its setup, and its model when offered. */
+export const frozenAt = (id: number, revision: number) =>
+  Effect.gen(function* () {
+    const personas = yield* Personas
+    const { name, avatar, role, instructions, setup, model } = yield* personas.revision(id, revision)
+    const offered = model !== undefined && (yield* personas.offers(model))
+    return {
+      id,
+      name,
+      revision,
+      avatar,
+      role,
+      instructions,
+      setup,
+      ...(offered ? { model } : {}),
+    } satisfies FrozenPersona
+  })
 
 /** The tagged Personas as they are now, each at its current revision; one that is gone or archived refuses the send. */
 const freeze = (ids: readonly number[]) =>
@@ -122,3 +141,29 @@ export const askPersonas = (
       }),
     )
   })
+
+/**
+ * The owner's reply to a Persona's hold (ADR 0041): its decision on a held call, or that they allowed the tool it asked
+ * for. The Persona goes on in its fork at the revision it answered with, and writes its next answer, recorded as its
+ * own invocation, into the chat it was asked in; that chat must still be open. Once per operation.
+ */
+export const resumePersona = Effect.fn('personas.resume')(function* (fork: string, operationId: string, text: string) {
+  const chats = yield* Chats
+  const found = Option.getOrUndefined(yield* chats.personaFork(fork))
+  if (found === undefined) return yield* new NotFound({ what: 'persona fork' })
+  yield* (yield* Conversations).requireActing(fork)
+  const persona = yield* frozenAt(found.persona, found.revision)
+  const invocations = yield* Invocations
+  const asked = { operationId, persona: persona.id, revision: persona.revision, chat: found.parent, order: 0 }
+  yield* invocations.insert([asked], yield* epochSeconds)
+  yield* invocations.running(operationId, persona.id)
+  const parent = conversationId(yield* chats.session(found.parent))
+  const forked = conversationId(yield* chats.session(fork))
+  const harness = yield* (yield* PiSessions).pi.pipe(
+    Effect.catchTag('PiFailure', (failure) => Effect.fail(toAppError(failure.cause))),
+  )
+  const { personas } = yield* AgentInput
+  yield* attempt(() =>
+    personas.resume(harness, { operationId, chat: found.parent, parent, fork: forked, persona, text }),
+  )
+})

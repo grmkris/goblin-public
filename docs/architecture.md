@@ -902,14 +902,25 @@ answer back as an attributed `app.persona` entry holding the revision. The fork 
 the chat's Topic with main's memory and the delegating, organizing and asking tools removed. A Persona's **setup**
 (`PersonaSetup`, ADR 0040) is the MCP servers, skills and apps it adds to the Topic's: the ask freezes it with the
 revision, `registerPersona` keeps it in `app_persona_chats` (by the fork's chat) before listing the fork, and the
-fork's scope is its Topic's setup, read live, joined with it, never with subagents; its refusals are words only. The
-`exclusions` Personas had before (`20261028000100_persona_setup`) are no longer read; a receipt kept before setups
-undoes without touching the setup. Stop aborts the chat's turns and marks their invocations `stopped`.
+fork's scope is its Topic's setup, read live, joined with it, never with subagents; its refusals are words only.
+Stop aborts the chat's turns and marks their invocations `stopped`.
+
+A Persona's turn can need the owner (ADR 0041). A fork acts while the chat it answers in is open
+(`actingChatSession`, `Conversations.requireActing`), so an ask-first call it makes is held as any other. When its
+turn stops on goblin's own `approval-required` or `grant-required` marker (`heldCall` in `attention.ts`; a result with
+an `origin` never counts), the answer it writes back carries `hold: { kind, approvalId?, connectionId, name, fork }`
+and its invocation settles `answered`. The owner's reply goes on in the fork: a decided approval's continuation
+(`approval-owner.ts`) routes a fork's session to `resumePersona` (`personas/ask.ts`), as does
+`POST /api/personas/reply` after the owner allowed the tool; it records a new invocation and creates a
+`goblin.persona-turn` task with `resume: { fork, text }`, which skips the fork and asks it again, then writes the next
+answer. Activity's **Needs you** lists the forks' pending held calls with the chat's own (`storedAsks`) and a
+Persona's tool to allow from its answer until its next one (`openAsks`), each with `persona`.
 
 | Route | Purpose |
 | --- | --- |
 | `POST /api/personas` | Create one (`CreatePersona`, idempotent by operation id; 201). |
 | `GET /api/personas/:id`, `PATCH /api/personas/:id` | One with its revisions, or a new revision (`UpdatePersona`; 409 unless `expectedRevision` is current). |
+| `POST /api/personas/reply` | The owner's reply to a Persona's hold (`PersonaReply`; 202): its fork goes on and answers again. |
 | `POST /api/organize/:id/undo` | Undo one receipt (409 `touched` after a later edit, `undone` after an Undo). |
 
 The organize tools (`pi/organize.ts`: `topic_create`, `topic_rename`, `topic_archive`, `topic_setup`,

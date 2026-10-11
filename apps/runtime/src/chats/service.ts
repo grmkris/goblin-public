@@ -18,7 +18,7 @@ import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type * as Option from 'effect/Option'
 import type { AppError } from '../http/errors.ts'
-import type { ChatId, ChatRow, SessionId } from './directory.ts'
+import type { ChatId, ChatRow, PersonaFork, SessionId } from './directory.ts'
 import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
 
 /**
@@ -73,6 +73,8 @@ export class Chats extends Context.Service<
     readonly isConversation: (chat: string) => Effect.Effect<boolean, AppError>
     /** Whether `chat` is a Persona's hidden fork (ADR 0033): never listed, never reported on its own. */
     readonly isHidden: (chat: string) => Effect.Effect<boolean, AppError>
+    /** The Persona fork `chat` is, with the chat it answers in and its Persona's revision; none for any other chat. */
+    readonly personaFork: (chat: string) => Effect.Effect<Option.Option<PersonaFork>, AppError>
     /**
      * Registers a chat's row (`registerChat`, the one chat-row inserter); a chat registered already fails, unless
      * `again` is `keep`. True when this call wrote the row.
@@ -243,6 +245,8 @@ export class Conversations extends Context.Service<
     readonly require: (chat: string) => Effect.Effect<string, AppError>
     /** The Pi session of a registered chat that takes new work: open, not a Persona's, its Topic not archived. */
     readonly requireOpen: (chat: string) => Effect.Effect<string, AppError>
+    /** The session of a chat whose agent may act now: an open chat, or a Persona's fork while its chat is (ADR 0041). */
+    readonly requireActing: (chat: string) => Effect.Effect<string, AppError>
     readonly kindOf: (chat: string) => Effect.Effect<ConversationKind, AppError>
     /** The immutable Pi session holding a subagent's anchor and relays. */
     readonly spawnerSession: (chat: string) => Effect.Effect<string, AppError>

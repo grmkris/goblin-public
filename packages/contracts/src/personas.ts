@@ -106,6 +106,20 @@ export const PersonaAskData = Schema.Struct({
 export type PersonaAskData = typeof PersonaAskData.Type
 
 /**
+ * What a Persona's answer waits on (ADR 0041): a held call the owner approves or refuses, or a tool the owner allows.
+ * `fork` is the Persona's own chat, which goes on from the owner's reply.
+ */
+export const PersonaHold = Schema.Struct({
+  kind: Schema.Literals(['approval', 'grant']),
+  /** The held call, for an approval. */
+  approvalId: Schema.optional(Schema.String),
+  connectionId: Schema.String,
+  name: Schema.String,
+  fork: ChatId,
+})
+export type PersonaHold = typeof PersonaHold.Type
+
+/**
  * `app.persona` entry data: one Persona's attributed answer, written into the chat it was asked in, or into its
  * routine's Topic when a routine handed it the work.
  */
@@ -118,5 +132,18 @@ export const PersonaAnswerData = Schema.Struct({
   text: Schema.String,
   /** The routine run that handed the Persona its work (ADR 0041), when no owner message did. */
   routine: Schema.optional(Schema.Struct({ id: Schema.String, run: Schema.String })),
+  /** What the answer stopped on, when the Persona needs the owner before it can go on (ADR 0041). */
+  hold: Schema.optional(PersonaHold),
 })
 export type PersonaAnswerData = typeof PersonaAnswerData.Type
+
+/**
+ * `POST /api/personas/reply`: the owner's reply to a Persona's hold (ADR 0041), after they allowed the tool it asked
+ * for. The Persona goes on in its fork and answers again; the same operation id answers once.
+ */
+export const PersonaReply = Schema.Struct({
+  fork: ChatId,
+  operationId: OperationId,
+  text: NonEmptyString(4000),
+})
+export type PersonaReply = typeof PersonaReply.Type

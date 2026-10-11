@@ -29,7 +29,7 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
     yield* requireRoutineSession(session)
     const chat = yield* (yield* Chats).chatOf(session)
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
-    yield* (yield* Conversations).requireOpen(chat.value)
+    yield* (yield* Conversations).requireActing(chat.value)
     const scope = yield* (yield* Setups).scope(session)
     if (!scope.tool(input.connectionId, input.name)) return undefined
     const server = yield* (yield* McpConnections).server(input.connectionId)

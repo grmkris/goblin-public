@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { ChatId, EntryId, NonEmptyString, OperationId } from './ids.ts'
+import { ChatId, EntryId, NonEmptyString, OperationId, PersonaId } from './ids.ts'
 
 /**
  * `POST /api/conversations/:id/move`: move the owner's message `entry` and the turn it started into a new Thread.
@@ -53,6 +53,8 @@ export const Attention = Schema.Struct({
   since: Schema.Number,
   entry: Schema.optional(EntryId),
   label: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
+  /** The Persona whose answer waits on the owner (ADR 0041); its next answer settles it. */
+  persona: Schema.optional(PersonaId),
 })
 export type Attention = typeof Attention.Type
 

@@ -1,13 +1,14 @@
 import type { Message } from '@earendil-works/pi-ai'
 import type { EntryRecord } from '@earendil-works/pi-durable'
-import { type Attention, NotInTopic, itemLabel } from '@goblin/contracts'
+import { type Attention, NotInTopic, PersonaAnswerData, itemLabel } from '@goblin/contracts'
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm'
 import { Predicate } from 'effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import { appMcpApprovals } from './storage/mcp-approvals.ts'
-import { appAgentApps, appAgentPowers, appMcpLabels } from './storage/schema.ts'
+import { appPersonaChats } from './storage/personas.ts'
+import { appAgentApps, appAgentPowers, appConversations, appMcpLabels } from './storage/schema.ts'
 
 const LABEL = 200
 const label = (text: string): string => (text.length > LABEL ? `${text.slice(0, LABEL - 1)}…` : text)
@@ -68,14 +69,75 @@ function askOf(entry: EntryRecord): Attention | undefined {
   return undefined
 }
 
+/** A call goblin held for the owner, by its marker: an approval of exact arguments, or a tool to allow. */
+export type HeldCall = {
+  readonly kind: 'approval' | 'grant'
+  readonly approvalId?: string
+  readonly connectionId: string
+  readonly name: string
+}
+
+/**
+ * The call a tool result held for the owner, from goblin's own markers only (`approval-required`, `grant-required`);
+ * a remote result always carries an `origin`, so a server's content can never hold one.
+ */
+export function heldCall(entry: EntryRecord): HeldCall | undefined {
+  for (const message of entry.model ?? []) {
+    if (message.role !== 'toolResult' || !message.isError) continue
+    const details = record(message.details)
+    const held = details === undefined || 'origin' in details ? undefined : holdOf(details)
+    if (held !== undefined) return held
+  }
+  return undefined
+}
+
+/** The call one marker holds, by its `kind`: an approval names its held call, a grant only the tool. */
+function holdOf(details: Fields): HeldCall | undefined {
+  const connectionId = text(details.connectionId)
+  const name = text(details.name)
+  if (connectionId === undefined || name === undefined) return undefined
+  if (details.kind === 'grant-required') return { kind: 'grant', connectionId, name }
+  const approvalId = text(details.approvalId)
+  const approval = details.kind === 'approval-required' && approvalId !== undefined
+  return approval ? { kind: 'approval', approvalId, connectionId, name } : undefined
+}
+
+const personaAnswer = Schema.decodeUnknownOption(PersonaAnswerData)
+
+/**
+ * A Persona's answer in a chat's entries (`app.persona`, ADR 0041): its Persona, and the tool it waits for the owner to
+ * allow, as an ask. Its held calls are read from their store (`storedAsks`); its next answer settles its ask.
+ */
+function personaAsk(entry: EntryRecord): { readonly persona: number; readonly ask?: Attention } | undefined {
+  if (entry.kind !== 'app.persona') return undefined
+  const answer = Option.getOrUndefined(personaAnswer(entry.data))
+  if (answer === undefined) return undefined
+  const { hold } = answer
+  if (hold?.kind !== 'grant') return { persona: answer.persona }
+  const since = Math.floor((entry.model?.[0]?.timestamp ?? 0) / 1000)
+  const ask: Attention = {
+    kind: 'grant',
+    since,
+    entry: Number(entry.id),
+    label: label(`${hold.connectionId} · ${hold.name}`),
+    persona: answer.persona,
+  }
+  return { persona: answer.persona, ask }
+}
+
 /**
  * What still waits on the owner in a chat's own entries (oldest first): the asks since its newest user message, which
- * settles every ask before it, as the web's cards do (`lib/interactions.ts`).
+ * settles every ask before it, as the web's cards do (`lib/interactions.ts`); a Persona's ask until its next answer.
  */
 export function openAsks(entries: readonly EntryRecord[], before: readonly Attention[] = []): readonly Attention[] {
   let open = [...before]
   for (const entry of entries) {
     if (entry.kind === 'pi.user') open = []
+    const answered = personaAsk(entry)
+    if (answered !== undefined) {
+      open = open.filter((ask) => ask.persona !== answered.persona)
+      if (answered.ask !== undefined) open.push(answered.ask)
+    }
     const ask = askOf(entry)
     if (ask !== undefined) open.push(ask)
   }
@@ -84,7 +146,7 @@ export function openAsks(entries: readonly EntryRecord[], before: readonly Atten
 
 /**
  * What waits on the owner in a chat from goblin's own stores: its held MCP calls still pending (by the chat's current
- * Pi session, where they were held), and the powers its agent apps' running releases ask for that the owner has not
+ * Pi session, where they were held, and those of the Persona forks answering in it), and the powers its agent apps' running releases ask for that the owner has not
  * answered. Times in seconds.
  */
 export function storedAsks<RunResult>(
@@ -92,23 +154,35 @@ export function storedAsks<RunResult>(
   chat: { readonly id: string; readonly session: string },
   now: number,
 ): readonly Attention[] {
+  // A Persona's fork holds its calls in its own session (ADR 0041); they wait on the owner in the chat it answers in.
+  const forks = db
+    .select({ session: appConversations.piSession, persona: appPersonaChats.personaId })
+    .from(appConversations)
+    .innerJoin(appPersonaChats, eq(appPersonaChats.chatId, appConversations.chatId))
+    .where(and(eq(appConversations.parentSession, chat.id), eq(appConversations.role, 'persona')))
+    .all()
+  const personaOf = new Map(forks.flatMap((fork) => (fork.session === null ? [] : [[fork.session, fork.persona]])))
   const approvals = db
     .select({ row: appMcpApprovals, label: appMcpLabels.label })
     .from(appMcpApprovals)
     .leftJoin(appMcpLabels, eq(appMcpLabels.connectionId, appMcpApprovals.connectionId))
     .where(
       and(
-        eq(appMcpApprovals.sessionId, chat.session),
+        inArray(appMcpApprovals.sessionId, [chat.session, ...personaOf.keys()]),
         eq(appMcpApprovals.state, 'pending'),
         gt(appMcpApprovals.expiresAt, now),
       ),
     )
     .all()
-    .map(({ row, label: connection }): Attention => ({
-      kind: 'approval',
-      since: Math.floor(row.createdAt / 1000),
-      label: label(`${connection ?? row.connectionId} · ${row.name}`),
-    }))
+    .map(({ row, label: connection }): Attention => {
+      const persona = row.sessionId === null ? undefined : personaOf.get(row.sessionId)
+      return {
+        kind: 'approval',
+        since: Math.floor(row.createdAt / 1000),
+        label: label(`${connection ?? row.connectionId} · ${row.name}`),
+        ...(persona === undefined ? {} : { persona }),
+      }
+    })
   const powers = db
     .select({ app: appAgentApps, power: appAgentPowers })
     .from(appAgentPowers)

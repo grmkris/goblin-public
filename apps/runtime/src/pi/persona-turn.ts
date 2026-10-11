@@ -14,10 +14,17 @@ import {
   defineTask,
   hook,
 } from '@earendil-works/pi-durable'
-import { NOTHING, type PersonaAnswerData, type PersonaAvatar, type PersonaSetup } from '@goblin/contracts'
+import {
+  NOTHING,
+  type PersonaAnswerData,
+  type PersonaAvatar,
+  type PersonaHold,
+  type PersonaSetup,
+} from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
+import { heldCall } from '../attention.ts'
 import { requireBudget } from '../budget.ts'
 import { Conversations } from '../chats/service.ts'
 import { requireResident } from '../mcp/service.ts'
@@ -60,6 +67,13 @@ const PersonaAsks = defineDoc<{ tasks: Record<string, TaskId<null>[]> }>({
 /** Remembered asks per conversation: older ones can no longer be replayed. */
 const ASKS_KEPT = 100
 
+/** Remembers the tasks made for `operationId`, so a replay makes none twice, and forgets all but the newest asks. */
+function remember(asks: { tasks: Record<string, TaskId<null>[]> }, operationId: string, ids: TaskId<null>[]): void {
+  asks.tasks[operationId] = ids
+  const keys = Object.keys(asks.tasks)
+  for (const key of keys.slice(0, Math.max(0, keys.length - ASKS_KEPT))) delete asks.tasks[key]
+}
+
 /** A Persona at the revision the owner's message froze. */
 export type FrozenPersona = {
   readonly id: number
@@ -85,6 +99,11 @@ type Input = {
   readonly persona: FrozenPersona
   /** How the owner asked: every Persona at once, or in sequence. Turns started before it was kept have none. */
   readonly mode?: 'parallel' | 'sequence'
+  /**
+   * The owner's reply to the Persona's hold (ADR 0041): the turn goes on in the Persona's fork from it, with no new
+   * fork, and answers again.
+   */
+  readonly resume?: { readonly fork: ConversationId; readonly text: string }
 }
 
 type State =
@@ -94,7 +113,8 @@ type State =
   | { readonly phase: 'fork'; readonly at: number }
   | { readonly phase: 'register'; readonly fork: ConversationId }
   | { readonly phase: 'ask'; readonly fork: ConversationId }
-  | { readonly phase: 'write'; readonly text: string }
+  /** The answer, and what it stopped on when the Persona needs the owner first (ADR 0041). */
+  | { readonly phase: 'write'; readonly text: string; readonly hold?: PersonaHold }
 
 /** The tools a Persona never has: it does not delegate, loop, organize or ask the owner anything. */
 export const PERSONA_DENIED_TOOLS: readonly string[] = [
@@ -302,12 +322,53 @@ const registerPhase =
     await runtime.commit(() => ({ status: 'running', checkpoint: { phase: 'ask', fork } }), context)
   }
 
-/** Prompts the fork and takes its answer; a stopped, empty or refused answer settles the invocation instead. */
+/** What the fork is asked: to answer the owner's message, or to go on from the owner's reply to its hold. */
+const promptOf = ({ operationId, persona, resume }: Input) =>
+  resume === undefined
+    ? {
+        content: `Answer the owner's message above as @${persona.name}.`,
+        requestId: `persona:${operationId}:${String(persona.id)}`,
+      }
+    : { content: resume.text, requestId: `persona-resume:${operationId}:${String(persona.id)}` }
+
+/** The call the fork's turn held for the owner since it was asked, from goblin's own markers; none when it held none. */
+async function heldIn(tx: Tx, fork: ConversationId, requestId: string): Promise<PersonaHold | undefined> {
+  const asked = await tx.submissionByRequest(fork, requestId)
+  if (asked?.entry === undefined) return undefined
+  const after = await tx.scanEntries({ conversationId: fork, minEntryId: entryId(Number(asked.entry) + 1) }, 50)
+  for (const entry of after.items) {
+    const held = heldCall(entry)
+    if (held !== undefined) {
+      const { kind, approvalId, connectionId, name } = held
+      return { kind, connectionId, name, fork: String(fork), ...(approvalId === undefined ? {} : { approvalId }) }
+    }
+  }
+  return undefined
+}
+
+/** A hold as an entry keeps it: JSON with no key left undefined. */
+const holdJson = ({ kind, approvalId, connectionId, name, fork }: PersonaHold) => ({
+  kind,
+  connectionId,
+  name,
+  fork,
+  ...(approvalId === undefined ? {} : { approvalId }),
+})
+
+/** What a Persona's answer says when it stopped on a hold without words of its own. */
+const holdText = (hold: PersonaHold): string =>
+  hold.kind === 'approval'
+    ? 'I need your approval for this call before I can go on.'
+    : 'I need you to allow this tool before I can go on.'
+
+/**
+ * Prompts the fork and takes its answer, and what it stopped on when it needs the owner first (ADR 0041); a stopped,
+ * empty or refused answer settles the invocation instead.
+ */
 const askPhase =
   (run: RunProgram): Phase<'ask'> =>
   async (task, runtime, context) => {
     const { fork } = task.state.checkpoint
-    const { operationId, persona } = task.input
     const conversation = await runtime.conversation(fork, context)
     const unavailable = await run(mayAnswer).then(
       () => false,
@@ -318,38 +379,36 @@ const askPhase =
       await runtime.commit(() => failed('The Persona could not answer.'), context)
       return
     }
-    const submitted = await conversation.submit(
-      {
-        type: 'input',
-        content: `Answer the owner's message above as @${persona.name}.`,
-        whenBusy: 'followUp',
-        requestId: `persona:${operationId}:${String(persona.id)}`,
-      },
-      context,
-    )
+    const { content, requestId } = promptOf(task.input)
+    const submitted = await conversation.submit({ type: 'input', content, whenBusy: 'followUp', requestId }, context)
     const settled = await submitted.wait(context)
     // The answer is an entry of the fork, which the turn's own conversation cannot see: read it in a commit.
-    const read = { text: '' }
+    const read = { answered: false }
     await runtime.commit(async (tx) => {
       const entry =
         settled.status === 'done' && settled.type === 'input'
           ? await tx.entry(AssistantEntry, settled.answer)
           : undefined
-      read.text = answerText(entry).trim()
-      if (read.text === '') return failed('The Persona gave no answer.')
-      return { status: 'running', checkpoint: { phase: 'write', text: read.text } }
+      const hold = await heldIn(tx, fork, requestId)
+      const text = answerText(entry).trim() || (hold === undefined ? '' : holdText(hold))
+      read.answered = text !== ''
+      if (!read.answered) return failed('The Persona gave no answer.')
+      return { status: 'running', checkpoint: { phase: 'write', text, ...(hold === undefined ? {} : { hold }) } }
     }, context)
-    if (read.text === '') {
+    if (!read.answered) {
       const aborted = settled.status === 'unanswered' && settled.reason === 'aborted'
       await run(settle(task.input, aborted ? 'stopped' : 'failed'))
     }
   }
 
-/** Writes the answer into the chat, attributed and holding the revision it was given at, then settles. */
+/**
+ * Writes the answer into the chat, attributed and holding the revision it was given at, and what it stopped on, then
+ * settles: an answer that waits on the owner is still an answer, and their reply asks the Persona again.
+ */
 const writePhase =
   (run: RunProgram): Phase<'write'> =>
   async (task, runtime, context) => {
-    const { text } = task.state.checkpoint
+    const { text, hold } = task.state.checkpoint
     const { operationId, chat, persona } = task.input
     const data = {
       persona: persona.id,
@@ -358,6 +417,7 @@ const writePhase =
       avatar: persona.avatar,
       operationId,
       text,
+      ...(hold === undefined ? {} : { hold: holdJson(hold) }),
     } satisfies PersonaAnswerData
     const entry = await run(
       Effect.gen(function* () {
@@ -374,12 +434,15 @@ const writePhase =
     await runtime.commit(() => terminal, context)
   }
 
-/** The Persona turn: wait for the one before it, fork the chat, ask the fork, write the answer back attributed. */
+/**
+ * The Persona turn: wait for the one before it, fork the chat, ask the fork, write the answer back attributed. A turn
+ * that resumes a hold (ADR 0041) asks the Persona's fork again with the owner's reply and writes its next answer.
+ */
 function turnTask(run: RunProgram) {
   return defineTask<Input, State, null>({
     name: PERSONA_TURN,
     version: 1,
-    initial: () => ({ phase: 'wait' }),
+    initial: (input) => (input.resume === undefined ? { phase: 'wait' } : { phase: 'ask', fork: input.resume.fork }),
     phases: {
       wait: waitPhase,
       place: placePhase(run),
@@ -404,11 +467,23 @@ export type PersonaAsk = {
   readonly order: 'parallel' | 'sequence'
 }
 
+/** What going on after a hold needs (ADR 0041): the owner's reply, where it goes, and the Persona it resumes. */
+export type PersonaResume = {
+  readonly operationId: string
+  readonly chat: string
+  readonly parent: ConversationId
+  readonly fork: ConversationId
+  readonly persona: FrozenPersona
+  readonly text: string
+}
+
 export type PersonaTurnKit = {
   /** Selected by the fork only: marks it a Persona's and adds the Persona to its context tail. */
   readonly extension: Extension
   /** Creates the Persona turns of an ask, once per operation. */
   readonly start: (pi: Harness, ask: PersonaAsk) => Promise<void>
+  /** Creates the turn that goes on in a Persona's fork from the owner's reply to its hold, once per operation. */
+  readonly resume: (pi: Harness, resume: PersonaResume) => Promise<void>
   /** Aborts the unsettled turns asked in `parent`, so a Stop drops them. */
   readonly drop: (pi: Harness, parent: ConversationId) => Promise<number>
 }
@@ -463,9 +538,23 @@ export function personaTurnExtension(run: RunProgram): PersonaTurnKit {
             ),
           )
         }
-        asks.tasks[ask.operationId] = ids
-        const keys = Object.keys(asks.tasks)
-        for (const key of keys.slice(0, Math.max(0, keys.length - ASKS_KEPT))) delete asks.tasks[key]
+        remember(asks, ask.operationId, ids)
+      }, BACKGROUND)
+      pi.resume()
+    },
+    resume: async (pi, { operationId, chat, parent, fork, persona, text }) => {
+      const conversation = await pi.conversation(parent, BACKGROUND)
+      if (conversation === undefined) throw new ConversationMissing({ missing: 'persona_resume' })
+      await conversation.commit(async (tx) => {
+        const asks = await tx.doc(PersonaAsks, parent)
+        if (asks.tasks[operationId] !== undefined) return
+        const input = { operationId, chat, parent, order: 0, previous: null, previousPersona: null, persona }
+        const task = await tx.createTask(
+          Turn,
+          { ...input, resume: { fork, text } },
+          { ownership: { kind: 'conversation' }, background: true },
+        )
+        remember(asks, operationId, [task])
       }, BACKGROUND)
       pi.resume()
     },

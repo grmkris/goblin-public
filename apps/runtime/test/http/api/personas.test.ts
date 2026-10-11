@@ -76,6 +76,16 @@ describe('the personas group', () => {
     expect(body.status).toBe(400)
   })
 
+  it("refuses a reply to a hold in a chat that is not a Persona's fork, and a reply without words (ADR 0041)", async () => {
+    const { fetch } = organizing()
+    const nowhere = await fetch(
+      post('/api/personas/reply', { fork: '50', operationId: 'op-r', text: 'Allowed. Go on.' }),
+    )
+    expect(nowhere.status).toBe(404)
+    expect(await nowhere.json()).toMatchObject({ error: { code: 'not_found', what: 'persona fork' } })
+    expect((await fetch(post('/api/personas/reply', { fork: '50', operationId: 'op-r', text: '' }))).status).toBe(400)
+  })
+
   it("serves the probes' typed client: a stale edit decodes as the Conflict class", async () => {
     const { fetch } = organizing()
     const agent = { fetch }

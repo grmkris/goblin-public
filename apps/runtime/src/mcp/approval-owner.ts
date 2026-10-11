@@ -4,6 +4,7 @@ import { requirePlan } from '../billing/gates.ts'
 import { sendOwnerMessage } from '../agent-program.ts'
 import { Chats } from '../chats/service.ts'
 import { type AppError, NotFound } from '../http/errors.ts'
+import { resumePersona } from '../personas/ask.ts'
 import { RoutineControl, RoutineRuns } from '../routines/service.ts'
 import { decideApproval } from './approval-decision.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
@@ -14,18 +15,25 @@ export const setAskFirst = (connectionId: string, name: string, enabled: boolean
 export const approvalView = (id: string) => Approvals.use((approvals) => approvals.view(id))
 
 /**
- * Where a decided call's outcome goes: the routine run waiting on it resumes with it, else it is the owner's next
- * message in the chat that held the call (`submit`).
+ * Where a decided call's outcome goes: the routine run waiting on it resumes with it, a Persona's fork goes on from it
+ * and answers again in its chat (ADR 0041), else it is the owner's next message in the chat that held the call
+ * (`submit`).
  */
 const continuation =
-  <R>(submit: (chat: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>) =>
+  <A, R>(
+    admit: Effect.Effect<unknown, AppError, A>,
+    submit: (chat: string, text: string, operationId: string) => Effect.Effect<unknown, AppError, R>,
+  ) =>
   (session: string, text: string, operationId: string) =>
     Effect.gen(function* () {
       const record = yield* (yield* RoutineRuns).session(session)
       if (record?.state === 'running')
         return yield* RoutineControl.use((control) => control.start(record, { text, operationId }))
-      const chat = yield* (yield* Chats).chatOf(session)
+      const chats = yield* Chats
+      const chat = yield* chats.chatOf(session)
       if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
+      yield* admit
+      if (yield* chats.isHidden(chat.value)) return yield* resumePersona(chat.value, operationId, text)
       return yield* submit(chat.value, text, operationId)
     })
 
@@ -42,9 +50,7 @@ export const decideOwnerApproval = (id: string, allowed: boolean) =>
     return yield* decideApproval({
       id,
       allowed,
-      continue: continuation((chat, text, operationId) =>
-        Effect.andThen(admit, sendOwnerMessage(chat, { text, operationId })),
-      ),
+      continue: continuation(admit, (chat, text, operationId) => sendOwnerMessage(chat, { text, operationId })),
     })
   })
 
