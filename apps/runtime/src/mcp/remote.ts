@@ -14,6 +14,7 @@ import * as Schema from 'effect/Schema'
 import { Internal, UpstreamMcp } from '../http/errors.ts'
 import { readBytes } from '../http/body.ts'
 import { SKILLS_EXTENSION } from '../skills/protocol.ts'
+import { EVENTS_EXTENSION } from './events/protocol.ts'
 import type { McpCaller, McpConnectionSnapshot, McpServerConfig } from './types.ts'
 
 // What one remote server is to the manager (mcp/manager.ts): the official SDK client it opens over the server's
@@ -58,8 +59,12 @@ export const toolOffered = (tool: Tool, caller: McpCaller): boolean => {
 export const offersSkills = (snapshot: McpConnectionSnapshot): boolean =>
   snapshot.capabilities.resources !== undefined && snapshot.capabilities.extensions?.[SKILLS_EXTENSION] !== undefined
 
-/** The selected draft uses one spelling, top-level capabilities.events. */
-export const offersEvents = (snapshot: McpConnectionSnapshot): boolean => snapshot.capabilities.events !== undefined
+/**
+ * A server offers Events by either spelling of the draft: the top-level `capabilities.events` its first producers (and
+ * ChatGPT) use, or the `io.modelcontextprotocol/events` extension of SEP-3415.
+ */
+export const offersEvents = (snapshot: McpConnectionSnapshot): boolean =>
+  snapshot.capabilities.events !== undefined || snapshot.capabilities.extensions?.[EVENTS_EXTENSION] !== undefined
 
 /** The `ui://` resource a tool renders into, when it declares one. */
 export const toolAppResource = (tool: Tool): string | undefined => {
@@ -148,7 +153,7 @@ export async function openRemote(
   const client = new Client(
     { name: 'goblin', version: '0.1.0' },
     {
-      capabilities: { extensions: { [SKILLS_EXTENSION]: {} } },
+      capabilities: { extensions: { [SKILLS_EXTENSION]: {}, [EVENTS_EXTENSION]: {} } },
       versionNegotiation: { mode: 'auto', probe: { timeoutMs: options.timeoutMs, maxRetries: 0 } },
       listMaxPages: options.maxPages,
       cachePartition: server.connectionId,

@@ -16,6 +16,7 @@ import {
   remote,
   serverOf,
 } from './connections.ts'
+import { EVENT_LIMITS } from './events/store.ts'
 import { offersEvents, offersSkills, toolOffered } from './remote.ts'
 import type { EventMethod } from './service.ts'
 import type { McpCallOptions, McpManagerOptions, SkillRequestOptions } from './types.ts'
@@ -129,15 +130,15 @@ const eventRequest = <S extends Schema.ConstraintDecoder<unknown>>(
   Effect.gen(function* () {
     yield* serverOf(manager, connectionId)
     yield* authorize
-    const live = yield* connectionOf(manager, connectionId, { timeout: 5000 })
+    const live = yield* connectionOf(manager, connectionId, { timeout: EVENT_LIMITS.timeoutMs })
     if (!offersEvents(live.snapshot)) return yield* new UpstreamMcp({ connectionId, reason: 'unsupported' })
     yield* authorize
     const standard = Schema.toStandardSchemaV1(schema)
     const answer: S['Type'] = yield* remote(
       manager,
       live,
-      () => live.client.request({ method, params }, standard, { timeout: 5000 }),
-      262_144,
+      () => live.client.request({ method, params }, standard, { timeout: EVENT_LIMITS.timeoutMs }),
+      EVENT_LIMITS.bodyBytes,
     ).pipe(timed({ step: 'events', connectionId, method }, manager.options.report))
     return answer
   })

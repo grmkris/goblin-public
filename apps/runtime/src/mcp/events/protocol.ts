@@ -1,12 +1,15 @@
 import * as Schema from 'effect/Schema'
 
+/** The draft Events extension (SEP-3415) as a server may declare it, beside the top-level `capabilities.events`. */
+export const EVENTS_EXTENSION = 'io.modelcontextprotocol/events'
+
 /** Draft MCP Triggers & Events profile selected by goblin. */
 const EventName = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
 export const EventDescriptor = Schema.Struct({
   name: EventName,
   description: Schema.optional(Schema.String),
   inputSchema: Schema.Record(Schema.String, Schema.Unknown),
-  payloadSchema: Schema.Record(Schema.String, Schema.Unknown),
+  payloadSchema: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
   delivery: Schema.Array(Schema.Literals(['poll', 'webhook'])),
 })
 export type EventDescriptor = typeof EventDescriptor.Type

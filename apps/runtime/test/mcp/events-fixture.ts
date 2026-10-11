@@ -2,7 +2,7 @@ import { createMcpHandler, ProtocolError } from '@modelcontextprotocol/server'
 import * as Schema from 'effect/Schema'
 import * as Option from 'effect/Option'
 import { sign } from '../../src/mcp/events/webhook.ts'
-import type { EventEnvelope } from '../../src/mcp/events/protocol.ts'
+import { EVENTS_EXTENSION, type EventEnvelope } from '../../src/mcp/events/protocol.ts'
 import { SKILLS_EXTENSION, type SkillEntry } from '../../src/skills/protocol.ts'
 import { lowLevelServer } from './low-level-server.ts'
 
@@ -12,7 +12,10 @@ const Subscribe = Schema.Struct({
   delivery: Schema.Struct({ mode: Schema.Literal('webhook'), url: Schema.String, secret: Schema.String }),
 })
 
-/** A producer fixture speaks the selected raw capabilities.events profile, not an alternate extension spelling. */
+/**
+ * A producer of the draft Events profile. It declares Events as top-level `capabilities.events`, or with `spelling`
+ * `extension` as the SEP-3415 `io.modelcontextprotocol/events` extension; `payloadSchema` may be left out.
+ */
 export class EventsFixture {
   readonly subscriptions = new Map<string, { secret: string; url: string }>()
   readonly journal: { eventId: string; name: string; timestamp: string; data: unknown; cursor: string }[] = []
@@ -21,6 +24,8 @@ export class EventsFixture {
   skills: readonly SkillEntry[] = []
   readonly files = new Map<string, string>()
   inputSchema: Record<string, unknown> = { type: 'object' }
+  payloadSchema: Record<string, unknown> | undefined = { type: 'object' }
+  spelling: 'top-level' | 'extension' = 'top-level'
   cursor = '0'
   now = Date.now()
   ttlMs = 3_600_000
@@ -58,7 +63,7 @@ export class EventsFixture {
         name,
         description: name,
         inputSchema: this.inputSchema,
-        payloadSchema: { type: 'object' },
+        ...(this.payloadSchema === undefined ? {} : { payloadSchema: this.payloadSchema }),
         delivery: ['poll', 'webhook'],
       })),
     }))
@@ -117,15 +122,20 @@ export class EventsFixture {
     const response = await this.#handler.fetch(request)
     if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) return response
     const payload: unknown = await response.clone().json()
-    const raw = Schema.decodeUnknownOption(
-      Schema.Struct({ result: Schema.Struct({ capabilities: Schema.Record(Schema.String, Schema.Unknown) }) }),
-    )(payload)
-    if (Option.isSome(raw))
-      return Response.json({
-        ...Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(payload),
-        result: { ...raw.value.result, capabilities: { ...raw.value.result.capabilities, events: {} } },
-      })
-    return response
+    const Fields = Schema.Record(Schema.String, Schema.Unknown)
+    const answer = Schema.decodeUnknownOption(Schema.Struct({ result: Fields }))(payload)
+    const result = Option.getOrUndefined(answer)?.result
+    const capabilities = Option.getOrUndefined(Schema.decodeUnknownOption(Fields)(result?.['capabilities']))
+    if (result === undefined || capabilities === undefined) return response
+    const extensions = Option.getOrElse(Schema.decodeUnknownOption(Fields)(capabilities['extensions']), () => ({}))
+    const declared =
+      this.spelling === 'top-level'
+        ? { ...capabilities, events: {} }
+        : { ...capabilities, extensions: { ...extensions, [EVENTS_EXTENSION]: {} } }
+    return Response.json({
+      ...Schema.decodeUnknownSync(Fields)(payload),
+      result: { ...result, capabilities: declared },
+    })
   }
   async deliver(
     subscriptionId: string,

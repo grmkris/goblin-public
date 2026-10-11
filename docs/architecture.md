@@ -1127,8 +1127,9 @@ goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `
 ## MCP Events and Telegram
 
 The owner selects one Telegram connection with its **Telegram** switch (ADR 0011). If its authenticated discovery
-advertises top-level `capabilities.events`, the action grants `inbox`, `send_message` and the exact Events selectors
-`message.received` and `question.answered` with `{}` arguments. Both finite webhook subscriptions must confirm before
+advertises Events (top-level `capabilities.events` or the `io.modelcontextprotocol/events` extension, ADR 0041), the
+action grants `inbox`, `send_message` and the exact Events selectors `message.received` and `question.answered` with
+`{}` arguments. Both finite webhook subscriptions must confirm before
 `app_telegram_channel` copies the checkpoint and fences old doorbell cursor writes. The channel pulls immediately;
 a failure before that fence leaves the old channel checkpoint intact. A server without Events retains the legacy
 `subscribe`/`unsubscribe` doorbell transport. Connections shows the active transport.
@@ -1162,7 +1163,7 @@ A listing can clear only the generation it observed, and retained activations st
 termination stops lease refresh and surfaces health. Mail and workspace changes have no installed consumer yet.
 
 The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
-32 subscriptions, 100 events per page, 256 KiB bodies, five-second remote requests and 10,000 pending rows / 32 MiB.
+32 subscriptions, 100 events per page, 256 KiB bodies, 15-second remote requests (`EVENT_LIMITS.timeoutMs`) and 10,000 pending rows / 32 MiB.
 Recovery sweeps process at most 256 deliveries and retain completed receipts for eight days; unfinished receipts
 are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the documented v1 deviation (ADR 0011).
 

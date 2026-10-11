@@ -20,7 +20,7 @@ export const EVENT_LIMITS = {
   subscriptions: 32,
   page: 100,
   bodyBytes: 262_144,
-  timeoutMs: 5000,
+  timeoutMs: 15_000,
   pendingRows: 10_000,
   pendingBytes: 33_554_432,
   sweep: 256,

@@ -98,4 +98,26 @@ describe('actual MCP Events connection manager (unit)', () => {
       await dispose()
     }
   })
+
+  it('takes Events declared as the SEP-3415 extension, with descriptors that leave out payloadSchema', async () => {
+    const fixture = new EventsFixture()
+    fixture.spelling = 'extension'
+    fixture.payloadSchema = undefined
+    const { connections, dispose } = managerOf({
+      servers: [{ connectionId: 'fixture', endpoint: 'https://events.test/mcp' }],
+      allows: () => false,
+      auth: () => ({ token: async () => 'fixture-bearer' }),
+      fetch: (input, init) => fixture.fetch(input, init),
+    })
+    try {
+      const snapshot = await connections.connect('fixture')
+      expect(snapshot.capabilities.events).toBeUndefined()
+      expect(offersEvents(snapshot)).toBe(true)
+      const answer = await connections.events('fixture', 'events/list', {}, EventsListResult, Effect.void)
+      const catalog = Schema.decodeUnknownSync(EventsListResult)(answer)
+      expect(catalog.events.every((event) => event.payloadSchema === undefined)).toBe(true)
+    } finally {
+      await dispose()
+    }
+  })
 })
