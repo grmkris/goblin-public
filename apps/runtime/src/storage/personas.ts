@@ -94,10 +94,11 @@ export const appOrganizeReceipts = sqliteTable('app_organize_receipts', {
 })
 
 /**
- * The setup a Persona answered with in its hidden fork (ADR 0040), frozen when the owner tagged it: the fork's chat,
- * which Persona at which revision, and the `PersonaSetup` JSON its Topic's setup is joined with there.
+ * The chats a Persona answers in, with the setup it answers with there (ADR 0040): its hidden fork, frozen when the
+ * owner tagged it, or the run conversation of a routine that hands it the work (ADR 0041), at the pinned revision. The
+ * chat, which Persona at which revision, and the `PersonaSetup` JSON its Topic's setup is joined with there.
  */
-export const appPersonaForks = sqliteTable('app_persona_forks', {
+export const appPersonaChats = sqliteTable('app_persona_chats', {
   chatId: text('chat_id').primaryKey().notNull(),
   personaId: integer('persona_id').notNull(),
   revision: integer('revision').notNull(),

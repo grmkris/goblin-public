@@ -1,5 +1,5 @@
 import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
-import { type NoticeData, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
+import type { NoticeData, PersonaAnswerData, UpdateConversation } from '@goblin/contracts'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
@@ -192,18 +192,38 @@ const announce = Effect.fn('Conversations.announce')(function* (
 })
 
 /**
- * The frozen passive report of a routine's run, for its Topic's Conversation (Personal's by default, or while that
- * Topic is archived); written, it records a Pi write, not a new run or an external notification.
+ * The frozen passive report of a routine's run, for its Topic's Conversation (Personal's while that Topic is
+ * archived); written, it records a Pi write, not a new run or an external notification. A Persona's completed run is
+ * its attributed answer (`app.persona`, ADR 0041) with the routine's link, read by the model as the Persona's words.
  */
 const reportRoutine = Effect.fn('Conversations.reportRoutine')(function* (
   core: RegistryCore,
   operations: ChatOperations['Service'],
   report: RoutineReport,
 ) {
-  const { chat } = yield* attemptSync(() => routineHome(core.db, report.topic ?? PERSONAL_TOPIC))
+  const { chat } = yield* attemptSync(() => routineHome(core.db, report.topic))
+  const requestId = `routine-report:${report.runId}`
+  if (report.persona !== undefined) {
+    const { persona, name, revision, avatar } = report.persona
+    const data = {
+      persona,
+      name,
+      revision,
+      avatar: { glyph: avatar.glyph, hue: avatar.hue },
+      operationId: requestId,
+      text: report.text,
+      routine: { id: report.routineId, run: report.runId },
+    } satisfies PersonaAnswerData
+    const content = authoredContent(`persona ${name}`, report.text)
+    return yield* operations.passiveWrite(chat, {
+      requestId,
+      origin: 'routine',
+      entry: { kind: 'app.persona', data, model: [{ role: 'user', content, timestamp: report.at }] },
+    })
+  }
   const data = { thread: report.sessionId, routineId: report.routineId, runId: report.runId, outcome: report.outcome }
   yield* operations.passiveWrite(chat, {
-    requestId: `routine-report:${report.runId}`,
+    requestId,
     origin: 'routine',
     entry: { kind: 'app.routine', data, model: [{ role: 'user', content: report.text, timestamp: report.at }] },
   })

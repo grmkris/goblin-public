@@ -105,7 +105,10 @@ export const PersonaAskData = Schema.Struct({
 })
 export type PersonaAskData = typeof PersonaAskData.Type
 
-/** `app.persona` entry data: one Persona's attributed answer, written into the chat it was asked in. */
+/**
+ * `app.persona` entry data: one Persona's attributed answer, written into the chat it was asked in, or into its
+ * routine's Topic when a routine handed it the work.
+ */
 export const PersonaAnswerData = Schema.Struct({
   persona: PersonaId,
   name: Schema.String,
@@ -113,5 +116,7 @@ export const PersonaAnswerData = Schema.Struct({
   avatar: PersonaAvatar,
   operationId: OperationId,
   text: Schema.String,
+  /** The routine run that handed the Persona its work (ADR 0041), when no owner message did. */
+  routine: Schema.optional(Schema.Struct({ id: Schema.String, run: Schema.String })),
 })
 export type PersonaAnswerData = typeof PersonaAnswerData.Type

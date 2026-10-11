@@ -104,7 +104,9 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
       trigger,
       tellMe: { on: notify, telegram: notify },
       handTo: {
-        kind: 'goblin',
+        ...(initial.handTo.kind === 'persona'
+          ? { kind: 'persona', persona: initial.handTo.persona, revision: initial.handTo.revision }
+          : { kind: 'goblin' }),
         instruction: field('prompt'),
         allowedTools: selected,
         budget: {

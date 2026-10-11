@@ -88,7 +88,9 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     this.#thread = threadExtension(run)
     this.#memory = memoryExtensions(run)
     const { memory, recall } = this.#memory
-    const routineKit = routineExtensions(routineRun, residentTools, env.CREDENTIAL_KEY)
+    const { personas, organize } = organizingKit(run)
+    this.#personas = personas
+    const routineKit = routineExtensions(routineRun, residentTools, personas.extension, env.CREDENTIAL_KEY)
     this.#routineStart = routineKit.start
     const apps = agentApps(ctx.storage, env, () => this.name, {
       schedules: this.#jobSchedules(),
@@ -99,8 +101,6 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const execution = [...tools, skillsExtension(run), filesExtension(run), appExecutionExtension(apps, run)]
     this.#subagents = subagentsExtension(run, (self) => [personaExtension, ...execution, ...apps.extensions(), self])
     const subagents = this.#subagents.extension
-    const { personas, organize } = organizingKit(run)
-    this.#personas = personas
     const retrieval = retrievalExtension(run)
     const learning = [skillLearningExtension(run), decisionsExtension(run, env.AI !== undefined)]
     const base = [...execution, ...learning, ...appsExtension(apps, run), organize, retrieval]

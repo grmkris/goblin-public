@@ -26,7 +26,7 @@ import {
   appTelegramChannel,
 } from '../storage/schema.ts'
 import { appRoutineRuns, appRoutines } from '../storage/routines.ts'
-import { appPersonaForks } from '../storage/personas.ts'
+import { appPersonaChats } from '../storage/personas.ts'
 import { appTopics } from '../storage/topics.ts'
 import { personaSetupOf } from '../personas/registry.ts'
 import { topicSetupOf } from '../topics/setup.ts'
@@ -233,7 +233,8 @@ const chainOf = (db: Db, session: string): readonly Link[] | undefined => {
 
 /**
  * A routine's thread may use only the tools its definition allows, within the scope it would have anyway (its Topic's
- * setup among the rest, ADR 0040); never skills, subagents or app powers.
+ * setup among the rest, ADR 0040, joined with its Persona's when it hands the work to one); never skills, subagents or
+ * app powers.
  */
 const routineScope = (db: Db, scope: SetupScope, runId: string): SetupScope => {
   const run = db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
@@ -268,22 +269,24 @@ const topicOf = (db: Db, id: number): (ScopeTopic & { readonly setup: TopicSetup
   return { id, name: row.name, setup, holds: (item) => holds(setup, item) }
 }
 
-/** The setup a Persona's fork answers with, as the ask froze it; a fork without one adds nothing. */
-const forkSetup = (db: Db, chat: string): PersonaSetup | undefined => {
+/** The setup a Persona answers with in `chat` (its fork, or a routine's run handed to it); none in any other chat. */
+const personaSetupIn = (db: Db, chat: string): PersonaSetup | undefined => {
   const row = db
-    .select({ setup: appPersonaForks.setup })
-    .from(appPersonaForks)
-    .where(eq(appPersonaForks.chatId, chat))
+    .select({ setup: appPersonaChats.setup })
+    .from(appPersonaChats)
+    .where(eq(appPersonaChats.chatId, chat))
     .get()
   return row === undefined ? undefined : personaSetupOf(row.setup)
 }
 
 /**
- * What a chat's root works with: its Topic's setup, joined, in a Persona's fork, with the setup the Persona adds
- * (ADR 0040). A Persona never starts subagents and the owner never acts on a refusal there.
+ * What a chat's root works with: its Topic's setup, joined, where a Persona answers (its fork, or a routine's run handed
+ * to it at the pinned revision, ADR 0041), with the setup the Persona adds (ADR 0040). A Persona never starts subagents
+ * and the owner never acts on a refusal there.
  */
 const rootBound = (db: Db, root: Link, topic: ScopeTopic & { readonly setup: TopicSetup }) => {
-  const added = root.role === 'persona' ? (forkSetup(db, root.session) ?? NOTHING) : undefined
+  const bound = root.role === 'persona' || root.routineRunId !== null ? personaSetupIn(db, root.session) : undefined
+  const added = root.role === 'persona' ? (bound ?? NOTHING) : bound
   if (added === undefined) return { allow: setupAllows(topic.setup), topic, persona: false }
   const allow = { ...either(setupAllows(topic.setup), setupAllows(added)), subagents: () => false }
   const holdsEither = (item: SetupItem) => topic.holds(item) || holds(added, item)

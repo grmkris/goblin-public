@@ -9,7 +9,7 @@ import { FlowEvents, withFlow } from '../../observability/flows.ts'
 import type { KeyedLock } from '../../observability/lock.ts'
 import { BACKGROUND, entryId } from '../../pi/context.ts'
 import { settledEnd } from '../../pi/turns.ts'
-import { appPersonaForks } from '../../storage/personas.ts'
+import { appPersonaChats } from '../../storage/personas.ts'
 import { appConversations } from '../../storage/schema.ts'
 import { appTopics } from '../../storage/topics.ts'
 import {
@@ -26,7 +26,7 @@ import {
   topicOfChat,
 } from '../directory.ts'
 import { fromPi } from '../../pi/sessions.ts'
-import type { ChatOperations, PersonaFork, ThreadAnchor } from '../service.ts'
+import type { ChatOperations, PersonaBinding, RoutineChat, ThreadAnchor } from '../service.ts'
 import {
   type RegistryCore,
   changed,
@@ -259,6 +259,20 @@ const registerSubagent = Effect.fn('Conversations.registerSubagent')(function* (
   yield* changed(core, [session])
 })
 
+/** Keeps the Persona chat `session` answers as, with its setup, before the chat is listed; a repeat keeps the first. */
+const bindPersona = (db: ChatDb, session: string, persona: PersonaBinding, now: number): void => {
+  db.insert(appPersonaChats)
+    .values({
+      chatId: session,
+      personaId: persona.id,
+      revision: persona.revision,
+      setup: JSON.stringify(persona.setup),
+      createdAt: now,
+    })
+    .onConflictDoNothing()
+    .run()
+}
+
 /**
  * Lists the fork a Persona answers in (ADR 0033): a hidden thread of its parent's Topic, never listed and never open
  * to the owner. Its switches are the parent's now. The setup the ask froze is kept for it first (ADR 0040), so a fork
@@ -268,22 +282,12 @@ const registerPersona = Effect.fn('Conversations.registerPersona')(function* (
   core: RegistryCore,
   session: string,
   parentChat: string,
-  persona: PersonaFork,
+  persona: PersonaBinding,
 ) {
   if (chatRow(core.db, session) !== undefined) return
   const now = yield* epochSeconds
   const topicId = yield* attemptSync(() => {
-    core.db
-      .insert(appPersonaForks)
-      .values({
-        chatId: session,
-        personaId: persona.id,
-        revision: persona.revision,
-        setup: JSON.stringify(persona.setup),
-        createdAt: now,
-      })
-      .onConflictDoNothing()
-      .run()
+    bindPersona(core.db, session, persona, now)
     return topicOfChat(core.db, parentChat)
   })
   const row = {
@@ -298,23 +302,25 @@ const registerPersona = Effect.fn('Conversations.registerPersona')(function* (
 
 /**
  * A task-created routine conversation starts empty and copies no exclusions or announcement; it sits under its
- * routine's Topic's Conversation.
+ * routine's Topic's Conversation. A run handed to a Persona keeps the Persona's setup for it first (ADR 0041).
  */
 const registerRoutine = Effect.fn('Conversations.registerRoutine')(function* (
   core: RegistryCore,
-  routine: { readonly session: string; readonly runId: string; readonly title: string },
-  topic: number,
+  routine: RoutineChat,
 ) {
   const { db } = core
   const now = yield* epochSeconds
   yield* attemptSync(() => {
-    const home = routineHome(db, topic)
+    const home = routineHome(db, routine.topic)
     const row = { chatId: routine.session, kind: 'thread', title: routine.title, parentSession: home.chat } as const
-    registerChat(
-      db,
-      { ...row, topicId: home.topic, routineRunId: routine.runId, createdAt: now, mainNote: null },
-      'keep',
-    )
+    db.transaction(() => {
+      if (routine.persona !== undefined) bindPersona(db, routine.session, routine.persona, now)
+      registerChat(
+        db,
+        { ...row, topicId: home.topic, routineRunId: routine.runId, createdAt: now, mainNote: null },
+        'keep',
+      )
+    })
   })
   yield* changed(core, [routine.session])
 })
@@ -330,8 +336,7 @@ export const registryThreads = (core: RegistryCore, ports: ThreadPorts) => ({
     ),
   registerSubagent: (session: string, parent: string, name: string, exclusions: readonly HelperExclusion[] = []) =>
     registerSubagent(core, { session, parent, name }, exclusions),
-  registerPersona: (session: string, parentChat: string, persona: PersonaFork) =>
+  registerPersona: (session: string, parentChat: string, persona: PersonaBinding) =>
     registerPersona(core, session, parentChat, persona),
-  registerRoutine: (session: string, runId: string, title: string, topic: number = PERSONAL_TOPIC) =>
-    registerRoutine(core, { session, runId, title }, topic),
+  registerRoutine: (routine: RoutineChat) => registerRoutine(core, routine),
 })

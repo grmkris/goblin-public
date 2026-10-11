@@ -11,6 +11,8 @@ import {
 } from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { canonicalArguments } from '../mcp/events/store.ts'
+import { personaSetupOf } from '../personas/registry.ts'
+import { appPersonaRevisions, appPersonas } from '../storage/personas.ts'
 import { appRoutineOperations, appRoutines, appRoutineSettings } from '../storage/routines.ts'
 import { appTopics } from '../storage/topics.ts'
 import { topicSetupOf } from '../topics/setup.ts'
@@ -71,13 +73,50 @@ export class RoutineStore {
     )
   }
 
-  /** The allowed tools of `definition` that the setup of Topic `topic` does not hold now (ADR 0040). */
+  /** The setup the Persona a routine hands its work to adds, at the pinned revision (ADR 0041); none for any other. */
+  #personaSetup(definition: RoutineDefinition) {
+    const { handTo } = definition
+    if (handTo.kind !== 'persona') return undefined
+    const row = this.#db
+      .select({ setup: appPersonaRevisions.setup })
+      .from(appPersonaRevisions)
+      .where(and(eq(appPersonaRevisions.personaId, handTo.persona), eq(appPersonaRevisions.revision, handTo.revision)))
+      .get()
+    return row === undefined ? undefined : personaSetupOf(row.setup)
+  }
+
+  /**
+   * The allowed tools of `definition` that the setup of Topic `topic` does not hold now (ADR 0040), joined with the
+   * setup of the Persona it hands its work to.
+   */
   #outside(topic: number, definition: RoutineDefinition) {
     const row = this.#db.select({ setup: appTopics.setup }).from(appTopics).where(eq(appTopics.id, topic)).get()
     const setup = row === undefined ? undefined : topicSetupOf(row.setup)
+    const persona = this.#personaSetup(definition)
+    const held = (tool: { readonly connectionId: string; readonly name: string }) =>
+      setup === undefined ||
+      hasTool(setup, tool.connectionId, tool.name) ||
+      (persona !== undefined && hasTool(persona, tool.connectionId, tool.name))
     return (handOverOf(definition)?.allowedTools ?? [])
-      .filter((tool) => setup === undefined || !hasTool(setup, tool.connectionId, tool.name))
+      .filter((tool) => !held(tool))
       .map(({ connectionId, name }) => ({ connectionId, name }))
+  }
+
+  /**
+   * Refuses a hand-over to a Persona that is gone or archived, or whose revision is no longer the one the definition
+   * pins: the owner confirms a routine with the Persona as it is now (ADR 0041).
+   */
+  #requirePersona(definition: RoutineDefinition): void {
+    const { handTo } = definition
+    if (handTo.kind !== 'persona') return
+    const row = this.#db
+      .select({ revision: appPersonas.revision, archivedAt: appPersonas.archivedAt })
+      .from(appPersonas)
+      .where(eq(appPersonas.id, handTo.persona))
+      .get()
+    if (row === undefined) throw new NotFound({ what: 'persona' })
+    if (row.archivedAt !== null) throw new Conflict({ reason: 'persona_archived' })
+    if (row.revision !== handTo.revision) throw new Conflict({ reason: 'persona_changed' })
   }
 
   #view(row: RoutineRow): RoutineView {
@@ -158,6 +197,7 @@ export class RoutineStore {
       if (existing !== undefined) return existing
       this.#requireTopic(topic)
       const valid = validate(definition, at)
+      this.#requirePersona(valid)
       if (this.list().filter((routine) => routine.state !== 'archived').length >= 100)
         throw new Conflict({ reason: 'routine draft limit' })
       const routine: RoutineRow = {
@@ -194,6 +234,7 @@ export class RoutineStore {
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
       this.#requireTopic(topic)
       const valid = validate(definition, at)
+      this.#requirePersona(valid)
       this.#db
         .update(appRoutines)
         .set({
@@ -228,6 +269,7 @@ export class RoutineStore {
       const active = this.list().filter((routine) => routine.state === 'active' || routine.state === 'activating')
       if (active.length >= this.settings().maxActive) throw new Conflict({ reason: 'active routine limit' })
       const definition = definitionOf(current)
+      this.#requirePersona(definition)
       const next = nextFire(definition, at)
       this.#db
         .update(appRoutines)
@@ -262,22 +304,39 @@ export class RoutineStore {
       if (existing !== undefined) return existing
       const current = this.get(routineId)
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
-      this.#db
-        .update(appRoutines)
-        .set({
-          state: 'paused',
-          // A retired Events consumer revision must never be revived by Resume.
-          revision: definitionOf(current).trigger.kind === 'event' ? revision + 1 : revision,
-          scheduleId: null,
-          nextFireAt: null,
-          pendingTrigger: null,
-          updatedAt: at,
-        })
-        .where(eq(appRoutines.id, routineId))
-        .run()
+      this.#paused(current, null, at)
       const response = { routine: this.#view(this.get(routineId)), operationId }
       this.#saveOperation(operationId, { kind: 'pause', routineId, revision }, response, at)
       return response
+    })
+  }
+  /** Pauses `current` with `health`: no schedule, no pending trigger, and a retired Events revision. */
+  #paused(current: RoutineRow, health: string | null, at: number): void {
+    this.#db
+      .update(appRoutines)
+      .set({
+        state: 'paused',
+        // A retired Events consumer revision must never be revived by Resume.
+        revision: definitionOf(current).trigger.kind === 'event' ? current.revision + 1 : current.revision,
+        scheduleId: null,
+        nextFireAt: null,
+        pendingTrigger: null,
+        ...(health === null ? {} : { health }),
+        updatedAt: at,
+      })
+      .where(and(eq(appRoutines.id, current.id), eq(appRoutines.revision, current.revision)))
+      .run()
+  }
+
+  /**
+   * Pauses routine `routineId` at `revision` for a reason the owner must see (`health`), such as a Persona archived or
+   * changed since it was pinned (ADR 0041); a routine already past that revision or not live stays as it is.
+   */
+  halt(routineId: string, revision: number, health: string, at: number): void {
+    this.#db.transaction(() => {
+      const current = this.get(routineId)
+      if (current.revision !== revision || (current.state !== 'active' && current.state !== 'activating')) return
+      this.#paused(current, health, at)
     })
   }
   archive(routineId: string, revision: number, operationId: string, at: number): RoutineOperationResult {

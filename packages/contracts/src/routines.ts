@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { NonEmptyString, OperationId, TopicId } from './ids.ts'
+import { NonEmptyString, OperationId, PersonaId, TopicId } from './ids.ts'
 
 const positive = (max: number) => Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: max }))
 const server = NonEmptyString(64).check(Schema.isPattern(/^[\w-]+$/u))
@@ -31,10 +31,14 @@ const HandOver = {
   budget: RoutineBudget,
 }
 
-/** Who a routine gives its work to (ADR 0041): nobody (it only tells the owner), or Goblin. */
+/**
+ * Who a routine gives its work to (ADR 0041): nobody (it only tells the owner), Goblin, or a Persona at the revision the
+ * owner confirmed. A Persona changed since must be confirmed again before the routine runs.
+ */
 export const RoutineHandTo = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('none') }),
   Schema.Struct({ kind: Schema.Literal('goblin'), ...HandOver }),
+  Schema.Struct({ kind: Schema.Literal('persona'), persona: PersonaId, revision: positive(1_000_000), ...HandOver }),
 ])
 export type RoutineHandTo = typeof RoutineHandTo.Type
 /** A hand-over: the routine gives its work to someone, with an instruction, tools and limits. */

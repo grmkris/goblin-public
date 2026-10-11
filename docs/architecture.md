@@ -899,7 +899,7 @@ previous Persona's answer), prompts the fork with the frozen revision text in th
 answer back as an attributed `app.persona` entry holding the revision. The fork is a hidden `persona`-role thread of
 the chat's Topic with main's memory and the delegating, organizing and asking tools removed. A Persona's **setup**
 (`PersonaSetup`, ADR 0040) is the MCP servers, skills and apps it adds to the Topic's: the ask freezes it with the
-revision, `registerPersona` keeps it in `app_persona_forks` (by the fork's chat) before listing the fork, and the
+revision, `registerPersona` keeps it in `app_persona_chats` (by the fork's chat) before listing the fork, and the
 fork's scope is its Topic's setup, read live, joined with it, never with subagents; its refusals are words only. The
 `exclusions` Personas had before (`20261028000100_persona_setup`) are no longer read; a receipt kept before setups
 undoes without touching the setup. Stop aborts the chat's turns and marks their invocations `stopped`.
@@ -1341,7 +1341,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
 | Agent DO SQLite | `app_chat_operations` | Drizzle: operation receipts per chat, pinned to their original Pi session, with kind, origin, target chat, parent operation, state and reason (`20261027000000_chat_operation_receipts`), pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: a helper's exclusions, set by its spawner (ADRs 0018, 0029); the owner's per-conversation switches were deleted (ADR 0040). |
-| Agent DO SQLite | `app_persona_forks` | Drizzle: the setup each Persona fork answers with, frozen at the ask (ADR 0040). |
+| Agent DO SQLite | `app_persona_chats` | Drizzle: the setup a Persona answers with in a chat: its fork, frozen at the ask (ADR 0040), or a routine's run at the pinned revision (ADR 0041). |
 | Agent DO SQLite | `app_chat_memory_log`, `app_chat_memory_nodes`, `app_chat_memory_state` | Drizzle: each Topic Conversation's memory, keyed by chat id (ADR 0032). `app_memory_log`, `app_memory_nodes` and `app_memory_state`, Main's agent-wide predecessors, were copied into chat `1` and are no longer read. |
 | Agent DO SQLite | `app_topics` | Drizzle: the owner's Topics, each with its Conversation's chat id (ADR 0032) and its setup (ADR 0040). |
 | Agent DO SQLite | `app_transcript_excerpts`, `app_transcript_fts` (FTS5, shadow tables `app_transcript_fts_*`), `app_transcript_index`, `app_retrieval_uses` | Drizzle and raw FTS5 SQL: the cross-Topic transcript index and the frozen sources each run used (ADR 0035). |
@@ -1476,8 +1476,9 @@ typed definition (`routine_propose`, which ends its turn), list (`routine_list`)
 tool each (ADR 0027); only an authenticated owner may confirm the exact revision. Routine writes require
 an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. A
 definition (ADR 0041) is a trigger, a timezone, **Tell me** (`tellMe: { on, telegram }`, Telegram only with Tell me) and
-**Hand to** (`handTo`: `none`, or `goblin` with its instruction, allowed tools and budget); one that hands nothing over
-must tell the owner. Only a hand-over makes runs (`handOverOf`, `runHandOver`). Settings shows the instruction, exact
+**Hand to** (`handTo`: `none`; `goblin` with its instruction, allowed tools and budget; or `persona` with those and the
+Persona's id and the revision it pins); one that hands nothing over must tell the owner. Only a hand-over makes runs
+(`handOverOf`, `runHandOver`). Settings shows the instruction, exact
 tool pairs, timezone, budgets and Telegram policy before confirmation. A routine lives in a
 Topic, and its runs are bounded by that Topic's setup as well as its allowed tools (ADR 0040): each `RoutineView`
 carries `topic` and `outsideSetup`, the allowed tools the setup does not hold now, read live so a proposal or a
@@ -1491,6 +1492,17 @@ repairs missing schedules and removes only routine-owned wakes. The earliest-wak
 Agents includes the currently firing row in `listSchedules`, and counting it would suppress the next report/recovery
 sweep. UTC reminders require an explicit offset. The
 numeric cron parser enforces 15-minute spacing, skips spring DST gaps and chooses the earlier autumn repeated instant.
+
+A hand-over to a Persona pins its revision: propose, edit and confirm refuse a Persona that is gone or archived
+(`persona_archived`) or a pin that is no longer its current revision (`persona_changed`, 409), so the owner confirms
+the Persona as it is. A firing whose Persona was archived or changed since is recorded skipped and pauses the routine
+with that reason as its health (`routines/persona.ts` `personaHold`, `RoutineStore.halt`) until the owner confirms it
+again. The run works in the routine's own run conversation, not a fork of the Topic, so it replays no Topic history and
+is charged once: it is configured with the Persona's text in its context tail (`personaText(…, 'routine')`), its model
+when offered, and the Persona turn's members without `ask_user`; `registerRoutine` binds the run's chat to the Persona
+in `app_persona_chats` first, so its scope is its allowed tools within its Topic's setup joined with the Persona's at
+the pinned revision. A completed run's answer is written as the Persona's own `app.persona` entry with the routine's
+link (`routine: { id, run }`) under the report's request id; any other ending reports as the routine.
 
 Pi background Anchor/Reporter tasks create and recover an empty task-owned run conversation, registered as a thread
 without copied capability rows or an ordinary main-start note. The confirmed MCP ceiling narrows `Setups.scope`.

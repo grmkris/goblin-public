@@ -11,10 +11,11 @@ import { RoutineRuns } from './service.ts'
 
 /**
  * The routines' Pi kit, made before Pi opens: the run task, `ask_user` and the routine budget gate, and the start of a
- * run's Pi work (`RoutineControl` starts runs through it, as `AgentInput.startRoutine`). Its Pi callbacks run their
- * programs through the bridge `agent.ts` gives it.
+ * run's Pi work (`RoutineControl` starts runs through it, as `AgentInput.startRoutine`). A run handed to a Persona
+ * works with the Persona turn's extension (its text in the context tail) and without `ask_user` (ADR 0041). Its Pi
+ * callbacks run their programs through the bridge `agent.ts` gives it.
  */
-export function routineExtensions(run: RunProgram, resident: Extension, key: string) {
+export function routineExtensions(run: RunProgram, resident: Extension, personaTurn: Extension, key: string) {
   const asking = askingExtension(async (session, callId, questions) => {
     const cipher = await CredentialCipher.fromBase64(key)
     await run(
@@ -26,6 +27,9 @@ export function routineExtensions(run: RunProgram, resident: Extension, key: str
     )
   })
   const budget = routineBudgetExtension(run)
-  const task = routineRunExtension(run, [personaExtension, resident, asking, budget])
+  const task = routineRunExtension(run, {
+    goblin: [personaExtension, resident, asking, budget],
+    persona: [personaExtension, resident, budget, personaTurn],
+  })
   return { start: task.start, extra: [task.extension, asking, budget] }
 }

@@ -75,6 +75,8 @@ export class Routines extends Context.Service<
       operationId: string,
       at: number,
     ) => Effect.Effect<RoutineOperationResult, AppError>
+    /** Pauses a live revision for a reason the owner must see, kept as its health (a Persona gone or changed). */
+    readonly halt: (routineId: string, revision: number, health: string, at: number) => Effect.Effect<void, AppError>
     /** An activating or active revision is live: its native schedule, if it has one, is `scheduleId`. */
     readonly markActive: (
       routineId: string,

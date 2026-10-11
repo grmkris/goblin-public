@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from '@goblin/ui'
 import { dateTime } from '../lib/format.ts'
+import { usePersonas } from '../lib/workspace/hooks.ts'
 import { routineStatus } from '../lib/labels.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { changeRoutineMutation } from '../routines/queries.ts'
@@ -33,15 +34,32 @@ function whenOf(definition: RoutineDefinition): string {
   return `When ${trigger.connectionId} sends ${trigger.name}`
 }
 
+/** Who a routine hands its work to, in words: Goblin, or the Persona by name at the pinned revision. */
+function useHandedTo(definition: RoutineDefinition): string | undefined {
+  const personas = usePersonas()
+  const { handTo } = definition
+  if (handTo.kind === 'none') return undefined
+  if (handTo.kind === 'goblin') return 'Goblin'
+  const name = personas.find((persona) => persona.id === handTo.persona)?.name ?? `Persona ${String(handTo.persona)}`
+  return `@${name}, revision ${String(handTo.revision)}`
+}
+
 /** What a routine does and may use, as facts beside each other. */
 function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
   const { definition } = routine
   const { trigger } = definition
   const handOver = handOverOf(definition)
+  const handedTo = useHandedTo(definition)
   return (
     <>
       {handOver !== undefined && <p className="routine-prompt">{handOver.instruction}</p>}
       <dl className="routine-facts">
+        {handedTo !== undefined && (
+          <div>
+            <dt>Hand to</dt>
+            <dd>{handedTo}</dd>
+          </div>
+        )}
         {routine.nextFireAt !== null && trigger.kind !== 'once' && (
           <div>
             <dt>Next</dt>

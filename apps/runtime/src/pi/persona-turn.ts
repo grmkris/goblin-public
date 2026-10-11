@@ -8,6 +8,7 @@ import {
   type Harness,
   type PhaseHandler,
   type TaskId,
+  type Tx,
   defineDoc,
   defineExtension,
   defineTask,
@@ -147,11 +148,22 @@ export function personaSelection(
   return { extensions: nextExtensions, tools: nextTools }
 }
 
-/** The text of a Persona's revision as its fork's model reads it, in the context tail. */
-export function personaText(persona: Pick<FrozenPersona, 'name' | 'role' | 'instructions'>): string {
+/** What a Persona answers: the owner's message it was tagged in, or the work a routine hands it (ADR 0041). */
+const ASKED = {
+  tagged: (name: string) =>
+    `The owner tagged @${name} in the conversation above: answer their message once, as ${name}, in your own voice.`,
+  routine: (name: string) =>
+    `A routine the owner confirmed hands you its work: do it once, as ${name}, in your own voice.`,
+} as const
+
+/** The text of a Persona's revision as its model reads it, in the context tail of its fork or its routine's run. */
+export function personaText(
+  persona: Pick<FrozenPersona, 'name' | 'role' | 'instructions'>,
+  asked: keyof typeof ASKED = 'tagged',
+): string {
   const { name, role, instructions } = persona
   const text = [
-    `You are ${name}${role === '' ? '' : `, ${role}`}. The owner tagged @${name} in the conversation above: answer their message once, as ${name}, in your own voice. For this answer you are not goblin.`,
+    `You are ${name}${role === '' ? '' : `, ${role}`}. ${ASKED[asked](name)} For this answer you are not goblin.`,
     'You cannot start subagents, organize topics or personas, or ask the owner anything; if you need more from them, say so in your answer.',
     instructions === '' ? '' : `The owner's instructions for ${name}:\n${instructions}`,
   ]
@@ -159,6 +171,12 @@ export function personaText(persona: Pick<FrozenPersona, 'name' | 'role' | 'inst
     .join('\n\n')
   // The text sits inside the context block: nothing in it may close a tag.
   return text.replaceAll('</', '<\u200B/')
+}
+
+/** Marks `conversation` a Persona's, in the commit that makes it: its context tail carries `text` (`personaText`). */
+export async function markPersona(tx: Tx, conversation: ConversationId, text: string): Promise<void> {
+  const marker = await tx.doc(PersonaText, conversation)
+  marker.text = text
 }
 
 const terminal = { status: 'terminal', outcome: { status: 'completed', result: null } } as const
@@ -271,8 +289,7 @@ const forkPhase: Phase<'fork'> = async (task, runtime, context) => {
     if (selection.extensions !== undefined) agent.extensions = selection.extensions
     if (selection.tools !== undefined) agent.tools = selection.tools
     if (persona.model !== undefined) agent.model = { provider: MODEL_PROVIDER, modelId: persona.model }
-    const marker = await tx.doc(PersonaText, forked.id)
-    marker.text = personaText(persona)
+    await markPersona(tx, forked.id, personaText(persona))
     return { status: 'running', checkpoint: { phase: 'register', fork: forked.id } }
   }, context)
 }

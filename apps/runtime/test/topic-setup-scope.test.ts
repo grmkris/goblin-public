@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { openAsks } from '../src/attention.ts'
 import { chatScope, piToolsFor, routinesOutside, sessionScope } from '../src/setup/scope.ts'
 import { outsideScopeResult } from '../src/pi/setup.ts'
-import { appPersonaForks } from '../src/storage/personas.ts'
+import { appPersonaChats } from '../src/storage/personas.ts'
 import { appRoutineRuns, appRoutines } from '../src/storage/routines.ts'
 import { RoutineStore } from '../src/routines/store.ts'
 import { appHelperExclusions, appConversations, appExecutionExclusions } from '../src/storage/schema.ts'
@@ -162,6 +162,27 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
     expect(scope.topic?.holds({ kind: 'tool', connectionId: 'mail', name: 'send' })).toBe(false)
   })
 
+  it("joins the Persona's setup for a routine run handed to it, still within the routine's allowed tools", () => {
+    const { db, raw } = fixture()
+    raw
+      .insert(appPersonaChats)
+      .values({
+        chatId: '23',
+        personaId: 1,
+        revision: 2,
+        setup: JSON.stringify({ mcpServers: [{ connectionId: 'mail', tools: 'all' }], skills: [], apps: ['diary'] }),
+        createdAt: 1,
+      })
+      .run()
+    const scope = chatScope(db, '23')
+    expect(scope.tool('mail', 'send')).toBe(true)
+    expect(scope.tool('mail', 'delete')).toBe(false)
+    expect(scope.tool('notes', 'read')).toBe(true)
+    expect(scope.tool('notes', 'write')).toBe(false)
+    expect(scope.app('diary')).toBe(false)
+    expect(scope.editable).toBe(false)
+  })
+
   it('lets nothing through for a chat without a Topic or a session no chat owns', () => {
     const { db, raw } = fixture()
     raw.delete(appTopics).where(eq(appTopics.id, 2)).run()
@@ -196,7 +217,7 @@ describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)",
         })
         .run()
     raw
-      .insert(appPersonaForks)
+      .insert(appPersonaChats)
       .values({
         chatId: '24',
         personaId: 1,

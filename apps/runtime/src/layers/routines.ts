@@ -50,6 +50,7 @@ export const routinesOf = (store: RoutineStore) =>
     confirm: trySync('Routines.confirm', store.confirm.bind(store)),
     pause: trySync('Routines.pause', store.pause.bind(store)),
     archive: trySync('Routines.archive', store.archive.bind(store)),
+    halt: trySync('Routines.halt', store.halt.bind(store)),
     markActive: trySync('Routines.markActive', store.markActive.bind(store)),
     settings: sync('Routines.settings', store.settings.bind(store))(),
     updateSettings: trySync('Routines.updateSettings', store.settingsUpdate.bind(store)),

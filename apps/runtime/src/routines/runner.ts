@@ -18,6 +18,7 @@ import { type PiFailure, PiSessions } from '../pi/sessions.ts'
 import { sha256Hex } from '../runtime/digest.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { notifyReport } from './notices.ts'
+import { personaHold, runPersona } from './persona.ts'
 import type { Firing, RoutineRun } from './runs.ts'
 import { type RoutineAnswer, RoutineRuns, RoutineUsage, Routines } from './service.ts'
 import { definitionOf } from './store.ts'
@@ -116,7 +117,8 @@ const eventOf = (record: RoutineRun) =>
 
 /**
  * Hands a run to Pi: its deadline alarm first, then its own conversation under main (made once) and a reporter task
- * for this firing or this answer, on the owner's model. Answers the session it runs in.
+ * for this firing or this answer, on the owner's model or, for a run handed to a Persona, as that Persona at the
+ * pinned revision (ADR 0041). Answers the session it runs in.
  */
 export const startRun = Effect.fn('routines.start')(function* (record: RoutineRun, answer?: RoutineAnswer) {
   const { routineSchedules, startRoutine } = yield* AgentInput
@@ -125,8 +127,16 @@ export const startRun = Effect.fn('routines.start')(function* (record: RoutineRu
   const chats = yield* Chats
   const primary = yield* chats.session(chats.primary)
   const event = yield* eventOf(record)
+  const persona = yield* runPersona(record)
   const pi = yield* PiSessions.use((sessions) => sessions.pi).pipe(Effect.catchTag('PiFailure', piFailure))
-  const start = { primary, record, model, event, ...(answer === undefined ? {} : { answer }) }
+  const start = {
+    primary,
+    record,
+    model,
+    event,
+    ...(persona === undefined ? {} : { persona }),
+    ...(answer === undefined ? {} : { answer }),
+  }
   const session = yield* attempt(() => startRoutine(pi, start))
   yield* wakeAt(record.deadlineAt)
   return session
@@ -171,10 +181,14 @@ export const answerRun = Effect.fn('routines.answer')(function* (session: string
 
 /**
  * Admits `firing` once by its operation id and hands an admitted run to Pi; `forcedSkip` records it skipped instead.
- * Answers the run as stored after.
+ * A routine whose Persona is archived or changed since its pin records the firing skipped and pauses, with why as its
+ * health, until the owner confirms it again (ADR 0041). Answers the run as stored after.
  */
 export const admit = Effect.fn('routines.admit')(function* (firing: Firing, forcedSkip?: string) {
-  const claimed = yield* claimFiring(firing, forcedSkip)
+  const held = forcedSkip === undefined ? yield* personaHold(firing.routineId) : undefined
+  const claimed = yield* claimFiring(firing, forcedSkip ?? held)
+  if (held !== undefined)
+    yield* (yield* Routines).halt(firing.routineId, firing.revision, held, yield* Clock.currentTimeMillis)
   if (claimed.run.state === 'admitted' || claimed.run.state === 'running') yield* startRun(claimed.run)
   yield* wakeIn(1000)
   return yield* RoutineRuns.use((runs) => runs.get(claimed.run.id))
@@ -197,6 +211,18 @@ export const manualRun = Effect.fn('routines.manual')(function* (id: string, inp
   })
 })
 
+/**
+ * The answer of a run handed to a Persona that completed: the Persona's words, attributed to it at the pinned revision
+ * (ADR 0041). A run that failed, stopped or was skipped, or one handed to Goblin, reports as the routine instead.
+ */
+const personaAnswer = Effect.fn('routines.personaAnswer')(function* (record: RoutineRun) {
+  if (record.state !== 'completed' || record.summary === null) return undefined
+  const persona = yield* runPersona(record).pipe(Effect.catchTag('NotFound', () => Effect.succeed(undefined)))
+  if (persona === undefined) return undefined
+  const { id, name, revision, avatar } = persona
+  return { text: record.summary, persona: { persona: id, name, revision, avatar } }
+})
+
 /** A run that ended reports into its Topic's Conversation once, frozen as it ended (ADR 0012). */
 export const reportRun = (record: RoutineRun) =>
   Effect.gen(function* () {
@@ -205,10 +231,13 @@ export const reportRun = (record: RoutineRun) =>
     const topic = yield* (yield* Routines).topicOf(record.routineId)
     const session = record.sessionId
     if (session !== null) yield* RoutineUsage.use((projection) => projection.snapshot(session))
+    const answered = yield* personaAnswer(record)
     const text =
-      record.summary === null
-        ? 'Routine ended.'
-        : `Routine ${record.outcome ?? record.state}: ${record.summary.slice(0, 500)}`
+      answered !== undefined
+        ? answered.text
+        : record.summary === null
+          ? 'Routine ended.'
+          : `Routine ${record.outcome ?? record.state}: ${record.summary.slice(0, 500)}`
     yield* conversations.reportRoutine({
       runId: record.id,
       routineId: record.routineId,
@@ -217,6 +246,7 @@ export const reportRun = (record: RoutineRun) =>
       text,
       at: record.updatedAt,
       topic,
+      ...(answered === undefined ? {} : { persona: answered.persona }),
     })
     // An answer the owner asked to be told about is a notification, except of a run they started themselves.
     if (record.source !== 'manual')

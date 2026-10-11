@@ -348,7 +348,7 @@ describe('the conversation services', () => {
       yield* TestClock.adjust('90 seconds')
       const conversations = yield* Conversations
       yield* conversations.markRead('2')
-      yield* conversations.registerRoutine('77', 'run-1', 'Daily', 3)
+      yield* conversations.registerRoutine({ session: '77', runId: 'run-1', title: 'Daily', topic: 3 })
       const row = (chat: string) => db.select().from(appConversations).where(eq(appConversations.chatId, chat)).get()
       expect(row('2')?.readAt).toBe(90)
       // Topic 3 does not exist, so the routine's chat sits under Personal's Conversation.

@@ -7,6 +7,7 @@ import type {
   HelperExclusion,
   MoveReceipt,
   MoveToThread,
+  PersonaAnswerData,
   PersonaSetup,
   ThreadAnchor,
   UpdateConversation,
@@ -20,12 +21,24 @@ import type { AppError } from '../http/errors.ts'
 import type { ChatId, ChatRow, SessionId } from './directory.ts'
 import type { Receipt, ReceiptChange, ReceiptInput, ReceiptOrigin } from './receipts.ts'
 
-/** The Persona a fork answers as, at the revision the ask froze, with the setup it adds to its Topic's (ADR 0040). */
-export type PersonaFork = {
+/**
+ * The Persona a chat answers as (its fork, or a routine's run handed to it), at the revision the ask froze or the
+ * routine pinned, with the setup it adds to its Topic's (ADR 0040).
+ */
+export type PersonaBinding = {
   readonly id: number
   readonly revision: number
   readonly name: string
   readonly setup: PersonaSetup
+}
+
+/** A routine run's conversation: its session, run and title, the Topic it works in, and the Persona it is handed to. */
+export type RoutineChat = {
+  readonly session: string
+  readonly runId: string
+  readonly title: string
+  readonly topic: number
+  readonly persona?: PersonaBinding
 }
 
 declare module '../runtime/changes.ts' {
@@ -213,7 +226,9 @@ export type RoutineReport = {
   readonly outcome: string
   readonly text: string
   readonly at: number
-  readonly topic?: number
+  readonly topic: number
+  /** The Persona that answered, when the run was handed to one and completed: the answer is written as its own. */
+  readonly persona?: Pick<PersonaAnswerData, 'persona' | 'name' | 'revision' | 'avatar'>
 }
 
 /**
@@ -270,14 +285,9 @@ export class Conversations extends Context.Service<
     readonly registerPersona: (
       session: string,
       parentChat: string,
-      persona: PersonaFork,
+      persona: PersonaBinding,
     ) => Effect.Effect<void, AppError>
-    readonly registerRoutine: (
-      session: string,
-      runId: string,
-      title: string,
-      topic?: number,
-    ) => Effect.Effect<void, AppError>
+    readonly registerRoutine: (routine: RoutineChat) => Effect.Effect<void, AppError>
     readonly reportRoutine: (report: RoutineReport) => Effect.Effect<void, AppError>
     /**
      * Where a routine of Topic `topic` posts: that Topic's Conversation, or Personal's while the Topic is archived or
