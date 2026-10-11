@@ -1,4 +1,4 @@
-import { and, asc, count, eq, isNull, lte, sql } from 'drizzle-orm'
+import { and, asc, count, eq, gte, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import { InvalidInput } from '../../http/errors.ts'
 import {
@@ -17,7 +17,8 @@ export const EVENT_LIMITS = {
   ttlMs: 3_600_000,
   minTtlMs: 300_000,
   maxTtlMs: 86_400_000,
-  subscriptions: 32,
+  subscriptions: 64,
+  listPages: 32,
   page: 100,
   bodyBytes: 262_144,
   timeoutMs: 15_000,
@@ -84,8 +85,28 @@ export class SqliteEventStore {
         .get() !== undefined
     )
   }
-  list(): Subscription[] {
-    return this.db.select().from(subscriptions).limit(EVENT_LIMITS.subscriptions).all()
+  /** Every subscription not tombstoned, however many: what maintenance reconciles and what the cap counts. */
+  live(): Subscription[] {
+    return this.db.select().from(subscriptions).where(ne(subscriptions.status, 'tombstone')).all()
+  }
+  /** How many subscriptions are live, for the cap. */
+  count(): number {
+    return (
+      this.db.select({ rows: count() }).from(subscriptions).where(ne(subscriptions.status, 'tombstone')).get()?.rows ??
+      0
+    )
+  }
+  /** The rows a producer's subscription id names, tombstones included: a delivery to a gone one is answered 410. */
+  byRemote(remoteId: string): Subscription[] {
+    return this.db.select().from(subscriptions).where(eq(subscriptions.remoteId, remoteId)).all()
+  }
+  /** Intents still waiting for their verification, touched since `since`. */
+  pendingSince(since: number): Subscription[] {
+    return this.db
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.status, 'pending'), gte(subscriptions.updatedAt, since)))
+      .all()
   }
   get(id: string): Subscription | undefined {
     return this.db.select().from(subscriptions).where(eq(subscriptions.id, id)).get()
@@ -259,6 +280,11 @@ export class SqliteEventStore {
       .where(and(eq(deliveries.subscriptionId, row.subscriptionId), eq(deliveries.webhookId, row.webhookId)))
       .run()
   }
+  /**
+   * Drops processed deliveries past retention, then tombstoned subscriptions that nothing refers to any more: no
+   * delivery left and no active binding, with remote cleanup done or the producer's lease lapsed (until then a
+   * delivery to it is answered 410).
+   */
   prune(now: number): void {
     this.db.transaction((tx) => {
       const expired = tx
@@ -274,6 +300,33 @@ export class SqliteEventStore {
         tx.delete(deliveries)
           .where(and(eq(deliveries.subscriptionId, row.subscriptionId), eq(deliveries.webhookId, row.webhookId)))
           .run()
+      }
+      const retired = tx
+        .select({ id: subscriptions.id })
+        .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.status, 'tombstone'),
+            or(
+              isNull(subscriptions.lastError),
+              isNull(subscriptions.refreshBefore),
+              lt(subscriptions.refreshBefore, now),
+            ),
+          ),
+        )
+        .limit(EVENT_LIMITS.sweep)
+        .all()
+      for (const { id } of retired) {
+        const delivery = tx.select().from(deliveries).where(eq(deliveries.subscriptionId, id)).limit(1).get()
+        const bound = tx
+          .select()
+          .from(consumers)
+          .where(and(eq(consumers.subscriptionId, id), eq(consumers.state, 'active')))
+          .limit(1)
+          .get()
+        if (delivery !== undefined || bound !== undefined) continue
+        tx.delete(consumers).where(eq(consumers.subscriptionId, id)).run()
+        tx.delete(subscriptions).where(eq(subscriptions.id, id)).run()
       }
     })
   }

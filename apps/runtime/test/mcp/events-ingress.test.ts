@@ -73,7 +73,7 @@ describe('which subscriptions stay valid (unit)', () => {
       makeEvents({
         connections: fake<EventsOptions['connections']>({ server: () => server }),
         // SAFETY: the row holds every field of a subscription the engine reads here.
-        store: fake<EventsOptions['store']>({ list: () => [row as Subscription], allows: () => true }),
+        store: fake<EventsOptions['store']>({ byRemote: () => [row as Subscription], allows: () => true }),
         cipher: unread,
         principal: 'owner',
         callback: 'https://goblin.test/hooks/mcp-events/owner/token',

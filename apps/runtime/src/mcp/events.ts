@@ -218,7 +218,7 @@ const maintain = (engine: Engine) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis
       yield* dispatch(engine)
-      for (const row of engine.store.list()) yield* reconcile(engine, row, now)
+      for (const row of engine.store.live()) yield* reconcile(engine, row, now)
       yield* Effect.sync(() => engine.store.prune(now))
       yield* dispatch(engine)
       yield* engine.wake(now + 60_000)
@@ -245,8 +245,8 @@ const reads = (engine: Engine) => ({
     const { store } = engine
     return yield* Effect.sync(() =>
       store
-        .list()
-        .filter((row) => row.connectionId === connectionId && row.status !== 'tombstone')
+        .live()
+        .filter((row) => row.connectionId === connectionId)
         .map(({ id, name, argumentsJson, status, refreshBefore, lastReceiptAt }) => ({
           subscriptionId: id,
           name,
@@ -296,7 +296,7 @@ const changes = (engine: Engine) => ({
   /** Disconnect or revoke cleanup, while the authorization that made the subscriptions is still available. */
   disableServer: Effect.fn('Events.disableServer')(function* (connectionId?: string) {
     const { store } = engine
-    for (const row of store.list().filter((item) => connectionId === undefined || item.connectionId === connectionId))
+    for (const row of store.live().filter((item) => connectionId === undefined || item.connectionId === connectionId))
       for (const binding of store.bindings(row.id)) yield* retire(engine, binding)
   }),
   receive: Effect.fn('Events.receive')(function* (input: EventWebhook) {

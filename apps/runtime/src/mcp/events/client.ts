@@ -60,7 +60,7 @@ export const listEvents = (client: EventClient, connectionId: string, name: stri
     const selector = { connectionId, name, argumentsJson: yield* attemptSync(() => canonicalArguments(args)) }
     const events: EventDescriptor[] = []
     let cursor: string | undefined
-    for (let page = 0; page < EVENT_LIMITS.subscriptions; page++) {
+    for (let page = 0; page < EVENT_LIMITS.listPages; page++) {
       const result = yield* request(
         client,
         selector,
@@ -97,7 +97,7 @@ export const prepareEvents = (
       current.status !== 'tombstone'
     )
       return current
-    if (store.list().length >= EVENT_LIMITS.subscriptions && current === undefined)
+    if (store.count() >= EVENT_LIMITS.subscriptions && (current === undefined || current.status === 'tombstone'))
       return yield* new InvalidInput({ reason: 'too many event subscriptions' })
     const now = yield* Clock.currentTimeMillis
     const binding = { id: current?.id ?? (yield* Effect.sync(makeSubscriptionId)), connectionId }

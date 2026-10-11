@@ -1163,7 +1163,9 @@ A listing can clear only the generation it observed, and retained activations st
 termination stops lease refresh and surfaces health. Mail and workspace changes have no installed consumer yet.
 
 The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
-32 subscriptions, 100 events per page, 256 KiB bodies, 15-second remote requests (`EVENT_LIMITS.timeoutMs`) and 10,000 pending rows / 32 MiB.
+64 live subscriptions (maintenance reconciles every one; a tombstone is pruned once no delivery or binding
+refers to it and its lease lapsed or its cleanup succeeded), 100 events per page, 256 KiB bodies, 15-second remote
+requests (`EVENT_LIMITS.timeoutMs`) and 10,000 pending rows / 32 MiB.
 Recovery sweeps process at most 256 deliveries and retain completed receipts for eight days; unfinished receipts
 are never pruned. Workers cannot pin resolved DNS IPs; trusted DNS is the documented v1 deviation (ADR 0011).
 
