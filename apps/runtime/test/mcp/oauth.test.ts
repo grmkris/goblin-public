@@ -254,6 +254,28 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
     }
   })
 
+  it('steps up with a fresh authorization for the scope union, keeping the tokens until the new ones arrive', async () => {
+    const { authorizationServer, servers, connections, grants, credentials, connect, dispose } = setup()
+    try {
+      await connect()
+      await grants.setTool('fixture', 'read', true)
+      const before = (await credentials.tokens('fixture'))?.access_token
+      const refreshes = authorizationServer.refreshAttempts
+      const { authorizationUrl } = await servers.beginStepUp('fixture', 'notes:write')
+      const params = new URL(authorizationUrl ?? '').searchParams
+      expect(params.get('scope')?.split(' ').toSorted()).toEqual(['notes', 'notes:write', 'offline_access'])
+      expect(authorizationServer.refreshAttempts).toBe(refreshes)
+      expect((await credentials.tokens('fixture'))?.access_token).toBe(before)
+      expect((await connections.callTool('fixture', 'read', {})).content).toEqual([{ type: 'text', text: 'ok' }])
+      const approval = authorizationServer.approve(authorizationUrl ?? '')
+      await servers.finishConnect(approval.state, approval.code, undefined)
+      expect((await credentials.tokens('fixture'))?.access_token).not.toBe(before)
+      expect((await connections.callTool('fixture', 'read', {})).content).toEqual([{ type: 'text', text: 'ok' }])
+    } finally {
+      await dispose()
+    }
+  })
+
   it('starts no sign-in for a server it cannot reach', async () => {
     const { servers, authorizationServer, status, dispose } = setup()
     try {

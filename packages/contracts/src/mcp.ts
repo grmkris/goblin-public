@@ -95,6 +95,10 @@ export type ApprovalDecision = typeof ApprovalDecision.Type
 export const ConnectStart = Schema.Struct({ authorizationUrl: Schema.optional(Schema.String) })
 export type ConnectStart = typeof ConnectStart.Type
 
+/** `POST /api/mcp/:id/step-up`: sign a connection in again with this much more access, as scope tokens (ADR 0042). */
+export const StepUp = Schema.Struct({ scope: Schema.String.check(Schema.isMaxLength(512)) })
+export type StepUp = typeof StepUp.Type
+
 /** `POST /api/mcp/:id/tools/call`: the owner (or an App they opened) calls one granted tool. */
 export const ToolCall = Schema.Struct({
   name: NonEmptyString(256),

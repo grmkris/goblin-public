@@ -23,6 +23,7 @@ import {
   ServerView,
   SkillsChange,
   SkillsSetting,
+  StepUp,
   ToolCall,
   ToolView,
 } from '../mcp.ts'
@@ -132,6 +133,13 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
   }),
   HttpApiEndpoint.post('connect', '/mcp/:id/connect', {
     params: { id: ConnectionParam },
+    success: ConnectStart,
+    error: [ApiErrors.notFound, ...REMOTE],
+  }),
+  /** `POST /api/mcp/:id/step-up`: sign in again with more access (ADR 0042); the URL to open, in a new tab. */
+  HttpApiEndpoint.post('stepUp', '/mcp/:id/step-up', {
+    params: { id: ConnectionParam },
+    payload: StepUp,
     success: ConnectStart,
     error: [ApiErrors.notFound, ...REMOTE],
   }),

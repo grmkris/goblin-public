@@ -9,6 +9,7 @@ import { RequestContext } from '../http/api/context.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { setSkillEvents } from '../skills/events.ts'
+import { challengeScope } from './errors.ts'
 import { approvalView, decideOwnerApproval, ownerResource, setAskFirst } from './approval-owner.ts'
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
 import { Events, McpConnections, McpGrants, McpServers } from './service.ts'
@@ -88,6 +89,9 @@ const tools = endpoint('tools')(({ params, query }) =>
   McpServers.use((offered) => offered.tools(params.id, query.refresh !== undefined)),
 )
 const connect = endpoint('connect')(({ params }) => McpServers.use((offered) => offered.beginConnect(params.id)))
+const stepUp = endpoint('stepUp')(({ params, payload }) =>
+  McpServers.use((offered) => offered.beginStepUp(params.id, challengeScope(payload.scope))),
+)
 const disconnect = endpoint('disconnect')(({ params }) => disconnectOwnerServer(params.id))
 const removeServer = endpoint('removeServer')(({ params }) => removeOwnerServer(params.id))
 const callTool = endpoint('callTool')(({ params, headers, payload }) =>
@@ -141,6 +145,7 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       decideApproval,
       tools,
       connect,
+      stepUp,
       disconnect,
       removeServer,
       callTool,

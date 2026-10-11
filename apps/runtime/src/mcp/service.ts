@@ -89,6 +89,11 @@ export class McpServers extends Context.Service<
     readonly remove: (connectionId: string) => Effect.Effect<void, AppError>
     /** Starts (or silently renews) sign-in: the URL to send the owner's browser to, when one is needed. */
     readonly beginConnect: (connectionId: string) => Effect.Effect<ConnectStart, AppError>
+    /**
+     * Starts signing in again with more access (ADR 0042): a fresh authorization for `scope` and what the connection
+     * already holds; its tokens stay until the new ones arrive.
+     */
+    readonly beginStepUp: (connectionId: string, scope: string) => Effect.Effect<ConnectStart, AppError>
     /** Completes the sign-in the browser came back from; answers the server's id. The `state` is single-use. */
     readonly finishConnect: (state: string, code: string, issuer?: string) => Effect.Effect<string, AppError>
     /** Forgets the server's credentials and closes its connection; grants stay. */

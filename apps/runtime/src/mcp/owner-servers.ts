@@ -1,4 +1,4 @@
-import { auth, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
+import { auth, computeScopeUnion, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
 import type { ServerSource, ServerView, ToolView } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
@@ -201,7 +201,41 @@ const beginConnect = (owner: OwnerServers, connectionId: string) =>
     return { authorizationUrl: provider.authorizationUrl.href }
   })
 
-/** Completes the authorization the browser was redirected back from. The `state` is single-use. */
+/**
+ * Starts signing a connection in again with more access (ADR 0042), after a call answered 403 `insufficient_scope`:
+ * a fresh authorization, never a refresh, for what the server offers, what the connection holds and what the server
+ * asked for. The connection and its tokens stay as they are until the new ones arrive, so an abandoned step-up leaves
+ * it working as before.
+ */
+const beginStepUp = (owner: OwnerServers, connectionId: string, required: string) =>
+  Effect.gen(function* () {
+    const server = yield* owner.manager.server(connectionId)
+    const provider = new StoredOAuthProvider(
+      owner.credentials,
+      connectionId,
+      owner.appUrl,
+      { kind: 'interactive' },
+      clientName(owner, connectionId),
+    )
+    const result = yield* attempt(async () => {
+      const held = await owner.credentials.tokens(connectionId)
+      const scope = computeScopeUnion(await offeredScope(server.endpoint, owner.fetch), held?.scope, required)
+      return auth(provider, {
+        serverUrl: server.endpoint,
+        fetchFn: owner.fetch,
+        forceReauthorization: true,
+        ...(scope === undefined ? {} : { scope }),
+      })
+    })
+    if (result === 'AUTHORIZED') return {}
+    if (provider.authorizationUrl === undefined) return yield* new Internal({ reason: 'authorization URL missing' })
+    return { authorizationUrl: provider.authorizationUrl.href }
+  })
+
+/**
+ * Completes the authorization the browser was redirected back from. The `state` is single-use. The connection opens
+ * again with the new tokens, so a step-up's wider access lists the tools it brings.
+ */
 const finishConnect = (owner: OwnerServers, state: string, code: string, issuer: string | undefined) =>
   Effect.gen(function* () {
     const now = yield* epochSeconds
@@ -224,6 +258,7 @@ const finishConnect = (owner: OwnerServers, state: string, code: string, issuer:
       }),
     )
     if (result !== 'AUTHORIZED') return yield* new NeedsAuthorization({ connectionId: server.connectionId })
+    yield* owner.manager.close(server.connectionId)
     return server.connectionId
   })
 
@@ -270,6 +305,9 @@ const connecting = (owner: OwnerServers) => ({
   }),
   beginConnect: Effect.fn('McpServers.beginConnect')(function* (connectionId: string) {
     return yield* beginConnect(owner, connectionId)
+  }),
+  beginStepUp: Effect.fn('McpServers.beginStepUp')(function* (connectionId: string, scope: string) {
+    return yield* beginStepUp(owner, connectionId, scope)
   }),
   finishConnect: Effect.fn('McpServers.finishConnect')(function* (state: string, code: string, issuer?: string) {
     return yield* finishConnect(owner, state, code, issuer)
