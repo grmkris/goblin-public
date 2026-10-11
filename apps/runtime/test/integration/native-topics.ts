@@ -72,12 +72,15 @@ async function topicRoutineSequence(agent: ProbeStub) {
   const answered = await attentionOf()
   const definition = {
     title: 'Errand check',
-    prompt: 'Return a short reminder.',
     timezone: 'UTC',
     trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
-    notifyTelegram: false,
-    allowedTools: [],
-    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    tellMe: { on: false, telegram: false },
+    handTo: {
+      kind: 'goblin',
+      instruction: 'Return a short reminder.',
+      allowedTools: [],
+      budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    },
   }
   await exchange(agent, errands, `call routine_propose ${JSON.stringify(definition)}`, 'topic-routine-propose')
   const listed = await ownerResult(agent, (api) => api.routines.list())

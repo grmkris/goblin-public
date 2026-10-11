@@ -1,4 +1,4 @@
-import type { RoutineDefinition, RoutineEdit, RoutineRevision } from '@goblin/contracts'
+import { PERSONAL_TOPIC, type RoutineDefinition, type RoutineEdit, type RoutineRevision } from '@goblin/contracts'
 import type * as Effect from 'effect/Effect'
 import { type AgentFetch, type OwnerClient, callOwner } from '../owner-client.ts'
 import type { RoutineRunStore } from '../../src/routines/runs.ts'
@@ -6,8 +6,12 @@ import { ownerResult } from './probe-reads.ts'
 import { waitFor } from './until.ts'
 
 /** The owner's routine calls the probes make, through the typed owner API as the Worker forwards them. */
-export const proposeRoutine = (agent: AgentFetch, definition: RoutineDefinition, operationId: string) =>
-  callOwner(agent, (api) => api.routines.propose({ payload: { definition, operationId } }))
+export const proposeRoutine = (
+  agent: AgentFetch,
+  definition: RoutineDefinition,
+  operationId: string,
+  topic: number = PERSONAL_TOPIC,
+) => callOwner(agent, (api) => api.routines.propose({ payload: { definition, operationId, topic } }))
 
 export const changeRoutine = (
   agent: AgentFetch,

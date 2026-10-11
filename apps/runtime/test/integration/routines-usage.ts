@@ -20,12 +20,15 @@ const reached = (store: RoutineRunStore, id: string, state: string) => runReache
 async function start(agent: PersonalAgent, prompt: string, operation: string) {
   const definition: RoutineDefinition = {
     title: `Native slow routine ${operation}`,
-    prompt,
     timezone: 'UTC',
     trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
-    notifyTelegram: false,
-    allowedTools: [],
-    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    tellMe: { on: false, telegram: false },
+    handTo: {
+      kind: 'goblin',
+      instruction: prompt,
+      allowedTools: [],
+      budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    },
   }
   const draft = await proposeRoutine(agent, definition, `${operation}-propose`)
   await changeRoutine(agent, draft.id, { revision: 1, operationId: `${operation}-confirm` }, 'confirm')

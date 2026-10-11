@@ -15,7 +15,7 @@ import * as Effect from 'effect/Effect'
 import { Conversations } from '../chats/service.ts'
 import { type RoutineAnswer, RoutineRuns, RoutineUsage, Routines } from '../routines/service.ts'
 import type { RoutineRun } from '../routines/runs.ts'
-import { definitionOf } from '../routines/store.ts'
+import { definitionOf, runHandOver } from '../routines/store.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { BACKGROUND, conversationId } from './context.ts'
 import { Internal } from '../http/errors.ts'
@@ -53,7 +53,7 @@ const settleRoutine = (runId: string, result: Extract<State, { phase: 'report' }
     const session = record.sessionId
     if (session !== null) yield* RoutineUsage.use((projection) => projection.snapshot(session))
     const used = yield* store.used(record.id, at)
-    const budget = definitionOf(record).budget
+    const { budget } = runHandOver(record)
     const capped = used.run >= budget.tokensPerRun || used.day >= budget.tokensPerDay
     yield* store.settle(
       record.id,
@@ -180,9 +180,10 @@ export function routineRunExtension(run: RunProgram, members: readonly Extension
       const bindingKey = `${record.id}:${operationId}`
       if (bindings.tasks[bindingKey] === undefined) {
         const definition = definitionOf(record)
+        const handOver = runHandOver(record)
         const content =
           answer?.text ??
-          `Confirmed routine: ${definition.title}\nTrigger: ${record.source}, ${new Date(record.firedAt).toISOString()}.\nRun: ${record.id}. Limits: ${definition.budget.tokensPerRun} tokens/run, ${definition.budget.tokensPerDay} tokens/day, ${definition.budget.runtimeSeconds} seconds.\n${definition.prompt}${eventContext}`
+          `Confirmed routine: ${definition.title}\nTrigger: ${record.source}, ${new Date(record.firedAt).toISOString()}.\nRun: ${record.id}. Limits: ${handOver.budget.tokensPerRun} tokens/run, ${handOver.budget.tokensPerDay} tokens/day, ${handOver.budget.runtimeSeconds} seconds.\n${handOver.instruction}${eventContext}`
         bindings.tasks[bindingKey] = await tx.createTask(
           Reporter,
           { runId: record.id, sessionId: session, operationId, content },

@@ -21,12 +21,15 @@ const tool = (name: string): ToolRegistration => {
 
 const definition = {
   title: 'Morning brief',
-  prompt: 'Summarize my calendar.',
   trigger: { kind: 'cron', expression: '0 8 * * *' },
   timezone: 'Europe/Tallinn',
-  notifyTelegram: true,
-  allowedTools: [{ connectionId: 'myplan', name: 'calendar_list' }],
-  budget: { tokensPerRun: 20_000, tokensPerDay: 40_000, runtimeSeconds: 120 },
+  tellMe: { on: true, telegram: true },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Summarize my calendar.',
+    allowedTools: [{ connectionId: 'myplan', name: 'calendar_list' }],
+    budget: { tokensPerRun: 20_000, tokensPerDay: 40_000, runtimeSeconds: 120 },
+  },
 }
 
 describe('routine tools (unit, ADR 0027)', () => {

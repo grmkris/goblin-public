@@ -13,7 +13,7 @@ import { RoutineControl, RoutineRuns, Routines } from './service.ts'
 export const RoutinesHandlers = HttpApiBuilder.group(OwnerApi, 'routines', (handlers) =>
   handlers
     .handle('list', () => routinesList)
-    .handle('propose', ({ payload }) => proposeRoutine(payload.definition, payload.operationId))
+    .handle('propose', ({ payload }) => proposeRoutine(payload.definition, payload.operationId, payload.topic))
     .handle('settings', () => Routines.use((store) => store.settings))
     .handle('updateSettings', ({ payload }) => setRoutineSettings(payload))
     .handle('edit', ({ params, payload }) =>

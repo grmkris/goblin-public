@@ -1,7 +1,14 @@
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { Conflict, InvalidInput, NotFound } from '../http/errors.ts'
-import { PERSONAL_TOPIC, RoutineDefinition, RoutineView, hasTool } from '@goblin/contracts'
+import { Conflict, Internal, InvalidInput, NotFound } from '../http/errors.ts'
+import {
+  RoutineDefinition,
+  type RoutineEdit,
+  type RoutineHandOver,
+  RoutineView,
+  handOverOf,
+  hasTool,
+} from '@goblin/contracts'
 import * as Schema from 'effect/Schema'
 import { canonicalArguments } from '../mcp/events/store.ts'
 import { appRoutineOperations, appRoutines, appRoutineSettings } from '../storage/routines.ts'
@@ -18,16 +25,29 @@ const json = (value: unknown) => JSON.stringify(value)
 export const definitionOf = (stored: { readonly definitionJson: string }): RoutineDefinition =>
   Schema.decodeUnknownSync(RoutineDefinition)(JSON.parse(stored.definitionJson))
 
+/**
+ * The hand-over a run carries out, from the definition it was claimed with: only a routine that hands its work over
+ * makes runs (ADR 0041).
+ */
+export const runHandOver = (stored: { readonly definitionJson: string }): RoutineHandOver => {
+  const handOver = handOverOf(definitionOf(stored))
+  if (handOver === undefined) throw new Internal({ reason: 'routine run without a hand-over' })
+  return handOver
+}
+
 const OperationResult = Schema.Struct({ routine: RoutineView, operationId: Schema.String })
 export type RoutineOperationResult = typeof OperationResult.Type
 
 function validate(input: RoutineDefinition, at: number): RoutineDefinition {
   const definition = Schema.decodeUnknownSync(RoutineDefinition)(input)
   canonicalArguments(definition.trigger.kind === 'event' ? definition.trigger.arguments : {})
-  if (definition.allowedTools.some((tool) => tool.connectionId === '' || tool.name === ''))
+  const handOver = handOverOf(definition)
+  // Tell me without a hand-over posts notices, which land with the notices themselves (ADR 0041).
+  if (handOver === undefined) throw new InvalidInput({ reason: 'notice_only_unsupported' })
+  if (handOver.allowedTools.some((tool) => tool.connectionId === '' || tool.name === ''))
     throw new InvalidInput({ reason: 'empty tool selector' })
   timezoneValid(definition.timezone)
-  if (definition.budget.tokensPerDay < definition.budget.tokensPerRun)
+  if (handOver.budget.tokensPerDay < handOver.budget.tokensPerRun)
     throw new InvalidInput({ reason: 'daily budget below per-run budget' })
   // nextFire validates cron syntax and explicit one-off offsets without persisting a malformed draft.
   if (definition.trigger.kind !== 'event') nextFire(definition, at - 1)
@@ -57,7 +77,7 @@ export class RoutineStore {
   #outside(topic: number, definition: RoutineDefinition) {
     const row = this.#db.select({ setup: appTopics.setup }).from(appTopics).where(eq(appTopics.id, topic)).get()
     const setup = row === undefined ? undefined : topicSetupOf(row.setup)
-    return definition.allowedTools
+    return (handOverOf(definition)?.allowedTools ?? [])
       .filter((tool) => setup === undefined || !hasTool(setup, tool.connectionId, tool.name))
       .map(({ connectionId, name }) => ({ connectionId, name }))
   }
@@ -117,16 +137,28 @@ export class RoutineStore {
     )
   }
 
+  /** Refuses a Topic that does not exist or is archived: a routine lives, runs and posts in an open Topic. */
+  #requireTopic(topic: number): void {
+    const row = this.#db
+      .select({ archivedAt: appTopics.archivedAt })
+      .from(appTopics)
+      .where(eq(appTopics.id, topic))
+      .get()
+    if (row === undefined) throw new NotFound({ what: 'topic' })
+    if (row.archivedAt !== null) throw new InvalidInput({ reason: 'topic_archived' })
+  }
+
   propose(
     definition: RoutineDefinition,
     operationId: string,
     routineId: string,
     at: number,
-    topic = PERSONAL_TOPIC,
+    topic: number,
   ): RoutineOperationResult {
     return this.#db.transaction(() => {
-      const existing = this.#operation(operationId, { kind: 'propose', definition })
+      const existing = this.#operation(operationId, { kind: 'propose', topic, definition })
       if (existing !== undefined) return existing
+      this.#requireTopic(topic)
       const valid = validate(definition, at)
       if (this.list().filter((routine) => routine.state !== 'archived').length >= 100)
         throw new Conflict({ reason: 'routine draft limit' })
@@ -151,22 +183,18 @@ export class RoutineStore {
       }
       this.#db.insert(appRoutines).values(routine).run()
       const response = { routine: this.#view(routine), operationId }
-      this.#saveOperation(operationId, { kind: 'propose', definition }, response, at)
+      this.#saveOperation(operationId, { kind: 'propose', topic, definition }, response, at)
       return response
     })
   }
-  edit(
-    routineId: string,
-    revision: number,
-    definition: RoutineDefinition,
-    operationId: string,
-    at: number,
-  ): RoutineOperationResult {
+  edit(routineId: string, change: RoutineEdit, at: number): RoutineOperationResult {
+    const { revision, definition, operationId, topic } = change
     return this.#db.transaction(() => {
-      const existing = this.#operation(operationId, { kind: 'edit', routineId, revision, definition })
+      const existing = this.#operation(operationId, { kind: 'edit', routineId, revision, topic, definition })
       if (existing !== undefined) return existing
       const current = this.get(routineId)
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
+      this.#requireTopic(topic)
       const valid = validate(definition, at)
       this.#db
         .update(appRoutines)
@@ -181,12 +209,13 @@ export class RoutineStore {
           nextFireAt: nextFire(valid, at),
           health: null,
           updatedAt: at,
+          topicId: topic,
         })
         .where(and(eq(appRoutines.id, routineId), eq(appRoutines.revision, revision)))
         .run()
       const row = this.get(routineId)
       const response = { routine: this.#view(row), operationId }
-      this.#saveOperation(operationId, { kind: 'edit', routineId, revision, definition }, response, at)
+      this.#saveOperation(operationId, { kind: 'edit', routineId, revision, topic, definition }, response, at)
       return response
     })
   }

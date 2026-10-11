@@ -14,15 +14,20 @@ import { RoutineStore } from '../../../src/routines/store.ts'
 import { callOwner } from '../../owner-client.ts'
 import { durable } from '../../chats-sqlite.ts'
 import { currentResident, database, json, plans, post, serve, served, stub } from './fixture.ts'
+import { PERSONAL_TOPIC } from '@goblin/contracts'
+import { withHandOver } from '../../routine-definition.ts'
 
 const DEFINITION: RoutineDefinition = {
   title: 'Plants',
-  prompt: 'Remind me to water the plants.',
   trigger: { kind: 'cron', expression: '0 9 * * *' },
   timezone: 'UTC',
-  notifyTelegram: false,
-  allowedTools: [],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Remind me to water the plants.',
+    allowedTools: [],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 }
 
 /**
@@ -70,7 +75,7 @@ const decodeView = Schema.decodeUnknownSync(RoutineView)
 
 /** A draft through the API: 201 and the routine as stored. */
 const propose = async (fetch: (request: Request) => Promise<Response>, operationId = 'op-propose') => {
-  const response = await fetch(post('/api/routines', { operationId, definition: DEFINITION }))
+  const response = await fetch(post('/api/routines', { operationId, topic: PERSONAL_TOPIC, definition: DEFINITION }))
   expect(response.status).toBe(201)
   return decodeView(await response.json())
 }
@@ -83,7 +88,11 @@ describe('the routines group served by the agent', () => {
     expect(draft.id).toMatch(/^rt_\d+_\d+$/u)
     expect((await propose(fetch)).id).toBe(draft.id)
     const clash = await fetch(
-      post('/api/routines', { operationId: 'op-propose', definition: { ...DEFINITION, title: 'Other' } }),
+      post('/api/routines', {
+        operationId: 'op-propose',
+        topic: PERSONAL_TOPIC,
+        definition: { ...DEFINITION, title: 'Other' },
+      }),
     )
     expect(clash.status).toBe(409)
     expect(await clash.json()).toMatchObject({
@@ -102,7 +111,8 @@ describe('the routines group served by the agent', () => {
     const refused = await fetch(
       post('/api/routines', {
         operationId: 'op-1',
-        definition: { ...DEFINITION, budget: { ...DEFINITION.budget, tokensPerDay: 10 } },
+        topic: PERSONAL_TOPIC,
+        definition: withHandOver(DEFINITION, (handOver) => ({ budget: { ...handOver.budget, tokensPerDay: 10 } })),
       }),
     )
     expect(refused.status).toBe(400)
@@ -112,6 +122,8 @@ describe('the routines group served by the agent', () => {
     const shapeless = await fetch(post('/api/routines', { operationId: 'op-2' }))
     expect(shapeless.status).toBe(400)
     expect(await shapeless.json()).toMatchObject({ error: { code: 'invalid_input' } })
+    const nowhere = await fetch(post('/api/routines', { operationId: 'op-3', topic: 99, definition: DEFINITION }))
+    expect(nowhere.status).toBe(404)
   })
 
   it('reads and changes the settings, refusing caps out of range', async () => {
@@ -137,6 +149,7 @@ describe('the routines group served by the agent', () => {
       json('PATCH', `/api/routines/${draft.id}`, {
         revision: 1,
         operationId: 'op-edit',
+        topic: PERSONAL_TOPIC,
         definition: { ...DEFINITION, title: 'Plants, daily' },
       }),
     )

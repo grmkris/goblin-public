@@ -6,6 +6,7 @@ import {
   type PersonaSetup,
   type SetupItem,
   type TopicSetup,
+  handOverOf,
   hasApp,
   hasLibrary,
   hasServer,
@@ -238,15 +239,16 @@ const routineScope = (db: Db, scope: SetupScope, runId: string): SetupScope => {
   const run = db.select().from(appRoutineRuns).where(eq(appRoutineRuns.id, runId)).get()
   if (run === undefined) return CLOSED
   const definition = definitionOf(run)
+  const allowedTools = handOverOf(definition)?.allowedTools ?? []
   const channel = db.select().from(appTelegramChannel).get() ?? db.select().from(appChannel).get()
   return {
     editable: false,
     ...(scope.topic === undefined ? {} : { topic: scope.topic }),
-    server: (id) => scope.server(id) && definition.allowedTools.some((tool) => tool.connectionId === id),
+    server: (id) => scope.server(id) && allowedTools.some((tool) => tool.connectionId === id),
     tool: (id, name) =>
       scope.tool(id, name) &&
-      (definition.notifyTelegram || channel?.connectionId !== id || name !== 'send_message') &&
-      definition.allowedTools.some((tool) => tool.connectionId === id && tool.name === name),
+      (definition.tellMe.telegram || channel?.connectionId !== id || name !== 'send_message') &&
+      allowedTools.some((tool) => tool.connectionId === id && tool.name === name),
     skills: () => false,
     skill: () => false,
     subagents: () => false,
@@ -432,7 +434,7 @@ export const routinesOutside = (db: Db, topic: number, setup: TopicSetup) =>
     .all()
     .flatMap((routine) => {
       const definition = definitionOf(routine)
-      const outside = definition.allowedTools
+      const outside = (handOverOf(definition)?.allowedTools ?? [])
         .filter((tool) => !hasTool(setup, tool.connectionId, tool.name))
         .map(({ connectionId, name }) => ({ connectionId, name }))
       return outside.length === 0 ? [] : [{ id: routine.id, title: definition.title, outside }]

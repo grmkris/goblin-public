@@ -6,12 +6,15 @@ import type { RoutineDefinition } from '@goblin/contracts'
 const at = (iso: string) => Date.parse(iso)
 const reminder: RoutineDefinition = {
   title: 'Reminder',
-  prompt: 'Remind me.',
   timezone: 'Europe/Berlin',
-  notifyTelegram: false,
-  allowedTools: [],
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Remind me.',
+    allowedTools: [],
+    budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
+  },
   trigger: { kind: 'once', at: '2026-10-06T09:00:00+02:00' },
-  budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
 }
 describe('routine dates and schedule policy', () => {
   it('resolves explicit offsets and refuses ambiguous local reminders', () => {

@@ -1,4 +1,4 @@
-import { PRIMARY_CHAT, type RoutineDefinition } from '@goblin/contracts'
+import { PERSONAL_TOPIC, PRIMARY_CHAT, type RoutineDefinition, type RoutineEdit } from '@goblin/contracts'
 import type { PersonalAgent } from '../../src/agent.ts'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import * as Effect from 'effect/Effect'
@@ -18,18 +18,22 @@ import type { SeenRequest } from './model.ts'
 import { changeRefused, changeRoutine, editRoutine, proposeRoutine } from './routines-owner.ts'
 import { type Probes, inAgent } from './probe.ts'
 import { waitFor } from './until.ts'
+import { withHandOver } from '../routine-definition.ts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const includesPublicTokens = (metadata: string, modelData: string) =>
   ['0x123', '0x456'].every((token) => metadata.includes(token) && modelData.includes(token))
 const definition: RoutineDefinition = {
   title: 'Native event routine',
-  prompt: 'Return a short notification summary.',
   timezone: 'UTC',
   trigger: { kind: 'event', connectionId: 'routine-events', name: 'message.received', arguments: {} },
-  notifyTelegram: false,
-  allowedTools: [],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Return a short notification summary.',
+    allowedTools: [],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 }
 async function draft(agent: PersonalAgent, operation: string, input = definition) {
   return proposeRoutine(agent, input, `${operation}-draft`)
@@ -88,6 +92,14 @@ async function setup(storage: DurableObjectStorage, agent: PersonalAgent, fixtur
 }
 
 /** Official MCP producer, signed ingress, real Agent/Pi/SQLite and keyless model; no provider or Telegram send. */
+/** The owner's edit that puts an event routine back in draft, with other instructions. */
+const changedDraft = (original: RoutineDefinition, revision: number): RoutineEdit => ({
+  revision,
+  operationId: 'event-edit',
+  topic: PERSONAL_TOPIC,
+  definition: withHandOver(original, () => ({ instruction: 'Changed draft' })),
+})
+
 async function routineEventsProbe(
   storage: DurableObjectStorage,
   agent: PersonalAgent,
@@ -192,11 +204,7 @@ async function routineEventsProbe(
     state.routines.get(first.id).pendingTrigger === null &&
     state.events.work(Date.now() + 600_000).length === 0
   const oldPendingGone = state.routines.get(first.id).pendingTrigger === null
-  await editRoutine(agent, first.id, {
-    revision: resumed.revision,
-    operationId: 'event-edit',
-    definition: { ...definition, prompt: 'Changed draft' },
-  })
+  await editRoutine(agent, first.id, changedDraft(definition, resumed.revision))
   const editedNoBinding = state.events.activeConsumer(`routine:${first.id}`) === undefined
   const noStaleRun = state.runs.list(first.id).length === countBeforeResume
   const requests = seen.filter((request) =>

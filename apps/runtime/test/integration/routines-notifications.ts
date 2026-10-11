@@ -30,6 +30,7 @@ import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
 import { type Probes, inAgent } from './probe.ts'
+import { PERSONAL_TOPIC } from '@goblin/contracts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const fixturePlan = () =>
@@ -126,14 +127,17 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
 function createNotification(routines: RoutineStore, runs: RoutineRunStore, id: string, notifyTelegram: boolean) {
   const definition: RoutineDefinition = {
     title: 'Notification fixture',
-    prompt: 'Short report.',
     timezone: 'UTC',
-    notifyTelegram,
-    allowedTools: [],
+    tellMe: { on: notifyTelegram, telegram: notifyTelegram },
     trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
-    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    handTo: {
+      kind: 'goblin',
+      instruction: 'Short report.',
+      allowedTools: [],
+      budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    },
   }
-  const row = routines.propose(definition, `propose-${id}`, `rt_${id}`, Date.now()).routine
+  const row = routines.propose(definition, `propose-${id}`, `rt_${id}`, Date.now(), PERSONAL_TOPIC).routine
   routines.confirm(row.id, 1, `confirm-${id}`, Date.now())
   routines.markActive(row.id, 1, null, Date.now())
   const claimed = runs.claim(

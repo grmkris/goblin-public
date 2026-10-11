@@ -9,15 +9,19 @@ import { appInteractions, appRoutineRuns, appRoutines } from '../../src/storage/
 import { RoutineStore } from '../../src/routines/store.ts'
 import { changeRoutine, proposeRoutine, runReached, runRefused, runRoutineNow } from './routines-owner.ts'
 import { type Probes, inAgent } from './probe.ts'
+import { withHandOver } from '../routine-definition.ts'
 
 const question: RoutineDefinition = {
   title: 'Native question',
-  prompt: 'call ask_user {"questions":[{"id":"choice","prompt":"What should I use?","kind":"text"}]}',
   trigger: { kind: 'once', at: '2030-01-01T00:00:00Z' },
   timezone: 'UTC',
-  notifyTelegram: false,
-  allowedTools: [],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'call ask_user {"questions":[{"id":"choice","prompt":"What should I use?","kind":"text"}]}',
+    allowedTools: [],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 }
 /** The owner's Stop on main: `POST /api/conversations/1/stop`. */
 const stopMain = (agent: PersonalAgent) =>
@@ -25,8 +29,9 @@ const stopMain = (agent: PersonalAgent) =>
 
 async function startQuestion(agent: PersonalAgent, suffix: string) {
   const definition = {
-    ...question,
-    budget: { ...question.budget, runtimeSeconds: suffix === 'recovery' ? 1800 : 60 },
+    ...withHandOver(question, (handOver) => ({
+      budget: { ...handOver.budget, runtimeSeconds: suffix === 'recovery' ? 1800 : 60 },
+    })),
     trigger: { kind: 'once' as const, at: new Date(Date.now() + 3_600_000).toISOString() },
   }
   const draft = await proposeRoutine(agent, definition, `question-${suffix}`)
@@ -109,9 +114,8 @@ async function routineQuestionProbe(storage: DurableObjectStorage, agent: Person
 
 async function slowRoutine(agent: PersonalAgent, suffix: string) {
   const definition = {
-    ...question,
+    ...withHandOver(question, () => ({ instruction: 'Return a bounded answer.' })),
     title: `Native slow routine ${suffix}`,
-    prompt: 'Return a bounded answer.',
     trigger: { kind: 'cron' as const, expression: '*/15 * * * *' },
   }
   const draft = await proposeRoutine(agent, definition, `slow-${suffix}`)

@@ -41,18 +41,20 @@ export const routineSettingsMutation = mutationOptions({
 /** A new routine as a draft, or an edit of one as a new revision back in draft; it runs only once confirmed. */
 export type RoutineSave = {
   readonly operationId: string
+  /** The Topic it lives in, runs in and posts to. */
+  readonly topic: number
   readonly definition: RoutineDefinition
   readonly routine?: { readonly id: string; readonly revision: number }
 }
 export const saveRoutineMutation = mutationOptions({
   ...owner.apiMutation({
-    mutationFn: (api, { operationId, definition, routine }: RoutineSave) =>
+    mutationFn: (api, { operationId, topic, definition, routine }: RoutineSave) =>
       withOperation(operationId)(
         routine === undefined
-          ? api.routines.propose({ payload: { operationId, definition } })
+          ? api.routines.propose({ payload: { operationId, topic, definition } })
           : api.routines.edit({
               params: { id: routine.id },
-              payload: { operationId, definition, revision: routine.revision },
+              payload: { operationId, topic, definition, revision: routine.revision },
             }),
       ),
   }),

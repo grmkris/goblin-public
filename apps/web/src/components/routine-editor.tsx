@@ -2,7 +2,13 @@
 // on its card; nothing here turns a routine on.
 import { type SubmitEvent, useId, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { RoutineDefinition, RoutineView } from '@goblin/contracts'
+import {
+  PERSONAL_TOPIC,
+  type RoutineDefinition,
+  type RoutineHandOver,
+  type RoutineView,
+  handOverOf,
+} from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -27,14 +33,20 @@ import { type Kind, WhenFields, triggerFrom } from './routine-when.tsx'
 
 type Tool = { readonly connectionId: string; readonly name: string }
 
-const defaults = (timezone: string): RoutineDefinition => ({
-  title: '',
-  prompt: '',
-  timezone,
-  trigger: { kind: 'once', at: '' },
-  notifyTelegram: false,
+/** A hand-over as the editor starts it: nothing to do yet, no tools, the usual limits. */
+const GOBLIN: RoutineHandOver = {
+  kind: 'goblin',
+  instruction: '',
   allowedTools: [],
   budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
+}
+
+const defaults = (timezone: string): RoutineDefinition => ({
+  title: '',
+  timezone,
+  trigger: { kind: 'once', at: '' },
+  tellMe: { on: false, telegram: false },
+  handTo: GOBLIN,
 })
 
 type EditorProps = {
@@ -62,10 +74,11 @@ const same = (a: Tool, b: Tool): boolean => a.connectionId === b.connectionId &&
 function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const id = useId()
   const initial = routine?.definition ?? defaults(timezone)
+  const handOver = handOverOf(initial) ?? GOBLIN
   const [kind, setKind] = useState<Kind>(initial.trigger.kind)
   const [cron, setCron] = useState(initial.trigger.kind === 'cron' ? initial.trigger.expression : '')
-  const [selected, setSelected] = useState<readonly Tool[]>(initial.allowedTools)
-  const [notify, setNotify] = useState(initial.notifyTelegram)
+  const [selected, setSelected] = useState<readonly Tool[]>(handOver.allowedTools)
+  const [notify, setNotify] = useState(initial.tellMe.telegram)
   const saving = useMutation(saveRoutineMutation)
   const [problem, setProblem] = useState('')
   const { available, unread } = useAvailableTools(selected)
@@ -87,24 +100,32 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
     }
     const definition: RoutineDefinition = {
       title: field('title'),
-      prompt: field('prompt'),
       timezone: field('timezone'),
       trigger,
-      notifyTelegram: notify,
-      allowedTools: selected,
-      budget: {
-        tokensPerRun: Number(field('tokensPerRun')),
-        tokensPerDay: Number(field('tokensPerDay')),
-        runtimeSeconds: Number(field('runtimeMinutes')) * 60,
+      tellMe: { on: notify, telegram: notify },
+      handTo: {
+        kind: 'goblin',
+        instruction: field('prompt'),
+        allowedTools: selected,
+        budget: {
+          tokensPerRun: Number(field('tokensPerRun')),
+          tokensPerDay: Number(field('tokensPerDay')),
+          runtimeSeconds: Number(field('runtimeMinutes')) * 60,
+        },
       },
     }
-    saving.mutate({ operationId: crypto.randomUUID(), definition, ...(routine && { routine }) }, { onSuccess: onSaved })
+    const topic = routine?.topic ?? PERSONAL_TOPIC
+    saving.mutate(
+      { operationId: crypto.randomUUID(), topic, definition, ...(routine && { routine }) },
+      { onSuccess: onSaved },
+    )
   }
   const toggle = (tool: Tool, on: boolean) =>
     setSelected((current) => (on ? [...current, tool] : current.filter((item) => !same(item, tool))))
   return {
     id,
     initial,
+    handOver,
     kind,
     setKind,
     cron,
@@ -122,7 +143,7 @@ function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
 type Kit = ReturnType<typeof useRoutineEditor>
 
 function WhatFields({ kit }: { readonly kit: Kit }) {
-  const { id, initial } = kit
+  const { id, initial, handOver } = kit
   return (
     <EditorPart title="What">
       <Field>
@@ -131,7 +152,7 @@ function WhatFields({ kit }: { readonly kit: Kit }) {
       </Field>
       <Field>
         <FieldLabel htmlFor={`${id}-prompt`}>Instructions</FieldLabel>
-        <Textarea id={`${id}-prompt`} name="prompt" defaultValue={initial.prompt} maxLength={12_000} required />
+        <Textarea id={`${id}-prompt`} name="prompt" defaultValue={handOver.instruction} maxLength={12_000} required />
         <FieldDescription>What your agent should do each time, in your own words.</FieldDescription>
       </Field>
     </EditorPart>
@@ -184,9 +205,9 @@ const LIMITS = [
 ] as const
 
 function ToolsAndLimits({ kit }: { readonly kit: Kit }) {
-  const { id, initial } = kit
+  const { id, handOver } = kit
   const value = (name: (typeof LIMITS)[number]['name']) =>
-    name === 'runtimeMinutes' ? Math.max(1, Math.round(initial.budget.runtimeSeconds / 60)) : initial.budget[name]
+    name === 'runtimeMinutes' ? Math.max(1, Math.round(handOver.budget.runtimeSeconds / 60)) : handOver.budget[name]
   return (
     <EditorPart title="Tools and limits">
       <ToolRows kit={kit} />

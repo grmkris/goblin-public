@@ -1473,8 +1473,11 @@ review; real source checkpoints and explicit product criteria do not authorize p
 `routines/store.ts` stores bounded drafts and immutable operation receipts in application SQLite. A model can propose a
 typed definition (`routine_propose`, which ends its turn), list (`routine_list`) or pause (`routine_pause`), one typed
 tool each (ADR 0027); only an authenticated owner may confirm the exact revision. Routine writes require
-an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. Settings
-shows the prompt, exact tool pairs, timezone, budgets and Telegram policy before confirmation. A routine lives in a
+an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. A
+definition (ADR 0041) is a trigger, a timezone, **Tell me** (`tellMe: { on, telegram }`, Telegram only with Tell me) and
+**Hand to** (`handTo`: `none`, or `goblin` with its instruction, allowed tools and budget); one that hands nothing over
+must tell the owner. Only a hand-over makes runs (`handOverOf`, `runHandOver`). Settings shows the instruction, exact
+tool pairs, timezone, budgets and Telegram policy before confirmation. A routine lives in a
 Topic, and its runs are bounded by that Topic's setup as well as its allowed tools (ADR 0040): each `RoutineView`
 carries `topic` and `outsideSetup`, the allowed tools the setup does not hold now, read live so a proposal or a
 routine's page can flag them; a run that calls one gets the words-only `not-in-topic` refusal (code `not_in_topic` in
@@ -1499,7 +1502,8 @@ Committed `pi.usage` counters, including compaction, project into app-only cumul
 receipts: tokens for the routine's own caps, Credits for the owner's daily budget. Replay does not charge twice; a model response already in flight may overshoot a cap. Settlement freezes a
 scrubbed summary and one `app.routine` parent write with a stable request ID. A routine belongs to a Topic
 (`app_routines.topic_id`, migration `20261026000500_routine_topics`, ADR 0032): the Topic of the chat whose
-`routine_propose` drafted it, Personal for one proposed through the owner API or before Topics. Its run conversation
+`routine_propose` drafted it, or the one the owner names when they propose or edit it (`RoutineProposal.topic`,
+`RoutineEdit.topic`; it must exist and be open). Its run conversation
 sits under that Topic's Conversation and its report is written there; while the Topic is archived (archive leaves
 schedules running in v1), runs and reports go to Personal instead. Telegram reporting is separate authorized
 plumbing with frozen bytes/server, stable operation ID, five bounded attempts over at most 15 minutes, and a separate

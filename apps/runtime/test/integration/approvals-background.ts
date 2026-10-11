@@ -4,6 +4,7 @@ import { callOwner } from '../owner-client.ts'
 import { signedIn, workspaceUntil, type Person } from './owner-requests.ts'
 import { decide, heldIn } from './approvals-case.ts'
 import { waitFor } from './until.ts'
+import { PERSONAL_TOPIC } from '@goblin/contracts'
 
 /** The subagent the background run starts to hold a call. */
 const approver = (view: ConversationView) => view.kind === 'subagent' && view.title === 'approver'
@@ -18,14 +19,18 @@ export async function approvalsBackground(base: string, owner: Person) {
     api.routines.propose({
       payload: {
         operationId: crypto.randomUUID(),
+        topic: PERSONAL_TOPIC,
         definition: {
           title: 'Approval fixture',
-          prompt: toolInput('routine-frozen'),
           timezone: 'UTC',
           trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
-          notifyTelegram: false,
-          allowedTools: [{ connectionId: 'apps-fixture', name: 'board' }],
-          budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+          tellMe: { on: false, telegram: false },
+          handTo: {
+            kind: 'goblin',
+            instruction: toolInput('routine-frozen'),
+            allowedTools: [{ connectionId: 'apps-fixture', name: 'board' }],
+            budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+          },
         },
       },
     }),

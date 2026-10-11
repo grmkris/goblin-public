@@ -1,4 +1,11 @@
-import type { QuestionSpec, RoutineDefinition, RoutineManualRun, RoutineRunView, RoutineView } from '@goblin/contracts'
+import type {
+  QuestionSpec,
+  RoutineDefinition,
+  RoutineEdit,
+  RoutineManualRun,
+  RoutineRunView,
+  RoutineView,
+} from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
@@ -36,18 +43,18 @@ export class Routines extends Context.Service<
     readonly view: (id: string) => Effect.Effect<RoutineView, AppError>
     /** The Topic that owns the routine (ADR 0032), Personal for one this agent does not have. */
     readonly topicOf: (id: string) => Effect.Effect<number>
+    /** A draft in Topic `topic`, which must exist and be open. */
     readonly propose: (
       definition: RoutineDefinition,
       operationId: string,
       routineId: string,
       at: number,
-      topic?: number,
+      topic: number,
     ) => Effect.Effect<RoutineOperationResult, AppError>
+    /** A new revision, in the Topic the change names (it may move); it waits for confirmation again. */
     readonly edit: (
       routineId: string,
-      revision: number,
-      definition: RoutineDefinition,
-      operationId: string,
+      change: RoutineEdit,
       at: number,
     ) => Effect.Effect<RoutineOperationResult, AppError>
     readonly confirm: (

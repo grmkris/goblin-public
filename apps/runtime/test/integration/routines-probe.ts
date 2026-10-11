@@ -2,7 +2,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { type Probes, inAgent } from './probe.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { RoutineStore } from '../../src/routines/store.ts'
-import type { RoutineDefinition } from '@goblin/contracts'
+import { PERSONAL_TOPIC, type RoutineDefinition } from '@goblin/contracts'
 import {
   appRoutines,
   appRoutineOperations,
@@ -12,15 +12,19 @@ import {
   appSubmissionOrigins,
   appInteractions,
 } from '../../src/storage/routines.ts'
+import { withHandOver } from '../routine-definition.ts'
 
 const definition: RoutineDefinition = {
   title: 'Morning plan',
-  prompt: 'Summarize my priorities.',
   trigger: { kind: 'cron', expression: '0 9 * * 1-5' },
   timezone: 'Europe/Berlin',
-  notifyTelegram: false,
-  allowedTools: [{ connectionId: 'myplan', name: 'workspace_read' }],
-  budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Summarize my priorities.',
+    allowedTools: [{ connectionId: 'myplan', name: 'workspace_read' }],
+    budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
+  },
 }
 const rejected = (call: () => unknown) => {
   try {
@@ -37,14 +41,24 @@ function routinesProbe(storage: DurableObjectStorage) {
   const db = drizzle(storage)
   const at = Date.parse('2026-10-05T06:00:00Z')
   const store = new RoutineStore(db, 'owner')
-  const first = store.propose(definition, 'proposal-1', 'rt_fixture', at)
-  const replay = store.propose(definition, 'proposal-1', 'rt_unused', at)
+  const first = store.propose(definition, 'proposal-1', 'rt_fixture', at, PERSONAL_TOPIC)
+  const replay = store.propose(definition, 'proposal-1', 'rt_unused', at, PERSONAL_TOPIC)
   const changedId = rejected(() =>
-    store.propose({ ...definition, prompt: 'Different instructions.' }, 'proposal-1', 'rt_unused', at),
+    store.propose(
+      withHandOver(definition, () => ({ instruction: 'Different instructions.' })),
+      'proposal-1',
+      'rt_unused',
+      at,
+      PERSONAL_TOPIC,
+    ),
   )
   const confirmed = store.confirm(first.routine.id, 1, 'confirm-1', at)
   const confirmedReplay = store.confirm(first.routine.id, 1, 'confirm-1', at + 1000)
-  const edited = store.edit(first.routine.id, 1, { ...definition, title: 'Updated plan' }, 'edit-1', at + 2000)
+  const edited = store.edit(
+    first.routine.id,
+    { revision: 1, operationId: 'edit-1', topic: PERSONAL_TOPIC, definition: { ...definition, title: 'Updated plan' } },
+    at + 2000,
+  )
   const stale = rejected(() => store.confirm(first.routine.id, 1, 'confirm-stale', at + 3000))
   const foreign = rejected(() => new RoutineStore(db, 'other-owner').get(first.routine.id))
   const reconstructed = new RoutineStore(drizzle(storage), 'owner')

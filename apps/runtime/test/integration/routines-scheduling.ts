@@ -8,15 +8,20 @@ import { RoutineStore } from '../../src/routines/store.ts'
 import { RoutineRunStore } from '../../src/routines/runs.ts'
 import { type Probes, inAgent } from './probe.ts'
 import { until } from './until.ts'
+import { PERSONAL_TOPIC } from '@goblin/contracts'
+import { withHandOver } from '../routine-definition.ts'
 
 const definition: RoutineDefinition = {
   title: 'Native dated reminder',
-  prompt: 'Return a short reminder.',
   timezone: 'UTC',
   trigger: { kind: 'once', at: '2030-01-01T00:00:00Z' },
-  notifyTelegram: false,
-  allowedTools: [],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Return a short reminder.',
+    allowedTools: [],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 }
 async function confirmed(agent: PersonalAgent, input: RoutineDefinition, operationId: string) {
   const draft = await proposeRoutine(agent, input, `${operationId}-propose`)
@@ -80,7 +85,8 @@ async function routineScheduleProbe(storage: DurableObjectStorage, agent: Person
   await editRoutine(agent, cronId, {
     revision: 1,
     operationId: 'edit-cron',
-    definition: { ...cron, prompt: 'Changed draft instructions.' },
+    topic: PERSONAL_TOPIC,
+    definition: withHandOver(cron, () => ({ instruction: 'Changed draft instructions.' })),
   })
   if (current !== null) await agent.runRoutine({ routineId: cronId, revision: 1, firedAt: current })
   const after = runs.list(cronId)

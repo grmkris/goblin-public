@@ -29,16 +29,19 @@ const WORK: TopicSetup = {
 
 const DEFINITION = JSON.stringify({
   title: 'Daily',
-  prompt: 'Report.',
   trigger: { kind: 'cron', expression: '0 9 * * *' },
   timezone: 'UTC',
-  notifyTelegram: false,
-  allowedTools: [
-    { connectionId: 'notes', name: 'read' },
-    { connectionId: 'notes', name: 'write' },
-    { connectionId: 'mail', name: 'send' },
-  ],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Report.',
+    allowedTools: [
+      { connectionId: 'notes', name: 'read' },
+      { connectionId: 'notes', name: 'write' },
+      { connectionId: 'mail', name: 'send' },
+    ],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 })
 
 /**

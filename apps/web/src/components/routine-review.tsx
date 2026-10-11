@@ -1,6 +1,6 @@
 // A routine's card: what it does and when, its facts, and the owner's Confirm, Pause, Edit and Archive, with its runs.
 import { useMutation } from '@tanstack/react-query'
-import type { RoutineDefinition, RoutineView } from '@goblin/contracts'
+import { type RoutineDefinition, type RoutineView, handOverOf } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -36,10 +36,11 @@ function whenOf(definition: RoutineDefinition): string {
 /** What a routine does and may use, as facts beside each other. */
 function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
   const { definition } = routine
-  const { budget, trigger } = definition
+  const { trigger } = definition
+  const handOver = handOverOf(definition)
   return (
     <>
-      <p className="routine-prompt">{definition.prompt}</p>
+      {handOver !== undefined && <p className="routine-prompt">{handOver.instruction}</p>}
       <dl className="routine-facts">
         {routine.nextFireAt !== null && trigger.kind !== 'once' && (
           <div>
@@ -55,14 +56,16 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
             </dd>
           </div>
         )}
-        <div>
-          <dt>Tools</dt>
-          <dd>
-            {definition.allowedTools.length === 0
-              ? 'None: it can only answer'
-              : definition.allowedTools.map((tool) => `${tool.connectionId} · ${tool.name}`).join(', ')}
-          </dd>
-        </div>
+        {handOver !== undefined && (
+          <div>
+            <dt>Tools</dt>
+            <dd>
+              {handOver.allowedTools.length === 0
+                ? 'None: it can only answer'
+                : handOver.allowedTools.map((tool) => `${tool.connectionId} · ${tool.name}`).join(', ')}
+            </dd>
+          </div>
+        )}
         {(routine.outsideSetup?.length ?? 0) > 0 && (
           <div>
             <dt>Not in its Topic</dt>
@@ -72,16 +75,18 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
             </dd>
           </div>
         )}
-        <div>
-          <dt>Limits</dt>
-          <dd>
-            {count(budget.tokensPerRun)} tokens a run, {count(budget.tokensPerDay)} a day,{' '}
-            {Math.round(budget.runtimeSeconds / 60)} minutes at most
-          </dd>
-        </div>
+        {handOver !== undefined && (
+          <div>
+            <dt>Limits</dt>
+            <dd>
+              {count(handOver.budget.tokensPerRun)} tokens a run, {count(handOver.budget.tokensPerDay)} a day,{' '}
+              {Math.round(handOver.budget.runtimeSeconds / 60)} minutes at most
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Telegram</dt>
-          <dd>{definition.notifyTelegram ? 'Sends its report there too' : 'Off'}</dd>
+          <dd>{definition.tellMe.telegram ? 'Sends its report there too' : 'Off'}</dd>
         </div>
       </dl>
       {routine.health !== null && routine.health !== 'execution_pending' && (

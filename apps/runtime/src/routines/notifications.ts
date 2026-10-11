@@ -34,7 +34,7 @@ export const notifyRoutine = (record: RoutineRun) =>
   Effect.gen(function* () {
     const store = yield* RoutineRuns
     const at = yield* Clock.currentTimeMillis
-    if (!definitionOf(record).notifyTelegram || record.notificationText === null) return
+    if (!definitionOf(record).tellMe.telegram || record.notificationText === null) return
     const text = record.notificationText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     const channels = yield* Channel
     const channel = yield* channels.status

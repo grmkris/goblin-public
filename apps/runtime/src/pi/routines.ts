@@ -15,7 +15,7 @@ const proposeTool = (run: RunProgram) =>
   typedTool({
     name: 'routine_propose',
     description:
-      'Propose a routine: a reminder or task that runs at a time, on a schedule, or when a server sends an event. Proposing does not activate it: the owner reviews and confirms it in Settings → Routines, which ends this turn.',
+      "Propose a routine: what happens at a time, on a schedule, or when a connection sends an event. `handTo` gives the work to Goblin (`{ kind: 'goblin', instruction, allowedTools, budget }`); `tellMe` (`{ on, telegram }`) tells the owner of what it posts. It lives in this chat's Topic. Proposing does not activate it: the owner reviews and confirms it in Settings → Routines, which ends this turn.",
     input: RoutineDefinition,
     output: Proposed,
     replay: 'safe',

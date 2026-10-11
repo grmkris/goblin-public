@@ -24,6 +24,7 @@ import { RoutineStore } from '../src/routines/store.ts'
 import { AgentInput } from '../src/runtime/input.ts'
 import { chatDatabase, durable } from './chats-sqlite.ts'
 import { stub } from './http/api/fixture.ts'
+import { PERSONAL_TOPIC } from '@goblin/contracts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -36,12 +37,15 @@ const PLAN: AccountPlan = {
 }
 const DEFINITION: RoutineDefinition = {
   title: 'Daily',
-  prompt: 'Report.',
   trigger: { kind: 'cron', expression: '0 9 * * *' },
   timezone: 'UTC',
-  notifyTelegram: false,
-  allowedTools: [],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Report.',
+    allowedTools: [],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 }
 
 const closes: (() => void)[] = []
@@ -70,7 +74,7 @@ const fixture = (
   const sqlite = durable(db)
   const routines = new RoutineStore(sqlite, 'owner')
   const runs = new RoutineRunStore(sqlite, 'owner')
-  const routine = routines.propose(DEFINITION, 'op-propose', 'rt_1', Date.now()).routine
+  const routine = routines.propose(DEFINITION, 'op-propose', 'rt_1', Date.now(), PERSONAL_TOPIC).routine
   routines.confirm(routine.id, 1, 'op-confirm', Date.now())
   routines.markActive(routine.id, 1, null, Date.now())
   const flows: FlowEvent[] = []

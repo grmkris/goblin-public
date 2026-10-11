@@ -20,12 +20,15 @@ async function routineExecutionProbe(
 ) {
   const definition: RoutineDefinition = {
     title: 'Isolated native routine',
-    prompt: 'Return a short reminder.',
     timezone: 'UTC',
     trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
-    notifyTelegram: false,
-    allowedTools: [],
-    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    tellMe: { on: false, telegram: false },
+    handTo: {
+      kind: 'goblin',
+      instruction: 'Return a short reminder.',
+      allowedTools: [],
+      budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+    },
   }
   const proposal = await proposeRoutine(agent, definition, 'execution-proposal')
   await changeRoutine(agent, proposal.id, { revision: 1, operationId: 'execution-confirm' }, 'confirm')

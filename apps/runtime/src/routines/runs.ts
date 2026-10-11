@@ -14,7 +14,7 @@ import {
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { QuestionSpec } from '@goblin/contracts'
 import { appUsageDaily } from '../storage/schema.ts'
-import { RoutineStore, definitionOf } from './store.ts'
+import { RoutineStore, definitionOf, runHandOver } from './store.ts'
 import { routineSummary } from './summary.ts'
 import { sha256Hex } from '../runtime/digest.ts'
 
@@ -54,7 +54,6 @@ function requireSameFiring(previous: RoutineRun, firing: Firing): void {
 }
 
 function newRun(firing: Firing, id: string, skip: string | undefined, at: number, definitionJson: string): RoutineRun {
-  const definition = definitionOf({ definitionJson })
   return {
     id,
     routineId: firing.routineId,
@@ -69,7 +68,7 @@ function newRun(firing: Firing, id: string, skip: string | undefined, at: number
     eventDataSealed: firing.event?.dataSealed ?? null,
     sessionId: null,
     admittedAt: at,
-    deadlineAt: at + definition.budget.runtimeSeconds * 1000,
+    deadlineAt: at + runHandOver({ definitionJson }).budget.runtimeSeconds * 1000,
     state: skip === undefined ? 'admitted' : 'skipped',
     outcome: skip ?? null,
     summary: skip ?? null,
@@ -309,7 +308,7 @@ export class RoutineRunStore {
         outcome: state,
         summary: safeSummary,
         notificationText: `Routine ${state}: ${safeSummary.slice(0, 500)}`,
-        notificationState: definitionOf(run).notifyTelegram && state !== 'skipped' ? 'pending' : 'none',
+        notificationState: definitionOf(run).tellMe.telegram && state !== 'skipped' ? 'pending' : 'none',
         updatedAt: at,
       })
       .where(eq(appRoutineRuns.id, id))

@@ -22,12 +22,15 @@ const PLAN: AccountPlan = {
 }
 const DEFINITION = JSON.stringify({
   title: 'Daily',
-  prompt: 'Report.',
   trigger: { kind: 'cron', expression: '0 9 * * *' },
   timezone: 'UTC',
-  notifyTelegram: false,
-  allowedTools: [],
-  budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  tellMe: { on: false, telegram: false },
+  handTo: {
+    kind: 'goblin',
+    instruction: 'Report.',
+    allowedTools: [],
+    budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
+  },
 })
 
 type Gate = {

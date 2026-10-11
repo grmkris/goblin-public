@@ -1,4 +1,10 @@
-import type { RoutineDefinition, RoutineEdit, RoutineRevision, RoutineSettings } from '@goblin/contracts'
+import {
+  PERSONAL_TOPIC,
+  type RoutineDefinition,
+  type RoutineEdit,
+  type RoutineRevision,
+  type RoutineSettings,
+} from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
@@ -11,11 +17,11 @@ export const routinesList = Effect.gen(function* () {
   const store = yield* Routines
   return { routines: yield* store.list() }
 })
-/** A draft routine, owned by `topic` (the Topic of the chat that proposed it; Personal by default). */
+/** A draft routine, owned by Topic `topic`: the one the owner named, or the Topic of the chat that proposed it. */
 export const proposeRoutine = Effect.fn('routines.propose')(function* (
   definition: RoutineDefinition,
   operationId: string,
-  topic?: number,
+  topic: number,
 ) {
   yield* requirePlan('routines')
   const store = yield* Routines
@@ -33,13 +39,13 @@ export const proposeRoutineFrom = Effect.fn('routines.proposeFrom')(function* (
 ) {
   const chats = yield* Chats
   const chat = yield* chats.chatOf(session)
-  const topic = Option.isNone(chat) ? undefined : yield* chats.topicOf(chat.value)
+  const topic = Option.isNone(chat) ? PERSONAL_TOPIC : yield* chats.topicOf(chat.value)
   return yield* proposeRoutine(definition, operationId, topic)
 })
 export const editRoutine = Effect.fn('routines.edit')(function* (id: string, input: RoutineEdit) {
   const store = yield* Routines
   const at = yield* Clock.currentTimeMillis
-  return (yield* store.edit(id, input.revision, input.definition, input.operationId, at)).routine
+  return (yield* store.edit(id, input, at)).routine
 })
 export const changeRoutine = Effect.fn('routines.changeRevision')(function* (
   id: string,
