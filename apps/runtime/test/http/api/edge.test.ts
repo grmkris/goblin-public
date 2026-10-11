@@ -149,6 +149,18 @@ describe('the owner forward', () => {
     expect(seen).toHaveLength(status === 404 ? 0 : 1)
   })
 
+  it("hands the agent's redirect to the browser instead of following it into the agent", async () => {
+    const connected = `${APP}/connections?connected=sidequest`
+    const { seen, edge } = deployment(() => new Response(null, { status: 302, headers: { location: connected } }))
+    const request = new Request(`${APP}/api/mcp/oauth/callback?state=s&code=c`, {
+      headers: { cookie: 'session=owner' },
+    })
+    const { response } = await through('owner', request, edge)
+    expect(seen.map((forwarded) => forwarded.redirect)).toEqual(['manual'])
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe(connected)
+  })
+
   it('makes up a reference where there is no cf-ray', async () => {
     const { seen, edge } = deployment()
     await through('owner', new Request(`${APP}/api/topics`, { headers: { cookie: 'session=owner' } }), edge)

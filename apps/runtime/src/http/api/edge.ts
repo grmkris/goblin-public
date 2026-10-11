@@ -241,7 +241,9 @@ export const makeEdgeHttp: Effect.Effect<EdgeHttp> = Effect.gen(function* () {
           if (value !== null) headers.set(name, value)
         }
         // A streamed body needs `duplex` outside workerd (Node, the unit tests); workerd ignores it and its types omit it.
-        const init = { method: request.method, headers, body, duplex: 'half' }
+        // The agent's redirect (an outbound sign-in's callback, to Connections) goes to the browser: a followed one would
+        // ask the agent for a page it does not serve.
+        const init = { method: request.method, headers, body, duplex: 'half', redirect: 'manual' } as const
         const forwarded = new Request(`https://agent${url.pathname}${url.search}`, init)
         const response = yield* attempt(() => edge.agent(userId).fetch(forwarded))
         return secured(response, facts.ref)
