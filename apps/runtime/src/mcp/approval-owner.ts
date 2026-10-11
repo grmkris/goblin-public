@@ -7,6 +7,7 @@ import { type AppError, NotFound } from '../http/errors.ts'
 import { resumePersona } from '../personas/ask.ts'
 import { RoutineControl, RoutineRuns } from '../routines/service.ts'
 import { decideApproval } from './approval-decision.ts'
+import { answerUrlRequest } from './url-request.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
 
 export const setAskFirst = (connectionId: string, name: string, enabled: boolean) =>
@@ -38,21 +39,24 @@ const continuation =
     })
 
 /**
- * The owner's decision on a held call, as the owner API runs it: the outcome is the owner's message, sent in this
- * program after the same admission an owner request gets (the plan, then a renewal of resident authority).
+ * Where an owner's decision goes, as the owner API runs it: the outcome is the owner's message, sent in this program
+ * after the same admission an owner request gets (the plan, then a renewal of resident authority).
  */
+export const ownerContinuation = continuation(
+  Effect.andThen(
+    requirePlan(),
+    Resident.use((resident) => resident.renew()),
+  ),
+  (chat, text, operationId) => sendOwnerMessage(chat, { text, operationId }),
+)
+
+/** The owner's decision on a held call, as the owner API runs it. */
 export const decideOwnerApproval = (id: string, allowed: boolean) =>
-  Effect.gen(function* () {
-    const admit = Effect.andThen(
-      requirePlan(),
-      Resident.use((resident) => resident.renew()),
-    )
-    return yield* decideApproval({
-      id,
-      allowed,
-      continue: continuation(admit, (chat, text, operationId) => sendOwnerMessage(chat, { text, operationId })),
-    })
-  })
+  decideApproval({ id, allowed, continue: ownerContinuation })
+
+/** The owner's answer to a URL request (ADR 0042), as the owner API runs it. */
+export const answerOwnerUrlRequest = (id: string, action: 'accept' | 'decline') =>
+  answerUrlRequest({ id, action, continue: ownerContinuation })
 
 /** A direct owner read, with the same exact App resource grant as the existing bridge. */
 export const ownerResource = (connectionId: string, uri: string, caller: 'human' | 'app') =>

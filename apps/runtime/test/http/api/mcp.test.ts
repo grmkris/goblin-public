@@ -1,5 +1,5 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
-import { type ApprovalView, EventStream, Grant, ServerView, ToolView } from '@goblin/contracts'
+import { type ApprovalView, EventStream, Grant, ServerView, ToolView, UrlRequestView } from '@goblin/contracts'
 import { McpGroup } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -9,7 +9,11 @@ import { NotFound } from '../../../src/http/errors.ts'
 import { ResidentLive } from '../../../src/layers/core.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
 import { mcpHost } from '../../../src/mcp/host.ts'
-import { Approvals, Events } from '../../../src/mcp/service.ts'
+import { Approvals, Events, UrlRequests } from '../../../src/mcp/service.ts'
+import { urlRequestsOver } from '../../../src/layers/mcp.ts'
+import { CredentialCipher } from '../../../src/mcp/cipher.ts'
+import { McpUrlRequestStore } from '../../../src/mcp/url-requests.ts'
+import { durable } from '../../chats-sqlite.ts'
 import { SingleFlight } from '../../../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
@@ -98,6 +102,11 @@ const fixture = async () => {
       ]),
     disableServer: (connectionId?: string) => Effect.sync(() => void disabled.push(connectionId)),
   })
+  const urlStore = new McpUrlRequestStore(
+    durable(db),
+    await CredentialCipher.fromBase64(btoa(String.fromCharCode(...new Uint8Array(32)))),
+  )
+  const urlRequests = Layer.succeed(UrlRequests, urlRequestsOver(urlStore))
   const approvals = stub(Approvals, {
     view: (id: string) => (id === VIEW.id ? Effect.succeed(VIEW) : Effect.fail(new NotFound({ what: 'MCP approval' }))),
   })
@@ -110,6 +119,7 @@ const fixture = async () => {
           Layer.mergeAll(host.pipe(Layer.provide(SingleFlight.layer)), Layer.succeed(AgentInput, input), sqliteDb(db)),
           events,
           approvals,
+          urlRequests,
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),
           // Settling a held call, skills and an owner message (agent-program.ts sendOwnerMessage) read these; no test
@@ -123,7 +133,7 @@ const fixture = async () => {
       ),
     ),
   )
-  return { fetch, grants, disabled }
+  return { fetch, grants, disabled, urlStore }
 }
 
 const decodeServers = Schema.decodeUnknownSync(Schema.Array(ServerView))
@@ -228,6 +238,43 @@ describe('the mcp group', () => {
     expect(disabled).toEqual(['notes'])
     const servers = decodeServers(await (await fetch(get('/api/mcp/servers'))).json())
     expect(servers[0]?.status).toBe('disconnected')
+  })
+
+  it("shows a URL request with its link, flagging a host that is not the server's own (ADR 0042)", async () => {
+    const { fetch, urlStore } = await fixture()
+    await urlStore.hold(
+      {
+        id: 'mcp-url:7:c1',
+        sessionId: '7',
+        sourceCallId: 'c1',
+        taskId: 't1',
+        connectionId: 'notes',
+        name: 'share',
+        endpoint: 'https://notes.test/mcp',
+        arguments: {},
+        inputKey: 'approval',
+        requestState: 'share_1',
+        url: 'https://approve.elsewhere.test/share?token=one-time',
+        message: 'Share it?',
+        expiresAt: Number.MAX_SAFE_INTEGER,
+      },
+      1000,
+    )
+    const shown = await fetch(get(`/api/mcp/url-requests/${encodeURIComponent('mcp-url:7:c1')}`))
+    expect(shown.status).toBe(200)
+    expect(Schema.decodeUnknownSync(UrlRequestView)(await shown.json())).toEqual({
+      id: 'mcp-url:7:c1',
+      connectionId: 'notes',
+      name: 'share',
+      message: 'Share it?',
+      url: 'https://approve.elsewhere.test/share?token=one-time',
+      host: 'approve.elsewhere.test',
+      ownHost: false,
+      conversation: '7',
+      state: 'pending',
+      expiresAt: Number.MAX_SAFE_INTEGER,
+    })
+    expect((await fetch(get('/api/mcp/url-requests/mcp-url:7:other'))).status).toBe(404)
   })
 
   it("serves the probes' typed client: a missing tool decodes as NotFound, an ungranted call as GrantDenied", async () => {

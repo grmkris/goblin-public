@@ -1,0 +1,132 @@
+import * as Effect from 'effect/Effect'
+import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
+import { afterEach, describe, expect, it } from 'vitest'
+import { ChatId } from '../../src/chats/directory.ts'
+import { Chats, Conversations } from '../../src/chats/service.ts'
+import type { AppError } from '../../src/http/errors.ts'
+import type { AgentServices } from '../../src/layers/index.ts'
+import { urlRequestsOver } from '../../src/layers/mcp.ts'
+import { CredentialCipher } from '../../src/mcp/cipher.ts'
+import { mcpHost } from '../../src/mcp/host.ts'
+import { McpConnections, Resident, UrlRequests } from '../../src/mcp/service.ts'
+import { answerUrlRequest, holdUrlRequest, urlRequestView } from '../../src/mcp/url-request.ts'
+import { McpUrlRequestStore } from '../../src/mcp/url-requests.ts'
+import { SingleFlight } from '../../src/observability/single-flight.ts'
+import { RoutineRuns } from '../../src/routines/service.ts'
+import { scopeOf } from '../../src/setup/scope.ts'
+import { Setups } from '../../src/setup/service.ts'
+import { chatDatabase, durable } from '../chats-sqlite.ts'
+import { plans, stub } from '../http/api/fixture.ts'
+import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from './memory.ts'
+import { APPROVE, SIDEQUEST, sidequestServer } from './sidequest-fixture.ts'
+
+const cleanups: (() => void)[] = []
+afterEach(() => {
+  for (const close of cleanups.splice(0)) close()
+})
+
+/** What the turn that asked was told, by operation id. */
+type Told = { readonly session: string; readonly text: string; readonly operationId: string }
+
+/**
+ * The URL request flow over the Sidequest-like server (ADR 0042): a real MCP host and URL request store, chat 41's
+ * conversation acting and allowed everything, no routine run. `told` records what goes back to the turn that asked.
+ */
+const fixture = async () => {
+  const server = sidequestServer()
+  const { db, close } = chatDatabase()
+  cleanups.push(close)
+  const store = new McpUrlRequestStore(
+    durable(db),
+    await CredentialCipher.fromBase64(btoa(String.fromCharCode(...new Uint8Array(32)))),
+  )
+  const credentials = new MemoryCredentials()
+  await credentials.saveTokens('sq', { access_token: 'fixture', token_type: 'bearer' }, 0)
+  const host = mcpHost({
+    servers: [{ ...SIDEQUEST, label: 'Sidequest · Worker' }],
+    credentials,
+    grants: new MemoryGrants([{ connectionId: 'sq', capability: 'tool', name: 'create_agent' }]),
+    registries: new MemoryRegistries(),
+    labels: new MemoryLabels(),
+    appUrl: 'https://goblin.test',
+    fetch: server.fetch,
+  })
+  const layer = host.pipe(
+    Layer.provideMerge(
+      Layer.mergeAll(
+        SingleFlight.layer,
+        Layer.succeed(UrlRequests, urlRequestsOver(store)),
+        stub(Resident, { require: () => Effect.void }),
+        stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),
+        stub(Chats, { chatOf: () => Effect.succeed(Option.some(ChatId('41'))) }),
+        stub(Conversations, { requireActing: (chat) => Effect.succeed(chat), kindOf: () => Effect.succeed('main') }),
+        stub(Setups, { scope: () => Effect.succeed(scopeOf([], true)) }),
+        plans(),
+      ),
+    ),
+  )
+  const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> =>
+    // SAFETY: the URL request flow needs only the MCP, chat, setup, routine and resident services provided here.
+    Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
+  const told: Told[] = []
+  const answer = (id: string, action: 'accept' | 'decline') =>
+    run(
+      answerUrlRequest({
+        id,
+        action,
+        continue: (session, text, operationId) => Effect.sync(() => told.push({ session, text, operationId })),
+      }),
+    )
+  const input = { connectionId: 'sq', name: 'create_agent', arguments: { name: 'Worker' } }
+  // The model's call meets the URL request and keeps it, as mcp_call does.
+  const asked = await run(
+    Effect.gen(function* () {
+      const outcome = yield* (yield* McpConnections).callModelTool(input.connectionId, input.name, input.arguments)
+      if (outcome.kind !== 'url') return yield* Effect.die('the server did not ask')
+      return yield* holdUrlRequest('41', 'c1', 't1', input, outcome.prompt)
+    }),
+  )
+  return { server, told, answer, asked, view: (id: string) => run(urlRequestView(id)) }
+}
+
+const ID = 'mcp-url:41:c1'
+
+describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
+  it('shows the owner the link and its host, and leaves it pending while the server still waits', async () => {
+    const { asked, told, answer, view } = await fixture()
+    expect(asked.details).toEqual({ kind: 'url-required', requestId: ID, connectionId: 'sq', name: 'create_agent' })
+    expect(await view(ID)).toMatchObject({
+      url: APPROVE,
+      host: 'sq.test',
+      ownHost: true,
+      message: 'Approve the new agent.',
+      state: 'pending',
+      conversation: '41',
+    })
+    // Done before the operator approved: the server asks again, and nothing goes back to the turn yet.
+    expect(await answer(ID, 'accept')).toMatchObject({ state: 'pending' })
+    expect(told).toEqual([])
+  })
+
+  it('retries once with the answer, sends the result back once however often Done is pressed', async () => {
+    const { server, told, answer } = await fixture()
+    server.state.approved = true
+    expect(await answer(ID, 'accept')).toMatchObject({ state: 'completed' })
+    expect(await answer(ID, 'accept')).toMatchObject({ state: 'completed' })
+    expect(server.seen.filter(({ answer: given }) => given !== undefined)).toHaveLength(1)
+    expect(told.map(({ operationId }) => operationId)).toEqual([`mcp-url-continue:${ID}`, `mcp-url-continue:${ID}`])
+    const [first] = told
+    expect(first?.session).toBe('41')
+    expect(first?.text).toContain('The owner finished the step "Sidequest · Worker" (sq) · create_agent asked for')
+    expect(first?.text).toContain('"agent":"ag_1"')
+    expect(first?.text).not.toContain('one-time')
+  })
+
+  it('sends a decline on Cancel and tells the turn the step was cancelled', async () => {
+    const { server, told, answer } = await fixture()
+    expect(await answer(ID, 'decline')).toMatchObject({ state: 'declined' })
+    expect(server.seen.at(-1)).toMatchObject({ answer: { action: 'decline' }, state: 'op_1' })
+    expect(told[0]?.text).toContain('The owner cancelled the step')
+  })
+})

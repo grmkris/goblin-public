@@ -282,3 +282,26 @@ export const ApprovalView = Schema.Struct({
   expiresAt: Schema.Number,
 })
 export type ApprovalView = typeof ApprovalView.Type
+
+/**
+ * A URL request (ADR 0042), shown only to its signed-in owner: the server's message and the link it asks them to open,
+ * with the link's host and whether that host is the connection's own server (or a subdomain of it, or it of the
+ * link's), so a link elsewhere can be flagged.
+ */
+export const UrlRequestView = Schema.Struct({
+  id: Schema.String,
+  connectionId: Schema.String,
+  name: Schema.String,
+  message: Schema.String,
+  url: Schema.String,
+  host: Schema.String,
+  ownHost: Schema.Boolean,
+  conversation: Schema.String,
+  state: Schema.Literals(['pending', 'retrying', 'completed', 'declined', 'expired', 'failed', 'uncertain']),
+  expiresAt: Schema.Number,
+})
+export type UrlRequestView = typeof UrlRequestView.Type
+
+/** The owner's answer to a URL request: Done (`accept`, the server's step is finished) or Cancel (`decline`). */
+export const UrlRequestAnswer = Schema.Struct({ action: Schema.Literals(['accept', 'decline']) })
+export type UrlRequestAnswer = typeof UrlRequestAnswer.Type

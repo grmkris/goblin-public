@@ -13,8 +13,14 @@ import { redactSecretFields } from './redaction.ts'
 import { named } from './labels.ts'
 import { Approvals, McpConnections, McpServers, requireResident } from './service.ts'
 
-/** What a held call needs again just before it is dispatched: current authority, its open chat and its scope. */
-const authority = (row: ApprovalRow) =>
+/** The call a held row stands for: its conversation (when the model or an App made it), connection and tool. */
+type HeldTarget = { readonly sessionId: string | null; readonly connectionId: string; readonly name: string }
+
+/**
+ * What a held call (or a URL request's retry) needs again just before it goes out: current authority, its open chat
+ * and its scope.
+ */
+export const authority = (row: HeldTarget) =>
   Effect.gen(function* () {
     yield* requireResident
     if (row.sessionId === null) return
@@ -27,8 +33,8 @@ const authority = (row: ApprovalRow) =>
       return yield* new NotFound({ what: 'tool scope' })
   })
 
-/** A routine run waiting on the owner goes on running once its held call is approved. */
-const resumeRoutine = (row: ApprovalRow) =>
+/** A routine run waiting on the owner goes on running once its held call is approved (or its URL request answered). */
+export const resumeRoutine = (row: { readonly sessionId: string | null; readonly id: string }) =>
   Effect.gen(function* () {
     if (row.sessionId === null) return
     const session = row.sessionId

@@ -10,7 +10,14 @@ import { InvalidInput } from '../http/errors.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { setSkillEvents } from '../skills/events.ts'
 import { challengeScope } from './errors.ts'
-import { approvalView, decideOwnerApproval, ownerResource, setAskFirst } from './approval-owner.ts'
+import {
+  answerOwnerUrlRequest,
+  approvalView,
+  decideOwnerApproval,
+  ownerResource,
+  setAskFirst,
+} from './approval-owner.ts'
+import { urlRequestView } from './url-request.ts'
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
 import { Events, McpConnections, McpGrants, McpServers } from './service.ts'
 
@@ -85,6 +92,10 @@ const events = endpoint('events')(({ params }) =>
 const decideApproval = endpoint('decideApproval')(({ params, payload }) =>
   decideOwnerApproval(params.id, payload.allowed),
 )
+const urlRequest = endpoint('urlRequest')(({ params }) => urlRequestView(params.id))
+const answerUrlRequest = endpoint('answerUrlRequest')(({ params, payload }) =>
+  answerOwnerUrlRequest(params.id, payload.action),
+)
 const tools = endpoint('tools')(({ params, query }) =>
   McpServers.use((offered) => offered.tools(params.id, query.refresh !== undefined)),
 )
@@ -143,6 +154,8 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       events,
       dismissEvents,
       decideApproval,
+      urlRequest,
+      answerUrlRequest,
       tools,
       connect,
       stepUp,

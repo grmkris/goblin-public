@@ -90,7 +90,7 @@ const approvalsOver = (store: McpApprovalStore) =>
   })
 
 /** URL requests over their one store (ADR 0042). */
-const urlRequestsOver = (store: McpUrlRequestStore) =>
+export const urlRequestsOver = (store: McpUrlRequestStore) =>
   UrlRequests.of({
     hold: Effect.fn('UrlRequests.hold')(function* (request: HeldUrlRequest) {
       const now = yield* Clock.currentTimeMillis

@@ -26,13 +26,18 @@ import {
   StepUp,
   ToolCall,
   ToolView,
+  UrlRequestAnswer,
+  UrlRequestView,
 } from '../mcp.ts'
 import { ApiErrors } from './errors.ts'
 import { RenewsResident } from './resident.ts'
 
 /** A connection's id in a path; anything else names no connection (404). */
 const ConnectionParam = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
-/** A held call's id in a path (`mcp:<session>:<call>` for the model's): anything else names no approval (404). */
+/**
+ * A held call's or URL request's id in a path (`mcp:<session>:<call>`, `mcp-url:<session>:<call>`): anything else names
+ * none (404).
+ */
 const ApprovalParam = Schema.String.check(Schema.isPattern(/^[\w:-]{1,256}$/u))
 /**
  * Who calls through the owner's session: an App the owner opened sends `x-mcp-caller: app`, which narrows the call to
@@ -112,6 +117,22 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     params: { id: ApprovalParam },
     payload: ApprovalDecision,
     success: ApprovalView,
+    error: [ApiErrors.notFound, ApiErrors.conflict],
+  }),
+  /** `GET /api/mcp/url-requests/:id`: a URL request the model's call met (ADR 0042), as its owner sees it. */
+  HttpApiEndpoint.get('urlRequest', '/mcp/url-requests/:id', {
+    params: { id: ApprovalParam },
+    success: UrlRequestView,
+    error: ApiErrors.notFound,
+  }),
+  /**
+   * `POST /api/mcp/url-requests/:id`: the owner finished the server's step (`accept`) or cancels it (`decline`); the call
+   * is retried once with that answer, and the server's result goes back to the turn that asked.
+   */
+  HttpApiEndpoint.post('answerUrlRequest', '/mcp/url-requests/:id', {
+    params: { id: ApprovalParam },
+    payload: UrlRequestAnswer,
+    success: UrlRequestView,
     error: [ApiErrors.notFound, ApiErrors.conflict],
   }),
   HttpApiEndpoint.get('tools', '/mcp/:id/tools', {
