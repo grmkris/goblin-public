@@ -70,7 +70,7 @@ export class EventsFixture {
     server.setRequestHandler('events/subscribe', { params: Params }, async (params) => {
       this.calls.push('events/subscribe')
       const request = Schema.decodeUnknownSync(Subscribe)(params)
-      const id = `sub_${request.name}`
+      const id = this.#idFor(request.name, request.delivery.url)
       this.subscriptions.set(id, request.delivery)
       if (this.receiver !== undefined) {
         const response = await this.deliver(
@@ -91,7 +91,10 @@ export class EventsFixture {
     })
     server.setRequestHandler('events/unsubscribe', { params: Params }, (params) => {
       this.calls.push('events/unsubscribe')
-      if (!this.subscriptions.delete(`sub_${String(params['name'])}`)) throw new ProtocolError(-32011, 'not found')
+      const delivery = Schema.decodeUnknownOption(Schema.Struct({ url: Schema.String }))(params['delivery'])
+      const url = Option.getOrUndefined(delivery)?.url ?? ''
+      if (!this.subscriptions.delete(this.#idFor(String(params['name']), url)))
+        throw new ProtocolError(-32011, 'not found')
       return { resultType: 'complete' }
     })
     server.setRequestHandler('events/poll', { params: Params }, (params) => {
@@ -137,6 +140,18 @@ export class EventsFixture {
       result: { ...result, capabilities: declared },
     })
   }
+  /**
+   * A subscription's id, one per event name and webhook URL as a producer keyed by (name, arguments, URL) hands them
+   * out: `sub_<name>` for the first URL, `sub_<name>~2`, `~3`… for the next ones (ADR 0041, two connections to one
+   * server).
+   */
+  #idFor(name: string, url: string): string {
+    const ids = [...this.subscriptions.keys()].filter((key) => key === `sub_${name}` || key.startsWith(`sub_${name}~`))
+    const same = ids.find((key) => this.subscriptions.get(key)?.url === url)
+    if (same !== undefined) return same
+    return ids.length === 0 ? `sub_${name}` : `sub_${name}~${String(ids.length + 1)}`
+  }
+
   async deliver(
     subscriptionId: string,
     envelope: EventEnvelope,

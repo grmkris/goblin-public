@@ -127,6 +127,24 @@ export const routineCases = (phase: Phase): readonly NativeCase[] => [
       }),
   ),
   matchCase(
+    'Tell me: two connections to one producer, each its own webhook, one notice each, old news dropped (ADR 0041)',
+    'routine-tell-me',
+    (result) =>
+      expect(result).toMatchObject({
+        callbacks: 2,
+        callbackConnections: ['sq-hirer', 'sq-worker'],
+        notices: [
+          { routine: 0, label: 'Sidequest · Hirer', title: 'You picked a worker' },
+          { routine: 1, label: 'Sidequest · Worker', title: 'You were picked' },
+        ],
+        links: ['https://sidequest.test/jobs/12', 'https://sidequest.test/jobs/12'],
+        allWritten: true,
+        read: true,
+        readAt: true,
+        offers: ['sq-hirer:done', 'sq-worker:done'],
+      }),
+  ),
+  matchCase(
     "a notice's Telegram copy: frozen channel and bytes, retried once, its remote receipt kept apart (ADR 0041)",
     'routine-notifications',
     (result) =>

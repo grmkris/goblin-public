@@ -40,6 +40,7 @@ import { probes as routineNotificationProbes } from './routines-notifications.ts
 import { probes as routinesProbes } from './routines-probe.ts'
 import { probes as routineSafetyProbes } from './routines-safety.ts'
 import { probes as routineSchedulingProbes } from './routines-scheduling.ts'
+import { probes as routineTellMeProbes } from './routines-tell-me.ts'
 import { probes as routineUsageProbes } from './routines-usage.ts'
 import { probes as skillsProbes } from './skills-probe.ts'
 import { probes as subagentProbes } from './subagent-probe.ts'
@@ -68,6 +69,7 @@ const PROBES = registry(
   memoryProbes,
   primaryProbes,
   routineEventsProbes,
+  routineTellMeProbes,
   routineExecutionProbes,
   routineNotificationProbes,
   routineSafetyProbes,
