@@ -30,6 +30,8 @@ export const appNotices = sqliteTable(
     telegramAttempts: integer('telegram_attempts').notNull().default(0),
     telegramNextAt: integer('telegram_next_at').notNull().default(0),
     telegramReceipt: text('telegram_receipt'),
+    /** The Telegram connection its first attempt went through; a channel changed since suppresses it. */
+    telegramConnectionId: text('telegram_connection_id'),
     createdAt: integer('created_at').notNull(),
   },
   (table) => [index('app_notices_at').on(table.at), index('app_notices_routine').on(table.routineId, table.at)],

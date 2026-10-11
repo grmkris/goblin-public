@@ -7,19 +7,17 @@ import { RefreshCwIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryBoundary, QueryError } from '../lib/query/query-boundary.tsx'
 import { routineRunsQuery, runRoutineMutation, stopRunMutation } from '../routines/queries.ts'
-import { runStatus, telegramReport } from '../lib/labels.ts'
+import { runStatus } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
 import { dateTime } from '../lib/format.ts'
 
 const LIVE: readonly RoutineRunView['state'][] = ['admitted', 'running', 'waiting_owner']
 const FINISHED: readonly RoutineRunView['state'][] = ['completed', 'failed', 'stopped']
 
-/** Whether a finished run's report reached its channel, and Telegram when it was asked to. */
+/** Whether a finished run's report reached its channel. */
 function reportsOf(run: RoutineRunView): string | undefined {
   if (!FINISHED.includes(run.state)) return undefined
-  const main = run.reportAcceptedAt === null ? 'Report pending' : 'Reported'
-  const telegram = telegramReport(run.notificationState)
-  return telegram === undefined ? main : `${main} · ${telegram}`
+  return run.reportAcceptedAt === null ? 'Report pending' : 'Reported'
 }
 
 function RunRow({

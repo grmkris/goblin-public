@@ -3,18 +3,16 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { drizzle } from 'drizzle-orm/durable-sqlite'
 import { eq } from 'drizzle-orm'
-import type { RoutineDefinition } from '@goblin/contracts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { mcpHost } from '../../src/mcp/host.ts'
-import { RoutineStore } from '../../src/routines/store.ts'
-import { RoutineRunStore } from '../../src/routines/runs.ts'
-import { notifyRoutine } from '../../src/routines/notifications.ts'
+import { deliverNoticeCopies } from '../../src/notices/telegram.ts'
+import { Notices } from '../../src/notices/service.ts'
+import { NoticeStore } from '../../src/notices/store.ts'
 import { ResidentAuthority } from '../../src/resident.ts'
 import { telegramChannel } from '../../src/channel/channel.ts'
 import { enableEvents } from '../../src/channel/store.ts'
 import { Entitlements } from '../../src/billing/gates.ts'
-import { routineRunsOf } from '../../src/layers/routines.ts'
-import { RoutineRuns as RoutineRunsService } from '../../src/routines/service.ts'
+import { noticesOf } from '../../src/layers/routines.ts'
 import { ResidentLive } from '../../src/layers/core.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { Db } from '../../src/runtime/db.ts'
@@ -26,11 +24,10 @@ import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
 /** What the dispatch check reads. */
 type LaneServices = Entitlements | ResidentService | ChannelService
 import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from '../mcp/memory.ts'
-import { appRoutineRuns } from '../../src/storage/routines.ts'
+import { appNotices } from '../../src/storage/notices.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
 import { type Probes, inAgent } from './probe.ts'
-import { PERSONAL_TOPIC } from '@goblin/contracts'
 
 const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const fixturePlan = () =>
@@ -83,10 +80,9 @@ function notificationHost(
     },
   })
 }
-async function setupNotifications(storage: DurableObjectStorage, owner: string) {
+async function setupNotifications(storage: DurableObjectStorage) {
   const db = drizzle(storage)
-  const routines = new RoutineStore(db, owner)
-  const runs = new RoutineRunStore(db, owner)
+  const notices = new NoticeStore(db)
   const resident = new ResidentAuthority(db)
   resident.enable(Math.floor(Date.now() / 1000))
   const channel = telegramChannel({
@@ -101,84 +97,82 @@ async function setupNotifications(storage: DurableObjectStorage, owner: string) 
   const attempts: Record<string, unknown>[] = []
   const accepted: Record<string, unknown>[] = []
   const host = notificationHost(credentials, attempts, accepted)
-  // The services notifyRoutine reads, over these instances as the agent's layers build them.
+  // The services the Telegram copies read, over these instances as the agent's layers build them.
   const services = Layer.mergeAll(
-    Layer.succeed(RoutineRunsService, routineRunsOf(runs)),
+    Layer.succeed(Notices, noticesOf(notices)),
     Layer.effect(ChannelService, channel),
     host.pipe(Layer.provide(SingleFlight.layer)),
     ResidentLive,
   ).pipe(Layer.provide(Layer.succeed(Db, db)))
   const plans = { state: fixturePlan, require: fixturePlan }
-  // The bridge's `local`, which notifyRoutine runs its last-moment check through, over the same services.
+  // The bridge's `local`, which the copies run their last-moment check through, over the same services.
   const input: AgentInputs = Object.assign(Object.create(null), {
     local: (program: Effect.Effect<void, AppError, LaneServices>) =>
       Effect.runPromise(program.pipe(Effect.provide(services), Effect.provideService(Entitlements, plans))),
   })
-  const notify = (id: string) =>
+  const deliver = () =>
     Effect.runPromise(
-      notifyRoutine(runs.get(id)).pipe(
+      deliverNoticeCopies.pipe(
         Effect.provide(services),
         Effect.provideService(Entitlements, plans),
         Effect.provideService(AgentInput, input),
       ),
     )
-  return { db, routines, runs, resident, channel, attempts, accepted, notify }
-}
-function createNotification(routines: RoutineStore, runs: RoutineRunStore, id: string, notifyTelegram: boolean) {
-  const definition: RoutineDefinition = {
-    title: 'Notification fixture',
-    timezone: 'UTC',
-    tellMe: { on: notifyTelegram, telegram: notifyTelegram },
-    trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
-    handTo: {
-      kind: 'goblin',
-      instruction: 'Short report.',
-      allowedTools: [],
-      budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
-    },
-  }
-  const row = routines.propose(definition, `propose-${id}`, `rt_${id}`, Date.now(), PERSONAL_TOPIC).routine
-  routines.confirm(row.id, 1, `confirm-${id}`, Date.now())
-  routines.markActive(row.id, 1, null, Date.now())
-  const claimed = runs.claim(
-    { routineId: row.id, revision: 1, operationId: `run-${id}`, source: 'manual', firedAt: Date.now() },
-    `rr_${id}`,
-    undefined,
-    Date.now(),
-  ).run
-  runs.settle(claimed.id, 'completed', 'Useful result <safe> api_key=sample-key', Date.now())
-  runs.reported(claimed.id, Date.now())
-  return claimed.id
+  return { db, notices, attempts, accepted, deliver }
 }
 
-/** Native SQLite receipts and official SDK; all sends remain in the injected fixture. */
-async function routineNotificationProbe(storage: DurableObjectStorage, owner: string) {
+/** A written notice of routine `id`, with a Telegram copy when `telegram`. */
+function writtenNotice(notices: NoticeStore, id: string, telegram: boolean) {
+  const at = Date.now()
+  notices.claim(
+    {
+      id,
+      routineId: `rt_${id}`,
+      source: 'event',
+      chatId: '1',
+      entryRequestId: id,
+      connectionId: 'sidequest',
+      label: 'Sidequest',
+      title: 'Picked <safe>',
+      body: null,
+      url: null,
+      at,
+      createdAt: at,
+      ...(telegram ? { telegramText: 'Sidequest: Picked <safe>' } : {}),
+    },
+    true,
+  )
+  notices.written(id, at)
+  return id
+}
+
+/** Native SQLite outbox and official SDK; all sends remain in the injected fixture. */
+async function routineNotificationProbe(storage: DurableObjectStorage) {
   runApplicationMigrations(storage)
-  const { db, routines, runs, attempts, accepted, notify } = await setupNotifications(storage, owner)
-  const off = createNotification(routines, runs, 'notify-off', false)
-  await notify(off)
+  const { db, notices, attempts, accepted, deliver } = await setupNotifications(storage)
+  writtenNotice(notices, 'notice-off', false)
+  await deliver()
   const offCalls = attempts.length
-  const on = createNotification(routines, runs, 'notify-on', true)
-  await notify(on)
-  const failed = runs.get(on)
-  db.update(appRoutineRuns).set({ notificationNextAt: 0 }).where(eq(appRoutineRuns.id, on)).run()
-  await notify(on)
-  const delivered = runs.get(on)
-  await notify(on)
+  const on = writtenNotice(notices, 'notice-on', true)
+  await deliver()
+  const failed = notices.get(on)
+  db.update(appNotices).set({ telegramNextAt: 0 }).where(eq(appNotices.id, on)).run()
+  await deliver()
+  const delivered = notices.get(on)
+  await deliver()
   return {
     offCalls,
-    frozenServer: failed.notificationConnectionId,
-    retryState: failed.notificationState,
+    frozenServer: failed?.telegramConnectionId,
+    retryState: failed?.telegramState,
     attempts: attempts.length,
     stableBytes: JSON.stringify(attempts[0]) === JSON.stringify(attempts[1]),
+    escaped: attempts[0]?.['text'],
     accepted: accepted.length,
-    state: delivered.notificationState,
-    metadata: JSON.parse(delivered.notificationReceipt ?? '{}'),
-    scrubbed: delivered.summary,
-    reported: delivered.reportAcceptedAt !== null,
+    state: delivered?.telegramState,
+    metadata: JSON.parse(delivered?.telegramReceipt ?? '{}'),
   }
 }
 
 export const probes: Probes = {
-  'routine-notifications': inAgent(({ storage, name }) => routineNotificationProbe(storage, name)),
+  'routine-notifications': inAgent(({ storage }) => routineNotificationProbe(storage)),
 }

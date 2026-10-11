@@ -69,6 +69,9 @@ export const noticesOf = (store: NoticeStore) =>
     digestsDue: trySync('Notices.digestsDue', store.digestsDue.bind(store)),
     unwritten: sync('Notices.unwritten', store.unwritten.bind(store)),
     prune: trySync('Notices.prune', store.prune.bind(store)),
+    telegramDue: sync('Notices.telegramDue', store.telegramDue.bind(store)),
+    claimTelegram: sync('Notices.claimTelegram', store.claimTelegram.bind(store)),
+    telegramDone: sync('Notices.telegramDone', store.telegramDone.bind(store)),
   })
 
 /** Routine runs over `store`, wrapped once here. */
@@ -85,9 +88,6 @@ export const routineRunsOf = (store: RoutineRunStore) =>
     bind: trySync('RoutineRuns.bind', store.bind.bind(store)),
     settle: trySync('RoutineRuns.settle', store.settle.bind(store)),
     reported: sync('RoutineRuns.reported', store.reported.bind(store)),
-    notifications: sync('RoutineRuns.notifications', store.notifications.bind(store)),
-    notification: sync('RoutineRuns.notification', store.notification.bind(store)),
-    claimNotification: sync('RoutineRuns.claimNotification', store.claimNotification.bind(store)),
     used: trySync('RoutineRuns.used', store.used.bind(store)),
     recordUsage: sync('RoutineRuns.recordUsage', store.recordUsage.bind(store)),
   })

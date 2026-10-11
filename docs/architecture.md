@@ -1539,7 +1539,12 @@ owner's read mark and the Telegram copy's outbox state. A notice is kept once by
 `notice:<routine>:<slot>`), so a replayed delivery posts nothing again; a notice claimed but not written (a write cut
 short) is written by the routines' sweep. An event's notice is counted into its routine's hour (`app_notice_windows`):
 twenty are posted, the rest folded into one digest line ("+N more from <label>") the next hour's first notice, or the
-sweep, writes. Reminders, answers and digests are not counted. Notifications older than thirty days are pruned. An
+sweep, writes. Reminders, answers and digests are not counted. Notifications older than thirty days are pruned. A notice
+the owner wants on Telegram carries its words frozen when it is claimed (`notices/telegram.ts`): each due copy is sent
+once per attempt with a stable operation id through the channel it was first tried on, escaped, after the plan,
+resident authority and that channel are checked again; losing any of them suppresses it, a failure retries with backoff
+and fails after five attempts or fifteen minutes, and the remote receipt is kept apart. The Telegram connection's own
+events never go back to Telegram. Runs no longer carry a notification of their own. An
 occurrence more than five minutes older than the routine's confirmation, or a day old, is acknowledged and dropped,
 so a producer that replays its backlog on a fresh subscription neither notifies nor runs. `app.notice`, `app.routine`
 and `app.persona` entries count as replies, so a routine's posts leave its chat unread.

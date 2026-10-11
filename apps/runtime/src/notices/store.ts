@@ -7,8 +7,23 @@ export type NoticeRow = typeof appNotices.$inferSelect
 /** A notice to claim: everything but the state the store keeps for it. */
 export type NewNotice = Omit<
   NoticeRow,
-  'readAt' | 'writtenAt' | 'telegramState' | 'telegramText' | 'telegramAttempts' | 'telegramNextAt' | 'telegramReceipt'
+  | 'readAt'
+  | 'writtenAt'
+  | 'telegramState'
+  | 'telegramText'
+  | 'telegramAttempts'
+  | 'telegramNextAt'
+  | 'telegramReceipt'
+  | 'telegramConnectionId'
 > & { readonly telegramText?: string }
+
+/** How a Telegram copy's attempt ended. */
+export type TelegramOutcome = {
+  readonly state: 'pending' | 'accepted' | 'suppressed' | 'failed'
+  readonly receipt: string | null
+  readonly nextAt: number
+  readonly attempt: number
+}
 
 /** How many notices a routine posts in an hour; the rest wait for one digest line (ADR 0041). */
 export const NOTICE_CAP = 20
@@ -118,6 +133,46 @@ export class NoticeStore {
       .update(appNotices)
       .set({ readAt: at })
       .where(and(inArray(appNotices.id, [...ids]), isNull(appNotices.readAt)))
+      .run()
+  }
+
+  /** Written notices whose Telegram copy is due: pending, and not waiting for a retry. */
+  telegramDue(at: number): readonly NoticeRow[] {
+    return this.#db
+      .select()
+      .from(appNotices)
+      .where(
+        and(eq(appNotices.telegramState, 'pending'), lte(appNotices.telegramNextAt, at), gte(appNotices.writtenAt, 0)),
+      )
+      .limit(50)
+      .all()
+  }
+
+  /** Claims attempt `attempts + 1` of a Telegram copy through `connectionId`; false when another attempt holds it. */
+  claimTelegram(id: string, attempts: number, connectionId: string | null, at: number): boolean {
+    return (
+      this.#db
+        .update(appNotices)
+        .set({ telegramConnectionId: connectionId, telegramAttempts: attempts + 1, telegramNextAt: at + 30_000 })
+        .where(
+          and(
+            eq(appNotices.id, id),
+            eq(appNotices.telegramState, 'pending'),
+            eq(appNotices.telegramAttempts, attempts),
+            lte(appNotices.telegramNextAt, at),
+          ),
+        )
+        .returning({ id: appNotices.id })
+        .all().length === 1
+    )
+  }
+
+  /** Records how attempt `outcome.attempt` ended. */
+  telegramDone(id: string, outcome: TelegramOutcome): void {
+    this.#db
+      .update(appNotices)
+      .set({ telegramState: outcome.state, telegramReceipt: outcome.receipt, telegramNextAt: outcome.nextAt })
+      .where(and(eq(appNotices.id, id), eq(appNotices.telegramAttempts, outcome.attempt)))
       .run()
   }
 

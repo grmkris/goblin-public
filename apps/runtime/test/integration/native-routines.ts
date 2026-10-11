@@ -127,7 +127,7 @@ export const routineCases = (phase: Phase): readonly NativeCase[] => [
       }),
   ),
   matchCase(
-    'routine Telegram flag, frozen retries and remote receipt remain separate from Pi acceptance',
+    "a notice's Telegram copy: frozen channel and bytes, retried once, its remote receipt kept apart (ADR 0041)",
     'routine-notifications',
     (result) =>
       expect(result).toMatchObject({
@@ -136,11 +136,10 @@ export const routineCases = (phase: Phase): readonly NativeCase[] => [
         retryState: 'pending',
         attempts: 2,
         stableBytes: true,
+        escaped: 'Sidequest: Picked &lt;safe&gt;',
         accepted: 1,
         state: 'accepted',
         metadata: { id: 'fixture-remote-id', delivery: 'accepted' },
-        scrubbed: 'Useful result <safe> [redacted]',
-        reported: true,
       }),
   ),
   {

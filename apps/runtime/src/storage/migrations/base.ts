@@ -143,7 +143,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     sql: [
       "CREATE TABLE app_routines (id TEXT PRIMARY KEY NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('proposed','activating','active','paused','completed','archived')), definition_json TEXT NOT NULL, proposer_user_id TEXT NOT NULL, confirmed_by_user_id TEXT, confirmed_at INTEGER, schedule_id TEXT, next_fire_at INTEGER, last_fire_at INTEGER, missed_count INTEGER NOT NULL DEFAULT 0, pending_trigger TEXT, suppressed_count INTEGER NOT NULL DEFAULT 0, health TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
       'CREATE TABLE app_routine_operations (operation_id TEXT PRIMARY KEY NOT NULL, request_json TEXT NOT NULL, response_json TEXT NOT NULL, created_at INTEGER NOT NULL)',
-      "CREATE TABLE app_routine_runs (id TEXT PRIMARY KEY NOT NULL, routine_id TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT NOT NULL UNIQUE, source TEXT NOT NULL, fired_at INTEGER NOT NULL, event_id TEXT, subscription_id TEXT, webhook_id TEXT, definition_json TEXT NOT NULL, event_data_sealed TEXT, session_id TEXT UNIQUE, admitted_at INTEGER NOT NULL, deadline_at INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('admitted','running','waiting_owner','completed','skipped','failed','stopped')), outcome TEXT, summary TEXT, report_request_id TEXT NOT NULL, report_accepted_at INTEGER, notification_text TEXT, notification_state TEXT NOT NULL DEFAULT 'none', notification_receipt TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+      "CREATE TABLE app_routine_runs (id TEXT PRIMARY KEY NOT NULL, routine_id TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT NOT NULL UNIQUE, source TEXT NOT NULL, fired_at INTEGER NOT NULL, event_id TEXT, subscription_id TEXT, webhook_id TEXT, definition_json TEXT NOT NULL, event_data_sealed TEXT, session_id TEXT UNIQUE, admitted_at INTEGER NOT NULL, deadline_at INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('admitted','running','waiting_owner','completed','skipped','failed','stopped')), outcome TEXT, summary TEXT, report_request_id TEXT NOT NULL, report_accepted_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
       'CREATE TABLE app_routine_usage (run_id TEXT NOT NULL, source_key TEXT NOT NULL, utc_day TEXT NOT NULL, tokens INTEGER NOT NULL, committed_at INTEGER NOT NULL, PRIMARY KEY (run_id, source_key))',
       'CREATE TABLE app_routine_settings (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), timezone TEXT NOT NULL, max_active INTEGER NOT NULL DEFAULT 20, max_running INTEGER NOT NULL DEFAULT 2)',
       "INSERT INTO app_routine_settings (id, timezone) VALUES (1, 'UTC')",
@@ -156,13 +156,10 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
   },
   {
     key: '20261016000211_routine_usage_projection',
-    tables: ['app_routine_usage_projection', 'app_routine_answers', 'app_routine_runs'],
+    tables: ['app_routine_usage_projection', 'app_routine_answers'],
     sql: [
       'CREATE TABLE app_routine_usage_projection (run_id TEXT NOT NULL, model TEXT NOT NULL, tokens INTEGER NOT NULL, PRIMARY KEY (run_id, model))',
       'CREATE TABLE app_routine_answers (run_id TEXT NOT NULL, operation_id TEXT NOT NULL, request_json TEXT NOT NULL, interaction_id TEXT NOT NULL, PRIMARY KEY (run_id, operation_id))',
-      'ALTER TABLE app_routine_runs ADD COLUMN notification_connection_id TEXT',
-      'ALTER TABLE app_routine_runs ADD COLUMN notification_attempts INTEGER NOT NULL DEFAULT 0',
-      'ALTER TABLE app_routine_runs ADD COLUMN notification_next_at INTEGER NOT NULL DEFAULT 0',
     ].join(BREAK),
   },
   {

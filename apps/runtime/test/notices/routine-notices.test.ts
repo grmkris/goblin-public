@@ -2,6 +2,7 @@ import { PERSONAL_TOPIC, type RoutineDefinition } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { afterEach, describe, expect, it } from 'vitest'
+import { Channel } from '../../src/channel/service.ts'
 import { type NoticePost, Conversations } from '../../src/chats/service.ts'
 import { noticesOf, routinesOf } from '../../src/layers/routines.ts'
 import { McpServers } from '../../src/mcp/service.ts'
@@ -26,8 +27,11 @@ const EVENT: RoutineDefinition = {
   handTo: { kind: 'none' },
 }
 
-/** The notice programs over real notices and routines on SQLite, a home chat `5`, and a labelled connection. */
-const world = () => {
+/**
+ * The notice programs over real notices and routines on SQLite, a home chat `5`, a labelled connection, and Telegram on
+ * `telegram` when given.
+ */
+const world = (telegram?: string) => {
   const database = chatDatabase()
   open.push(database)
   const db = durable(database.db)
@@ -42,6 +46,9 @@ const world = () => {
       postNotice: (notice) => Effect.sync(() => void posted.push(notice)),
     }),
     stub(McpServers, { labels: () => Effect.succeed(new Map([['sidequest', 'Sidequest · Worker']])) }),
+    stub(Channel, {
+      status: Effect.succeed(telegram === undefined ? null : { connectionId: telegram, enabledAt: 1 }),
+    }),
   )
   const row = routines.propose(EVENT, 'op-1', 'rt_1', 1000, PERSONAL_TOPIC).routine
   const stored = routines.get(row.id)
@@ -49,7 +56,7 @@ const world = () => {
     notices,
     posted,
     stored,
-    run: <A, E>(program: Effect.Effect<A, E, Notices | Routines | Conversations | McpServers>) =>
+    run: <A, E>(program: Effect.Effect<A, E, Notices | Routines | Conversations | McpServers | Channel>) =>
       Effect.runPromise(Effect.provide(program, layer)),
   }
 }
@@ -102,5 +109,12 @@ describe("a routine's notices (ADR 0041)", () => {
       ),
     )
     expect(notices.get('notice-report:rr_2')).toBeUndefined()
+  })
+
+  it("never sends the Telegram connection's own events back to Telegram", async () => {
+    const { run, notices, stored } = world('sidequest')
+    const event = { eventId: 'evt-9', name: 'sidequest.inbox', data: { title: 'Echo' }, occurredAt: 2000 }
+    await run(postEventNotice(stored, EVENT, event))
+    expect(notices.get('notice:rt_1:evt-9')?.telegramState).toBe('none')
   })
 })

@@ -2,6 +2,7 @@ import { type NoticeData, type RoutineDefinition, handOverOf } from '@goblin/con
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
+import { Channel } from '../channel/service.ts'
 import { Conversations } from '../chats/service.ts'
 import { McpServers } from '../mcp/service.ts'
 import { Notices } from '../notices/service.ts'
@@ -87,6 +88,8 @@ export const postEventNotice = Effect.fn('routines.eventNotice')(function* (
   const { connectionId } = definition.trigger
   const label = yield* labelOf(connectionId)
   const text = noticeOfEvent(event.name, event.data, label)
+  // The Telegram connection's own events never go back to Telegram.
+  const echo = (yield* Channel.use((channel) => channel.status))?.connectionId === connectionId
   const id = `notice:${row.id}:${encodeURIComponent(event.eventId)}`
   const notice: NewNotice = {
     ...(yield* base(row, id, event.occurredAt)),
@@ -96,7 +99,7 @@ export const postEventNotice = Effect.fn('routines.eventNotice')(function* (
     title: text.title,
     body: text.body ?? null,
     url: text.url ?? null,
-    ...(definition.tellMe.telegram ? { telegramText: telegramText(label, text) } : {}),
+    ...(definition.tellMe.telegram && !echo ? { telegramText: telegramText(label, text) } : {}),
   }
   yield* post(notice, true)
 })
@@ -142,6 +145,7 @@ export const notifyReport = Effect.fn('routines.notifyReport')(function* (
     title: report.text.split('\n')[0]?.slice(0, 200) ?? definition.title,
     body: null,
     url: null,
+    ...(definition.tellMe.telegram ? { telegramText: `${definition.title}: ${report.text.slice(0, 500)}` } : {}),
   }
   const notices = yield* Notices
   const claim = yield* notices.claim(notice, false)

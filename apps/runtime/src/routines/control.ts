@@ -3,8 +3,8 @@ import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { Events } from '../mcp/service.ts'
 import { confirmEvents, consumeEvent, reconcileEvents } from './events.ts'
+import { deliverNoticeCopies } from '../notices/telegram.ts'
 import { sweepNotices } from './notices.ts'
-import { notifyRoutine } from './notifications.ts'
 import {
   DEADLINE_REACHED,
   answerRun,
@@ -25,8 +25,9 @@ import type { RoutineStore } from './store.ts'
 const reconcileRoutines = Effect.andThen(reconcileSchedules, reconcileEvents)
 
 /**
- * The routines' sweep: runs past their deadline stopped and admitted ones started, ended runs reported and their
- * Telegram notifications sent when due, the next sweep set by the nearest deadline, then reconciliation.
+ * The routines' sweep: runs past their deadline stopped and admitted ones started, ended runs reported, the notices'
+ * share (digests owed, writes cut short) and their Telegram copies when due, the next sweep set by the nearest
+ * deadline, then reconciliation.
  */
 const maintainRoutines = Effect.gen(function* () {
   const runs = yield* RoutineRuns
@@ -37,10 +38,8 @@ const maintainRoutines = Effect.gen(function* () {
   }
   const reports = yield* runs.unfinishedReports
   for (const record of reports) yield* reportRun(record)
-  const notifications = yield* runs.notifications(yield* Clock.currentTimeMillis)
-  for (const record of notifications) yield* notifyRoutine(record)
-  if (notifications.length > 0) yield* wakeIn(30_000)
   yield* sweepNotices
+  if (yield* deliverNoticeCopies) yield* wakeIn(30_000)
   const now = yield* Clock.currentTimeMillis
   const next = live.filter((record) => record.deadlineAt > now).map((record) => record.deadlineAt)
   if (next.length > 0 || reports.length === 100) yield* wakeAt(Math.min(now + 60_000, ...next))

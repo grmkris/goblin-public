@@ -117,7 +117,6 @@ export const RoutineRunView = Schema.Struct({
   outcome: Schema.NullOr(Schema.String),
   summary: Schema.NullOr(Schema.String),
   reportAcceptedAt: Schema.NullOr(Schema.Number),
-  notificationState: Schema.String,
 })
 export type RoutineRunView = typeof RoutineRunView.Type
 export const RoutineRunPage = Schema.Struct({

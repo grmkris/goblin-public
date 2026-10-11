@@ -143,19 +143,6 @@ export class RoutineRuns extends Context.Service<
       at: number,
     ) => Effect.Effect<void, AppError>
     readonly reported: (id: string, at: number) => Effect.Effect<void>
-    /** Reported runs whose Telegram notification is due. */
-    readonly notifications: (at: number) => Effect.Effect<RoutineRun[]>
-    readonly notification: (
-      id: string,
-      values: { state: string; connectionId: string | null; receipt: string | null; nextAt: number; attempt: number },
-    ) => Effect.Effect<void>
-    /** Claims one notification attempt; false when another attempt holds it. */
-    readonly claimNotification: (
-      id: string,
-      attempts: number,
-      connectionId: string | null,
-      at: number,
-    ) => Effect.Effect<boolean>
     /** Tokens the run and its routine's UTC day have used. */
     readonly used: (id: string, at: number) => Effect.Effect<{ readonly run: number; readonly day: number }, AppError>
     /** One committed usage delta, once by its key: tokens for the run's caps, Credits for the daily budget. */

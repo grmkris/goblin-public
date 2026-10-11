@@ -103,19 +103,3 @@ export function runStatus(state: RoutineRunView['state']): Label {
       return { text: 'Stopped', tone: 'quiet' }
   }
 }
-
-/** Where a run's Telegram report stands, or nothing when it was not asked for. */
-export function telegramReport(state: string): string | undefined {
-  switch (state) {
-    case 'none':
-      return undefined
-    case 'pending':
-      return 'Sending to Telegram'
-    case 'accepted':
-      return 'Sent to Telegram'
-    case 'suppressed':
-      return 'Held back from Telegram'
-    default:
-      return 'Telegram did not take it'
-  }
-}

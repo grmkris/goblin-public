@@ -14,7 +14,7 @@ import {
 import type { CredentialCipher } from '../mcp/cipher.ts'
 import type { QuestionSpec } from '@goblin/contracts'
 import { appUsageDaily } from '../storage/schema.ts'
-import { RoutineStore, definitionOf, runHandOver } from './store.ts'
+import { RoutineStore, runHandOver } from './store.ts'
 import { routineSummary } from './summary.ts'
 import { sha256Hex } from '../runtime/digest.ts'
 
@@ -74,12 +74,6 @@ function newRun(firing: Firing, id: string, skip: string | undefined, at: number
     summary: skip ?? null,
     reportRequestId: `routine-report:${id}`,
     reportAcceptedAt: null,
-    notificationText: skip === undefined ? null : `Routine skipped: ${skip}`,
-    notificationState: 'none',
-    notificationReceipt: null,
-    notificationConnectionId: null,
-    notificationAttempts: 0,
-    notificationNextAt: 0,
     createdAt: at,
     updatedAt: at,
   }
@@ -307,8 +301,6 @@ export class RoutineRunStore {
         state,
         outcome: state,
         summary: safeSummary,
-        notificationText: `Routine ${state}: ${safeSummary.slice(0, 500)}`,
-        notificationState: definitionOf(run).tellMe.telegram && state !== 'skipped' ? 'pending' : 'none',
         updatedAt: at,
       })
       .where(eq(appRoutineRuns.id, id))
@@ -321,56 +313,6 @@ export class RoutineRunStore {
   }
   reported(id: string, at: number): void {
     this.db.update(appRoutineRuns).set({ reportAcceptedAt: at }).where(eq(appRoutineRuns.id, id)).run()
-  }
-  notifications(at: number): RoutineRun[] {
-    return this.db
-      .select()
-      .from(appRoutineRuns)
-      .where(
-        and(
-          eq(appRoutineRuns.notificationState, 'pending'),
-          sql`${appRoutineRuns.notificationNextAt} <= ${at}`,
-          sql`${appRoutineRuns.reportAcceptedAt} IS NOT NULL`,
-        ),
-      )
-      .limit(100)
-      .all()
-  }
-  notification(
-    id: string,
-    values: { state: string; connectionId: string | null; receipt: string | null; nextAt: number; attempt: number },
-  ): void {
-    this.db
-      .update(appRoutineRuns)
-      .set({
-        notificationState: values.state,
-        notificationConnectionId: values.connectionId,
-        notificationReceipt: values.receipt,
-        notificationNextAt: values.nextAt,
-      })
-      .where(and(eq(appRoutineRuns.id, id), eq(appRoutineRuns.notificationAttempts, values.attempt)))
-      .run()
-  }
-  claimNotification(id: string, attempts: number, connectionId: string | null, at: number): boolean {
-    return (
-      this.db
-        .update(appRoutineRuns)
-        .set({
-          notificationConnectionId: connectionId,
-          notificationAttempts: attempts + 1,
-          notificationNextAt: at + 30_000,
-        })
-        .where(
-          and(
-            eq(appRoutineRuns.id, id),
-            eq(appRoutineRuns.notificationState, 'pending'),
-            eq(appRoutineRuns.notificationAttempts, attempts),
-            sql`${appRoutineRuns.notificationNextAt} <= ${at}`,
-          ),
-        )
-        .returning({ id: appRoutineRuns.id })
-        .all().length === 1
-    )
   }
   used(id: string, at: number): { readonly run: number; readonly day: number } {
     const run = this.get(id)

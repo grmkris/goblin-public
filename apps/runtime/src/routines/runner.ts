@@ -205,7 +205,10 @@ export const reportRun = (record: RoutineRun) =>
     const topic = yield* (yield* Routines).topicOf(record.routineId)
     const session = record.sessionId
     if (session !== null) yield* RoutineUsage.use((projection) => projection.snapshot(session))
-    const text = record.notificationText ?? 'Routine ended.'
+    const text =
+      record.summary === null
+        ? 'Routine ended.'
+        : `Routine ${record.outcome ?? record.state}: ${record.summary.slice(0, 500)}`
     yield* conversations.reportRoutine({
       runId: record.id,
       routineId: record.routineId,

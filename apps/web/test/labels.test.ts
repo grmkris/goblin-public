@@ -8,7 +8,6 @@ import {
   serverStatus,
   connectionName,
   serverName,
-  telegramReport,
 } from '../src/lib/labels.ts'
 
 describe('labels', () => {
@@ -56,11 +55,5 @@ describe('labels', () => {
     expect(routineStatus({ state: 'active', health: 'execution_pending' }).text).toBe('Getting ready')
     expect(runStatus('waiting_owner')).toEqual({ text: 'Waiting for you', tone: 'attention' })
     expect(runStatus('failed').tone).toBe('bad')
-  })
-
-  it('says where a Telegram report stands, and nothing when none was asked for', () => {
-    expect(telegramReport('none')).toBeUndefined()
-    expect(telegramReport('accepted')).toBe('Sent to Telegram')
-    expect(telegramReport('failed')).toBe('Telegram did not take it')
   })
 })
