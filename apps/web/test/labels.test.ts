@@ -6,7 +6,8 @@ import {
   routineStatus,
   runStatus,
   serverStatus,
-  serverTitle,
+  connectionName,
+  serverName,
   telegramReport,
 } from '../src/lib/labels.ts'
 
@@ -23,10 +24,11 @@ describe('labels', () => {
     expect(eventStatus('something_new')).toEqual({ text: 'Paused', tone: 'quiet' })
   })
 
-  it('calls a server by its title, then its reported name, then its id', () => {
-    expect(serverTitle({ connectionId: 'board', title: 'Board', serverName: 'fixture-board' })).toBe('Board')
-    expect(serverTitle({ connectionId: 'board', serverName: 'fixture-board' })).toBe('fixture-board')
-    expect(serverTitle({ connectionId: 'board' })).toBe('board')
+  it("calls a connection by the owner's label, and its server by its title, then its reported name", () => {
+    expect(connectionName({ label: 'Board · Mine' })).toBe('Board · Mine')
+    expect(serverName({ title: 'Board', serverName: 'fixture-board' })).toBe('Board')
+    expect(serverName({ serverName: 'fixture-board' })).toBe('fixture-board')
+    expect(serverName({})).toBeUndefined()
   })
 
   it('says the plan, the agent standing, a routine and a run in words', () => {

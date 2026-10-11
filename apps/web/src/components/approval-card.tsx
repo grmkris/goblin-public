@@ -4,6 +4,7 @@ import { KeyRoundIcon } from 'lucide-react'
 import { approvalQuery, decideApprovalMutation } from '../approvals/queries.ts'
 import type { Interaction } from '../lib/interactions.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { useConnectionLabels } from '../mcp/hooks.ts'
 
 type Approval = Extract<Interaction, { kind: 'approval' }>
 
@@ -13,6 +14,7 @@ type Approval = Extract<Interaction, { kind: 'approval' }>
  */
 export function ApprovalCard({ interaction }: { readonly interaction: Approval }) {
   const read = useQuery(approvalQuery(interaction.approvalId))
+  const connection = useConnectionLabels()(interaction.connectionId)
   const decision = useMutation(decideApprovalMutation(interaction.approvalId))
   const view = read.data
   const busy = decision.isPending
@@ -32,7 +34,7 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
         <p>
           Approve{' '}
           <strong>
-            {interaction.connectionId} · {interaction.name}
+            {connection} · {interaction.name}
           </strong>
           ?
         </p>

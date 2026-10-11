@@ -6,6 +6,7 @@ import { AppWindowIcon, DownloadIcon, ExternalLinkIcon, XIcon } from 'lucide-rea
 import { Button } from '@goblin/ui'
 import { contextPreview } from '../../lib/app-context.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
+import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { useAppHost } from './host.tsx'
 import { useConversation } from '../../lib/workspace/hooks.ts'
 
@@ -19,11 +20,12 @@ export function LinkOffer({
   readonly onDone: () => void
 }) {
   const path = `${link.pathname === '/' ? '' : link.pathname}${link.search}`
+  const connection = useConnectionLabels()(connectionId)
   return (
     <div className="app-offer" role="status">
       <ExternalLinkIcon aria-hidden />
       <span className="truncate" title={link.href}>
-        {connectionId} wants to open <strong className="font-medium text-foreground">{link.host}</strong>
+        {connection} wants to open <strong className="font-medium text-foreground">{link.host}</strong>
         {path}
       </span>
       <Button

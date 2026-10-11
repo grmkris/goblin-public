@@ -26,7 +26,7 @@ import {
 import { ChevronRightIcon } from 'lucide-react'
 import { callToolMutation, toolsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { serverTitle } from '../lib/labels.ts'
+import { connectionName } from '../lib/labels.ts'
 import { McpApp, type McpSelection } from './apps/frame.tsx'
 
 type ConsoleFormProps = {
@@ -55,7 +55,7 @@ function ConsoleForm({ servers, target, onServer, name, onName, args, onArgs, ca
           <NativeSelect id="console-server" value={target} onChange={(event) => onServer(event.target.value)}>
             {servers.map((server) => (
               <NativeSelectOption key={server.connectionId} value={server.connectionId}>
-                {serverTitle(server)}
+                {connectionName(server)}
               </NativeSelectOption>
             ))}
           </NativeSelect>

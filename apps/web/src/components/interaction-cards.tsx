@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, Settings2Icon } from 'lucide-react'
-import { type ToolView, itemLabel } from '@goblin/contracts'
+import { type ServerView, type ToolView, itemLabel } from '@goblin/contracts'
 import {
   AskCard,
   AskCardActions,
@@ -23,8 +23,8 @@ import {
   QuestionnaireTitle,
   Receipt,
 } from '@goblin/ui'
-import { toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
-import { useAddAndConnect } from '../mcp/hooks.ts'
+import { serversQuery, toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
+import { useAddAndConnect, useConnectionLabels } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { setWorkspaceTopicSetupMutation } from '../lib/workspace/mutations.ts'
@@ -88,6 +88,16 @@ function CardReplies({
 
 type ServerRequest = Extract<Interaction, { kind: 'server' }>
 
+/** Whether two endpoints are the same address, as the runtime stores them (a parsed URL), or exactly as written. */
+const sameEndpoint = (stored: string, asked: string): boolean => {
+  try {
+    return new URL(asked).href === stored
+  } catch {
+    // expected: an address the parser refuses is compared as written
+    return asked === stored
+  }
+}
+
 /**
  * A server the agent asks the owner to add (ADR 0021): its name, address and the agent's reason. Adding it uses the
  * usual flow (its sign-in, then the tools they allow); the agent adds nothing itself.
@@ -102,6 +112,7 @@ function ServerRequestCard({
   const { endpoint, name, reason } = interaction
   const { busy, error, replying } = useReplying()
   const addAndConnect = useAddAndConnect()
+  const mine = (useQuery(serversQuery).data ?? []).filter((server) => sameEndpoint(server.endpoint, endpoint))
   const reply = (yes: boolean) =>
     void replying(async () => {
       await onAnswer(
@@ -110,6 +121,14 @@ function ServerRequestCard({
       )
       if (yes) await addAndConnect(endpoint, name)
     })
+  const use = (connection: ServerView) =>
+    void replying(() =>
+      onAnswer(
+        `Use ${connection.label} (${connection.connectionId}), which is already connected to that server.`,
+        interactionOperation(interaction),
+      ),
+    )
+  const [first] = mine
   return (
     <AskCard aria-label="Server request">
       <AskCardHeader>
@@ -120,7 +139,28 @@ function ServerRequestCard({
       </AskCardHeader>
       <AskCardDescription className="break-all">{endpoint}</AskCardDescription>
       <AskCardDescription>Its reason: {reason}</AskCardDescription>
-      <CardReplies busy={busy} error={error} yes="Add and connect" onReply={reply} />
+      {first === undefined ? (
+        <CardReplies busy={busy} error={error} yes="Add and connect" onReply={reply} />
+      ) : (
+        <>
+          <AskCardDescription>
+            You already have it: {mine.map((server) => server.label).join(', ')}. Use that, or add another connection to
+            sign in as another account.
+          </AskCardDescription>
+          {error && <Receipt tone="error">{error}</Receipt>}
+          <AskCardActions>
+            <Button variant="ghost" disabled={busy} onClick={() => reply(false)}>
+              Not now
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => reply(true)}>
+              Add another connection
+            </Button>
+            <Button disabled={busy} onClick={() => use(first)}>
+              Use {first.label}
+            </Button>
+          </AskCardActions>
+        </>
+      )}
     </AskCard>
   )
 }
@@ -129,6 +169,7 @@ function ServerRequestCard({
 function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; readonly onAnswer: Answer }) {
   const { connectionId, name } = interaction
   const tool = useToolClaims(connectionId, name)
+  const connection = useConnectionLabels()(connectionId)
   const { busy, error, replying } = useReplying()
   const grant = useMutation(toolGrantMutation).mutateAsync
   const reply = (allowed: boolean) =>
@@ -146,13 +187,13 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
         <p>
           Your agent wants to use{' '}
           <strong className="font-medium">
-            {connectionId} · {name}
+            {connection} · {name}
           </strong>
         </p>
       </AskCardHeader>
       {tool?.description && (
         <AskCardDescription>
-          {connectionId} describes it as: {tool.description}
+          {connection} describes it as: {tool.description}
         </AskCardDescription>
       )}
       {(tool?.readOnlyHint === true || tool?.destructiveHint === true) && (

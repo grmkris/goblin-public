@@ -6,6 +6,7 @@ import { useMutation } from '@tanstack/react-query'
 import { KeyRoundIcon } from 'lucide-react'
 import { GrantDenied } from '@goblin/contracts/api'
 import { Button } from '@goblin/ui'
+import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { toolGrantMutation } from '../../mcp/queries.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 
@@ -59,6 +60,7 @@ function AppGrantCard({
   readonly name: string
   readonly onAnswer: (allowed: boolean) => void
 }) {
+  const connection = useConnectionLabels()(connectionId)
   const allow = useMutation(toolGrantMutation)
   const busy = allow.isPending || allow.isSuccess
   const error = allow.error === null ? '' : messageOf(allow.error, 'allow the tool')
@@ -68,7 +70,7 @@ function AppGrantCard({
       <span className="truncate">
         The app wants to use{' '}
         <strong className="font-medium text-foreground">
-          {connectionId} · {name}
+          {connection} · {name}
         </strong>
         {error && ` (${error})`}
       </span>

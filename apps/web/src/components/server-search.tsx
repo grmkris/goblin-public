@@ -130,11 +130,11 @@ function Result({
       <Button
         size="sm"
         variant={entry.added ? 'ghost' : 'outline'}
-        disabled={entry.added || entry.needsKey || endpoint === undefined || (busy && !adding)}
+        disabled={entry.needsKey || endpoint === undefined || (busy && !adding)}
         pending={adding}
         onClick={() => endpoint && onAdd(endpoint)}
       >
-        {entry.added ? 'Added' : 'Add'}
+        {entry.added ? 'Add another' : 'Add'}
       </Button>
     </li>
   )
@@ -189,7 +189,7 @@ export function ServerSearch({
     setAdding(entry.name)
     try {
       const source = { registry: entry.registry, name: entry.name, ...(entry.version && { version: entry.version }) }
-      onChanged(await addAndConnect(endpoint, entry.title ?? entry.name, source))
+      onChanged(await addAndConnect(endpoint, entry.title ?? entry.name, { source }))
     } catch (error) {
       onMessage(messageOf(error, `add ${entry.title ?? entry.name}`))
     } finally {

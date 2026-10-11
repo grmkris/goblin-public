@@ -91,6 +91,15 @@ export const addAndConnectMutation = mutationOptions({
     started.authorizationUrl === undefined ? serversChanged(client) : undefined,
 })
 
+/** Names a connection anew (ADR 0041); a label another connection holds is refused (409). */
+export const renameConnectionMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, change: { readonly connectionId: string; readonly label: string }) =>
+      api.mcp.renameConnection({ params: { id: change.connectionId }, payload: { label: change.label } }),
+  }),
+  onSuccess: (_server, _change, _result, { client }) => serversChanged(client),
+})
+
 /** Starts connecting: an authorization URL to send the owner to, or none when the server is connected at once. */
 export const connectMutation = mutationOptions({
   ...owner.apiMutation({

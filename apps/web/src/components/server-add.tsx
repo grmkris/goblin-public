@@ -15,8 +15,7 @@ const REFUSED: Record<string, string> = {
   endpoint_not_public: 'That address is private or local; only public servers can be added.',
   endpoint_not_a_url: 'That is not a web address.',
   endpoint_invalid: 'Remove any user name, password or #fragment from the address.',
-  already_added: 'That server is already in your list.',
-  too_many_servers: 'You have added sixteen servers; remove one first.',
+  too_many_servers: 'You have added thirty-two connections; remove one first.',
 }
 const refusal = (error: unknown): string | undefined =>
   error instanceof InvalidInput ? REFUSED[error.reason] : undefined
@@ -71,8 +70,8 @@ export function AddByAddress({
 }
 
 /**
- * Servers we suggest, checked to work from here: one tap adds and connects; already added ones say so. It suspends
- * until the suggestions are read.
+ * Servers we suggest, checked to work from here: one tap adds and connects. One the owner already has can be connected
+ * again, as another account (ADR 0041). It suspends until the suggestions are read.
  */
 export function SuggestedServers({
   onChanged,
@@ -107,11 +106,11 @@ export function SuggestedServers({
           <Button
             size="sm"
             variant={item.added ? 'ghost' : 'outline'}
-            disabled={item.added || (busy !== '' && busy !== item.id)}
+            disabled={busy !== '' && busy !== item.id}
             pending={busy === item.id}
             onClick={() => void add(item)}
           >
-            {item.added ? 'Added' : 'Add'}
+            {item.added ? 'Add another' : 'Add'}
           </Button>
         </li>
       ))}

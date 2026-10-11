@@ -1,5 +1,6 @@
-// One of the owner's MCP servers: its name, where it stands, its actions, and once connected, the events, skills,
-// Telegram channel and tools it offers. A server's title and description are its own claims.
+// One of the owner's connections (ADR 0041): its name, the server it reaches, where it stands, its actions, and once
+// connected, the events, skills, Telegram channel and tools it offers. A server's title and description are its own
+// claims.
 import { useEffect, useId, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerView, ToolView } from '@goblin/contracts'
@@ -13,12 +14,13 @@ import {
 } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
-import { serverStatus, serverTitle } from '../lib/labels.ts'
+import { serverName, serverStatus } from '../lib/labels.ts'
 import { EventsHealth } from './event-health.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
-import { type Action, RemoveConfirm, ServerMenu } from './server-menu.tsx'
+import { AnotherConnection, RenameConnection } from './connection-forms.tsx'
+import { type Action, type Edit, RemoveConfirm, ServerMenu } from './server-menu.tsx'
 import { ToolGrants } from './tool-grants.tsx'
 
 /** The endpoint without its scheme, which is always https for an added server. */
@@ -81,7 +83,7 @@ function ServerBody({
   failure,
   onMessage,
   channel,
-}: ServerCardProps & {
+}: Omit<ServerCardProps, 'onDone'> & {
   readonly tools: readonly ToolView[] | undefined
   /** Why its tools could not be read, if they could not, and a way to read them again. */
   readonly failure: { readonly error: unknown; readonly retry: () => void }
@@ -102,11 +104,7 @@ function ServerBody({
           </section>
         )}
         {failure.error !== null ? (
-          <QueryError
-            error={failure.error}
-            action={`list the tools of ${serverTitle(server)}`}
-            onRetry={failure.retry}
-          />
+          <QueryError error={failure.error} action={`list the tools of ${server.label}`} onRetry={failure.retry} />
         ) : tools === undefined ? (
           <p className="server-note" role="status">
             Loading its tools…
@@ -123,6 +121,8 @@ type ServerCardProps = {
   readonly server: ServerView
   readonly onReload: () => void
   readonly onMessage: (message: string) => void
+  /** Something done, said where the page tells the owner (another connection added). */
+  readonly onDone: (message: string) => void
   readonly channel: TelegramChannel
 }
 
@@ -131,7 +131,7 @@ function useServerActions(server: ServerView, onMessage: (message: string) => vo
   const connect = useMutation(connectMutation)
   const disconnect = useMutation(disconnectMutation)
   const refresh = useMutation(refreshToolsMutation)
-  const title = serverTitle(server)
+  const title = server.label
   const failed = (action: string) => (error: unknown) => onMessage(messageOf(error, action))
   // An authorization URL means the page is leaving for the server's sign-in.
   const leaving = connect.isSuccess && connect.data.authorizationUrl !== undefined
@@ -157,10 +157,51 @@ function useServerActions(server: ServerView, onMessage: (message: string) => vo
   return { pending, act }
 }
 
-export function ServerCard({ server, onReload, onMessage, channel }: ServerCardProps) {
+/** The card's inline part under its header: the server's own words, Remove's confirmation, or a menu's form. */
+function CardForms({
+  server,
+  editing,
+  removing,
+  onClose,
+  onDone,
+  onMessage,
+}: Pick<ServerCardProps, 'server' | 'onDone' | 'onMessage'> & {
+  readonly editing: Edit | undefined
+  readonly removing: boolean
+  readonly onClose: () => void
+}) {
+  if (server.description === undefined && !removing && editing === undefined) return null
+  return (
+    <CardContent>
+      <div className="server-body">
+        {server.description !== undefined && (
+          <p className="server-claim">
+            <span>The server says:</span> {server.description}
+          </p>
+        )}
+        {removing && <RemoveConfirm server={server} onCancel={onClose} onMessage={onMessage} />}
+        {editing === 'rename' && <RenameConnection server={server} onDone={onClose} onMessage={onMessage} />}
+        {editing === 'another' && (
+          <AnotherConnection
+            server={server}
+            onDone={(message) => {
+              onClose()
+              if (message !== '') onDone(message)
+            }}
+            onMessage={onMessage}
+          />
+        )}
+      </div>
+    </CardContent>
+  )
+}
+
+export function ServerCard({ server, onReload, onMessage, onDone, channel }: ServerCardProps) {
   const { tools, error, retry } = useServerTools(server)
   const { pending, act } = useServerActions(server, onMessage)
   const [removing, setRemoving] = useState(false)
+  const [editing, setEditing] = useState<Edit>()
+  const from = serverName(server)
   const loaded = tools !== undefined
   // Loading tools opens the connection; reload once so what it declares (skills) shows.
   useEffect(() => {
@@ -172,10 +213,13 @@ export function ServerCard({ server, onReload, onMessage, channel }: ServerCardP
         <CardTitle>
           <span className="server-title">
             <AppTile origin={server.connectionId} />
-            {serverTitle(server)}
+            {server.label}
           </span>
         </CardTitle>
-        <CardDescription>{shortEndpoint(server.endpoint)}</CardDescription>
+        <CardDescription>
+          {from === undefined || from === server.label ? '' : `${from} · `}
+          {shortEndpoint(server.endpoint)}
+        </CardDescription>
         <CardAction>
           <div className="server-actions">
             <StatusLabel label={serverStatus(server.status)} />
@@ -188,23 +232,29 @@ export function ServerCard({ server, onReload, onMessage, channel }: ServerCardP
               server={server}
               busy={pending !== undefined && pending !== 'connect'}
               onAct={act}
-              onRemove={() => setRemoving(true)}
+              onEdit={(edit) => {
+                setRemoving(false)
+                setEditing(edit)
+              }}
+              onRemove={() => {
+                setEditing(undefined)
+                setRemoving(true)
+              }}
             />
           </div>
         </CardAction>
       </CardHeader>
-      {(server.description !== undefined || removing) && (
-        <CardContent>
-          <div className="server-body">
-            {server.description !== undefined && (
-              <p className="server-claim">
-                <span>The server says:</span> {server.description}
-              </p>
-            )}
-            {removing && <RemoveConfirm server={server} onCancel={() => setRemoving(false)} onMessage={onMessage} />}
-          </div>
-        </CardContent>
-      )}
+      <CardForms
+        server={server}
+        editing={editing}
+        removing={removing}
+        onClose={() => {
+          setEditing(undefined)
+          setRemoving(false)
+        }}
+        onDone={onDone}
+        onMessage={onMessage}
+      />
       {server.status === 'connected' && (
         <ServerBody
           server={server}

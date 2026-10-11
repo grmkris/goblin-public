@@ -1,4 +1,5 @@
-// A server's less frequent actions: Refresh, Disconnect and Remove behind one button, and Remove's confirmation.
+// A connection's less frequent actions behind one button (Rename, Add another connection, Refresh, Disconnect, Remove)
+// and Remove's confirmation.
 import { useMutation } from '@tanstack/react-query'
 import type { ServerView } from '@goblin/contracts'
 import {
@@ -9,28 +10,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@goblin/ui'
-import { EllipsisIcon, RefreshCwIcon, Trash2Icon, UnplugIcon } from 'lucide-react'
+import { CopyPlusIcon, EllipsisIcon, PencilIcon, RefreshCwIcon, Trash2Icon, UnplugIcon } from 'lucide-react'
 import { removeServerMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { serverTitle } from '../lib/labels.ts'
+import { connectionName } from '../lib/labels.ts'
 
 export type Action = 'connect' | 'disconnect' | 'refresh'
 
-/** Refresh, Disconnect and Remove, kept behind one button so the card's face stays calm. */
+/** What the card opens inline from the menu: a new name, or another connection to the same server. */
+export type Edit = 'rename' | 'another'
+
+/** The less frequent actions, kept behind one button so the card's face stays calm. */
 export function ServerMenu({
   server,
   busy,
   onAct,
+  onEdit,
   onRemove,
 }: {
   readonly server: ServerView
   readonly busy: boolean
   readonly onAct: (action: Action) => void
+  readonly onEdit: (edit: Edit) => void
   readonly onRemove: () => void
 }) {
   const connected = server.status === 'connected'
-  if (!connected && server.source !== 'added') return null
-  const name = serverTitle(server)
+  const name = connectionName(server)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -39,8 +44,17 @@ export function ServerMenu({
         <EllipsisIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => onEdit('rename')}>
+          <PencilIcon aria-hidden />
+          Rename…
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit('another')}>
+          <CopyPlusIcon aria-hidden />
+          Add another connection…
+        </DropdownMenuItem>
         {connected && (
           <>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onAct('refresh')}>
               <RefreshCwIcon aria-hidden />
               Look for new tools
@@ -77,10 +91,10 @@ export function RemoveConfirm({
   const pending = removing.isPending || removing.isSuccess
   const remove = () =>
     removing.mutate(server.connectionId, {
-      onError: (error) => onMessage(messageOf(error, `remove ${serverTitle(server)}`)),
+      onError: (error) => onMessage(messageOf(error, `remove ${connectionName(server)}`)),
     })
   return (
-    <div className="inline-confirm" role="alertdialog" aria-label={`Remove ${serverTitle(server)}?`}>
+    <div className="inline-confirm" role="alertdialog" aria-label={`Remove ${connectionName(server)}?`}>
       <span>Remove it? Its sign-in and the tools you allowed go with it.</span>
       <Button size="sm" variant="destructive" pending={pending} onClick={remove}>
         Remove

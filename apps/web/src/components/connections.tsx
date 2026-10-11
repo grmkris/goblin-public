@@ -15,9 +15,11 @@ import {
   Skeleton,
 } from '@goblin/ui'
 import { CircleAlertIcon, CircleCheckIcon, PlugIcon, PlusIcon } from 'lucide-react'
+import type { ServerView } from '@goblin/contracts'
+import { useConnectionLabels } from '../mcp/hooks.ts'
 import { serversQuery } from '../mcp/queries.ts'
 import { QueryBoundary } from '../lib/query/query-boundary.tsx'
-import { serverTitle } from '../lib/labels.ts'
+import { connectionName } from '../lib/labels.ts'
 import { PageSection } from './page-section.tsx'
 import { ServerCard } from './server-card.tsx'
 import { ServerPicker } from './server-picker.tsx'
@@ -25,8 +27,13 @@ import { useTelegramChannel } from './telegram-control.tsx'
 import { ToolConsole } from './tool-console.tsx'
 import { glide } from '../lib/motion.ts'
 
-/** What the page tells the owner: something done, or a failure, which reads as one. */
-type Notice = { readonly tone: 'done' | 'failed'; readonly text: string }
+/**
+ * What the page tells the owner: something done, or a failure, which reads as one. A sign-in that came back names its
+ * connection, read by its label once the list is there.
+ */
+type Notice =
+  | { readonly tone: 'done' | 'failed'; readonly text: string }
+  | { readonly tone: 'done'; readonly connected: string }
 
 /** Where a server's sign-in came back to: connected, or why not, with the reference the callback quotes. */
 const callbackNotice = (): Notice | undefined => {
@@ -34,8 +41,7 @@ const callbackNotice = (): Notice | undefined => {
   const connected = params.get('connected')
   const error = params.get('error')
   const ref = params.get('ref')
-  if (connected !== null)
-    return { tone: 'done', text: `Connected ${connected}. Choose which tools your agent may use.` }
+  if (connected !== null) return { tone: 'done', connected }
   if (error !== null)
     return { tone: 'failed', text: `Connection failed (${error}).${ref === null ? '' : ` · ref ${ref.slice(0, 8)}`}` }
   return undefined
@@ -43,11 +49,16 @@ const callbackNotice = (): Notice | undefined => {
 
 /** The notice, set apart by tone: a failure is an alert in the destructive style, an outcome a quiet status. */
 function NoticeAlert({ notice }: { readonly notice: Notice }) {
+  const labelOf = useConnectionLabels()
   const failed = notice.tone === 'failed'
+  const text =
+    'connected' in notice
+      ? `Connected ${labelOf(notice.connected)}. Choose which tools your agent may use.`
+      : notice.text
   return (
     <Alert variant={failed ? 'destructive' : 'default'} role={failed ? 'alert' : 'status'}>
       {failed ? <CircleAlertIcon aria-hidden /> : <CircleCheckIcon aria-hidden />}
-      <AlertDescription>{notice.text}</AlertDescription>
+      <AlertDescription>{text}</AlertDescription>
     </Alert>
   )
 }
@@ -73,8 +84,22 @@ function NoServers({ onAdd }: { readonly onAdd: () => void }) {
 
 const SERVERS_NOTE = 'Your agent reaches another service only through a server here, and only with the tools you allow.'
 
-/** The owner's servers, each a card; `onAdd` goes to the picker below. */
-function Servers({ onAdd, onMessage }: { readonly onAdd: () => void; readonly onMessage: (text: string) => void }) {
+/** The connections in the order they came, those to one server side by side (ADR 0041). */
+const byServer = (servers: readonly ServerView[]): readonly ServerView[] => {
+  const order = [...new Set(servers.map((server) => server.endpoint))]
+  return order.flatMap((endpoint) => servers.filter((server) => server.endpoint === endpoint))
+}
+
+/** The owner's connections, each a card; `onAdd` goes to the picker below. */
+function Servers({
+  onAdd,
+  onDone,
+  onMessage,
+}: {
+  readonly onAdd: () => void
+  readonly onDone: (text: string) => void
+  readonly onMessage: (text: string) => void
+}) {
   const { data: servers, refetch } = useSuspenseQuery(serversQuery)
   const channel = useTelegramChannel(onMessage)
   // A server's card reads the list again after something changed it out of sight (its sign-in, its tools).
@@ -95,11 +120,12 @@ function Servers({ onAdd, onMessage }: { readonly onAdd: () => void; readonly on
       note={SERVERS_NOTE}
     >
       {servers.length === 0 && <NoServers onAdd={onAdd} />}
-      {servers.map((server) => (
+      {byServer(servers).map((server) => (
         <ServerCard
           key={server.connectionId}
           server={server}
           onReload={reload}
+          onDone={onDone}
           onMessage={onMessage}
           channel={channel}
         />
@@ -130,13 +156,13 @@ export function Connections() {
           </PageSection>
         }
       >
-        <Servers onAdd={toPicker} onMessage={failed} />
+        <Servers onAdd={toPicker} onDone={done} onMessage={failed} />
       </QueryBoundary>
       <PageSection id="add" title="Add a server" ref={picker}>
         <ServerPicker
           onChanged={done}
           onAdded={(server) =>
-            done(`Added ${serverTitle(server)}. Connect it, then choose the tools your agent may use.`)
+            done(`Added ${connectionName(server)}. Connect it, then choose the tools your agent may use.`)
           }
           onMessage={failed}
         />

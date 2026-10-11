@@ -36,9 +36,12 @@ export function eventStatus(status: string): Label {
   }
 }
 
-/** What to call a server: its own title, else the name it reports, else its id. */
-export const serverTitle = (server: Pick<ServerView, 'title' | 'serverName' | 'connectionId'>): string =>
-  server.title ?? server.serverName ?? server.connectionId
+/** What to call a connection: the owner's label for it (ADR 0041). */
+export const connectionName = (server: Pick<ServerView, 'label'>): string => server.label
+
+/** What the server behind a connection calls itself: its card's title, else the name it reports. */
+export const serverName = (server: Pick<ServerView, 'title' | 'serverName'>): string | undefined =>
+  server.title ?? server.serverName
 
 /** The owner's plan, from billing state. */
 export function planStatus(state: BillingState): Label {
