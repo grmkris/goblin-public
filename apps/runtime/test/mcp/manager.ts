@@ -5,7 +5,7 @@ import { makeManager } from '../../src/mcp/manager.ts'
 import { McpConnections, McpGrants, McpServers } from '../../src/mcp/service.ts'
 import type { McpManagerOptions } from '../../src/mcp/types.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
-import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from './memory.ts'
 import { servicesOf } from './runtime.ts'
 
 /** A service whose methods answer Promises: each call runs its Effect on the test's runtime. */
@@ -48,6 +48,7 @@ export const hostOf = (
     credentials: new MemoryCredentials(),
     grants: new MemoryGrants(),
     registries: new MemoryRegistries(),
+    labels: new MemoryLabels(),
     appUrl: 'https://goblin.test',
     ...options,
   })

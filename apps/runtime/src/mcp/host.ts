@@ -9,6 +9,7 @@ import { mcpAuth } from './auth.ts'
 import type { McpManager } from './connections.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grants } from './grants.ts'
+import type { Labels } from './labels.ts'
 import type { StepReport } from './log.ts'
 import { makeManager } from './manager.ts'
 import { ownerServers } from './owner-servers.ts'
@@ -29,6 +30,8 @@ export type McpHostOptions = {
   readonly registries: AddedRegistries
   /** Servers the owner added; without it, the server list is fixed. */
   readonly added?: AddedServers
+  /** The owner's name for every connection; configured ones get theirs at start. */
+  readonly labels: Labels
   /** Random characters for added server ids. */
   readonly random?: () => string
   /** Whether the owner uses skills from a server; without it, no server's skills are read. */
@@ -124,6 +127,7 @@ export const mcpHost = (
       const { credentials, grants } = options
       const skillsEnabled = (connectionId: string) => options.skillsEnabled?.(connectionId) === true
       const configured: ReadonlySet<string> = new Set(options.servers.map((server) => server.connectionId))
+      yield* Effect.sync(() => options.labels.ensure(options.servers))
       const added = (options.added?.list() ?? []).filter((server) => !configured.has(server.connectionId))
       const manager = yield* makeManager({
         servers: [...options.servers, ...added.map(({ connectionId, endpoint }) => ({ connectionId, endpoint }))],
@@ -143,6 +147,7 @@ export const mcpHost = (
         fetch: options.fetch,
         registries: options.registries,
         ...(options.added === undefined ? {} : { added: options.added }),
+        labels: options.labels,
         random: options.random ?? (() => crypto.randomUUID().replaceAll('-', '')),
         skillsEnabled,
       })

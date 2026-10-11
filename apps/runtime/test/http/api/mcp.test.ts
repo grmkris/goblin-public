@@ -21,7 +21,13 @@ import { Invocations, Personas } from '../../../src/personas/service.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
 import { RoutineControl, RoutineRuns, RoutineUsage } from '../../../src/routines/service.ts'
 import { Skills } from '../../../src/skills/service.ts'
-import { MemoryAddedServers, MemoryCredentials, MemoryGrants, MemoryRegistries } from '../../mcp/memory.ts'
+import {
+  MemoryAddedServers,
+  MemoryCredentials,
+  MemoryGrants,
+  MemoryLabels,
+  MemoryRegistries,
+} from '../../mcp/memory.ts'
 import { callOwner } from '../../owner-client.ts'
 import { database, get, json, plans, post, serve, served, sqliteDb, stub } from './fixture.ts'
 import { lowLevelServer } from '../../mcp/low-level-server.ts'
@@ -72,6 +78,7 @@ const fixture = async () => {
     grants,
     added: new MemoryAddedServers(credentials, grants),
     registries: new MemoryRegistries(),
+    labels: new MemoryLabels(),
     appUrl: 'https://goblin.test',
     fetch: fetcher,
   })

@@ -16,7 +16,7 @@ import type { AgentServices } from '../src/layers/index.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { plans, sqliteDb, stub } from './http/api/fixture.ts'
-import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from './mcp/memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { executeTool, inConversation } from './pi-tool.ts'
 
@@ -49,6 +49,7 @@ const host = mcpHost({
   credentials,
   grants: new MemoryGrants([{ connectionId: 'notes', capability: 'tool', name: 'read' }]),
   registries: new MemoryRegistries(),
+  labels: new MemoryLabels(),
   appUrl: 'https://goblin.test',
   fetch: fetcher,
 })

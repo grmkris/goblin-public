@@ -22,7 +22,7 @@ import { digestOf } from '../src/skills/verify.ts'
 import { fake } from './fake.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { knowledgeOver } from './knowledge-layer.ts'
-import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from './mcp/memory.ts'
 import { MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { servicesOf } from './mcp/runtime.ts'
@@ -102,6 +102,7 @@ const skillsAt = () => {
     credentials,
     grants: new MemoryGrants(),
     registries: new MemoryRegistries(),
+    labels: new MemoryLabels(),
     skillsEnabled: (connectionId) => state.enabled(connectionId),
     appUrl: 'https://goblin.test',
     fetch: async (input, init) => {

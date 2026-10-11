@@ -3,12 +3,21 @@ import type { ServerSource, ServerView, ToolView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { epochSeconds } from '../clock.ts'
-import { Internal, InvalidInput, NeedsAuthorization, UpstreamMcp, attempt, attemptSync } from '../http/errors.ts'
+import {
+  Conflict,
+  Internal,
+  InvalidInput,
+  NeedsAuthorization,
+  UpstreamMcp,
+  attempt,
+  attemptSync,
+} from '../http/errors.ts'
 import { OPEN_ACCESS } from './auth.ts'
 import type { McpManager } from './connections.ts'
 import type { Credentials } from './credentials.ts'
 import { addedConnectionId, serverClaims, userEndpoint } from './endpoint.ts'
 import type { Grants } from './grants.ts'
+import type { Labels } from './labels.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
 import type { AddedRegistries } from './registries.ts'
 import { makeCatalog } from './registry.ts'
@@ -44,6 +53,8 @@ export type OwnerServers = {
   readonly registries: AddedRegistries
   /** Servers the owner added; without it, the server list is fixed. */
   readonly added?: AddedServers
+  /** The owner's name for every connection. */
+  readonly labels: Labels
   /** Random characters for added server ids. */
   readonly random: () => string
   readonly skillsEnabled: (connectionId: string) => boolean
@@ -59,6 +70,7 @@ const viewOf = (
   const events = snapshot !== undefined && offersEvents(snapshot)
   return {
     connectionId: server.connectionId,
+    label: owner.labels.of(server.connectionId) ?? server.connectionId,
     endpoint: server.endpoint,
     status: owner.credentials.status(server.connectionId),
     live: snapshot !== undefined,
@@ -87,23 +99,25 @@ const views = (owner: OwnerServers) =>
   })
 
 /**
- * Adds a server by its endpoint: a public https URL not already offered, labelled from its server card. It starts
- * disconnected; the owner connects it as any other. `source` records the registry entry it came from.
+ * Adds a connection to a public https endpoint, one the owner may already have a connection to (ADR 0041). It is
+ * named `label`, refused when another connection holds it, or else the first free name from its server card's title.
+ * It starts disconnected; the owner connects it as any other. `source` records the registry entry it came from.
  */
-const addServer = (owner: OwnerServers, raw: string, source: ServerSource | undefined) =>
+const addServer = (owner: OwnerServers, raw: string, label: string | undefined, source: ServerSource | undefined) =>
   Effect.gen(function* () {
-    const { added, manager } = owner
+    const { added, labels, manager } = owner
     if (added === undefined) return yield* new InvalidInput({ reason: 'servers_fixed' })
     const endpoint = yield* attemptSync(() => userEndpoint(raw))
-    const servers = yield* manager.servers()
-    if (servers.some((server) => server.endpoint === endpoint.href))
-      return yield* new InvalidInput({ reason: 'already_added' })
     if (added.list().length >= MAX_ADDED_SERVERS) return yield* new InvalidInput({ reason: 'too_many_servers' })
+    if (label !== undefined && labels.free(label) !== label) return yield* new Conflict({ reason: 'label_taken' })
     const claims = yield* attempt(() => serverClaims(endpoint, owner.fetch))
     const taken = new Set((yield* manager.servers()).map((server) => server.connectionId))
     const server = { connectionId: addedConnectionId(endpoint, taken, owner.random), endpoint: endpoint.href }
     const now = yield* epochSeconds
-    yield* attemptSync(() => added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, now))
+    yield* attemptSync(() => {
+      added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, now)
+      labels.set(server.connectionId, label ?? labels.free(claims.title ?? endpoint.hostname))
+    })
     yield* manager.add(server)
     const view = (yield* views(owner)).find((item) => item.connectionId === server.connectionId)
     if (view === undefined) return yield* new Internal({ reason: 'added server missing' })
@@ -148,13 +162,26 @@ const connectsOpenly = (owner: OwnerServers, connectionId: string) =>
     )
   })
 
+/**
+ * The name goblin registers itself under with a connection's authorization server, so its consent screen says which
+ * connection is signing in: two connections to one server are told apart only by their labels.
+ */
+const clientName = (owner: OwnerServers, connectionId: string): string =>
+  `goblin · ${owner.labels.of(connectionId) ?? connectionId}`
+
 /** Starts (or silently renews) authorization: the URL to send the owner's browser to, when one is needed. */
 const beginConnect = (owner: OwnerServers, connectionId: string) =>
   Effect.gen(function* () {
     const server = yield* owner.manager.server(connectionId)
     yield* owner.manager.close(connectionId)
     if (yield* connectsOpenly(owner, connectionId)) return {}
-    const provider = new StoredOAuthProvider(owner.credentials, connectionId, owner.appUrl, { kind: 'interactive' })
+    const provider = new StoredOAuthProvider(
+      owner.credentials,
+      connectionId,
+      owner.appUrl,
+      { kind: 'interactive' },
+      clientName(owner, connectionId),
+    )
     const result = yield* attempt(async () => {
       const scope = await offeredScope(server.endpoint, owner.fetch)
       return auth(provider, {
@@ -175,10 +202,13 @@ const finishConnect = (owner: OwnerServers, state: string, code: string, issuer:
     const pending = yield* attempt(() => owner.credentials.takePending(state, now))
     if (pending === undefined) return yield* new InvalidInput({ reason: 'unknown or expired authorization state' })
     const server = yield* owner.manager.server(pending.connectionId)
-    const provider = new StoredOAuthProvider(owner.credentials, server.connectionId, owner.appUrl, {
-      kind: 'callback',
-      codeVerifier: pending.codeVerifier,
-    })
+    const provider = new StoredOAuthProvider(
+      owner.credentials,
+      server.connectionId,
+      owner.appUrl,
+      { kind: 'callback', codeVerifier: pending.codeVerifier },
+      clientName(owner, server.connectionId),
+    )
     const result = yield* attempt(() =>
       auth(provider, {
         serverUrl: server.endpoint,
@@ -216,8 +246,15 @@ const connecting = (owner: OwnerServers) => ({
   status: Effect.fn('McpServers.status')(function* (connectionId: string) {
     return yield* Effect.sync(() => owner.credentials.status(connectionId))
   }),
-  add: Effect.fn('McpServers.add')(function* (raw: string, source?: ServerSource) {
-    return yield* addServer(owner, raw, source)
+  add: Effect.fn('McpServers.add')(function* (raw: string, label?: string, source?: ServerSource) {
+    return yield* addServer(owner, raw, label, source)
+  }),
+  rename: Effect.fn('McpServers.rename')(function* (connectionId: string, label: string) {
+    yield* owner.manager.server(connectionId)
+    yield* attemptSync(() => owner.labels.set(connectionId, label))
+    const view = (yield* views(owner)).find((item) => item.connectionId === connectionId)
+    if (view === undefined) return yield* new Internal({ reason: 'renamed connection missing' })
+    return view
   }),
   remove: Effect.fn('McpServers.remove')(function* (connectionId: string) {
     yield* removeServer(owner, connectionId)

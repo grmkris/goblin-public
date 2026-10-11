@@ -20,6 +20,7 @@ import { GrantStore } from '../mcp/grants.ts'
 import { mcpHost } from '../mcp/host.ts'
 import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
+import { ConnectionLabels } from '../mcp/labels.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
 import {
   Approvals,
@@ -137,6 +138,7 @@ export const McpHostLive: Layer.Layer<
     const host = mcpHost({
       servers,
       added,
+      labels: new ConnectionLabels(db),
       credentials: new CredentialStore(db, cipher),
       grants,
       registries: new RegistryStore(db),

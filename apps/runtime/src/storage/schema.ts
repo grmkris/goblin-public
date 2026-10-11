@@ -32,11 +32,17 @@ export const appMcpEndpoints = sqliteTable('app_mcp_endpoints', {
   boundAt: integer('bound_at').notNull(),
 })
 
+/** The owner's name for each connection, configured or added (mcp/labels.ts, ADR 0041); unique whatever its case. */
+export const appMcpLabels = sqliteTable('app_mcp_labels', {
+  connectionId: text('connection_id').primaryKey().notNull(),
+  label: text('label').notNull(),
+})
+
 /**
  * Servers the owner added (mcp/servers.ts), beside the deployment's configured ones. Title, description and icon are
  * the server's own claims from its card or registry entry; `source` records where it was found.
  */
-export const appMcpServers = sqliteTable('app_mcp_connections', {
+export const appMcpConnections = sqliteTable('app_mcp_connections', {
   connectionId: text('connection_id').primaryKey().notNull(),
   endpoint: text('endpoint').notNull(),
   title: text('title'),

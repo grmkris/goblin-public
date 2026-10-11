@@ -580,11 +580,18 @@ the border is absent. Colours come from the theme's `--presence-*` tokens, resol
 
 ## Outbound MCP
 
-Servers come from `GOBLIN_MCP_SERVERS` (JSON: `connectionId`, `endpoint`, optional `issuer` and `resource`) and from
-the owner, who may add up to sixteen by URL (`app_mcp_connections`, ADR 0006). An added endpoint is a public https
-address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
-and cannot be removed. Removing an added server forgets its row, endpoint binding, credentials, pending sign-ins and
-grants in one transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
+Connections come from `GOBLIN_MCP_SERVERS` (JSON: `connectionId`, `endpoint`, optional `label`, `issuer` and
+`resource`) and from the owner, who may add up to thirty-two by URL (`app_mcp_connections`, ADR 0006). A server is an
+address and a connection the owner's account on it (ADR 0041): the owner may connect one server several times, each
+connection with its own id, sign-in, grants, skills switch and Events. Every connection has the owner's **label**
+(`app_mcp_labels`, `mcp/labels.ts`), one line of at most eighty characters, unique whatever its case: given when it is
+added (`AddServer.label`), else the first free name from its server card's title (`Example`, `Example 2`), or the
+configured `label` (else its id) for a configured one, set once at start; `PATCH /api/mcp/:id` renames it. A
+connection registers with its authorization server as `goblin · <label>`, so the consent screen names it; MCP has no
+standard "who am I", so goblin cannot show which account a sign-in reached. An added endpoint is a public https address
+(`mcp/endpoint.ts`), and its server card's title, description and icon are the server's own claims, for the owner's
+eyes only. Configured connections win on ID and cannot be removed. Removing an added connection forgets its row,
+label, endpoint binding, credentials, pending sign-ins and grants in one transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
 comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
 the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built
 in, then up to eight the owner adds (`app_mcp_registries`). A registry is

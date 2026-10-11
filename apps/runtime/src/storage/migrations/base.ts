@@ -35,8 +35,12 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
   },
   {
     key: '20261009000000_mcp_added_servers',
-    tables: ['app_mcp_connections'],
-    sql: 'CREATE TABLE app_mcp_connections (connection_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, title TEXT, description TEXT, icon TEXT, source TEXT, created_at INTEGER NOT NULL)',
+    tables: ['app_mcp_connections', 'app_mcp_labels'],
+    sql: [
+      'CREATE TABLE app_mcp_connections (connection_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, title TEXT, description TEXT, icon TEXT, source TEXT, created_at INTEGER NOT NULL)',
+      'CREATE TABLE app_mcp_labels (connection_id TEXT PRIMARY KEY NOT NULL, label TEXT NOT NULL)',
+      'CREATE UNIQUE INDEX app_mcp_labels_label ON app_mcp_labels (label COLLATE NOCASE)',
+    ].join(BREAK),
   },
   {
     key: '20261010000000_mcp_registries',

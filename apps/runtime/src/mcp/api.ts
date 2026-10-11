@@ -30,7 +30,10 @@ const callerOf = (header: string | undefined): 'human' | 'app' => (header === 'a
 
 const servers = endpoint('servers')(() => ownerServers)
 const addServer = endpoint('addServer')(({ payload }) =>
-  McpServers.use((offered) => offered.add(payload.endpoint, payload.source)),
+  McpServers.use((offered) => offered.add(payload.endpoint, payload.label, payload.source)),
+)
+const renameConnection = endpoint('renameConnection')(({ params, payload }) =>
+  McpServers.use((offered) => offered.rename(params.id, payload.label)),
 )
 const suggested = endpoint('suggested')(() => AgentInput.use(({ env }) => suggestedServers(env.STAGE)))
 const catalog = endpoint('catalog')(({ query }) => {
@@ -115,6 +118,7 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
     .handleAll({
       servers,
       addServer,
+      renameConnection,
       suggested,
       catalog,
       registries,

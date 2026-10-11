@@ -39,6 +39,7 @@ const setupServices = (retooled: number[]) =>
         Effect.succeed([
           {
             connectionId: 'notes',
+            label: 'Notes',
             endpoint: 'https://notes.test/mcp',
             status: 'connected',
             live: true,

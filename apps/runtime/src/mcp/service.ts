@@ -75,8 +75,13 @@ export class McpServers extends Context.Service<
     readonly status: (connectionId: string) => Effect.Effect<ConnectionStatus>
     /** goblin's suggested servers for `stage`, each marked added when the owner already has its endpoint. */
     readonly suggested: (stage: Stage | undefined) => Effect.Effect<readonly ServerSuggestion[]>
-    /** Adds a public https endpoint, labelled from its server card; it starts disconnected. */
-    readonly add: (endpoint: string, source?: ServerSource) => Effect.Effect<ServerView, AppError>
+    /**
+     * Adds a connection to a public https endpoint (one the owner may already have a connection to), named `label`
+     * or the first free name from its server card; it starts disconnected.
+     */
+    readonly add: (endpoint: string, label?: string, source?: ServerSource) => Effect.Effect<ServerView, AppError>
+    /** Names a connection `label`; refused (409) when another connection holds it. */
+    readonly rename: (connectionId: string, label: string) => Effect.Effect<ServerView, AppError>
     /** Removes an added server with its credentials, grants and pending sign-ins. Configured ones stay. */
     readonly remove: (connectionId: string) => Effect.Effect<void, AppError>
     /** Starts (or silently renews) sign-in: the URL to send the owner's browser to, when one is needed. */

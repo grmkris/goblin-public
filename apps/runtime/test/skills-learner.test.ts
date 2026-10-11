@@ -19,7 +19,7 @@ import { knowledgeOver } from './knowledge-layer.ts'
 import { makeSkills } from '../src/skills/library.ts'
 import { Learner } from '../src/skills/service.ts'
 import { SKILLS_EXTENSION } from '../src/skills/protocol.ts'
-import { MemoryCredentials, MemoryGrants, MemoryRegistries } from './mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from './mcp/memory.ts'
 import { MemoryDraftLog, MemorySkillState } from './skills-memory.ts'
 import { lowLevelServer } from './mcp/low-level-server.ts'
 import { servicesOf } from './mcp/runtime.ts'
@@ -83,6 +83,7 @@ const learnerAt = () => {
     credentials,
     grants,
     registries: new MemoryRegistries(),
+    labels: new MemoryLabels(),
     skillsEnabled: (connectionId) => state.enabled(connectionId),
     appUrl: 'https://goblin.test',
     fetch: async (input, init) => skills.fetch(new Request(input, init)),

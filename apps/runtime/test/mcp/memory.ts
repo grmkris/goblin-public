@@ -9,6 +9,9 @@ import type { Grant, Grants } from '../../src/mcp/grants.ts'
 import type { AddedRegistries } from '../../src/mcp/registries.ts'
 import type { Registry } from '../../src/mcp/registry.ts'
 import type { AddedServer, AddedServers } from '../../src/mcp/servers.ts'
+import { Conflict } from '../../src/http/errors.ts'
+import { freeLabel, type Labels } from '../../src/mcp/labels.ts'
+import type { McpServerConfig } from '../../src/mcp/types.ts'
 
 type Row = {
   status: 'connected' | 'needs_auth'
@@ -140,6 +143,36 @@ export class MemoryAddedServers implements AddedServers {
     this.#servers.delete(connectionId)
     this.#credentials.remove(connectionId)
     for (const grant of this.#grants.list(connectionId)) this.#grants.set(grant, false)
+  }
+}
+
+/** Connection labels in memory, unique whatever their case, as the SQLite store keeps them. */
+export class MemoryLabels implements Labels {
+  readonly #labels = new Map<string, string>()
+  all(): ReadonlyMap<string, string> {
+    return new Map(this.#labels)
+  }
+  of(connectionId: string): string | undefined {
+    return this.#labels.get(connectionId)
+  }
+  #holder(label: string): string | undefined {
+    return [...this.#labels].find(([, held]) => held.toLowerCase() === label.toLowerCase())?.[0]
+  }
+  free(base: string): string {
+    return freeLabel(base, (label) => this.#holder(label) !== undefined)
+  }
+  set(connectionId: string, label: string): void {
+    const holder = this.#holder(label)
+    if (holder !== undefined && holder !== connectionId) throw new Conflict({ reason: 'label_taken' })
+    this.#labels.set(connectionId, label)
+  }
+  ensure(servers: readonly McpServerConfig[]): void {
+    for (const server of servers)
+      if (!this.#labels.has(server.connectionId))
+        this.set(server.connectionId, this.free(server.label ?? server.connectionId))
+  }
+  remove(connectionId: string): void {
+    this.#labels.delete(connectionId)
   }
 }
 

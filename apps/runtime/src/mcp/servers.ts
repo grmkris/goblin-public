@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import { appMcpServers } from '../storage/schema.ts'
+import { appMcpConnections, appMcpLabels } from '../storage/schema.ts'
 import type { ServerClaims } from './endpoint.ts'
 import { bindEndpoints, forgetServer } from './endpoints.ts'
 import type { McpServerConfig } from './types.ts'
@@ -15,7 +15,7 @@ export type ServerSource = {
 export type AddedServer = McpServerConfig & ServerClaims & { readonly source?: ServerSource }
 
 /** At most this many added servers per agent. */
-export const MAX_ADDED_SERVERS = 16
+export const MAX_ADDED_SERVERS = 32
 
 /** The owner's added servers (the host depends on this, not on SQLite). */
 export interface AddedServers {
@@ -40,7 +40,7 @@ export class AddedServerStore implements AddedServers {
   list(): readonly AddedServer[] {
     return this.#db
       .select()
-      .from(appMcpServers)
+      .from(appMcpConnections)
       .all()
       .map((row) => {
         const source = sourceOf(row.source)
@@ -57,7 +57,7 @@ export class AddedServerStore implements AddedServers {
 
   add(server: AddedServer, now: number): void {
     this.#db
-      .insert(appMcpServers)
+      .insert(appMcpConnections)
       .values({
         connectionId: server.connectionId,
         endpoint: server.endpoint,
@@ -72,8 +72,9 @@ export class AddedServerStore implements AddedServers {
   }
 
   remove(connectionId: string): void {
-    forgetServer(this.#db, connectionId, (tx) =>
-      tx.delete(appMcpServers).where(eq(appMcpServers.connectionId, connectionId)).run(),
-    )
+    forgetServer(this.#db, connectionId, (tx) => {
+      tx.delete(appMcpConnections).where(eq(appMcpConnections.connectionId, connectionId)).run()
+      tx.delete(appMcpLabels).where(eq(appMcpLabels.connectionId, connectionId)).run()
+    })
   }
 }

@@ -41,9 +41,10 @@ const reason = async (work: Promise<unknown>): Promise<string> =>
 describe('servers the owner adds', () => {
   it('adds a public endpoint, labelled from its card as the server’s claim, disconnected until connected', async () => {
     const { mcp } = host()
-    const view = await mcp.add('https://notes.example.com/mcp', { registry: 'https://r.test', name: 'n' })
+    const view = await mcp.add('https://notes.example.com/mcp', undefined, { registry: 'https://r.test', name: 'n' })
     expect(view).toEqual({
       connectionId: 'notes-example-com-abc123',
+      label: 'Example notes',
       endpoint: 'https://notes.example.com/mcp',
       status: 'disconnected',
       live: false,
@@ -58,13 +59,37 @@ describe('servers the owner adds', () => {
       ['notes-example-com-abc123', 'added'],
     ])
   })
-  it('refuses private endpoints, duplicates and more than sixteen servers', async () => {
+  it('refuses private endpoints and more than thirty-two connections', async () => {
     let next = 0
     const { mcp } = host(() => String(++next).padStart(6, '0'))
     expect(await reason(mcp.add('https://localhost/mcp'))).toBe('endpoint_not_public')
-    expect(await reason(mcp.add('https://myplan.test/mcp'))).toBe('already_added')
-    for (let index = 0; index < 16; index += 1) await mcp.add(`https://s${index}.example.com/mcp`)
+    for (let index = 0; index < 32; index += 1) await mcp.add(`https://s${index}.example.com/mcp`)
     expect(await reason(mcp.add('https://one-more.example.com/mcp'))).toBe('too_many_servers')
+  })
+
+  it('connects one server twice, as two connections the owner names, each its own id', async () => {
+    let next = 0
+    const { mcp } = host(() => String(++next).padStart(6, '0'))
+    const hirer = await mcp.add('https://notes.example.com/mcp', 'Notes · Hirer')
+    const worker = await mcp.add('https://notes.example.com/mcp', 'Notes · Worker')
+    const third = await mcp.add('https://notes.example.com/mcp')
+    expect([hirer, worker, third].map(({ connectionId, label }) => [connectionId, label])).toEqual([
+      ['notes-example-com-000001', 'Notes · Hirer'],
+      ['notes-example-com-000002', 'Notes · Worker'],
+      ['notes-example-com-000003', 'Example notes'],
+    ])
+    expect((await mcp.add('https://notes.example.com/mcp')).label).toBe('Example notes 2')
+    expect(await reason(mcp.add('https://notes.example.com/mcp', 'notes · hirer'))).toBe('label_taken')
+    expect((await mcp.list()).find((each) => each.connectionId === 'myplan')?.label).toBe('myplan')
+  })
+
+  it('renames a connection, configured or added, never onto a label another holds', async () => {
+    const { mcp } = host()
+    const notes = await mcp.add('https://notes.example.com/mcp', 'Notes')
+    expect((await mcp.rename('myplan', 'Plans')).label).toBe('Plans')
+    expect((await mcp.rename(notes.connectionId, 'Notes · Mine')).label).toBe('Notes · Mine')
+    expect(await reason(mcp.rename(notes.connectionId, 'PLANS'))).toBe('label_taken')
+    expect(await reason(mcp.rename('nobody', 'Nobody'))).toBe('thrown')
   })
   it('removes an added server with its grants, and never a configured one', async () => {
     const { mcp, grants } = host()

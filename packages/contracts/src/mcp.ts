@@ -29,7 +29,26 @@ export const ServerSource = Schema.Struct({
 export type ServerSource = typeof ServerSource.Type
 
 /** `POST /api/mcp/servers`: add a server by its https endpoint, from a registry entry or pasted. */
-export const AddServer = Schema.Struct({ endpoint: NonEmptyString(2048), source: Schema.optional(ServerSource) })
+/**
+ * The owner's name for a connection (e.g. "Sidequest · Hirer", ADR 0041): one line of 1–80 characters, unique on the
+ * agent whatever its case.
+ */
+export const ConnectionLabel = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(80),
+  Schema.makeFilter(
+    (text) =>
+      // oxlint-disable-next-line no-control-regex -- a label is one line of plain text: control characters are refused.
+      (text.trim() === text && !/[\u0000-\u001f\u007f\u2028\u2029]/u.test(text)) ||
+      'A label is one line with no leading or trailing space.',
+  ),
+)
+/** A connection to add: its endpoint, the owner's label (a free one is chosen when left out) and where it was found. */
+export const AddServer = Schema.Struct({
+  endpoint: NonEmptyString(2048),
+  label: Schema.optional(ConnectionLabel),
+  source: Schema.optional(ServerSource),
+})
 export type AddServer = typeof AddServer.Type
 
 /** `POST /api/mcp/registries` and `…/registries/remove`: a registry by its URL. */
@@ -123,6 +142,8 @@ export type McpResourceResult = typeof McpResourceResult.Type
 export type McpServerConfig = {
   readonly connectionId: string
   readonly endpoint: string
+  /** The configured connection's first label; the owner may rename it. */
+  readonly label?: string
   readonly issuer?: string
   readonly resource?: string
 }
@@ -137,6 +158,10 @@ export const EventHealth = Schema.Struct({
   lastReceiptAt: Schema.NullOr(Schema.Number),
 })
 export type EventHealth = typeof EventHealth.Type
+
+/** A new label for a connection. */
+export const RenameConnection = Schema.Struct({ label: ConnectionLabel })
+export type RenameConnection = typeof RenameConnection.Type
 
 /**
  * One stream of events a connection's server offers (`events/list`), as the owner sees it before subscribing: its name,
@@ -157,6 +182,8 @@ export type EventStream = typeof EventStream.Type
  */
 export const ServerView = Schema.Struct({
   connectionId: Schema.String,
+  /** The owner's name for this connection (ADR 0041). */
+  label: Schema.String,
   endpoint: Schema.String,
   status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
   live: Schema.Boolean,

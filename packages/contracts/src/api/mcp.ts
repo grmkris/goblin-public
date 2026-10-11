@@ -11,6 +11,7 @@ import {
   CatalogResults,
   ConnectStart,
   EventStream,
+  RenameConnection,
   Grant,
   GrantChange,
   McpResourceResult,
@@ -55,7 +56,13 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
   HttpApiEndpoint.post('addServer', '/mcp/servers', {
     payload: AddServer,
     success: ServerView.pipe(HttpApiSchema.status(201)),
-    error: [ApiErrors.invalidInput, ApiErrors.internal],
+    error: [ApiErrors.invalidInput, ApiErrors.conflict, ApiErrors.internal],
+  }),
+  HttpApiEndpoint.patch('renameConnection', '/mcp/:id', {
+    params: { id: ConnectionParam },
+    payload: RenameConnection,
+    success: ServerView,
+    error: [ApiErrors.notFound, ApiErrors.conflict],
   }),
   HttpApiEndpoint.get('suggested', '/mcp/suggested', { success: Schema.Array(ServerSuggestion) }),
   HttpApiEndpoint.get('catalog', '/mcp/catalog', {

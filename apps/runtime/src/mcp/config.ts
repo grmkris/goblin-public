@@ -5,6 +5,7 @@ import { Internal } from '../http/errors.ts'
 const ServerSchema = Schema.Struct({
   connectionId: Schema.NonEmptyString,
   endpoint: Schema.NonEmptyString,
+  label: Schema.optional(Schema.NonEmptyString),
   issuer: Schema.optional(Schema.NonEmptyString),
   resource: Schema.optional(Schema.NonEmptyString),
 })
@@ -21,6 +22,7 @@ export const configuredServers = (json: string | undefined): readonly McpServerC
   return parsed.map((item) => ({
     connectionId: item.connectionId,
     endpoint: item.endpoint,
+    ...(item.label === undefined ? {} : { label: item.label }),
     ...(item.issuer === undefined ? {} : { issuer: item.issuer }),
     ...(item.resource === undefined ? {} : { resource: item.resource }),
   }))

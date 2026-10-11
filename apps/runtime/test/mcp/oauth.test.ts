@@ -30,6 +30,8 @@ class FixtureAuthorizationServer {
   /** While set, the token endpoint answers a refresh only once it settles; `refreshing` hears each one arrive. */
   hold: Promise<void> | undefined
   refreshing: (() => void) | undefined
+  /** The client names goblin registered under, in order. */
+  readonly registered: unknown[] = []
   readonly #codes = new Map<string, string>()
   #serial = 0
 
@@ -99,6 +101,7 @@ class FixtureAuthorizationServer {
       })
     if (pathname === '/register') {
       const metadata: Record<string, unknown> = await request.json()
+      this.registered.push(metadata['client_name'])
       return Response.json({ ...metadata, client_id: 'fixture-client' }, { status: 201 })
     }
     if (pathname === '/token') return this.#token(request)
@@ -118,7 +121,7 @@ const setup = () => {
   const authorizationServer = new FixtureAuthorizationServer()
   const credentials = new MemoryCredentials()
   const { servers, connections, grants, run, dispose } = hostOf({
-    servers: [{ connectionId: 'fixture', endpoint: `${BASE}/mcp` }],
+    servers: [{ connectionId: 'fixture', endpoint: `${BASE}/mcp`, label: 'Fixture · Hirer' }],
     credentials,
     grants: new MemoryGrants(),
     fetch: authorizationServer.fetch,
@@ -144,12 +147,13 @@ const setup = () => {
 }
 
 describe('outbound OAuth connect and refresh (unit, fixture authorization server)', () => {
-  it('connects with DCR + PKCE, then calls a granted tool with the stored token', async () => {
-    const { servers, connections, grants, credentials, connect, status, dispose } = setup()
+  it("connects with DCR + PKCE under the connection's label, then calls a granted tool with the stored token", async () => {
+    const { authorizationServer, servers, connections, grants, credentials, connect, status, dispose } = setup()
     try {
       expect(await status()).toBe('disconnected')
       const approval = await connect()
       expect(approval.code).toMatch(/^code-/u)
+      expect(authorizationServer.registered).toEqual(['goblin · Fixture · Hirer'])
       expect(await status()).toBe('connected')
       const tools = await servers.tools('fixture', false)
       expect(tools).toEqual([expect.objectContaining({ name: 'read', readOnlyHint: true, granted: false })])

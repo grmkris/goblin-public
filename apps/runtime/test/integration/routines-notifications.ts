@@ -25,7 +25,7 @@ import { AgentInput, type AgentInputs } from '../../src/runtime/input.ts'
 
 /** What the dispatch check reads. */
 type LaneServices = Entitlements | ResidentService | ChannelService
-import { MemoryCredentials, MemoryGrants, MemoryRegistries } from '../mcp/memory.ts'
+import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from '../mcp/memory.ts'
 import { appRoutineRuns } from '../../src/storage/routines.ts'
 import { runApplicationMigrations } from '../../src/storage/migrations.ts'
 import { lowLevelServer } from '../mcp/low-level-server.ts'
@@ -68,6 +68,7 @@ function notificationHost(
     credentials,
     grants: new MemoryGrants([{ connectionId: 'mygram', capability: 'tool', name: 'send_message' }]),
     registries: new MemoryRegistries(),
+    labels: new MemoryLabels(),
     fetch: async (input, init) => {
       const request = new Request(input, init)
       if (request.method === 'POST') {
