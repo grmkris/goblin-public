@@ -4,6 +4,7 @@ import { usageQuery } from '../../agent/queries.ts'
 import { agentAppQuery, agentAppsQuery } from '../../agent-apps/queries.ts'
 import { conversationKeys } from '../../conversations/queries.ts'
 import { personaKeys } from '../../personas/queries.ts'
+import { routinesQuery } from '../../routines/queries.ts'
 import { type Activity, type Slice, type Slices, activityOf } from './slices.ts'
 
 /** The slices as the cache holds them: undefined for one no snapshot or change has written yet. */
@@ -47,7 +48,8 @@ function agentAppEdges(before: readonly AppView[], after: readonly AppView[]): Q
  *
  * - A run's start or end: the conversation's switches; at its end also its sources and today's usage.
  * - An agent app new, changed or gone: the Apps list and that app's page.
- * - A Persona changed: the Persona reads, and what composers can tag.
+ * - A Persona changed: the Persona reads, what composers can tag, and the routines (one handed to it may wait to be
+ *   confirmed again).
  */
 export function staleAfter(before: Cached, after: Cached): readonly QueryKey[] {
   const { activity, apps, personas } = after
@@ -56,6 +58,6 @@ export function staleAfter(before: Cached, after: Cached): readonly QueryKey[] {
     ...(before.apps === undefined || apps === undefined ? [] : agentAppEdges(before.apps, apps)),
     ...(before.personas === undefined || before.personas === personas
       ? []
-      : [personaKeys.all, conversationKeys.composers]),
+      : [personaKeys.all, conversationKeys.composers, routinesQuery.queryKey]),
   ]
 }

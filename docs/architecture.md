@@ -1497,7 +1497,10 @@ A hand-over to a Persona pins its revision: propose, edit and confirm refuse a P
 (`persona_archived`) or a pin that is no longer its current revision (`persona_changed`, 409), so the owner confirms
 the Persona as it is. A firing whose Persona was archived or changed since is recorded skipped and pauses the routine
 with that reason as its health (`routines/persona.ts` `personaHold`, `RoutineStore.halt`) until the owner confirms it
-again. The run works in the routine's own run conversation, not a fork of the Topic, so it replays no Topic history and
+again. `RoutineView.persona` reads the Persona live beside the pin (`{ id, name, pinned, current, archived }`), so
+Settings says "changed since you confirmed" as soon as it is edited, and **Confirm again**
+(`POST /api/routines/:id/confirm-again`) pins the Persona's revision now as a new routine revision and confirms it in
+one transaction. The web reads the routines again whenever the feed shows a Persona changed. The run works in the routine's own run conversation, not a fork of the Topic, so it replays no Topic history and
 is charged once: it is configured with the Persona's text in its context tail (`personaText(…, 'routine')`), its model
 when offered, and the Persona turn's members without `ask_user`; `registerRoutine` binds the run's chat to the Persona
 in `app_persona_chats` first, so its scope is its allowed tools within its Topic's setup joined with the Persona's at

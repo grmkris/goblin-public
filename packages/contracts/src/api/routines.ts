@@ -30,6 +30,8 @@ const params = { id: RoutineParam }
  * - `edit`: `PATCH /api/routines/:id`, a new revision back in draft.
  * - `archive`: `DELETE /api/routines/:id` with the revision; its live runs stop.
  * - `confirm`, `pause`: `POST /api/routines/:id/confirm|pause` with the revision.
+ * - `confirmAgain`: `POST /api/routines/:id/confirm-again` with the revision: a routine handed to a Persona is pinned
+ *   to the Persona's revision now and confirmed, in one step (ADR 0041).
  * - `run`: `POST /api/routines/:id/run`, 202 with the run it admitted (or skipped).
  * - `runs`: `GET /api/routines/:id/runs`, its newest runs.
  */
@@ -63,6 +65,12 @@ export class RoutinesGroup extends HttpApiGroup.make('routines').add(
     payload: RoutineRevision,
     success: RoutineView,
     error: [ApiErrors.notFound, ApiErrors.conflict],
+  }),
+  HttpApiEndpoint.post('confirmAgain', '/routines/:id/confirm-again', {
+    params,
+    payload: RoutineRevision,
+    success: RoutineView,
+    error: [ApiErrors.notFound, ApiErrors.conflict, ApiErrors.invalidInput],
   }),
   HttpApiEndpoint.post('pause', '/routines/:id/pause', {
     params,

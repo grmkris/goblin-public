@@ -72,6 +72,19 @@ export type RoutineDefinition = typeof RoutineDefinition.Type
 export const handOverOf = (definition: RoutineDefinition): RoutineHandOver | undefined =>
   definition.handTo.kind === 'none' ? undefined : definition.handTo
 
+/**
+ * The Persona a routine hands its work to, as it is now beside the revision the routine pinned (ADR 0041): a Persona
+ * changed since (`current` past `pinned`) or archived must be confirmed again before the routine runs.
+ */
+export const RoutinePersona = Schema.Struct({
+  id: PersonaId,
+  name: Schema.String,
+  pinned: Schema.Int,
+  current: Schema.Int,
+  archived: Schema.Boolean,
+})
+export type RoutinePersona = typeof RoutinePersona.Type
+
 export const RoutineView = Schema.Struct({
   id: Schema.String,
   revision: Schema.Int,
@@ -86,9 +99,11 @@ export const RoutineView = Schema.Struct({
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
   /** The Topic the routine lives in (ADR 0040). */
-  topic: Schema.optional(Schema.Int),
-  /** Its allowed tools that its Topic's setup does not hold now: a run that calls one is refused. */
-  outsideSetup: Schema.optional(Schema.Array(Schema.Struct({ connectionId: Schema.String, name: Schema.String }))),
+  topic: Schema.Int,
+  /** Its allowed tools that its Topic's setup (and its Persona's) does not hold now: a run that calls one is refused. */
+  outsideSetup: Schema.Array(Schema.Struct({ connectionId: Schema.String, name: Schema.String })),
+  /** The Persona it hands its work to, read live; none for a routine that hands to Goblin or to nobody. */
+  persona: Schema.optional(RoutinePersona),
 })
 export type RoutineView = typeof RoutineView.Type
 export const RoutinePage = Schema.Struct({

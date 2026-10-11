@@ -21,6 +21,7 @@ export const RoutinesHandlers = HttpApiBuilder.group(OwnerApi, 'routines', (hand
     )
     .handle('archive', ({ params, payload }) => routineChange(params.id, payload, 'archive'))
     .handle('confirm', ({ params, payload }) => routineChange(params.id, payload, 'confirm'))
+    .handle('confirmAgain', ({ params, payload }) => routineChange(params.id, payload, 'confirmAgain'))
     .handle('pause', ({ params, payload }) => routineChange(params.id, payload, 'pause'))
     .handle('run', ({ params, payload }) =>
       RoutineControl.use((control) =>

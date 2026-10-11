@@ -24,6 +24,8 @@ const ROUTINE: RoutineView = {
   missedCount: 0,
   suppressedCount: 0,
   health: null,
+  topic: 1,
+  outsideSetup: [],
   createdAt: 1,
   updatedAt: 1,
 }

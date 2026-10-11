@@ -1,6 +1,6 @@
 // A routine's card: what it does and when, its facts, and the owner's Confirm, Pause, Edit and Archive, with its runs.
 import { useMutation } from '@tanstack/react-query'
-import { type RoutineDefinition, type RoutineView, handOverOf } from '@goblin/contracts'
+import { type RoutineDefinition, type RoutinePersona, type RoutineView, handOverOf } from '@goblin/contracts'
 import {
   Alert,
   AlertDescription,
@@ -84,11 +84,11 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
             </dd>
           </div>
         )}
-        {(routine.outsideSetup?.length ?? 0) > 0 && (
+        {routine.outsideSetup.length > 0 && (
           <div>
             <dt>Not in its Topic</dt>
             <dd>
-              {routine.outsideSetup?.map((tool) => `${tool.connectionId} · ${tool.name}`).join(', ')}: its Topic's MCP
+              {routine.outsideSetup.map((tool) => `${tool.connectionId} · ${tool.name}`).join(', ')}: its Topic's MCP
               servers & skills leave these out, so a run that calls one is refused.
             </dd>
           </div>
@@ -107,14 +107,29 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
           <dd>{definition.tellMe.telegram ? 'Sends its report there too' : 'Off'}</dd>
         </div>
       </dl>
-      {routine.health !== null && routine.health !== 'execution_pending' && (
-        <p className="server-note">{routine.health}</p>
-      )}
+      {routine.health !== null &&
+        routine.health !== 'execution_pending' &&
+        !Object.hasOwn(PERSONA_HEALTH, routine.health) && <p className="server-note">{routine.health}</p>}
     </>
   )
 }
 
-type Change = 'confirm' | 'pause' | 'archive'
+/** A routine's health that only says its Persona is gone or changed: the Persona's own note says it better. */
+const PERSONA_HEALTH = { persona_archived: true, persona_changed: true } as const
+
+/**
+ * Why a routine handed to a Persona waits for the owner (ADR 0041): the Persona was archived, or changed since the
+ * routine pinned it; none while it is as pinned.
+ */
+function personaNote(persona: RoutinePersona | undefined): string | undefined {
+  if (persona === undefined) return undefined
+  const name = persona.name === '' ? 'Its Persona' : `@${persona.name}`
+  if (persona.archived) return `${name} is archived, so this routine cannot run. Hand it to someone else to use it.`
+  if (persona.current === persona.pinned) return undefined
+  return `${name} changed since you confirmed this routine (revision ${String(persona.pinned)} → ${String(persona.current)}). It does not run until you confirm it again with ${name} as it is now.`
+}
+
+type Change = 'confirm' | 'confirmAgain' | 'pause' | 'archive'
 
 /** Confirm, Pause, Edit and Archive, each busy while it is under way; the routines read again once it lands. */
 function useRoutineChange(routine: RoutineView) {
@@ -131,6 +146,8 @@ export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineVi
   const { pending, error, change } = useRoutineChange(routine)
   const { state, definition } = routine
   const busy = pending !== undefined
+  const persona = personaNote(routine.persona)
+  const repin = persona !== undefined && routine.persona?.archived === false && state !== 'archived'
   return (
     <Card>
       <CardHeader>
@@ -143,14 +160,25 @@ export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineVi
       <CardContent>
         <div className="card-body">
           <RoutineDetails routine={routine} />
-          {state === 'proposed' && <p className="server-note">Nothing runs until you confirm it.</p>}
+          {persona !== undefined && <p className="server-note">{persona}</p>}
+          {state === 'proposed' && !repin && <p className="server-note">Nothing runs until you confirm it.</p>}
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
           <div className="card-actions">
-            {(state === 'proposed' || state === 'paused') && (
+            {repin && (
+              <Button
+                size="sm"
+                pending={pending === 'confirmAgain'}
+                disabled={busy}
+                onClick={() => change('confirmAgain')}
+              >
+                Confirm again
+              </Button>
+            )}
+            {!repin && routine.persona?.archived !== true && (state === 'proposed' || state === 'paused') && (
               <Button size="sm" pending={pending === 'confirm'} disabled={busy} onClick={() => change('confirm')}>
                 {state === 'paused' ? 'Resume' : 'Confirm'}
               </Button>

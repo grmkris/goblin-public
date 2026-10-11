@@ -47,10 +47,13 @@ export const editRoutine = Effect.fn('routines.edit')(function* (id: string, inp
   const at = yield* Clock.currentTimeMillis
   return (yield* store.edit(id, input, at)).routine
 })
+/** What the owner does to one revision of a routine; "confirm again" repins its Persona first (ADR 0041). */
+type RoutineAction = 'confirm' | 'confirmAgain' | 'pause' | 'archive'
+
 export const changeRoutine = Effect.fn('routines.changeRevision')(function* (
   id: string,
   input: RoutineRevision,
-  action: 'confirm' | 'pause' | 'archive',
+  action: RoutineAction,
 ) {
   yield* requirePlan('routines')
   const store = yield* Routines
@@ -64,15 +67,18 @@ export const setRoutineSettings = Effect.fn('routines.setSettings')(function* (s
   return yield* store.settings
 })
 
-/** The owner confirms, pauses or archives a routine: confirm subscribes an event routine, archive stops its runs. */
+/**
+ * The owner confirms (or confirms again), pauses or archives a routine: a confirm subscribes an event routine, archive
+ * stops its runs.
+ */
 export const routineChange = Effect.fn('routines.change')(function* (
   id: string,
   input: RoutineRevision,
-  action: 'confirm' | 'pause' | 'archive',
+  action: RoutineAction,
 ) {
   const changed = yield* changeRoutine(id, input, action)
   const control = yield* RoutineControl
-  if (action === 'confirm') yield* control.confirmEvents(changed.id, changed.revision)
+  if (action === 'confirm' || action === 'confirmAgain') yield* control.confirmEvents(changed.id, changed.revision)
   if (action === 'archive') yield* control.archive(id)
   yield* control.reconcile
   return yield* (yield* Routines).view(id)

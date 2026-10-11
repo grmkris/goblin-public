@@ -5,6 +5,7 @@ import {
   RoutineDefinition,
   type RoutineEdit,
   type RoutineHandOver,
+  type RoutinePersona,
   RoutineView,
   handOverOf,
   hasTool,
@@ -109,18 +110,43 @@ export class RoutineStore {
   #requirePersona(definition: RoutineDefinition): void {
     const { handTo } = definition
     if (handTo.kind !== 'persona') return
-    const row = this.#db
-      .select({ revision: appPersonas.revision, archivedAt: appPersonas.archivedAt })
-      .from(appPersonas)
-      .where(eq(appPersonas.id, handTo.persona))
-      .get()
+    if (this.#activePersona(handTo.persona).revision !== handTo.revision)
+      throw new Conflict({ reason: 'persona_changed' })
+  }
+
+  /** Persona `id` as it is now; refused when it is gone or archived. */
+  #activePersona(id: number) {
+    const row = this.#personaRow(id)
     if (row === undefined) throw new NotFound({ what: 'persona' })
     if (row.archivedAt !== null) throw new Conflict({ reason: 'persona_archived' })
-    if (row.revision !== handTo.revision) throw new Conflict({ reason: 'persona_changed' })
+    return row
+  }
+
+  /** The Persona `definition` hands its work to, as it is now beside the pin; none for any other routine. */
+  #persona(definition: RoutineDefinition): RoutinePersona | undefined {
+    const { handTo } = definition
+    if (handTo.kind !== 'persona') return undefined
+    const row = this.#personaRow(handTo.persona)
+    return {
+      id: handTo.persona,
+      name: row?.name ?? '',
+      pinned: handTo.revision,
+      current: row?.revision ?? handTo.revision,
+      archived: row === undefined || row.archivedAt !== null,
+    }
+  }
+
+  #personaRow(id: number) {
+    return this.#db
+      .select({ name: appPersonas.name, revision: appPersonas.revision, archivedAt: appPersonas.archivedAt })
+      .from(appPersonas)
+      .where(eq(appPersonas.id, id))
+      .get()
   }
 
   #view(row: RoutineRow): RoutineView {
     const definition = definitionOf(row)
+    const persona = this.#persona(definition)
     return {
       id: row.id,
       revision: row.revision,
@@ -136,6 +162,7 @@ export class RoutineStore {
       updatedAt: row.updatedAt,
       topic: row.topicId,
       outsideSetup: this.#outside(row.topicId, definition),
+      ...(persona === undefined ? {} : { persona }),
     }
   }
   list(includeArchived = false): RoutineView[] {
@@ -258,33 +285,73 @@ export class RoutineStore {
       return response
     })
   }
+  /** Confirms `current`, a draft or a paused revision, within the active cap and with its Persona as it is now. */
+  #confirmed(current: RoutineRow, at: number): void {
+    if (current.state !== 'proposed' && current.state !== 'paused')
+      throw new Conflict({ reason: 'routine is not confirmable' })
+    const active = this.list().filter((routine) => routine.state === 'active' || routine.state === 'activating')
+    if (active.length >= this.settings().maxActive) throw new Conflict({ reason: 'active routine limit' })
+    const definition = definitionOf(current)
+    this.#requirePersona(definition)
+    this.#db
+      .update(appRoutines)
+      .set({
+        state: 'activating',
+        confirmedByUserId: this.#user,
+        confirmedAt: at,
+        nextFireAt: nextFire(definition, at),
+        health: 'execution_pending',
+        updatedAt: at,
+      })
+      .where(and(eq(appRoutines.id, current.id), eq(appRoutines.revision, current.revision)))
+      .run()
+  }
   confirm(routineId: string, revision: number, operationId: string, at: number): RoutineOperationResult {
     return this.#db.transaction(() => {
       const existing = this.#operation(operationId, { kind: 'confirm', routineId, revision })
       if (existing !== undefined) return existing
       const current = this.get(routineId)
       if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
-      if (current.state !== 'proposed' && current.state !== 'paused')
+      this.#confirmed(current, at)
+      const response = { routine: this.#view(this.get(routineId)), operationId }
+      this.#saveOperation(operationId, { kind: 'confirm', routineId, revision }, response, at)
+      return response
+    })
+  }
+  /**
+   * Pins a routine handed to a Persona to the Persona's revision now, as a new revision, and confirms it, in one
+   * transaction (ADR 0041): the owner's "Confirm again" after the Persona changed. A Persona gone or archived refuses.
+   */
+  confirmAgain(routineId: string, revision: number, operationId: string, at: number): RoutineOperationResult {
+    return this.#db.transaction(() => {
+      const existing = this.#operation(operationId, { kind: 'confirm-again', routineId, revision })
+      if (existing !== undefined) return existing
+      const current = this.get(routineId)
+      if (current.revision !== revision) throw new Conflict({ reason: 'stale routine revision' })
+      if (current.state === 'archived' || current.state === 'completed')
         throw new Conflict({ reason: 'routine is not confirmable' })
-      const active = this.list().filter((routine) => routine.state === 'active' || routine.state === 'activating')
-      if (active.length >= this.settings().maxActive) throw new Conflict({ reason: 'active routine limit' })
       const definition = definitionOf(current)
-      this.#requirePersona(definition)
-      const next = nextFire(definition, at)
+      const { handTo } = definition
+      if (handTo.kind !== 'persona') throw new InvalidInput({ reason: 'no_persona' })
+      const pinned = { ...definition, handTo: { ...handTo, revision: this.#activePersona(handTo.persona).revision } }
       this.#db
         .update(appRoutines)
         .set({
-          state: 'activating',
-          confirmedByUserId: this.#user,
-          confirmedAt: at,
-          nextFireAt: next,
-          health: 'execution_pending',
+          revision: revision + 1,
+          state: 'proposed',
+          definitionJson: json(pinned),
+          confirmedByUserId: null,
+          confirmedAt: null,
+          scheduleId: null,
+          pendingTrigger: null,
+          health: null,
           updatedAt: at,
         })
-        .where(eq(appRoutines.id, routineId))
+        .where(and(eq(appRoutines.id, routineId), eq(appRoutines.revision, revision)))
         .run()
+      this.#confirmed(this.get(routineId), at)
       const response = { routine: this.#view(this.get(routineId)), operationId }
-      this.#saveOperation(operationId, { kind: 'confirm', routineId, revision }, response, at)
+      this.#saveOperation(operationId, { kind: 'confirm-again', routineId, revision }, response, at)
       return response
     })
   }

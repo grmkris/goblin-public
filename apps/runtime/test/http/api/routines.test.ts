@@ -6,6 +6,7 @@ import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { Resident } from '../../../src/mcp/service.ts'
+import { PersonaRegistry } from '../../../src/personas/registry.ts'
 import { RoutinesHandlers } from '../../../src/routines/api.ts'
 import { routineRunsOf, routinesOf } from '../../../src/layers/routines.ts'
 import { RoutineRunStore } from '../../../src/routines/runs.ts'
@@ -68,7 +69,8 @@ const fixture = () => {
     plans(),
   )
   const { fetch } = serve(served([RoutinesGroup], RoutinesHandlers).pipe(Layer.provide(services)))
-  return { fetch, calls, routines, runs, resident }
+  const personas = new PersonaRegistry(sqlite, ['model-a'])
+  return { fetch, calls, routines, runs, resident, personas }
 }
 
 const decodeView = Schema.decodeUnknownSync(RoutineView)
@@ -203,5 +205,45 @@ describe('the routines group served by the agent', () => {
     const malformed = await fetch(json('PATCH', '/api/routines/settings', { revision: 1, operationId: 'op' }))
     expect(malformed.status).toBe(404)
     expect(await malformed.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
+  })
+
+  it('pins a Persona, shows it changed, and confirms it again at its revision now in one step (ADR 0041)', async () => {
+    const { fetch, calls, personas } = fixture()
+    const worker = personas.create(
+      {
+        name: 'Worker',
+        avatar: { glyph: 'W', hue: 1 },
+        role: '',
+        instructions: '',
+        setup: { mcpServers: [], skills: [], apps: [] },
+        operationId: 'op-worker',
+      },
+      'owner',
+      1,
+    ).persona
+    if (DEFINITION.handTo.kind === 'none') throw new Error('the definition hands its work over')
+    const handTo = { ...DEFINITION.handTo, kind: 'persona' as const, persona: worker.id, revision: 1 }
+    const created = await fetch(
+      post('/api/routines', { operationId: 'op-p', topic: PERSONAL_TOPIC, definition: { ...DEFINITION, handTo } }),
+    )
+    const draft = decodeView(await created.json())
+    expect(draft.persona).toEqual({ id: worker.id, name: 'Worker', pinned: 1, current: 1, archived: false })
+    await fetch(post(`/api/routines/${draft.id}/confirm`, { revision: 1, operationId: 'op-c' }))
+    personas.update(worker.id, { instructions: 'Quote fairly.', expectedRevision: 1 }, 'owner', 2)
+    const stale = await fetch(post(`/api/routines/${draft.id}/confirm`, { revision: 1, operationId: 'op-c2' }))
+    expect(stale.status).toBe(409)
+    const again = await callOwner({ fetch }, (api) =>
+      api.routines.confirmAgain({ params: { id: draft.id }, payload: { revision: 1, operationId: 'op-again' } }),
+    )
+    expect(again).toMatchObject({ revision: 2, state: 'activating', persona: { pinned: 2, current: 2 } })
+    expect(again.definition.handTo).toMatchObject({ kind: 'persona', revision: 2 })
+    expect(calls).toContain(`confirmEvents ${draft.id} 2`)
+    personas.update(worker.id, { archived: true, expectedRevision: 2 }, 'owner', 3)
+    const archived = await fetch(post(`/api/routines/${draft.id}/confirm-again`, { revision: 2, operationId: 'op-a' }))
+    expect(archived.status).toBe(409)
+    expect(await archived.json()).toMatchObject({ error: { code: 'conflict', reason: 'persona_archived' } })
+    const goblin = await propose(fetch, 'op-goblin')
+    const nothing = await fetch(post(`/api/routines/${goblin.id}/confirm-again`, { revision: 1, operationId: 'op-g' }))
+    expect(await nothing.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'no_persona' } })
   })
 })

@@ -30,6 +30,7 @@ import { EMPTY_WORKSPACE, activityOf, applyChanges, fromSnapshot } from '../src/
 import { workspaceQueries, workspaceSync } from '../src/lib/workspace/sync.ts'
 import { readNotificationsMutation } from '../src/notices/queries.ts'
 import { personaKeys } from '../src/personas/queries.ts'
+import { routinesQuery } from '../src/routines/queries.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,
@@ -597,9 +598,13 @@ describe('what goes stale with a feed change', () => {
     expect(staleAfter(present(before), closed)).toEqual([])
   })
 
-  it('is a Persona that changed: the Persona reads and what composers can tag', () => {
+  it('is a Persona that changed: the Persona reads, what composers can tag and the routines', () => {
     const after = applyChanges(before, [{ type: 'persona', persona: { ...CRITIC, revision: 2 } }])
-    expect(staleAfter(present(before), after)).toEqual([personaKeys.all, conversationKeys.composers])
+    expect(staleAfter(present(before), after)).toEqual([
+      personaKeys.all,
+      conversationKeys.composers,
+      routinesQuery.queryKey,
+    ])
   })
 
   it('is read again through the cache when the feed sends it', () => {

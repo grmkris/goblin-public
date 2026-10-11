@@ -61,9 +61,12 @@ export const saveRoutineMutation = mutationOptions({
   onSuccess: (_routine, _save, _result, { client }) => listChanged(client),
 })
 
-/** Confirm (or resume), pause or archive one revision of a routine. */
+/**
+ * Confirm (or resume), confirm again (a routine whose Persona changed is pinned to it as it is now), pause or archive
+ * one revision of a routine.
+ */
 export type RoutineChange = {
-  readonly action: 'confirm' | 'pause' | 'archive'
+  readonly action: 'confirm' | 'confirmAgain' | 'pause' | 'archive'
   readonly id: string
   readonly revision: number
   readonly operationId: string
@@ -72,12 +75,12 @@ export const changeRoutineMutation = mutationOptions({
   ...owner.apiMutation({
     mutationFn: (api, { action, id, revision, operationId }: RoutineChange) => {
       const request = { params: { id }, payload: { revision, operationId } }
-      const call =
-        action === 'archive'
-          ? api.routines.archive(request)
-          : action === 'pause'
-            ? api.routines.pause(request)
-            : api.routines.confirm(request)
+      const call = {
+        archive: () => api.routines.archive(request),
+        pause: () => api.routines.pause(request),
+        confirm: () => api.routines.confirm(request),
+        confirmAgain: () => api.routines.confirmAgain(request),
+      }[action]()
       return withOperation(operationId)(call)
     },
   }),

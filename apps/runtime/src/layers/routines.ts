@@ -48,6 +48,7 @@ export const routinesOf = (store: RoutineStore) =>
     propose: trySync('Routines.propose', store.propose.bind(store)),
     edit: trySync('Routines.edit', store.edit.bind(store)),
     confirm: trySync('Routines.confirm', store.confirm.bind(store)),
+    confirmAgain: trySync('Routines.confirmAgain', store.confirmAgain.bind(store)),
     pause: trySync('Routines.pause', store.pause.bind(store)),
     archive: trySync('Routines.archive', store.archive.bind(store)),
     halt: trySync('Routines.halt', store.halt.bind(store)),

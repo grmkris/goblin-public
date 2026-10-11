@@ -63,6 +63,13 @@ export class Routines extends Context.Service<
       operationId: string,
       at: number,
     ) => Effect.Effect<RoutineOperationResult, AppError>
+    /** Pins a routine's Persona at its revision now, as a new revision, and confirms it (ADR 0041). */
+    readonly confirmAgain: (
+      routineId: string,
+      revision: number,
+      operationId: string,
+      at: number,
+    ) => Effect.Effect<RoutineOperationResult, AppError>
     readonly pause: (
       routineId: string,
       revision: number,
