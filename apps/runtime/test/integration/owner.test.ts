@@ -13,6 +13,7 @@ import { queueCase } from './queue-case.ts'
 import { topicsCase } from './topics-case.ts'
 import { threadHeadsCase } from './thread-heads-case.ts'
 import { organizeCase, personasCase } from './persona-case.ts'
+import { personaHoldsCase } from './persona-holds-case.ts'
 import { retrievalCase } from './retrieval-case.ts'
 import {
   moveApprovalCase,
@@ -61,6 +62,11 @@ harness.test(
 harness.test(
   'native: tagged Personas answer attributed in the chat without Goblin, in order, at their revision, and Stop drops them',
   stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => personasCase(url)))),
+  { timeout: 240_000 },
+)
+harness.test(
+  "native: a Persona's ask-first call and tool to allow wait for the owner and resume; a routine hands work to a Persona",
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => personaHoldsCase(url)))),
   { timeout: 240_000 },
 )
 harness.test(
