@@ -198,40 +198,46 @@ function PersonaField({ kit }: { readonly kit: HandKit }) {
   )
 }
 
-/** Hand to: nobody, Goblin or a Persona; a hand-over says what to do, with which tools, within which limits. */
+/** Hand to: nobody, Goblin or a Persona; a hand-over says what to do, then with which tools, within which limits. */
 export function HandToFields({ kit }: { readonly kit: HandKit }) {
   const { id, hand, setHand, handOver } = kit
   return (
-    <EditorPart title="Hand to">
-      <Tabs value={hand} onValueChange={(value: HandKind) => setHand(value)}>
-        <TabsList>
-          <TabsTrigger value="none">Nobody</TabsTrigger>
-          <TabsTrigger value="goblin">Goblin</TabsTrigger>
-          <TabsTrigger value="persona" disabled={kit.personas.length === 0}>
-            A Persona
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {hand === 'none' ? (
-        <p className="server-note">It only tells you. Turn Tell me on, or hand it over.</p>
-      ) : (
-        <>
-          {hand === 'persona' && <PersonaField kit={kit} />}
-          <Field>
-            <FieldLabel htmlFor={`${id}-prompt`}>Instructions</FieldLabel>
-            <Textarea
-              id={`${id}-prompt`}
-              name="prompt"
-              defaultValue={handOver.instruction}
-              maxLength={12_000}
-              required
-            />
-            <FieldDescription>What should be done each time, in your own words.</FieldDescription>
-          </Field>
+    <>
+      <EditorPart title="Hand to">
+        <Tabs value={hand} onValueChange={(value: HandKind) => setHand(value)}>
+          <TabsList>
+            <TabsTrigger value="none">Nobody</TabsTrigger>
+            <TabsTrigger value="goblin">Goblin</TabsTrigger>
+            <TabsTrigger value="persona" disabled={kit.personas.length === 0}>
+              A Persona
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {hand === 'none' ? (
+          <p className="server-note">It only tells you. Turn Tell me on, or hand it over.</p>
+        ) : (
+          <>
+            {hand === 'persona' && <PersonaField kit={kit} />}
+            <Field>
+              <FieldLabel htmlFor={`${id}-prompt`}>Instructions</FieldLabel>
+              <Textarea
+                id={`${id}-prompt`}
+                name="prompt"
+                defaultValue={handOver.instruction}
+                maxLength={12_000}
+                required
+              />
+              <FieldDescription>What should be done each time, in your own words.</FieldDescription>
+            </Field>
+          </>
+        )}
+      </EditorPart>
+      {hand !== 'none' && (
+        <EditorPart title="Tools and limits">
           <ToolRows kit={kit} />
           <Limits kit={kit} />
-        </>
+        </EditorPart>
       )}
-    </EditorPart>
+    </>
   )
 }

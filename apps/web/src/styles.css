@@ -917,6 +917,10 @@
     font-size: var(--text-13);
   }
   /* A routine's instructions and its facts (components/routines.tsx). */
+  /* A routine's title and trigger break anywhere: an event's dotted name must not push its status off the card. */
+  .routine-title {
+    overflow-wrap: anywhere;
+  }
   .routine-prompt {
     display: -webkit-box;
     overflow: hidden;

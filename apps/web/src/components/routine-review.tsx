@@ -164,8 +164,12 @@ export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineVi
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{definition.title}</CardTitle>
-        <CardDescription>{whenOf(definition, connection)}</CardDescription>
+        <CardTitle>
+          <span className="routine-title">{definition.title}</span>
+        </CardTitle>
+        <CardDescription>
+          <span className="routine-title">{whenOf(definition, connection)}</span>
+        </CardDescription>
         <CardAction>
           <StatusLabel label={routineStatus(routine)} />
         </CardAction>
