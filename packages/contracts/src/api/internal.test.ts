@@ -28,7 +28,7 @@ describe('the owner and internal APIs', () => {
       '/internal/ask',
       '/internal/doorbell',
       '/internal/inspect',
-      '/internal/mcp-events',
+      '/internal/mcp-events/:connectionId',
       '/internal/recent',
     ])
     for (const route of [...owner, ...account]) expect(pathOf(route)).toMatch(/^\/api\//u)
