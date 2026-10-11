@@ -23,6 +23,15 @@ An MCP client (Claude Code, another agent) the owner authorized to call goblin's
 **Grant**:
 The owner's permission for one tool of one connection. A tool grant also covers the App that tool declares.
 
+**URL request**:
+A server asking the owner to finish something on its site (approve a new agent, a role) before a call can complete.
+The owner opens the link, then presses Done (goblin retries the call) or Cancel (ADR 0042).
+_Avoid_: elicitation (in the app), prompt
+
+**Step-up**:
+Signing a connection in again with more access, when a call needs a permission its sign-in was not granted
+(ADR 0042).
+
 **Setup**:
 What a Topic's chats work with: its connections, skills, agent apps and whether they may start subagents, each all of
 what the owner allows or a list (ADR 0040). A Persona's setup is what it adds to the Topic's. A setup chooses; it never
