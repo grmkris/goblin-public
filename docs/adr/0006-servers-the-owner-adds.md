@@ -1,6 +1,7 @@
 # Servers the owner adds are a trust boundary, not a configuration change
 
-Accepted 2026-10-04 with the owner.
+Accepted 2026-10-04 with the owner. Amended by ADR 0041: an added server is a connection with the owner's label, and
+the owner may connect one server several times.
 
 **The owner may add MCP servers.** Until now servers came only from the stage's `GOBLIN_MCP_SERVERS`. Owners can now
 add their own: by URL, or with one tap from a shelf we curate (`mcp/suggested.ts`, each entry checked to connect from

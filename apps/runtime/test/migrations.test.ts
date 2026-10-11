@@ -3,7 +3,8 @@ import { migrationKeys } from '../src/storage/migrations.ts'
 
 /**
  * Every key a deployed agent may have applied, in order. Drizzle records applied migrations by key, so a key that
- * changed or moved would run again or never: add new keys after these, never edit this list.
+ * changed or moved would run again or never. Until launch goblin is greenfield (ADR 0041): a migration may be edited in
+ * place or removed, and the release that does it resets dev first; keep this list equal to the migrations.
  */
 const APPLIED = [
   '20261004000000_initial',

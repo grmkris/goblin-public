@@ -2,6 +2,9 @@
 
 Date: 2026-10-05
 
+Amended by ADR 0041: Events are also detected from the `io.modelcontextprotocol/events` extension, every
+connection has its own webhook URL, and a routine's event can post a notice.
+
 goblin consumes the draft MCP Triggers & Events profile through the existing authorized MCP connection. Discovery
 preserves the producer's top-level `capabilities.events` declaration. The client supports `events/list`, `events/subscribe`,
 `events/poll` and `events/unsubscribe`; `events/stream` is unsupported. Every Events selector has an exact owner grant

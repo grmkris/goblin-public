@@ -21,10 +21,10 @@ renewed by the owner's activity, and the owner can revoke it in Settings.
 An MCP client (Claude Code, another agent) the owner authorized to call goblin's `/mcp`.
 
 **Grant**:
-The owner's permission for one tool of one outbound server. A tool grant also covers the App that tool declares.
+The owner's permission for one tool of one connection. A tool grant also covers the App that tool declares.
 
 **Setup**:
-What a Topic's chats work with: its MCP servers, skills, agent apps and whether they may start subagents, each all of
+What a Topic's chats work with: its connections, skills, agent apps and whether they may start subagents, each all of
 what the owner allows or a list (ADR 0040). A Persona's setup is what it adds to the Topic's. A setup chooses; it never
 grants.
 _Avoid_: capabilities, switches, toolset, plugin
@@ -101,8 +101,26 @@ tokens count toward the budget.
 ## Work on its own
 
 **Routine**:
-A prompt the owner confirmed that runs on its own (a reminder, a cron schedule or an MCP Event) in a fresh thread
-under its Topic, and reports back passively (ADR 0012).
+What the owner confirmed to happen on a trigger (once, a cron schedule or an MCP Event of a connection) in a Topic:
+**Tell me**, **Hand to**, or both (ADRs 0012, 0041). A routine that hands over runs in its own run conversation and
+reports back passively.
+
+**Tell me**:
+A routine's choice to notify the owner of everything it posts: an event's notice, a reminder, the answer of whoever it
+handed to. Optionally also on Telegram.
+
+**Hand to**:
+Who a routine gives the work to: nobody, Goblin, or a Persona pinned at the revision the owner confirmed, each with
+the owner's instruction, allowed tools and budget.
+
+**Notice**:
+What Tell me posts for an event or a reminder: a short message in the routine's Topic, attributed to the connection
+(or the routine), plain text with at most one link. The model reads it as untrusted data, never an instruction.
+_Avoid_: alert, ping
+
+**Notification**:
+A routine post the owner asked to be told about: listed in Activity's Notifications, counted in the Activity badge
+until read.
 
 **Telegram channel**:
 The one MCP connection that carries Telegram for the agent (ADRs 0009, 0011): the owner's messages arrive in Main
@@ -114,8 +132,9 @@ What a chat is doing now: `working`, or `waiting` on its subagents.
 _Avoid_: activity, on its own
 
 **Activity**:
-The rail's page of what waits on the owner across Topics: questions, approvals and grants in chats, agent apps whose
-schedules need the owner, unread chats, and organize receipts to Undo.
+The rail's page of what waits on the owner across Topics: questions, approvals and grants in chats (a Persona's
+included), agent apps whose schedules need the owner, notifications, connections whose events are not set up yet,
+unread chats, and organize receipts to Undo.
 
 **Tasks**:
 The rail's page of work under way: Delegates, Personas answering and routines on a schedule.
@@ -136,12 +155,18 @@ writes a reply.
 
 ## Connections, skills and apps
 
-**Outbound MCP server**:
-A server the agent calls, configured by the deployment or added by the owner by URL, suggestion or registry.
+**Server**:
+An MCP server's address, with the claims on its card (title, description, icon) that only the owner sees.
+
+**Connection**:
+The owner's account on a server, with a label they give it (e.g. "Sidequest · Hirer"), configured by the deployment
+or added by URL, suggestion or registry. One server may have several. Each has its own sign-in, grants, ask-first
+settings, skills switch and Events subscriptions (ADR 0041).
+_Avoid_: server (for the account), integration, account
 
 **Skill**:
 A procedure served by an MCP server through the MCP Skills extension. The agent follows skills only from servers the
-owner turned skills on for, activates them per conversation as `<server>:<name>`, and a skill never grants a
+owner turned skills on for, activates them per conversation as `<connection>:<name>`, and a skill never grants a
 permission (ADR 0008).
 
 **Skill draft**:
