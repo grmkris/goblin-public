@@ -8,10 +8,10 @@ export type EventConsumerPorts = {
   /** The Telegram channel's server and transport, or null while it is off. */
   readonly channel: Effect.Effect<ChannelStatus, AppError>
   readonly pull: Effect.Effect<void, AppError>
-  /** Whether the owner takes skills from `serverId`, and forgetting its listing (`unavailable` when it stopped). */
+  /** Whether the owner takes skills from `connectionId`, and forgetting its listing (`unavailable` when it stopped). */
   readonly skills: {
-    readonly enabled: (serverId: string) => Effect.Effect<boolean, AppError>
-    readonly invalidate: (serverId: string, unavailable: boolean) => Effect.Effect<void, AppError>
+    readonly enabled: (connectionId: string) => Effect.Effect<boolean, AppError>
+    readonly invalidate: (connectionId: string, unavailable: boolean) => Effect.Effect<void, AppError>
   }
 }
 
@@ -24,15 +24,15 @@ export const installEventConsumers = (
     events.register('telegram-inbox', ({ subscription, envelope }) =>
       Effect.gen(function* () {
         const status = yield* ports.channel
-        if (status?.serverId !== subscription.serverId || status.transport !== 'events') return
+        if (status?.connectionId !== subscription.connectionId || status.transport !== 'events') return
         if ('type' in envelope && envelope.type === 'terminated') return
         yield* ports.pull
       }),
     ),
     events.register('skills-refresh', ({ subscription, envelope }) =>
       Effect.gen(function* () {
-        if (!(yield* ports.skills.enabled(subscription.serverId))) return
-        yield* ports.skills.invalidate(subscription.serverId, 'type' in envelope && envelope.type === 'terminated')
+        if (!(yield* ports.skills.enabled(subscription.connectionId))) return
+        yield* ports.skills.invalidate(subscription.connectionId, 'type' in envelope && envelope.type === 'terminated')
       }),
     ),
   )

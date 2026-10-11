@@ -28,9 +28,12 @@ export function onlyThese<S extends Setup>(setup: S, category: Category, catalog
   if (setup[category] !== 'all') return setup
   switch (category) {
     case 'mcpServers':
-      return { ...setup, mcpServers: catalog.servers.map(({ serverId }) => ({ serverId, tools: 'all' as const })) }
+      return {
+        ...setup,
+        mcpServers: catalog.servers.map(({ connectionId }) => ({ connectionId, tools: 'all' as const })),
+      }
     case 'skills':
-      return { ...setup, skills: catalog.libraries.map(({ serverId }) => ({ serverId })) }
+      return { ...setup, skills: catalog.libraries.map(({ connectionId }) => ({ connectionId })) }
     case 'apps':
       return { ...setup, apps: catalog.apps.map(({ name }) => name) }
   }
@@ -45,15 +48,17 @@ export const switched = <S extends Setup>(setup: S, item: SetupItem, on: boolean
 
 /** How much of a server the setup holds: all its tools, some of them, or none. */
 export function serverHold(setup: Setup, server: SetupCatalog['servers'][number]): 'all' | 'some' | 'none' {
-  if (!holds(setup, { kind: 'server', serverId: server.serverId })) return 'none'
-  const held = server.tools.filter(({ name }) => holds(setup, { kind: 'tool', serverId: server.serverId, name }))
+  if (!holds(setup, { kind: 'server', connectionId: server.connectionId })) return 'none'
+  const held = server.tools.filter(({ name }) =>
+    holds(setup, { kind: 'tool', connectionId: server.connectionId, name }),
+  )
   return held.length === server.tools.length ? 'all' : 'some'
 }
 
 /** How much of a library the setup holds: the whole library, some of its skills, or none. */
 export function libraryHold(setup: Setup, library: SetupCatalog['libraries'][number]): 'all' | 'some' | 'none' {
   if (setup.skills === 'all') return 'all'
-  const entries = setup.skills.filter(({ serverId }) => serverId === library.serverId)
+  const entries = setup.skills.filter(({ connectionId }) => connectionId === library.connectionId)
   if (entries.length === 0) return 'none'
   return entries.some(({ name }) => name === undefined) ? 'all' : 'some'
 }
@@ -66,26 +71,27 @@ const unavailable = (item: SetupItem, reason: string): Unavailable => ({ item, l
 /** The servers and tools a setup lists that the catalog does not offer now. */
 function serversGone(setup: Setup, catalog: SetupCatalog): readonly Unavailable[] {
   if (setup.mcpServers === 'all') return []
-  const servers = new Map(catalog.servers.map((server) => [server.serverId, server]))
-  return setup.mcpServers.flatMap(({ serverId, tools }) => {
-    const server = servers.get(serverId)
-    if (server === undefined) return [unavailable({ kind: 'server', serverId }, 'Not connected, or no tool granted')]
+  const servers = new Map(catalog.servers.map((server) => [server.connectionId, server]))
+  return setup.mcpServers.flatMap(({ connectionId, tools }) => {
+    const server = servers.get(connectionId)
+    if (server === undefined)
+      return [unavailable({ kind: 'server', connectionId }, 'Not connected, or no tool granted')]
     if (tools === 'all') return []
     return tools
       .filter((name) => !server.tools.some((tool) => tool.name === name))
-      .map((name) => unavailable({ kind: 'tool', serverId, name }, 'Not granted any more'))
+      .map((name) => unavailable({ kind: 'tool', connectionId, name }, 'Not granted any more'))
   })
 }
 
 /** The libraries and skills a setup lists that the catalog does not offer now (a skill only while its list reads). */
 function skillsGone(setup: Setup, catalog: SetupCatalog): readonly Unavailable[] {
   if (setup.skills === 'all') return []
-  const libraries = new Map(catalog.libraries.map((library) => [library.serverId, library]))
-  return setup.skills.flatMap(({ serverId, name }) => {
-    const library = libraries.get(serverId)
-    if (library === undefined) return [unavailable({ kind: 'library', serverId }, 'Skills are off for this server')]
+  const libraries = new Map(catalog.libraries.map((library) => [library.connectionId, library]))
+  return setup.skills.flatMap(({ connectionId, name }) => {
+    const library = libraries.get(connectionId)
+    if (library === undefined) return [unavailable({ kind: 'library', connectionId }, 'Skills are off for this server')]
     const listed = name === undefined || !library.available || library.skills.some((skill) => skill.name === name)
-    return listed ? [] : [unavailable({ kind: 'skill', serverId, name }, 'No longer listed')]
+    return listed ? [] : [unavailable({ kind: 'skill', connectionId, name }, 'No longer listed')]
   })
 }
 
@@ -107,7 +113,7 @@ export function heldCount(setup: Setup, category: Category, catalog: SetupCatalo
       return catalog.servers.filter((server) => serverHold(setup, server) !== 'none').length
     case 'skills':
       return catalog.libraries
-        .flatMap((library) => library.skills.map((skill) => ({ serverId: library.serverId, ...skill })))
+        .flatMap((library) => library.skills.map((skill) => ({ connectionId: library.connectionId, ...skill })))
         .filter((skill) => holds(setup, { kind: 'skill', ...skill })).length
     case 'apps':
       return catalog.apps.filter(({ name }) => holds(setup, { kind: 'app', app: name })).length

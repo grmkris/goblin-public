@@ -13,12 +13,12 @@ import {
 
 const catalog: SetupCatalog = {
   servers: [
-    { serverId: 'notes', label: 'Notes', status: 'connected', tools: [{ name: 'read' }, { name: 'write' }] },
-    { serverId: 'mail', label: 'Mail', status: 'connected', tools: [{ name: 'send' }] },
+    { connectionId: 'notes', label: 'Notes', status: 'connected', tools: [{ name: 'read' }, { name: 'write' }] },
+    { connectionId: 'mail', label: 'Mail', status: 'connected', tools: [{ name: 'send' }] },
   ],
   libraries: [
     {
-      serverId: 'lib',
+      connectionId: 'lib',
       label: 'Skills',
       available: true,
       skills: [
@@ -34,8 +34,8 @@ describe('the setup picker (ADR 0040)', () => {
   it('switches a category to only what is there now, so nothing vanishes, and back to everything', () => {
     const only = onlyThese(EVERYTHING, 'mcpServers', catalog)
     expect(only.mcpServers).toEqual([
-      { serverId: 'notes', tools: 'all' },
-      { serverId: 'mail', tools: 'all' },
+      { connectionId: 'notes', tools: 'all' },
+      { connectionId: 'mail', tools: 'all' },
     ])
     expect(onlyThese(only, 'mcpServers', catalog)).toBe(only)
     expect(everything(only, 'mcpServers')).toEqual(EVERYTHING)
@@ -44,7 +44,7 @@ describe('the setup picker (ADR 0040)', () => {
   it('reads a server as all, some or none of its tools, and a library as whole, some or none', () => {
     const one = switched(
       onlyThese(EVERYTHING, 'mcpServers', catalog),
-      { kind: 'tool', serverId: 'notes', name: 'write' },
+      { kind: 'tool', connectionId: 'notes', name: 'write' },
       false,
       catalog,
     )
@@ -52,12 +52,12 @@ describe('the setup picker (ADR 0040)', () => {
     if (notes === undefined || mail === undefined) throw new Error('catalog')
     expect(serverHold(one, notes)).toBe('some')
     expect(serverHold(one, mail)).toBe('all')
-    expect(serverHold(switched(one, { kind: 'server', serverId: 'mail' }, false, catalog), mail)).toBe('none')
+    expect(serverHold(switched(one, { kind: 'server', connectionId: 'mail' }, false, catalog), mail)).toBe('none')
     const [lib] = catalog.libraries
     if (lib === undefined) throw new Error('catalog')
     const skills = switched(
       onlyThese(EVERYTHING, 'skills', catalog),
-      { kind: 'skill', serverId: 'lib', name: 'plan' },
+      { kind: 'skill', connectionId: 'lib', name: 'plan' },
       false,
       catalog,
     )
@@ -69,10 +69,10 @@ describe('the setup picker (ADR 0040)', () => {
   it('lists what the setup holds that cannot be chosen now, with why', () => {
     const setup: TopicSetup = {
       mcpServers: [
-        { serverId: 'gone', tools: 'all' },
-        { serverId: 'notes', tools: ['read', 'delete'] },
+        { connectionId: 'gone', tools: 'all' },
+        { connectionId: 'notes', tools: ['read', 'delete'] },
       ],
-      skills: [{ serverId: 'lib', name: 'old' }, { serverId: 'off' }],
+      skills: [{ connectionId: 'lib', name: 'old' }, { connectionId: 'off' }],
       apps: ['tracker', 'diary'],
       subagents: true,
     }
@@ -88,8 +88,8 @@ describe('the setup picker (ADR 0040)', () => {
   it('says a setup in a line, for the composer and a Persona', () => {
     expect(setupSummary(EVERYTHING, catalog)).toBe('Everything')
     const narrow: TopicSetup = {
-      mcpServers: [{ serverId: 'notes', tools: ['read'] }],
-      skills: [{ serverId: 'lib' }],
+      mcpServers: [{ connectionId: 'notes', tools: ['read'] }],
+      skills: [{ connectionId: 'lib' }],
       apps: [],
       subagents: false,
     }

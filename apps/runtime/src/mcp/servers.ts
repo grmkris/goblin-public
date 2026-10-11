@@ -22,7 +22,7 @@ export interface AddedServers {
   list(): readonly AddedServer[]
   add(server: AddedServer, now: number): void
   /** Forget the server and everything stored for it: credentials, grants, pending sign-ins. */
-  remove(serverId: string): void
+  remove(connectionId: string): void
 }
 
 const sourceOf = (json: string | null): ServerSource | undefined => {
@@ -45,7 +45,7 @@ export class AddedServerStore implements AddedServers {
       .map((row) => {
         const source = sourceOf(row.source)
         return {
-          serverId: row.serverId,
+          connectionId: row.connectionId,
           endpoint: row.endpoint,
           ...(row.title === null ? {} : { title: row.title }),
           ...(row.description === null ? {} : { description: row.description }),
@@ -59,7 +59,7 @@ export class AddedServerStore implements AddedServers {
     this.#db
       .insert(appMcpServers)
       .values({
-        serverId: server.serverId,
+        connectionId: server.connectionId,
         endpoint: server.endpoint,
         title: server.title ?? null,
         description: server.description ?? null,
@@ -71,7 +71,9 @@ export class AddedServerStore implements AddedServers {
     bindEndpoints(this.#db, [server], now)
   }
 
-  remove(serverId: string): void {
-    forgetServer(this.#db, serverId, (tx) => tx.delete(appMcpServers).where(eq(appMcpServers.serverId, serverId)).run())
+  remove(connectionId: string): void {
+    forgetServer(this.#db, connectionId, (tx) =>
+      tx.delete(appMcpServers).where(eq(appMcpServers.connectionId, connectionId)).run(),
+    )
   }
 }

@@ -61,7 +61,7 @@ function mcpPlacementProbe(home: HomeService, apps: AgentAppsPort, db: ReturnTyp
     ops: readonly HomeOperation[],
     actor: 'owner' | 'agent' = 'agent',
   ) => home.edit({ operationId, expectedRevision, ops }, actor)
-  const origin = { serverId: 'home-fixture', tool: 'board', uri: 'ui://home-fixture/board', title: 'Board' }
+  const origin = { connectionId: 'home-fixture', tool: 'board', uri: 'ui://home-fixture/board', title: 'Board' }
   const mcp = keepApp(db, apps, { session: '1', callId: 'home-board', origin }, 3)
   let agentMcpReason = ''
   try {

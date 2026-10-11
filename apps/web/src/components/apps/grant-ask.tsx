@@ -14,7 +14,7 @@ const WAIT_MS = 120_000
 type Pending = { readonly name: string; readonly settle: (allowed: boolean) => void }
 
 /** The owner's answer for one tool, asked once however many calls wait on it. */
-export function useAppGrantAsks(serverId: string) {
+export function useAppGrantAsks(connectionId: string) {
   const [asks, setAsks] = useState<readonly string[]>([])
   const waiting = useRef(new Map<string, Promise<boolean>>())
   const settlers = useRef(new Map<string, Pending['settle']>())
@@ -40,7 +40,7 @@ export function useAppGrantAsks(serverId: string) {
   const [first] = asks
   const card =
     first === undefined ? null : (
-      <AppGrantCard serverId={serverId} name={first} onAnswer={(allowed) => answer(first, allowed)} />
+      <AppGrantCard connectionId={connectionId} name={first} onAnswer={(allowed) => answer(first, allowed)} />
     )
   return { ask, card }
 }
@@ -51,11 +51,11 @@ export function grantDenied(cause: unknown): boolean {
 }
 
 function AppGrantCard({
-  serverId,
+  connectionId,
   name,
   onAnswer,
 }: {
-  readonly serverId: string
+  readonly connectionId: string
   readonly name: string
   readonly onAnswer: (allowed: boolean) => void
 }) {
@@ -68,7 +68,7 @@ function AppGrantCard({
       <span className="truncate">
         The app wants to use{' '}
         <strong className="font-medium text-foreground">
-          {serverId} · {name}
+          {connectionId} · {name}
         </strong>
         {error && ` (${error})`}
       </span>
@@ -78,7 +78,7 @@ function AppGrantCard({
       <Button
         size="app-action"
         disabled={busy}
-        onClick={() => allow.mutate({ serverId, name, allowed: true }, { onSuccess: () => onAnswer(true) })}
+        onClick={() => allow.mutate({ connectionId, name, allowed: true }, { onSuccess: () => onAnswer(true) })}
       >
         Allow
       </Button>

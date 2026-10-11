@@ -66,7 +66,7 @@ export const appsOver = (
       if (site.entry === undefined) yield* attemptSync(() => keepCallEntry(db, id, call.entry))
       return {
         kind: 'mcp' as const,
-        serverId: site.serverId,
+        connectionId: site.connectionId,
         uri: site.uri,
         arguments: call.arguments,
         result: call.result,

@@ -3,10 +3,10 @@ import { ChatId, NonEmptyString, PersonaId } from './ids.ts'
 
 const Server = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 export const ComposerSelection = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('connection'), serverId: Server }),
+  Schema.Struct({ kind: Schema.Literal('connection'), connectionId: Server }),
   Schema.Struct({
     kind: Schema.Literal('skill'),
-    serverId: Server,
+    connectionId: Server,
     uri: NonEmptyString(2048),
   }),
   Schema.Struct({
@@ -44,9 +44,9 @@ export type ComposerMetadata = typeof ComposerMetadata.Type
 export const selectionKey = (selection: ComposerSelection): string => {
   switch (selection.kind) {
     case 'connection':
-      return `connection:${selection.serverId}`
+      return `connection:${selection.connectionId}`
     case 'skill':
-      return `skill:${selection.serverId}:${selection.uri}`
+      return `skill:${selection.connectionId}:${selection.uri}`
     case 'subagent':
       return `subagent:${selection.conversationId}`
     case 'persona':

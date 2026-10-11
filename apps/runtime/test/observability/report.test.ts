@@ -65,7 +65,7 @@ describe('failure reporter', () => {
         new NotFound({ what: 'x' }),
         new Conflict({ reason: 'x' }),
         new BudgetExhausted({ limit: 1, resetsAt: 2 }),
-        new UpstreamMcp({ serverId: 's', reason: 'timeout' }),
+        new UpstreamMcp({ connectionId: 's', reason: 'timeout' }),
       ]
       const { lines } = yield* withLines(
         Effect.gen(function* () {
@@ -118,7 +118,7 @@ describe('failure reporter', () => {
   )
 
   it('names a failure by its tag or class, never by its fields or message', () => {
-    expect(safeErrorType(new GrantDenied({ serverId: 's', name: 'create_note' }))).toBe('GrantDenied')
+    expect(safeErrorType(new GrantDenied({ connectionId: 's', name: 'create_note' }))).toBe('GrantDenied')
     expect(safeErrorType(new TypeError(SECRET))).toBe('TypeError')
     expect(safeErrorType({ _tag: SECRET })).toBe('Object')
     expect(safeErrorType(Object.create(null))).toBe('Error')

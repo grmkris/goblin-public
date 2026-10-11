@@ -16,7 +16,7 @@ mkdirSync(out, { recursive: true, mode: 0o700 })
 const CATALOG = {
   servers: [
     {
-      serverId: 'notes',
+      connectionId: 'notes',
       label: 'Notes',
       status: 'connected',
       tools: [
@@ -24,11 +24,11 @@ const CATALOG = {
         { name: 'write', title: 'Write a note' },
       ],
     },
-    { serverId: 'mail', label: 'Mail', status: 'connected', tools: [{ name: 'send' }] },
+    { connectionId: 'mail', label: 'Mail', status: 'connected', tools: [{ name: 'send' }] },
   ],
   libraries: [
     {
-      serverId: 'myskills',
+      connectionId: 'myskills',
       label: 'MySkills',
       available: true,
       skills: Array.from({ length: 10 }, (_, index) => ({
@@ -64,7 +64,7 @@ async function drive(browser: Browser, origin: string, label: string, options: B
           createdBy: 'owner',
           createdAt: 1,
         },
-        routines: [{ id: 'r_1', title: 'Morning brief', outside: [{ serverId: 'notes', name: 'write' }] }],
+        routines: [{ id: 'r_1', title: 'Morning brief', outside: [{ connectionId: 'notes', name: 'write' }] }],
       },
     })
   })
@@ -114,8 +114,8 @@ try {
   assert.deepEqual(saves[0], {
     set: {
       mcpServers: [
-        { serverId: 'mail', tools: 'all' },
-        { serverId: 'notes', tools: ['read'] },
+        { connectionId: 'mail', tools: 'all' },
+        { connectionId: 'notes', tools: ['read'] },
       ],
       skills: 'all',
       apps: 'all',

@@ -3,12 +3,12 @@ import { canSend, composerTrigger, pickerItems, selectionFailure, withoutTrigger
 import { InvalidInput } from '@goblin/contracts/api'
 
 const skill = {
-  selection: { kind: 'skill' as const, serverId: 'myskills', uri: 'skill://one/SKILL.md' },
+  selection: { kind: 'skill' as const, connectionId: 'myskills', uri: 'skill://one/SKILL.md' },
   label: 'review',
   description: 'Review code',
 }
 const connection = {
-  selection: { kind: 'connection' as const, serverId: 'myplan' },
+  selection: { kind: 'connection' as const, connectionId: 'myplan' },
   label: 'MyPlan',
   description: 'Connection hint',
 }

@@ -11,14 +11,14 @@ import { messageBody } from '../use-conversation.ts'
 export function MessageOffer({
   app,
   conversation,
-  serverId,
+  connectionId,
   resourceUri,
   receipt,
   onDone,
 }: {
   readonly app: string
   readonly conversation: string
-  readonly serverId: string
+  readonly connectionId: string
   readonly resourceUri: string
   readonly receipt: QuestionAnswerReceipt
   readonly onDone: () => void
@@ -34,7 +34,7 @@ export function MessageOffer({
     setError('')
     try {
       const operationId = await receiptOperationId(app, receipt)
-      const { input, appContext } = answerContinuation(app, serverId, resourceUri, receipt)
+      const { input, appContext } = answerContinuation(app, connectionId, resourceUri, receipt)
       await submit({ id: conversation, message: messageBody(input, operationId, { appContext }) })
       onDone()
     } catch (cause) {
@@ -48,7 +48,7 @@ export function MessageOffer({
     <div className="app-offer" role="status" aria-label="Continue after MyPlan answer">
       <MessageCircleIcon aria-hidden />
       <span className="truncate">
-        {serverId} reports a saved answer. Continue in this app's conversation?
+        {connectionId} reports a saved answer. Continue in this app's conversation?
         {error && <span role="alert"> {error}</span>}
       </span>
       <Button size="app-action" disabled={busy} onClick={() => void continueConversation()}>

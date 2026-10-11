@@ -5,7 +5,7 @@ import { JsonView, ToolPayload, type ToolPayloadView } from '@goblin/ui'
 import { outputBlocks, payloadView } from '../src/lib/tool-payload.ts'
 
 const envelope = (content: readonly unknown[], structuredContent: unknown = '[unsupported]') => ({
-  origin: { serverId: 'fixture', trust: 'untrusted' },
+  origin: { connectionId: 'fixture', trust: 'untrusted' },
   structuredContent,
   content,
 })
@@ -17,7 +17,7 @@ const renderPayload = (view: ToolPayloadView) =>
 describe('tool output presentation', () => {
   it('uses structured MCP output despite the model text origin prefix, without repeating its JSON text', () => {
     const value = { documents: [{ title: 'A' }], hasMore: false }
-    const raw = '{"origin":{"serverId":"fixture","trust":"untrusted"}}\n' + JSON.stringify(value)
+    const raw = '{"origin":{"connectionId":"fixture","trust":"untrusted"}}\n' + JSON.stringify(value)
     expect(outputBlocks({ text: raw, details: envelope([text(JSON.stringify(value))], value) })).toEqual([
       { kind: 'json', value },
     ])

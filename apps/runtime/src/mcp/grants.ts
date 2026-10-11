@@ -9,7 +9,7 @@ export type { Grant, GrantCapability } from '@goblin/contracts'
 
 export interface Grants {
   allows(grant: Grant): boolean
-  list(serverId?: string): readonly Grant[]
+  list(connectionId?: string): readonly Grant[]
   set(grant: Grant, allowed: boolean, now: number): void
   policy(grant: Grant): { readonly askFirst: boolean; readonly version: string } | undefined
   setAskFirst(grant: Grant, enabled: boolean): void
@@ -29,7 +29,7 @@ export class GrantStore implements Grants {
         .from(appMcpGrants)
         .where(
           and(
-            eq(appMcpGrants.serverId, grant.serverId),
+            eq(appMcpGrants.connectionId, grant.connectionId),
             eq(appMcpGrants.capability, grant.capability),
             eq(appMcpGrants.name, grant.name),
           ),
@@ -38,16 +38,16 @@ export class GrantStore implements Grants {
     )
   }
 
-  list(serverId?: string): readonly Grant[] {
+  list(connectionId?: string): readonly Grant[] {
     const query = this.#db
       .select({
-        serverId: appMcpGrants.serverId,
+        connectionId: appMcpGrants.connectionId,
         capability: appMcpGrants.capability,
         name: appMcpGrants.name,
         askFirst: appMcpGrants.askFirst,
       })
       .from(appMcpGrants)
-    return (serverId === undefined ? query : query.where(eq(appMcpGrants.serverId, serverId))).all()
+    return (connectionId === undefined ? query : query.where(eq(appMcpGrants.connectionId, connectionId))).all()
   }
 
   set(grant: Grant, allowed: boolean, now: number): void {
@@ -63,7 +63,7 @@ export class GrantStore implements Grants {
       .delete(appMcpGrants)
       .where(
         and(
-          eq(appMcpGrants.serverId, grant.serverId),
+          eq(appMcpGrants.connectionId, grant.connectionId),
           eq(appMcpGrants.capability, grant.capability),
           eq(appMcpGrants.name, grant.name),
         ),
@@ -77,7 +77,7 @@ export class GrantStore implements Grants {
       .from(appMcpGrants)
       .where(
         and(
-          eq(appMcpGrants.serverId, grant.serverId),
+          eq(appMcpGrants.connectionId, grant.connectionId),
           eq(appMcpGrants.capability, grant.capability),
           eq(appMcpGrants.name, grant.name),
         ),
@@ -86,13 +86,13 @@ export class GrantStore implements Grants {
   }
 
   setAskFirst(grant: Grant, enabled: boolean): void {
-    if (!this.allows(grant)) throw new GrantDenied({ serverId: grant.serverId, name: grant.name })
+    if (!this.allows(grant)) throw new GrantDenied({ connectionId: grant.connectionId, name: grant.name })
     this.#db
       .update(appMcpGrants)
       .set({ askFirst: enabled, version: crypto.randomUUID() })
       .where(
         and(
-          eq(appMcpGrants.serverId, grant.serverId),
+          eq(appMcpGrants.connectionId, grant.connectionId),
           eq(appMcpGrants.capability, grant.capability),
           eq(appMcpGrants.name, grant.name),
         ),

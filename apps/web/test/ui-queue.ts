@@ -22,7 +22,7 @@ const content = [
       composer: {
         text: 'Long queued message. '.repeat(70),
         selections: [
-          { label: 'Notes', description: 'Fixture notes', selection: { kind: 'connection', serverId: 'notes' } },
+          { label: 'Notes', description: 'Fixture notes', selection: { kind: 'connection', connectionId: 'notes' } },
         ],
         context: [],
       },

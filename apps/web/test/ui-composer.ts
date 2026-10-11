@@ -13,7 +13,7 @@ const out = path.resolve(import.meta.dirname, '../../../.local/goblin-acceptance
 const errors: string[] = []
 const checks: string[] = []
 const skill = {
-  selection: { kind: 'skill', serverId: 'lib', uri: 'skill://review/SKILL.md' },
+  selection: { kind: 'skill', connectionId: 'lib', uri: 'skill://review/SKILL.md' },
   label: 'review',
   description: 'Review code',
 }
@@ -25,7 +25,7 @@ async function fixture(page: Page, origin: string, compact = false) {
       json: {
         options: [
           skill,
-          { selection: { kind: 'connection', serverId: 'notes' }, label: 'Notes', description: 'Connection' },
+          { selection: { kind: 'connection', connectionId: 'notes' }, label: 'Notes', description: 'Connection' },
         ],
         unavailable: [],
       },

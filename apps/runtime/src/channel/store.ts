@@ -13,15 +13,19 @@ export type ChannelOn = NonNullable<ChannelStatus>
 /** The connection that carries the channel, or null when it is off. */
 export function channelStatus(db: Db): ChannelStatus {
   const events = db.select().from(appTelegramChannel).get()
-  if (events !== undefined) return { serverId: events.serverId, enabledAt: events.enabledAt, transport: 'events' }
-  const row = db.select({ serverId: appChannel.serverId, enabledAt: appChannel.enabledAt }).from(appChannel).get()
+  if (events !== undefined)
+    return { connectionId: events.connectionId, enabledAt: events.enabledAt, transport: 'events' }
+  const row = db
+    .select({ connectionId: appChannel.connectionId, enabledAt: appChannel.enabledAt })
+    .from(appChannel)
+    .get()
   return row === undefined ? null : { ...row, transport: 'doorbell' }
 }
 
 /** Whether `status` still carries the channel. */
 export function carries(db: Db, status: ChannelOn): boolean {
   const current = channelStatus(db)
-  return current?.serverId === status.serverId && current?.transport === status.transport
+  return current?.connectionId === status.connectionId && current?.transport === status.transport
 }
 
 /** The inbox cursor stored for either transport, the Events one first; the inbox's start when there is none. */
@@ -39,23 +43,28 @@ export function checkpoint(db: Db, status: ChannelOn, cursor: string): void {
   if (status.transport === 'events')
     db.update(appTelegramChannel)
       .set({ inboxCursor: cursor })
-      .where(eq(appTelegramChannel.serverId, status.serverId))
+      .where(eq(appTelegramChannel.connectionId, status.connectionId))
       .run()
   else if (channelStatus(db)?.transport === 'doorbell')
-    db.update(appChannel).set({ cursor }).where(eq(appChannel.serverId, status.serverId)).run()
+    db.update(appChannel).set({ cursor }).where(eq(appChannel.connectionId, status.connectionId)).run()
 }
 
-/** `serverId`'s Events carry the channel from `cursor`; this row fences every older cursor writer. */
-export function enableEvents(db: Db, serverId: string, cursor: string, now: number): ChannelStatus {
-  const row = { id: 1, serverId, inboxCursor: cursor, enabledAt: now }
+/** `connectionId`'s Events carry the channel from `cursor`; this row fences every older cursor writer. */
+export function enableEvents(db: Db, connectionId: string, cursor: string, now: number): ChannelStatus {
+  const row = { id: 1, connectionId, inboxCursor: cursor, enabledAt: now }
   db.insert(appTelegramChannel).values(row).onConflictDoUpdate({ target: appTelegramChannel.id, set: row }).run()
   return channelStatus(db)
 }
 
-/** `serverId`'s doorbell carries the channel from `cursor`, signed with the `secret` sealed under the credential key. */
+/** `connectionId`'s doorbell carries the channel from `cursor`, signed with the `secret` sealed under the credential key. */
 export function enableDoorbell(
   db: Db,
-  input: { readonly serverId: string; readonly cursor: string; readonly secret: string; readonly enabledAt: number },
+  input: {
+    readonly connectionId: string
+    readonly cursor: string
+    readonly secret: string
+    readonly enabledAt: number
+  },
 ): ChannelStatus {
   const row = { id: 1, ...input }
   db.insert(appChannel).values(row).onConflictDoUpdate({ target: appChannel.id, set: row }).run()

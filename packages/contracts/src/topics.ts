@@ -60,7 +60,7 @@ export type TopicSetupEdit = typeof TopicSetupEdit.Type
 export const RoutineOutsideSetup = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
-  outside: Schema.Array(Schema.Struct({ serverId: Schema.String, name: Schema.String })),
+  outside: Schema.Array(Schema.Struct({ connectionId: Schema.String, name: Schema.String })),
 })
 export type RoutineOutsideSetup = typeof RoutineOutsideSetup.Type
 

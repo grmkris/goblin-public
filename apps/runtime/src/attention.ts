@@ -39,7 +39,7 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
     result.isError || result.toolName !== 'ask_user' ? undefined : { kind: 'question', label: questionLabel(details) },
   'grant-required': (details, result) =>
     result.isError
-      ? { kind: 'grant', label: `${text(details.serverId) ?? ''} · ${text(details.name) ?? ''}` }
+      ? { kind: 'grant', label: `${text(details.connectionId) ?? ''} · ${text(details.name) ?? ''}` }
       : undefined,
   'not-in-topic': (details, result) => {
     const add = result.isError ? addLabel(details) : undefined
@@ -106,7 +106,7 @@ export function storedAsks<RunResult>(
     .map((row): Attention => ({
       kind: 'approval',
       since: Math.floor(row.createdAt / 1000),
-      label: label(`${row.serverId} · ${row.name}`),
+      label: label(`${row.connectionId} · ${row.name}`),
     }))
   const powers = db
     .select({ app: appAgentApps, power: appAgentPowers })

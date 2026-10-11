@@ -26,7 +26,7 @@ const definition: RoutineDefinition = {
   title: 'Native event routine',
   prompt: 'Return a short notification summary.',
   timezone: 'UTC',
-  trigger: { kind: 'event', serverId: 'routine-events', name: 'message.received', arguments: {} },
+  trigger: { kind: 'event', connectionId: 'routine-events', name: 'message.received', arguments: {} },
   notifyTelegram: false,
   allowedTools: [],
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
@@ -49,11 +49,15 @@ async function setup(storage: DurableObjectStorage, agent: PersonalAgent, fixtur
   runApplicationMigrations(storage)
   const db = drizzle(storage)
   const cipher = await CredentialCipher.fromBase64(KEY)
-  const server = { serverId: 'routine-events', endpoint: 'https://routine-events.test/mcp', title: 'Events fixture' }
+  const server = {
+    connectionId: 'routine-events',
+    endpoint: 'https://routine-events.test/mcp',
+    title: 'Events fixture',
+  }
   new AddedServerStore(db).add(server, 1)
   bindEndpoints(db, [server], 1)
   await new CredentialStore(db, cipher).saveTokens(
-    server.serverId,
+    server.connectionId,
     { access_token: 'keyless-fixture', token_type: 'bearer' },
     1,
   )
@@ -206,7 +210,7 @@ async function routineEventsProbe(
   }
   const invalid = await draft(agent, 'invalid', {
     ...definition,
-    trigger: { kind: 'event', serverId: 'routine-events', name: 'message.received', arguments: { botId: 7 } },
+    trigger: { kind: 'event', connectionId: 'routine-events', name: 'message.received', arguments: { botId: 7 } },
   })
   const callsBeforeInvalid = fixture.calls.filter((call) => call === 'events/subscribe').length
   const invalidConfirmationRefused = await changeRefused(

@@ -5,7 +5,7 @@ import { agentApps, appHue, appNames, appOrigin } from '../src/lib/app-names.ts'
 const app = (id: string, conversation: string, extra: Partial<AppView> = {}): AppView => ({
   id,
   conversation,
-  source: { kind: 'mcp', callId: `call-${id}`, serverId: 'board', tool: 'show', uri: 'ui://board/app.html' },
+  source: { kind: 'mcp', callId: `call-${id}`, connectionId: 'board', tool: 'show', uri: 'ui://board/app.html' },
   title: `Board ${id}`,
   createdAt: Number(id),
   ...extra,

@@ -15,11 +15,11 @@ type Database = DrizzleSqliteDODatabase
  * Everything stored for a server id: credentials, client registration, pending authorizations, grants, and what
  * conversations switched off on it.
  */
-function forget(db: Pick<Database, 'delete'>, serverId: string): void {
-  db.delete(appMcpCredentials).where(eq(appMcpCredentials.serverId, serverId)).run()
-  db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.serverId, serverId)).run()
-  db.delete(appMcpGrants).where(eq(appMcpGrants.serverId, serverId)).run()
-  db.delete(appHelperExclusions).where(eq(appHelperExclusions.serverId, serverId)).run()
+function forget(db: Pick<Database, 'delete'>, connectionId: string): void {
+  db.delete(appMcpCredentials).where(eq(appMcpCredentials.connectionId, connectionId)).run()
+  db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.connectionId, connectionId)).run()
+  db.delete(appMcpGrants).where(eq(appMcpGrants.connectionId, connectionId)).run()
+  db.delete(appHelperExclusions).where(eq(appHelperExclusions.connectionId, connectionId)).run()
 }
 
 /**
@@ -30,16 +30,16 @@ function forget(db: Pick<Database, 'delete'>, serverId: string): void {
 export function bindEndpoints(db: Database, servers: readonly McpServerConfig[], now: number): readonly string[] {
   return db.transaction((tx) => {
     const reset: string[] = []
-    for (const { serverId, endpoint } of servers) {
-      const bound = tx.select().from(appMcpEndpoints).where(eq(appMcpEndpoints.serverId, serverId)).get()
+    for (const { connectionId, endpoint } of servers) {
+      const bound = tx.select().from(appMcpEndpoints).where(eq(appMcpEndpoints.connectionId, connectionId)).get()
       if (bound?.endpoint === endpoint) continue
       if (bound !== undefined) {
-        forget(tx, serverId)
-        reset.push(serverId)
+        forget(tx, connectionId)
+        reset.push(connectionId)
       }
       tx.insert(appMcpEndpoints)
-        .values({ serverId, endpoint, boundAt: now })
-        .onConflictDoUpdate({ target: appMcpEndpoints.serverId, set: { endpoint, boundAt: now } })
+        .values({ connectionId, endpoint, boundAt: now })
+        .onConflictDoUpdate({ target: appMcpEndpoints.connectionId, set: { endpoint, boundAt: now } })
         .run()
     }
     return reset
@@ -47,10 +47,10 @@ export function bindEndpoints(db: Database, servers: readonly McpServerConfig[],
 }
 
 /** Forget a server the owner removed: everything stored for it and its endpoint binding, in one transaction. */
-export function forgetServer(db: Database, serverId: string, also: (tx: Pick<Database, 'delete'>) => void): void {
+export function forgetServer(db: Database, connectionId: string, also: (tx: Pick<Database, 'delete'>) => void): void {
   db.transaction((tx) => {
-    forget(tx, serverId)
-    tx.delete(appMcpEndpoints).where(eq(appMcpEndpoints.serverId, serverId)).run()
+    forget(tx, connectionId)
+    tx.delete(appMcpEndpoints).where(eq(appMcpEndpoints.connectionId, connectionId)).run()
     also(tx)
   })
 }

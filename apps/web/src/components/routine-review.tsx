@@ -30,7 +30,7 @@ function whenOf(definition: RoutineDefinition): string {
     return Number.isNaN(at) ? `Once, at ${trigger.at}` : `Once, ${dateTime(at, definition.timezone)}`
   }
   if (trigger.kind === 'cron') return `Repeats on the schedule ${trigger.expression}`
-  return `When ${trigger.serverId} sends ${trigger.name}`
+  return `When ${trigger.connectionId} sends ${trigger.name}`
 }
 
 /** What a routine does and may use, as facts beside each other. */
@@ -60,14 +60,14 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
           <dd>
             {definition.allowedTools.length === 0
               ? 'None: it can only answer'
-              : definition.allowedTools.map((tool) => `${tool.serverId} · ${tool.name}`).join(', ')}
+              : definition.allowedTools.map((tool) => `${tool.connectionId} · ${tool.name}`).join(', ')}
           </dd>
         </div>
         {(routine.outsideSetup?.length ?? 0) > 0 && (
           <div>
             <dt>Not in its Topic</dt>
             <dd>
-              {routine.outsideSetup?.map((tool) => `${tool.serverId} · ${tool.name}`).join(', ')}: its Topic's MCP
+              {routine.outsideSetup?.map((tool) => `${tool.connectionId} · ${tool.name}`).join(', ')}: its Topic's MCP
               servers & skills leave these out, so a run that calls one is refused.
             </dd>
           </div>

@@ -96,7 +96,7 @@ describe('the agent group served by the agent', () => {
     const status = await fetch(json('GET', '/api/agent/channel'))
     expect(status.status).toBe(200)
     expect(await status.text()).toBe('null')
-    const refused = await fetch(json('PUT', '/api/agent/channel', { serverId: 'myagent' }))
+    const refused = await fetch(json('PUT', '/api/agent/channel', { connectionId: 'myagent' }))
     expect(refused.status).toBe(400)
     expect(await refused.json()).toMatchObject({
       error: { code: 'invalid_input', reason: 'myagent does not offer inbox, send_message, subscribe, unsubscribe' },

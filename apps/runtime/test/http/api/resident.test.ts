@@ -14,7 +14,7 @@ import { database, get, plans, post, serve, served, sqliteDb, stub } from './fix
 const fixture = () => {
   const disabled: (string | undefined)[] = []
   const events = stub(Events, {
-    disableServer: (serverId?: string) => Effect.sync(() => void disabled.push(serverId)),
+    disableServer: (connectionId?: string) => Effect.sync(() => void disabled.push(connectionId)),
   })
   const { fetch } = serve(
     served([ResidentGroup], ResidentHandlers).pipe(

@@ -112,7 +112,7 @@ describe('Personas in the composer', () => {
       description: '',
     }))
     const connection = {
-      selection: { kind: 'connection' as const, serverId: 'myplan' },
+      selection: { kind: 'connection' as const, connectionId: 'myplan' },
       label: 'myplan',
       description: '',
     }

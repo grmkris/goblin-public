@@ -69,7 +69,7 @@ describe('actual MCP Events connection manager (unit)', () => {
     let allowed = false
     let calls = 0
     const { connections, dispose } = managerOf({
-      servers: [{ serverId: 'fixture', endpoint: 'https://events.test/mcp' }],
+      servers: [{ connectionId: 'fixture', endpoint: 'https://events.test/mcp' }],
       allows: () => false,
       auth: () => ({ token: async () => 'fixture-bearer' }),
       fetch: (input, init) => {
@@ -78,7 +78,7 @@ describe('actual MCP Events connection manager (unit)', () => {
       },
     })
     const authorize = Effect.suspend(() =>
-      allowed ? Effect.void : Effect.fail(new GrantDenied({ serverId: 'fixture', name: 'message.received' })),
+      allowed ? Effect.void : Effect.fail(new GrantDenied({ connectionId: 'fixture', name: 'message.received' })),
     )
     try {
       await expect(connections.events('fixture', 'events/list', {}, EventsListResult, authorize)).rejects.toMatchObject(

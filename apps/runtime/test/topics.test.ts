@@ -99,7 +99,7 @@ describe('Topics (ADR 0032)', () => {
     expect(topics.get(1).setup).toEqual(EVERYTHING)
     const open = await create({ name: 'Open', operationId: 'op-open' }, 'owner', 10)
     expect(open.topic.setup).toEqual(EVERYTHING)
-    const setup = { ...EVERYTHING, mcpServers: [{ serverId: 'notes', tools: ['read'] }], subagents: false }
+    const setup = { ...EVERYTHING, mcpServers: [{ connectionId: 'notes', tools: ['read'] }], subagents: false }
     const chosen = await create({ name: 'Chosen', operationId: 'op-chosen', setup }, 'agent', 11)
     expect(chosen.topic.setup).toEqual(setup)
     expect(topics.get(chosen.topic.id).setup).toEqual(setup)

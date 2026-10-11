@@ -31,7 +31,7 @@ export const ownerStack = (name: string, offset: number) =>
           MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
           MODEL_ID: 'storage-only',
           MODEL_KEY: 'unused-fixture',
-          MCP_SERVERS: '[{"serverId":"apps-fixture","endpoint":"https://apps-fixture.test/mcp"}]',
+          MCP_SERVERS: '[{"connectionId":"apps-fixture","endpoint":"https://apps-fixture.test/mcp"}]',
           CREDENTIAL_KEY: 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE=',
         },
       })

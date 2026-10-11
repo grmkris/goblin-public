@@ -55,7 +55,7 @@ describe('delivering answers to Telegram', () => {
   it.effect('hears a failed delivery with its error type, then fails as before', () =>
     Effect.gen(function* () {
       const { deliver, delivered } = yield* fixture(() =>
-        Effect.fail(new UpstreamMcp({ serverId: 'mygram', reason: 'transport' })),
+        Effect.fail(new UpstreamMcp({ connectionId: 'mygram', reason: 'transport' })),
       )
       expect(yield* Effect.flip(deliver)).toMatchObject({ _tag: 'UpstreamMcp' })
       expect(delivered).toEqual([{ operationId: 'telegram-m1', pieces: 1, errorType: 'UpstreamMcp:transport' }])

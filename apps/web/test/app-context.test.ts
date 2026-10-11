@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { contextPreview, contextText, safeLink, sharedContext } from '../src/lib/app-context.ts'
 
-const block = (serverId: string, appContext: string) =>
-  JSON.stringify({ origin: { serverId, trust: 'untrusted' }, appContext })
+const block = (connectionId: string, appContext: string) =>
+  JSON.stringify({ origin: { connectionId, trust: 'untrusted' }, appContext })
 
 describe('what an App shares', () => {
   it('takes the App’s text, else its structured content, bounded to 8 KB', () => {

@@ -57,12 +57,12 @@ describe('the Events webhook ingress (unit)', () => {
 })
 
 describe('which subscriptions stay valid (unit)', () => {
-  /** Events over one active subscription to `serverId`, whose server lookup is `server`. */
+  /** Events over one active subscription to `connectionId`, whose server lookup is `server`. */
   const events = (server: Effect.Effect<McpServerConfig, NotFound | Internal>) => {
     const row = {
       id: 'sub-1',
       remoteId: WEBHOOK.subscriptionId,
-      serverId: 'notes',
+      connectionId: 'notes',
       name: 'message.received',
       argumentsJson: '{}',
       endpoint: 'https://notes.test/mcp',

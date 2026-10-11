@@ -16,7 +16,7 @@ type Row = typeof appRegistry.$inferSelect
 
 /** Where an App comes from: its server, the tool whose call it shows, the `ui://` resource it renders, its name. */
 export type AppOrigin = {
-  readonly serverId: string
+  readonly connectionId: string
   readonly tool: string
   readonly uri: string
   readonly title: string
@@ -25,7 +25,7 @@ export type AppOrigin = {
 /** An `mcp_call` in a transcript: the server and tool it called, its arguments and its committed (redacted) result. */
 export type AppCall = {
   readonly entry: number
-  readonly serverId: string
+  readonly connectionId: string
   readonly tool: string
   readonly arguments: Record<string, unknown>
   readonly result: unknown
@@ -34,12 +34,16 @@ export type AppCall = {
 /** An MCP App's row: one with its call, server, tool and resource (the table's CHECK holds them together). */
 type McpRow = Row & {
   readonly callId: string
-  readonly serverId: string
+  readonly connectionId: string
   readonly tool: string
   readonly resourceUri: string
 }
 const isMcp = (row: Row): row is McpRow =>
-  row.source === 'mcp' && row.callId !== null && row.serverId !== null && row.tool !== null && row.resourceUri !== null
+  row.source === 'mcp' &&
+  row.callId !== null &&
+  row.connectionId !== null &&
+  row.tool !== null &&
+  row.resourceUri !== null
 
 /** What the registry reads of the agent's apps (ADR 0021). */
 export type AgentAppsPort = {
@@ -61,7 +65,7 @@ export type AgentAppsPort = {
 
 const sourceOf = (row: Row, agents: AgentAppsPort): AppView['source'] => {
   if (isMcp(row))
-    return { kind: 'mcp', callId: row.callId, serverId: row.serverId, tool: row.tool, uri: row.resourceUri }
+    return { kind: 'mcp', callId: row.callId, connectionId: row.connectionId, tool: row.tool, uri: row.resourceUri }
   const name = row.name ?? ''
   const info = agents.info(name)
   if (info === undefined) throw new NotFound({ what: `agent app ${name}` })
@@ -122,7 +126,7 @@ export function keepApp(db: ChatDb, agents: AgentAppsPort, { session, callId, or
       sessionId: session,
       chatId: chatOfSession(db, session) ?? session,
       callId,
-      serverId: origin.serverId,
+      connectionId: origin.connectionId,
       tool: origin.tool,
       resourceUri: origin.uri,
       title: origin.title,
@@ -188,7 +192,7 @@ export function agentAppName(db: ChatDb, id: string): string {
 export function appOrigin(db: ChatDb, id: string, conversation: string): AppSharing {
   const row = rowOf(db, id)
   if (row.closedAt !== null || (row.chatId ?? row.sessionId) !== conversation) throw new NotFound({ what: 'app' })
-  if (isMcp(row)) return { serverId: row.serverId }
+  if (isMcp(row)) return { connectionId: row.connectionId }
   return { app: agentAppName(db, id) }
 }
 
@@ -243,7 +247,7 @@ export type LaunchSite =
   | { readonly kind: 'agent'; readonly name: string }
   | {
       readonly kind: 'mcp'
-      readonly serverId: string
+      readonly connectionId: string
       readonly uri: string
       readonly session: string
       readonly callId: string
@@ -256,7 +260,7 @@ export function launchSite(db: ChatDb, id: string): LaunchSite {
   if (!isMcp(row)) return { kind: 'agent', name: agentAppName(db, id) }
   return {
     kind: 'mcp',
-    serverId: row.serverId,
+    connectionId: row.connectionId,
     uri: row.resourceUri,
     session: row.sessionId,
     callId: row.callId,
@@ -278,9 +282,9 @@ function mcpCallIn(entry: EntryRecord, callId: string) {
   if (message?.role !== 'assistant') return undefined
   const call = message.content.find((block) => block.type === 'toolCall' && block.id === callId)
   if (call?.type !== 'toolCall' || call.name !== 'mcp_call') return undefined
-  const { serverId, name, arguments: args } = call.arguments
-  if (typeof serverId !== 'string' || typeof name !== 'string') return undefined
-  return { serverId, tool: name, arguments: isRecord(args) ? args : {} }
+  const { connectionId, name, arguments: args } = call.arguments
+  if (typeof connectionId !== 'string' || typeof name !== 'string') return undefined
+  return { connectionId, tool: name, arguments: isRecord(args) ? args : {} }
 }
 
 /** The details of the result of call `callId`, when `entry` is it. */

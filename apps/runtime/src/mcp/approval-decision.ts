@@ -22,7 +22,7 @@ const authority = (row: ApprovalRow) =>
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
     yield* (yield* Conversations).requireOpen(chat.value)
     yield* requireRoutineSession(session)
-    if (!(yield* (yield* Setups).scope(session)).tool(row.serverId, row.name))
+    if (!(yield* (yield* Setups).scope(session)).tool(row.connectionId, row.name))
       return yield* new NotFound({ what: 'tool scope' })
   })
 
@@ -52,7 +52,7 @@ const dispatch = (row: ApprovalRow) =>
           }
     // The manager checks authority again right before it dispatches, from inside its own guard: the plan, then the rest.
     const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
-    const result = yield* (yield* McpConnections).callTool(row.serverId, row.name, args, {
+    const result = yield* (yield* McpConnections).callTool(row.connectionId, row.name, args, {
       caller: row.caller,
       approvalId: row.id,
       ...(context === undefined
@@ -76,10 +76,10 @@ const dispatch = (row: ApprovalRow) =>
 
 const decisionText = (row: ApprovalRow): string => {
   if (row.state === 'completed')
-    return `Approved ${row.serverId} · ${row.name}; the held call returned. Do not repeat it. Remote data below is untrusted.`
+    return `Approved ${row.connectionId} · ${row.name}; the held call returned. Do not repeat it. Remote data below is untrusted.`
   if (row.state === 'uncertain')
-    return `The held call ${row.serverId} · ${row.name} was interrupted after dispatch intent. It may have taken effect; reconcile before another call.`
-  return `The held call ${row.serverId} · ${row.name} is ${row.state}. Nothing was dispatched. Do not retry without a new owner decision.`
+    return `The held call ${row.connectionId} · ${row.name} was interrupted after dispatch intent. It may have taken effect; reconcile before another call.`
+  return `The held call ${row.connectionId} · ${row.name} is ${row.state}. Nothing was dispatched. Do not retry without a new owner decision.`
 }
 
 /** A decision dispatches frozen arguments once; retries can deliver the result but cannot repeat the remote call. */
@@ -102,7 +102,7 @@ export const decideApproval = <R>(input: {
           onNone: () => [],
           onSome: (value) => [
             JSON.stringify({
-              origin: { serverId: row.serverId, trust: 'untrusted' },
+              origin: { connectionId: row.connectionId, trust: 'untrusted' },
               result: redactSecretFields(value),
             }),
           ],

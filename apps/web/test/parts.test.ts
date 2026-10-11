@@ -31,13 +31,15 @@ const snapshot = (entries: readonly unknown[], extra: Record<string, unknown> = 
 
 describe('the transcript as render parts', () => {
   it("reads an MCP call's arguments sent as the JSON string of an object", () => {
-    const args = { serverId: 'myplan', name: 'myplan_open', arguments: '{"note":"n1"}' }
+    const args = { connectionId: 'myplan', name: 'myplan_open', arguments: '{"note":"n1"}' }
     const parts = conversationParts(snapshot([asking(2, [call('c1', args)]), result(3, 'c1')]))
-    expect(parts[0]).toMatchObject({ target: { serverId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } } })
+    expect(parts[0]).toMatchObject({
+      target: { connectionId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } },
+    })
   })
 
   it('folds each result into the call that asked for it, with the MCP target and its timing', () => {
-    const args = { serverId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } }
+    const args = { connectionId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } }
     const parts = conversationParts(
       snapshot([
         { id: 1, model: [{ role: 'user', content: 'open it' }] },
@@ -51,7 +53,7 @@ describe('the transcript as render parts', () => {
     ])
     expect(parts[1]).toMatchObject({
       state: 'done',
-      target: { serverId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } },
+      target: { connectionId: 'myplan', name: 'myplan_open', arguments: { note: 'n1' } },
       startedAt: 1_000,
       endedAt: 4_500,
       result: { text: 'out' },
@@ -78,7 +80,7 @@ describe('the transcript as render parts', () => {
   })
   it('shows the streaming thinking and text, then a live tool whose asking message is not committed yet', () => {
     const next = projectBatch(snapshot([], { run: { inputs: [1] } }), [
-      { type: 'tool_execution_start', toolCallId: 'early', toolName: 'mcp_list', args: { serverId: 'x' } },
+      { type: 'tool_execution_start', toolCallId: 'early', toolName: 'mcp_list', args: { connectionId: 'x' } },
       {
         type: 'message_update',
         changes: [
@@ -95,7 +97,7 @@ describe('the transcript as render parts', () => {
         kind: 'tool',
         id: 'tool:early',
         state: 'running',
-        call: { id: 'early', name: 'mcp_list', arguments: { serverId: 'x' } },
+        call: { id: 'early', name: 'mcp_list', arguments: { connectionId: 'x' } },
       }),
     ])
   })
@@ -197,7 +199,7 @@ describe('a tool call as one line', () => {
     const part: ToolPart = {
       ...toolAt('done', {}),
       call: { id: 'c', name: 'mcp_call', arguments: {} },
-      target: { serverId: 'board', name: 'move', arguments: {} },
+      target: { connectionId: 'board', name: 'move', arguments: {} },
     }
     expect(toolLine(part)).toEqual({ lead: 'Used', server: 'board', tool: 'move' })
   })

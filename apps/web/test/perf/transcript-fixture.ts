@@ -289,7 +289,7 @@ function stormRound(round: number, firstId: number): Step[] {
     type: 'toolCall',
     id: `storm-${round}-${index}`,
     name: 'mcp_call',
-    arguments: { serverId: 'dev-sidequest-exchange', name, arguments: {} },
+    arguments: { connectionId: 'dev-sidequest-exchange', name, arguments: {} },
   }))
   const asking = assistant(firstId, when, [{ type: 'thinking', thinking: 'Checking the next set of pages.' }, ...calls])
   return [

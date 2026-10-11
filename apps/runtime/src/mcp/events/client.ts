@@ -18,10 +18,10 @@ export const decodeArguments = (value: string): Record<string, unknown> =>
   Schema.decodeUnknownSync(Arguments)(JSON.parse(value))
 /** A row's stored selector arguments, decoded. */
 const argumentsOf = (row: Pick<Subscription, 'argumentsJson'>) => attemptSync(() => decodeArguments(row.argumentsJson))
-export const secretAad = (row: Pick<Subscription, 'id' | 'serverId'>): string =>
-  `events:${row.serverId}:${row.id}:secret`
-export const envelopeAad = (row: Pick<Subscription, 'id' | 'serverId'>, webhookId: string): string =>
-  `events:${row.serverId}:${row.id}:delivery:${webhookId}`
+export const secretAad = (row: Pick<Subscription, 'id' | 'connectionId'>): string =>
+  `events:${row.connectionId}:${row.id}:secret`
+export const envelopeAad = (row: Pick<Subscription, 'id' | 'connectionId'>, webhookId: string): string =>
+  `events:${row.connectionId}:${row.id}:delivery:${webhookId}`
 const makeSecret = (): string => `whsec_${btoa(String.fromCodePoint(...crypto.getRandomValues(new Uint8Array(32))))}`
 const makeSubscriptionId = (): string => crypto.randomUUID()
 
@@ -35,29 +35,29 @@ export type EventClient = {
   /** Arms the Events alarm no later than `at`. */
   readonly wake: (at: number) => Effect.Effect<void, AppError>
   /** The Events authority for one selector: checked before each request connects and again before it is sent. */
-  readonly authorize: (serverId: string, name: string, argumentsJson: string) => Effect.Effect<void, AppError>
+  readonly authorize: (connectionId: string, name: string, argumentsJson: string) => Effect.Effect<void, AppError>
 }
 
 /** One Events request for `row`'s selector, through its server's connection. */
 const request = <S extends Schema.ConstraintDecoder<unknown>>(
   client: EventClient,
-  row: Pick<Subscription, 'serverId' | 'name' | 'argumentsJson'>,
+  row: Pick<Subscription, 'connectionId' | 'name' | 'argumentsJson'>,
   method: 'events/list' | 'events/poll' | 'events/subscribe' | 'events/unsubscribe',
   params: Record<string, unknown>,
   schema: S,
 ) =>
   client.connections.events(
-    row.serverId,
+    row.connectionId,
     method,
     params,
     schema,
-    client.authorize(row.serverId, row.name, row.argumentsJson),
+    client.authorize(row.connectionId, row.name, row.argumentsJson),
   )
 
 /** The server's event descriptors for one selector, every page up to the subscription bound. */
-export const listEvents = (client: EventClient, serverId: string, name: string, args: Record<string, unknown>) =>
+export const listEvents = (client: EventClient, connectionId: string, name: string, args: Record<string, unknown>) =>
   Effect.gen(function* () {
-    const selector = { serverId, name, argumentsJson: yield* attemptSync(() => canonicalArguments(args)) }
+    const selector = { connectionId, name, argumentsJson: yield* attemptSync(() => canonicalArguments(args)) }
     const events: EventDescriptor[] = []
     let cursor: string | undefined
     for (let page = 0; page < EVENT_LIMITS.subscriptions; page++) {
@@ -72,13 +72,13 @@ export const listEvents = (client: EventClient, serverId: string, name: string, 
       if (result.nextCursor === undefined || result.nextCursor === cursor) return events
       cursor = result.nextCursor
     }
-    return yield* new UpstreamMcp({ serverId, reason: 'content-limit' })
+    return yield* new UpstreamMcp({ connectionId, reason: 'content-limit' })
   })
 
 /** The durable intent for a selector, made (or found current) before anything is sent: a finite lease to come. */
 export const prepareEvents = (
   client: EventClient,
-  serverId: string,
+  connectionId: string,
   name: string,
   args: Record<string, unknown>,
   ttlMs: number = EVENT_LIMITS.ttlMs,
@@ -86,9 +86,9 @@ export const prepareEvents = (
   Effect.gen(function* () {
     const { store, principal, callback, cipher } = client
     const argumentsJson = yield* attemptSync(() => canonicalArguments(args))
-    if (!store.allows(serverId, name, argumentsJson)) return yield* new GrantDenied({ serverId, name })
-    const { endpoint } = yield* client.connections.server(serverId)
-    const current = store.selector(serverId, name, argumentsJson)
+    if (!store.allows(connectionId, name, argumentsJson)) return yield* new GrantDenied({ connectionId, name })
+    const { endpoint } = yield* client.connections.server(connectionId)
+    const current = store.selector(connectionId, name, argumentsJson)
     if (
       current !== undefined &&
       current.endpoint === endpoint &&
@@ -100,7 +100,7 @@ export const prepareEvents = (
     if (store.list().length >= EVENT_LIMITS.subscriptions && current === undefined)
       return yield* new InvalidInput({ reason: 'too many event subscriptions' })
     const now = yield* Clock.currentTimeMillis
-    const binding = { id: current?.id ?? (yield* Effect.sync(makeSubscriptionId)), serverId }
+    const binding = { id: current?.id ?? (yield* Effect.sync(makeSubscriptionId)), connectionId }
     const secret = yield* attempt(() => cipher.encrypt(makeSecret(), secretAad(binding)))
     const row: Subscription = {
       ...binding,
@@ -153,10 +153,10 @@ export const subscribeEvents = (client: EventClient, row: Subscription, ttlMs: n
     )
     const refreshBefore = Date.parse(result.refreshBefore)
     if (!Number.isFinite(refreshBefore) || refreshBefore <= now || refreshBefore > now + EVENT_LIMITS.maxTtlMs)
-      return yield* new UpstreamMcp({ serverId: row.serverId, reason: 'remote-rpc' })
+      return yield* new UpstreamMcp({ connectionId: row.connectionId, reason: 'remote-rpc' })
     const provisional = store.get(row.id)?.remoteId
     if (provisional !== null && provisional !== undefined && provisional !== result.id)
-      return yield* new UpstreamMcp({ serverId: row.serverId, reason: 'remote-rpc' })
+      return yield* new UpstreamMcp({ connectionId: row.connectionId, reason: 'remote-rpc' })
     const margin = Math.min(300_000, Math.max(1000, (refreshBefore - now) / 10))
     const jitter = crypto.getRandomValues(new Uint16Array(1))[0] ?? 0
     const nextRefreshAt = Math.max(now + 1000, refreshBefore - margin - (jitter % 1000))

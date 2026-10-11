@@ -24,7 +24,7 @@ import { Events } from './service.ts'
 export type SubscribeConsumer = {
   readonly consumerId: string
   readonly revision: number
-  readonly serverId: string
+  readonly connectionId: string
   readonly name: string
   readonly arguments: Record<string, unknown>
   readonly handlerKey: string
@@ -48,9 +48,9 @@ type Engine = EventsOptions & {
 
 /** A subscription stays only while its server is still offered at the same endpoint and its selector is granted. */
 const valid = (engine: Engine, row: Subscription): Effect.Effect<boolean, AppError> =>
-  engine.connections.server(row.serverId).pipe(
+  engine.connections.server(row.connectionId).pipe(
     Effect.map(
-      ({ endpoint }) => row.endpoint === endpoint && engine.store.allows(row.serverId, row.name, row.argumentsJson),
+      ({ endpoint }) => row.endpoint === endpoint && engine.store.allows(row.connectionId, row.name, row.argumentsJson),
     ),
     // expected: a server the owner removed is NotFound, and its subscriptions are no longer valid.
     Effect.catchTag('NotFound', () => Effect.succeed(false)),
@@ -95,14 +95,14 @@ const subscribe = (engine: Engine, input: SubscribeConsumer) =>
       const old = store.get(existing.subscriptionId)
       if (
         existing.state !== 'active' ||
-        old?.serverId !== input.serverId ||
+        old?.connectionId !== input.connectionId ||
         old.name !== input.name ||
         old.argumentsJson !== args ||
         existing.handlerKey !== input.handlerKey
       )
         return yield* new InvalidInput({ reason: 'event consumer revision cannot be rebound' })
     }
-    const descriptors = yield* listEvents(engine, input.serverId, input.name, input.arguments)
+    const descriptors = yield* listEvents(engine, input.connectionId, input.name, input.arguments)
     const descriptor = descriptors.find(
       (d) => d.name === input.name && d.delivery.includes('webhook') && d.delivery.includes('poll'),
     )
@@ -112,7 +112,7 @@ const subscribe = (engine: Engine, input: SubscribeConsumer) =>
     const schema = descriptor.inputSchema as JsonSchemaType
     if (!new CfWorkerJsonSchemaValidator().getValidator(schema)(input.arguments).valid)
       return yield* new InvalidInput({ reason: 'event arguments do not match its descriptor' })
-    const row = yield* prepareEvents(engine, input.serverId, input.name, input.arguments)
+    const row = yield* prepareEvents(engine, input.connectionId, input.name, input.arguments)
     const now = yield* Clock.currentTimeMillis
     yield* Effect.sync(() =>
       store.bind({
@@ -241,16 +241,16 @@ const ackWith = (engine: Engine, input: ReceiptKey, write: () => void) =>
 
 /** What the owner and the consumers read and grant. */
 const reads = (engine: Engine) => ({
-  health: Effect.fn('Events.health')(function* (serverId: string) {
+  health: Effect.fn('Events.health')(function* (connectionId: string) {
     const { store } = engine
     return yield* Effect.sync(() =>
       store
         .list()
-        .filter((row) => row.serverId === serverId && row.status !== 'tombstone')
+        .filter((row) => row.connectionId === connectionId && row.status !== 'tombstone')
         .map(({ id, name, argumentsJson, status, refreshBefore, lastReceiptAt }) => ({
           subscriptionId: id,
           name,
-          granted: store.allows(serverId, name, argumentsJson),
+          granted: store.allows(connectionId, name, argumentsJson),
           status,
           refreshBefore,
           lastReceiptAt,
@@ -258,13 +258,15 @@ const reads = (engine: Engine) => ({
     )
   }),
   grant: Effect.fn('Events.grant')(function* (
-    serverId: string,
+    connectionId: string,
     name: string,
     args: Record<string, unknown>,
     allowed: boolean,
   ) {
     const now = yield* Clock.currentTimeMillis
-    yield* Effect.orDie(attemptSync(() => engine.store.grant(serverId, name, canonicalArguments(args), allowed, now)))
+    yield* Effect.orDie(
+      attemptSync(() => engine.store.grant(connectionId, name, canonicalArguments(args), allowed, now)),
+    )
   }),
   activeConsumer: Effect.fn('Events.activeConsumer')(function* (consumerId: string) {
     return yield* Effect.sync(() => Option.fromNullishOr(engine.store.activeConsumer(consumerId)))
@@ -292,9 +294,9 @@ const changes = (engine: Engine) => ({
     yield* ackWith(engine, input, write)
   }),
   /** Disconnect or revoke cleanup, while the authorization that made the subscriptions is still available. */
-  disableServer: Effect.fn('Events.disableServer')(function* (serverId?: string) {
+  disableServer: Effect.fn('Events.disableServer')(function* (connectionId?: string) {
     const { store } = engine
-    for (const row of store.list().filter((item) => serverId === undefined || item.serverId === serverId))
+    for (const row of store.list().filter((item) => connectionId === undefined || item.connectionId === connectionId))
       for (const binding of store.bindings(row.id)) yield* retire(engine, binding)
   }),
   receive: Effect.fn('Events.receive')(function* (input: EventWebhook) {

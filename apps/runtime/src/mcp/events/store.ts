@@ -58,24 +58,24 @@ export class SqliteEventStore {
     this.db = db
   }
 
-  grant(serverId: string, name: string, argumentsJson: string, allowed: boolean, now: number): void {
+  grant(connectionId: string, name: string, argumentsJson: string, allowed: boolean, now: number): void {
     this.db
       .insert(grants)
-      .values({ serverId, name, argumentsJson, grantedAt: now, revokedAt: allowed ? null : now })
+      .values({ connectionId, name, argumentsJson, grantedAt: now, revokedAt: allowed ? null : now })
       .onConflictDoUpdate({
-        target: [grants.serverId, grants.name, grants.argumentsJson],
+        target: [grants.connectionId, grants.name, grants.argumentsJson],
         set: { grantedAt: now, revokedAt: allowed ? null : now },
       })
       .run()
   }
-  allows(serverId: string, name: string, argumentsJson: string): boolean {
+  allows(connectionId: string, name: string, argumentsJson: string): boolean {
     return (
       this.db
         .select()
         .from(grants)
         .where(
           and(
-            eq(grants.serverId, serverId),
+            eq(grants.connectionId, connectionId),
             eq(grants.name, name),
             eq(grants.argumentsJson, argumentsJson),
             isNull(grants.revokedAt),
@@ -90,13 +90,13 @@ export class SqliteEventStore {
   get(id: string): Subscription | undefined {
     return this.db.select().from(subscriptions).where(eq(subscriptions.id, id)).get()
   }
-  selector(serverId: string, name: string, argumentsJson: string): Subscription | undefined {
+  selector(connectionId: string, name: string, argumentsJson: string): Subscription | undefined {
     return this.db
       .select()
       .from(subscriptions)
       .where(
         and(
-          eq(subscriptions.serverId, serverId),
+          eq(subscriptions.connectionId, connectionId),
           eq(subscriptions.name, name),
           eq(subscriptions.argumentsJson, argumentsJson),
         ),

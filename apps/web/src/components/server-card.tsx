@@ -34,7 +34,7 @@ function shortEndpoint(endpoint: string): string {
 
 /** The server's discovered tools, from the Query cache once it is connected; grant changes update them there. */
 function useServerTools(server: ServerView) {
-  const read = useQuery(connectedToolsQuery(server.serverId, server.status === 'connected'))
+  const read = useQuery(connectedToolsQuery(server.connectionId, server.status === 'connected'))
   return { tools: read.data, error: read.error, retry: () => void read.refetch() }
 }
 
@@ -55,7 +55,7 @@ function SkillsSwitch({
   const enabled = pending ? toggle.variables.enabled : server.skillsEnabled === true
   const change = (next: boolean) =>
     toggle.mutate(
-      { serverId: server.serverId, enabled: next },
+      { connectionId: server.connectionId, enabled: next },
       { onError: (error) => onMessage(messageOf(error, "change whether your agent uses this server's skills")) },
     )
   return (
@@ -97,7 +97,7 @@ function ServerBody({
               <SkillsSwitch server={server} onMessage={onMessage} />
             )}
             {tools !== undefined && hasTelegramTools(tools) && (
-              <TelegramControl serverId={server.serverId} channel={channel} />
+              <TelegramControl connectionId={server.connectionId} channel={channel} />
             )}
           </section>
         )}
@@ -112,7 +112,7 @@ function ServerBody({
             Loading its tools…
           </p>
         ) : (
-          <ToolGrants serverId={server.serverId} tools={tools} onMessage={onMessage} />
+          <ToolGrants connectionId={server.connectionId} tools={tools} onMessage={onMessage} />
         )}
       </div>
     </CardContent>
@@ -145,14 +145,14 @@ function useServerActions(server: ServerView, onMessage: (message: string) => vo
           : undefined
   function act(action: Action): void {
     if (action === 'connect')
-      connect.mutate(server.serverId, {
+      connect.mutate(server.connectionId, {
         onSuccess: ({ authorizationUrl }) => {
           if (authorizationUrl !== undefined) window.location.assign(authorizationUrl)
         },
         onError: failed(`connect ${title}`),
       })
-    else if (action === 'disconnect') disconnect.mutate(server.serverId, { onError: failed(`disconnect ${title}`) })
-    else refresh.mutate(server.serverId, { onError: failed(`look for new tools on ${title}`) })
+    else if (action === 'disconnect') disconnect.mutate(server.connectionId, { onError: failed(`disconnect ${title}`) })
+    else refresh.mutate(server.connectionId, { onError: failed(`look for new tools on ${title}`) })
   }
   return { pending, act }
 }
@@ -171,7 +171,7 @@ export function ServerCard({ server, onReload, onMessage, channel }: ServerCardP
       <CardHeader>
         <CardTitle>
           <span className="server-title">
-            <AppTile origin={server.serverId} />
+            <AppTile origin={server.connectionId} />
             {serverTitle(server)}
           </span>
         </CardTitle>

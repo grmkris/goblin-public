@@ -21,8 +21,8 @@ reached the owner.
   - its own OAuth sign-in and client registration;
   - its own grants, ask-first settings, skills switch and Events subscriptions;
   - its own Events webhook URL.
-- Everything that was keyed by a "server id" is keyed by the connection's id (`connectionId`). The model's tools take
-  a `connection`.
+- Everything that was keyed by a "server id" is keyed by the connection's id (`connectionId`). The model's tools
+  take a `connectionId` too.
 - The model sees a connection's label, which is the owner's own text, bounded. It never sees the claims on a server's
   card (ADR 0006).
 - MCP has no standard way to say which account a sign-in reached, so goblin cannot show it. The registration's

@@ -90,6 +90,6 @@ export const onChannel = <A, E, R>(
     const channel = yield* Channel
     const status = yield* channel.status
     if (status === null) return Option.none<A>()
-    const ports = yield* channelPorts(channelTool(yield* McpConnections, status.serverId))
+    const ports = yield* channelPorts(channelTool(yield* McpConnections, status.connectionId))
     return Option.some(yield* work(channel, ports))
   })

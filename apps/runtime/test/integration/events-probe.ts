@@ -58,9 +58,9 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
       McpConnections,
       Effect.orDie(
         makeManager({
-          servers: [{ serverId: 'mygram', endpoint: 'https://events.test/mcp' }],
+          servers: [{ connectionId: 'mygram', endpoint: 'https://events.test/mcp' }],
           allows: () => true,
-          skillsEnabled: (serverId) => skillState.enabled(serverId),
+          skillsEnabled: (connectionId) => skillState.enabled(connectionId),
           auth: () => ({ token: async () => 'synthetic-fixture-bearer' }),
           fetch: (input, init) => fixture.fetch(input, init),
           report: mcpReporter(telemetry),
@@ -79,8 +79,8 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     principal: 'fixture-owner',
     callback: 'https://goblin.test/hooks/mcp-events/fixture/token',
     authority: Effect.void,
-    authorize: (serverId, name, args) =>
-      store.allows(serverId, name, args) ? Effect.void : Effect.fail(new GrantDenied({ serverId, name })),
+    authorize: (connectionId, name, args) =>
+      store.allows(connectionId, name, args) ? Effect.void : Effect.fail(new GrantDenied({ connectionId, name })),
     wake: (at) =>
       Effect.sync(() => {
         wakes.push(at)
@@ -164,7 +164,7 @@ async function subscribeTelegram(state: Awaited<ReturnType<typeof setup>>) {
       state.events.subscribe({
         consumerId: `telegram:${name}`,
         revision: 1,
-        serverId: 'mygram',
+        connectionId: 'mygram',
         name,
         arguments: {},
         handlerKey: 'telegram-inbox',
@@ -175,7 +175,7 @@ async function subscribeTelegram(state: Awaited<ReturnType<typeof setup>>) {
     state.events.subscribe({
       consumerId: 'second-consumer',
       revision: 1,
-      serverId: 'mygram',
+      connectionId: 'mygram',
       name: 'message.received',
       arguments: {},
       handlerKey: 'telegram-inbox',

@@ -33,8 +33,8 @@ import { draftTools } from '../mcp/skill-drafts.ts'
 import { servicesOf } from '../mcp/runtime.ts'
 
 /** The draft tools the learner probe's owner granted. */
-const draftTool = (serverId: string, name: string) =>
-  serverId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status')
+const draftTool = (connectionId: string, name: string) =>
+  connectionId === 'myskills' && (name === 'skill_draft' || name === 'skill_draft_status')
 
 /** One skill as a library lists it: its `SKILL.md` at `uri` is the one resource. */
 interface ListedSkill {
@@ -66,14 +66,14 @@ function libraryServer(name: string, entry: ListedSkill, body: Uint8Array, tools
   return server
 }
 
-/** The host's options for one skills server `serverId` reached through `fetch`, with signed-out credentials. */
+/** The host's options for one skills server `connectionId` reached through `fetch`, with signed-out credentials. */
 const managerOver = (
   state: SqliteSkillState,
-  serverId: string,
+  connectionId: string,
   fetch: McpManagerOptions['fetch'],
   allows: McpManagerOptions['allows'] = () => false,
 ): McpManagerOptions => ({
-  servers: [{ serverId, endpoint: `https://${serverId}.test/mcp` }],
+  servers: [{ connectionId, endpoint: `https://${connectionId}.test/mcp` }],
   skillsEnabled: (enabled) => state.enabled(enabled),
   allows,
   auth: () => ({ token: async () => '', onUnauthorized: async () => undefined }),
@@ -197,7 +197,7 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
     state,
     'myskills',
     (input, init) => handler.fetch(new Request(input, init)),
-    ({ serverId, capability, name }) => capability === 'tool' && draftTool(serverId, name),
+    ({ connectionId, capability, name }) => capability === 'tool' && draftTool(connectionId, name),
   )
   state.setEnabled('myskills', true, 1)
   const receipt = await harness.submit('Run the checksum procedure.', {
@@ -238,9 +238,9 @@ export async function skillsLearnerRejectionProbe(storage: DurableObjectStorage,
         Layer.mergeAll(
           connectionsLayer(manager),
           Layer.mock(McpGrants)({
-            policy: (serverId: string, name: string) =>
+            policy: (connectionId: string, name: string) =>
               Effect.succeed(
-                draftTool(serverId, name) ? Option.some({ askFirst: false, version: 'fixture' }) : Option.none(),
+                draftTool(connectionId, name) ? Option.some({ askFirst: false, version: 'fixture' }) : Option.none(),
               ),
           }),
           PiSessions.layer.pipe(Layer.provide(Layer.succeed(AgentInput, input))),

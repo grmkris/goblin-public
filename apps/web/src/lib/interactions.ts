@@ -15,10 +15,10 @@ export type Interaction =
       readonly kind: 'approval'
       readonly callId: string
       readonly approvalId: string
-      readonly serverId: string
+      readonly connectionId: string
       readonly name: string
     }
-  | { readonly kind: 'grant'; readonly callId: string; readonly serverId: string; readonly name: string }
+  | { readonly kind: 'grant'; readonly callId: string; readonly connectionId: string; readonly name: string }
   | {
       readonly kind: 'server'
       readonly callId: string
@@ -40,14 +40,14 @@ const decodeNotInTopic = Schema.decodeUnknownOption(NotInTopic)
 function mcpAsked(part: ToolPart, target: SetupItem): boolean {
   const called = part.target
   if (called === undefined || (target.kind !== 'server' && target.kind !== 'tool')) return false
-  return called.serverId === target.serverId && (target.kind === 'server' || called.name === target.name)
+  return called.connectionId === target.connectionId && (target.kind === 'server' || called.name === target.name)
 }
 
 /** Whether a refused skill call asked for the library or skill the refusal names, by its handle `<server>:<name>`. */
 function skillAsked(handle: unknown, target: SetupItem): boolean {
   if (!isString(handle) || (target.kind !== 'library' && target.kind !== 'skill')) return false
   const [server, skill = ''] = handle.split(':', 2)
-  return server === target.serverId && (target.kind === 'library' || skill.replace(/~\d+$/u, '') === target.name)
+  return server === target.connectionId && (target.kind === 'library' || skill.replace(/~\d+$/u, '') === target.name)
 }
 
 /**
@@ -97,12 +97,12 @@ export function interactionOf(part: ToolPart): Interaction | undefined {
 function approvalOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
   const target = part.target
   if (part.call.name !== 'mcp_call' || target === undefined || !isString(details.approvalId)) return undefined
-  if (details.serverId !== target.serverId || details.name !== target.name) return undefined
+  if (details.connectionId !== target.connectionId || details.name !== target.name) return undefined
   return {
     kind: 'approval',
     callId: part.call.id,
     approvalId: details.approvalId,
-    serverId: target.serverId,
+    connectionId: target.connectionId,
     name: target.name,
   }
 }
@@ -111,8 +111,8 @@ function approvalOf(part: ToolPart, details: Record<string, unknown>): Interacti
 function grantOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
   const target = part.target
   if (part.call.name !== 'mcp_call' || target === undefined) return undefined
-  if (details.serverId !== target.serverId || details.name !== target.name) return undefined
-  return { kind: 'grant', callId: part.call.id, serverId: target.serverId, name: target.name }
+  if (details.connectionId !== target.connectionId || details.name !== target.name) return undefined
+  return { kind: 'grant', callId: part.call.id, connectionId: target.connectionId, name: target.name }
 }
 
 /** A request to add a server, only from `mcp_request_server` and only for an https endpoint without credentials. */

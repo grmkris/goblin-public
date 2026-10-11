@@ -45,9 +45,9 @@ await credentials.saveTokens('notes', { access_token: 'fixture-token', token_typ
 const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => notes.fetch(new Request(input, init))
 /** The MCP host over the notes server; each program run opens its connection and closes it when it ends. */
 const host = mcpHost({
-  servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
+  servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp' }],
   credentials,
-  grants: new MemoryGrants([{ serverId: 'notes', capability: 'tool', name: 'read' }]),
+  grants: new MemoryGrants([{ connectionId: 'notes', capability: 'tool', name: 'read' }]),
   registries: new MemoryRegistries(),
   appUrl: 'https://goblin.test',
   fetch: fetcher,
@@ -56,7 +56,7 @@ const host = mcpHost({
 const resident = stub(Resident, { require: () => Effect.void })
 // SAFETY: the capability services read nothing of the instance input that these tools reach.
 const instance = { mcpFetch: fetcher } as AgentInputs
-const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
+const off = (kind: Exclusion['kind'], connectionId = '', name = ''): Exclusion => ({ kind, connectionId, name })
 /**
  * What each conversation works with (ADR 0040): 7 everything, 8 a Topic whose setup holds no server, 9 one that holds
  * only notes' `write`, and 10 a subagent whose spawner switched notes off for it.
@@ -65,7 +65,7 @@ const work = (setup: Partial<TopicSetup>) => topicScope({ id: 2, name: 'Work', s
 const scopes: Readonly<Record<string, SetupScope>> = {
   '7': scopeOf([], true),
   '8': work({ mcpServers: [] }),
-  '9': work({ mcpServers: [{ serverId: 'notes', tools: ['write'] }] }),
+  '9': work({ mcpServers: [{ connectionId: 'notes', tools: ['write'] }] }),
   '10': scopeOf([off('server', 'notes')], false),
 }
 /** The tools' services over the host and the fixed switches above, always resident, on an active plan. */
@@ -93,7 +93,7 @@ const execute = (tool: string, input: Record<string, unknown>, conversationId: n
   return executeTool(found, input, inConversation(conversationId))
 }
 const call = (name: string, conversationId = 7) =>
-  execute('mcp_call', { serverId: 'notes', name, arguments: {} }, conversationId)
+  execute('mcp_call', { connectionId: 'notes', name, arguments: {} }, conversationId)
 const listed = async (input: Record<string, unknown>, conversationId: number): Promise<unknown> => {
   const result = await execute('mcp_list', input, conversationId)
   const [block] = result.content ?? []
@@ -105,16 +105,16 @@ describe('mcp_call and the owner grant (unit)', () => {
     const result = await call('read')
     expect(result.isError).toBe(false)
     expect(JSON.stringify(result.content)).toContain('ran read')
-    expect(result.details).toMatchObject({ origin: { serverId: 'notes', trust: 'untrusted' } })
+    expect(result.details).toMatchObject({ origin: { connectionId: 'notes', trust: 'untrusted' } })
     // Arguments the model sent as the JSON string of an object run the same tool.
-    const stringly = await execute('mcp_call', { serverId: 'notes', name: 'read', arguments: '{}' }, 7)
+    const stringly = await execute('mcp_call', { connectionId: 'notes', name: 'read', arguments: '{}' }, 7)
     expect(JSON.stringify(stringly.content)).toContain('ran read')
   })
   it('turns an ungranted tool into a request for the owner instead of an empty error', async () => {
     const result = await call('write')
     expect(result).toMatchObject({
       isError: true,
-      details: { kind: 'grant-required', serverId: 'notes', name: 'write' },
+      details: { kind: 'grant-required', connectionId: 'notes', name: 'write' },
     })
     expect(JSON.stringify(result.content)).toContain('Allow button')
   })
@@ -132,22 +132,26 @@ describe('mcp_call and the owner grant (unit)', () => {
 describe("what a Topic's setup leaves out (unit)", () => {
   it('leaves a server or tool switched off out of mcp_list', async () => {
     expect(await listed({}, 8)).toEqual({ servers: [] })
-    const hidden = await execute('mcp_list', { serverId: 'notes' }, 8)
+    const hidden = await execute('mcp_list', { connectionId: 'notes' }, 8)
     expect(hidden.isError).toBe(true)
     expect(JSON.stringify(hidden.content)).toContain('NotFound')
-    const notesTools = await listed({ serverId: 'notes' }, 9)
+    const notesTools = await listed({ connectionId: 'notes' }, 9)
     expect(notesTools).toMatchObject({ tools: [{ name: 'write', granted: false }] })
   })
   it("runs nothing for a server or tool outside the Topic's setup, and offers the owner to add it", async () => {
     ran.length = 0
     expect(await call('read', 8)).toMatchObject({
       isError: true,
-      details: { kind: 'not-in-topic', target: { kind: 'server', serverId: 'notes' }, topic: { id: 2, name: 'Work' } },
+      details: {
+        kind: 'not-in-topic',
+        target: { kind: 'server', connectionId: 'notes' },
+        topic: { id: 2, name: 'Work' },
+      },
     })
     const tool = await call('read', 9)
     expect(tool.details).toEqual({
       kind: 'not-in-topic',
-      target: { kind: 'tool', serverId: 'notes', name: 'read' },
+      target: { kind: 'tool', connectionId: 'notes', name: 'read' },
       topic: { id: 2, name: 'Work' },
     })
     expect(JSON.stringify(tool.content)).toContain('add it to #Work')

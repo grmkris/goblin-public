@@ -21,7 +21,7 @@ function host(random = () => 'abc123') {
   const grants = new MemoryGrants()
   const added = new MemoryAddedServers(credentials, grants)
   const { servers: mcp, dispose } = hostOf({
-    servers: [{ serverId: 'myplan', endpoint: 'https://myplan.test/mcp' }],
+    servers: [{ connectionId: 'myplan', endpoint: 'https://myplan.test/mcp' }],
     credentials,
     grants,
     fetch: remote,
@@ -43,7 +43,7 @@ describe('servers the owner adds', () => {
     const { mcp } = host()
     const view = await mcp.add('https://notes.example.com/mcp', { registry: 'https://r.test', name: 'n' })
     expect(view).toEqual({
-      serverId: 'notes-example-com-abc123',
+      connectionId: 'notes-example-com-abc123',
       endpoint: 'https://notes.example.com/mcp',
       status: 'disconnected',
       live: false,
@@ -53,7 +53,7 @@ describe('servers the owner adds', () => {
       title: 'Example notes',
       description: 'Notes, as the publisher puts it.',
     })
-    expect((await mcp.list()).map((server) => [server.serverId, server.source])).toEqual([
+    expect((await mcp.list()).map((server) => [server.connectionId, server.source])).toEqual([
       ['myplan', 'config'],
       ['notes-example-com-abc123', 'added'],
     ])
@@ -68,11 +68,11 @@ describe('servers the owner adds', () => {
   })
   it('removes an added server with its grants, and never a configured one', async () => {
     const { mcp, grants } = host()
-    const { serverId } = await mcp.add('https://notes.example.com/mcp')
-    grants.set({ serverId, capability: 'tool', name: 'read' }, true)
-    await mcp.remove(serverId)
-    expect((await mcp.list()).map((server) => server.serverId)).toEqual(['myplan'])
-    expect(grants.list(serverId)).toEqual([])
+    const { connectionId } = await mcp.add('https://notes.example.com/mcp')
+    grants.set({ connectionId, capability: 'tool', name: 'read' }, true)
+    await mcp.remove(connectionId)
+    expect((await mcp.list()).map((server) => server.connectionId)).toEqual(['myplan'])
+    expect(grants.list(connectionId)).toEqual([])
     expect(await reason(mcp.remove('myplan'))).toBe('configured_server')
     expect(await reason(mcp.remove('nobody'))).toBe('unknown_server')
   })
@@ -104,10 +104,10 @@ describe('servers that need no sign-in', () => {
       random: () => 'abc123',
     })
     try {
-      const { serverId } = await mcp.add('https://docs.example.com/mcp')
-      expect(await mcp.beginConnect(serverId)).toEqual({})
+      const { connectionId } = await mcp.add('https://docs.example.com/mcp')
+      expect(await mcp.beginConnect(connectionId)).toEqual({})
       expect((await mcp.list())[0]?.status).toBe('connected')
-      expect((await mcp.tools(serverId, true)).map((tool) => tool.name)).toEqual(['search'])
+      expect((await mcp.tools(connectionId, true)).map((tool) => tool.name)).toEqual(['search'])
     } finally {
       await dispose()
     }

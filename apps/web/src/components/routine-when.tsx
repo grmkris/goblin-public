@@ -29,7 +29,7 @@ export type WhenKit = {
   readonly cron: string
   readonly setCron: (cron: string) => void
   /** The tools the routine may use, whose servers an event can come from. */
-  readonly available: readonly { readonly serverId: string }[]
+  readonly available: readonly { readonly connectionId: string }[]
 }
 
 /** Schedules most people want, as a start for the cron field. */
@@ -58,7 +58,7 @@ export function triggerFrom(
     const filters = field('eventArguments').trim()
     const parsed = filters === '' ? Option.some({}) : decodeFilters(filters)
     if (Option.isNone(parsed)) return { problem: 'Write the filters as a JSON object, or leave them empty.' }
-    return { kind: 'event', serverId: field('eventServer'), name: field('eventName'), arguments: parsed.value }
+    return { kind: 'event', connectionId: field('eventServer'), name: field('eventName'), arguments: parsed.value }
   }
   const at = localInstant(field('at'))
   if (at === undefined) return { problem: 'Pick the date and time it should run.' }
@@ -116,7 +116,7 @@ function CronFields({ kit }: { readonly kit: WhenKit }) {
 
 function EventFields({ kit }: { readonly kit: WhenKit }) {
   const trigger = kit.initial.trigger
-  const servers = [...new Set(kit.available.map((tool) => tool.serverId))]
+  const servers = [...new Set(kit.available.map((tool) => tool.connectionId))]
   return (
     <>
       <Field>
@@ -125,7 +125,7 @@ function EventFields({ kit }: { readonly kit: WhenKit }) {
           id={`${kit.id}-event-server`}
           name="eventServer"
           list={`${kit.id}-servers`}
-          defaultValue={trigger.kind === 'event' ? trigger.serverId : (servers[0] ?? '')}
+          defaultValue={trigger.kind === 'event' ? trigger.connectionId : (servers[0] ?? '')}
           required
           maxLength={64}
         />

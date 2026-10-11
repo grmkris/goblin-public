@@ -6,18 +6,18 @@ export class MemorySkillState implements SkillState {
   readonly #sources = new Set<string>()
   readonly #activations = new Map<string, Activation[]>()
   readonly files = new Map<string, Uint8Array>()
-  enabled = (serverId: string) => this.#sources.has(serverId)
+  enabled = (connectionId: string) => this.#sources.has(connectionId)
   sources = () => [...this.#sources]
-  setEnabled(serverId: string, enabled: boolean) {
-    if (enabled) this.#sources.add(serverId)
-    else this.#sources.delete(serverId)
+  setEnabled(connectionId: string, enabled: boolean) {
+    if (enabled) this.#sources.add(connectionId)
+    else this.#sources.delete(connectionId)
   }
-  activation = (sessionId: string, serverId: string, uri: string) =>
-    this.#activations.get(sessionId)?.find((item) => item.serverId === serverId && item.entry.uri === uri)
+  activation = (sessionId: string, connectionId: string, uri: string) =>
+    this.#activations.get(sessionId)?.find((item) => item.connectionId === connectionId && item.entry.uri === uri)
   activations = (sessionId: string) => this.#activations.get(sessionId) ?? []
   activate(sessionId: string, activation: Activation) {
     const kept = this.activations(sessionId).filter(
-      (item) => !(item.serverId === activation.serverId && item.entry.uri === activation.entry.uri),
+      (item) => !(item.connectionId === activation.connectionId && item.entry.uri === activation.entry.uri),
     )
     this.#activations.set(sessionId, [...kept, activation])
   }
@@ -32,10 +32,10 @@ export class MemoryDraftLog implements DraftLog {
   readonly rows = new Map<string, DraftRecord & { readonly createdAt: number }>()
   countSince = (since: number) => [...this.rows.values()].filter((row) => row.createdAt >= since).length
   known = (contentHash: string) => this.rows.has(contentHash)
-  blocked = (serverId: string, name: string, baseUri: string | undefined) =>
+  blocked = (connectionId: string, name: string, baseUri: string | undefined) =>
     [...this.rows.values()].some(
       (row) =>
-        row.serverId === serverId &&
+        row.connectionId === connectionId &&
         row.name === name &&
         (row.status === 'open' || (row.status === 'rejected' && row.baseUri === baseUri)),
     )

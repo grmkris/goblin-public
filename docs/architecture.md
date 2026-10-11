@@ -98,7 +98,7 @@ no endpoint names is a 404 in the envelope.
 
 A failure answers the envelope `{ error: { code, message, recovery?, …safe fields, ref? } }`: `code` is the
 `AppError` tag in lower_snake_case, which the typed client decodes back into the class, `message` and `recovery` are
-fixed copy (`ERROR_COPY`), and the safe fields are the ones the UI uses (`reason`, `what`, `serverId`, `name`,
+fixed copy (`ERROR_COPY`), and the safe fields are the ones the UI uses (`reason`, `what`, `connectionId`, `name`,
 `state`, `subscribe`, `limit`, `resetsAt`, `rpcCode`). Of a request that does not decode, a path parameter that does
 not parse is 404, and a body, query or header that does not match is 400. A
 failure from stored data, a response that does not encode, or a defect is a 500 `Internal`, reported with its stack
@@ -580,8 +580,8 @@ the border is absent. Colours come from the theme's `--presence-*` tokens, resol
 
 ## Outbound MCP
 
-Servers come from `GOBLIN_MCP_SERVERS` (JSON: `serverId`, `endpoint`, optional `issuer` and `resource`) and from
-the owner, who may add up to sixteen by URL (`app_mcp_servers`, ADR 0006). An added endpoint is a public https
+Servers come from `GOBLIN_MCP_SERVERS` (JSON: `connectionId`, `endpoint`, optional `issuer` and `resource`) and from
+the owner, who may add up to sixteen by URL (`app_mcp_connections`, ADR 0006). An added endpoint is a public https
 address (`mcp/endpoint.ts`), and its server card labels it as the server's own claim. Configured servers win on ID
 and cannot be removed. Removing an added server forgets its row, endpoint binding, credentials, pending sign-ins and
 grants in one transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
@@ -628,7 +628,7 @@ Connections (`components/tool-grants.tsx`) lists those tools under the switch, e
 all and None, which send the same exact grants one at a time. Tool annotations from the server are shown as its claims
 ("says read-only") but never grant anything. Disconnecting forgets credentials and keeps grants. When the model calls a tool that exists but is
 not granted, nothing runs. `mcp_call` returns an error result whose details are
-`{ kind: 'grant-required', serverId, name }`, and the model is told to wait.
+`{ kind: 'grant-required', connectionId, name }`, and the model is told to wait.
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
 result into an owner-only Allow card. A Topic's setup chooses servers and tools for its chats (Setup and scope, above);
 that check comes first, and a helper's exclusions are forgotten with the server's grants.
@@ -658,7 +658,7 @@ file reads; instructions already in a conversation stay there. A Topic's setup c
 scope): its chats' section leaves it out without fetching it, and their activations and reads are refused. A setup
 can also hold single skills, by server and name (a new version keeps its place; a URI is kept only to tell namesakes
 apart): the section lists only those, the composer offers only those, and `skill_activate`, a composer selection and
-`skill_read` ask the scope about the one skill (`skillScope`'s `(serverId, { name, uri })`) before anything is loaded or
+`skill_read` ask the scope about the one skill (`skillScope`'s `(connectionId, { name, uri })`) before anything is loaded or
 read, a cached file included. A skill outside the setup refuses with the `not-in-topic` ask.
 
 After a final answer in an owner conversation (`goblin.skill-learning`, `onYield`), the learner (`skills/learner.ts`) looks at the latest user message. On a correction
@@ -733,7 +733,7 @@ the App shares for the agent (`ui/update-model-context`, text or structured cont
 JavaScript string units) waits in a removable chip above its conversation's composer and travels once, with the
 owner's next message there, as `appContext` (`{ app: <App id>, text }`) on `POST /api/conversations/:id/messages`. The
 runtime reads where each open App comes from in its registry, never from the browser, and (`pi/content.ts`) appends the
-text after the owner's words as a separate block shaped `{ origin: { serverId | app, trust: 'untrusted' }, appContext }`
+text after the owner's words as a separate block shaped `{ origin: { connectionId | app, trust: 'untrusted' }, appContext }`
 (an MCP App's server, or the agent app's name). An agent app's view shares through `share(text)` in its SDK. The persona
 treats it as data, never as the owner speaking, and the transcript shows it as a note under their message.
 
@@ -1319,7 +1319,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Store | Tables | Owner |
 | --- | --- | --- |
 | Agent DO SQLite | `pi_*`, `cf_agents_*` and the other vendor tables | Pi, Agents SDK. Never touched. |
-| Agent DO SQLite | `app_mcp_servers`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
+| Agent DO SQLite | `app_mcp_connections`, `app_mcp_registries`, `app_mcp_endpoints`, `app_mcp_credentials`, `app_mcp_oauth_pending`, `app_mcp_grants` | Drizzle: MCP metadata and authorization. |
 | Agent DO SQLite | `app_resident`, `app_conversations`, `app_model_choice`, `app_usage_daily`, `app_metadata` | Drizzle: agent metadata and logical chat bindings (ADR 0030). |
 | Agent DO SQLite | `app_chat_operations` | Drizzle: operation receipts per chat, pinned to their original Pi session, with kind, origin, target chat, parent operation, state and reason (`20261027000000_chat_operation_receipts`), pruned opportunistically after 30 days (ADR 0030). |
 | Agent DO SQLite | `app_conversation_capabilities`, `app_execution_exclusions` | Drizzle: a helper's exclusions, set by its spawner (ADRs 0018, 0029); the owner's per-conversation switches were deleted (ADR 0040). |

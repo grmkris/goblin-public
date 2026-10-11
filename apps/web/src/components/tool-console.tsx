@@ -32,7 +32,7 @@ import { McpApp, type McpSelection } from './apps/frame.tsx'
 type ConsoleFormProps = {
   readonly servers: readonly ServerView[]
   readonly target: string
-  readonly onServer: (serverId: string) => void
+  readonly onServer: (connectionId: string) => void
   readonly name: string
   readonly onName: (name: string) => void
   readonly args: string
@@ -54,7 +54,7 @@ function ConsoleForm({ servers, target, onServer, name, onName, args, onArgs, ca
           <FieldLabel htmlFor="console-server">Server</FieldLabel>
           <NativeSelect id="console-server" value={target} onChange={(event) => onServer(event.target.value)}>
             {servers.map((server) => (
-              <NativeSelectOption key={server.serverId} value={server.serverId}>
+              <NativeSelectOption key={server.connectionId} value={server.connectionId}>
                 {serverTitle(server)}
               </NativeSelectOption>
             ))}
@@ -83,7 +83,7 @@ const parseArguments = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.R
 
 /** Call an allowed tool by hand, to check a server works. Results are remote data and are shown as such. */
 export function ToolConsole({ servers }: { readonly servers: readonly ServerView[] }) {
-  const [serverId, setServerId] = useState('')
+  const [connectionId, setConnectionId] = useState('')
   const [name, setName] = useState('')
   const [args, setArgs] = useState('{}')
   const [result, setResult] = useState('')
@@ -92,7 +92,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
   const queryClient = useQueryClient()
   const calling = useMutation(callToolMutation)
   const [failure, setFailure] = useState('')
-  const target = serverId || servers[0]?.serverId || ''
+  const target = connectionId || servers[0]?.connectionId || ''
   async function call(): Promise<void> {
     setFailure('')
     setSelection(undefined)
@@ -102,14 +102,14 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
       return
     }
     try {
-      const data = await calling.mutateAsync({ serverId: target, name, arguments: parsed })
+      const data = await calling.mutateAsync({ connectionId: target, name, arguments: parsed })
       setResult(JSON.stringify(data, null, 2))
       const tools = await queryClient.query(toolsQuery(target))
       const uri = tools.find((tool) => tool.name === name)?.appResource
       if (uri !== undefined)
         setSelection({
           kind: 'mcp',
-          serverId: target,
+          connectionId: target,
           uri,
           arguments: parsed,
           // SAFETY: the runtime returned this body from the SDK-validated CallToolResult of this exact call.
@@ -139,7 +139,7 @@ export function ToolConsole({ servers }: { readonly servers: readonly ServerView
                 <ConsoleForm
                   servers={servers}
                   target={target}
-                  onServer={setServerId}
+                  onServer={setConnectionId}
                   name={name}
                   onName={setName}
                   args={args}

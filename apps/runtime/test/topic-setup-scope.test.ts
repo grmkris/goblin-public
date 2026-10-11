@@ -19,10 +19,10 @@ afterEach(() => {
 
 const WORK: TopicSetup = {
   mcpServers: [
-    { serverId: 'notes', tools: ['read'] },
-    { serverId: 'plan', tools: 'all' },
+    { connectionId: 'notes', tools: ['read'] },
+    { connectionId: 'plan', tools: 'all' },
   ],
-  skills: [{ serverId: 'lib', name: 'review' }],
+  skills: [{ connectionId: 'lib', name: 'review' }],
   apps: ['tracker'],
   subagents: false,
 }
@@ -34,9 +34,9 @@ const DEFINITION = JSON.stringify({
   timezone: 'UTC',
   notifyTelegram: false,
   allowedTools: [
-    { serverId: 'notes', name: 'read' },
-    { serverId: 'notes', name: 'write' },
-    { serverId: 'mail', name: 'send' },
+    { connectionId: 'notes', name: 'read' },
+    { connectionId: 'notes', name: 'write' },
+    { connectionId: 'mail', name: 'send' },
   ],
   budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
 })
@@ -137,7 +137,7 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
     const { db, raw } = fixture()
     raw
       .insert(appHelperExclusions)
-      .values({ sessionId: '22', kind: 'server', serverId: 'plan', name: '', offAt: 1 })
+      .values({ sessionId: '22', kind: 'server', connectionId: 'plan', name: '', offAt: 1 })
       .run()
     raw.insert(appExecutionExclusions).values({ sessionId: '22', app: 'tracker', offAt: 1 }).run()
     const scope = chatScope(db, '22')
@@ -156,7 +156,7 @@ describe("a chat's scope follows its Topic's setup (ADR 0040)", () => {
     expect(scope.tool('mail', 'send')).toBe(false)
     expect(scope.skills('lib')).toBe(false)
     expect(scope.app('tracker')).toBe(false)
-    expect(scope.topic?.holds({ kind: 'tool', serverId: 'mail', name: 'send' })).toBe(false)
+    expect(scope.topic?.holds({ kind: 'tool', connectionId: 'mail', name: 'send' })).toBe(false)
   })
 
   it('lets nothing through for a chat without a Topic or a session no chat owns', () => {
@@ -198,7 +198,7 @@ describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)",
         chatId: '24',
         personaId: 1,
         revision: 3,
-        setup: JSON.stringify({ mcpServers: [{ serverId: 'mail', tools: 'all' }], skills: [], apps: ['diary'] }),
+        setup: JSON.stringify({ mcpServers: [{ connectionId: 'mail', tools: 'all' }], skills: [], apps: ['diary'] }),
         createdAt: 1,
       })
       .run()
@@ -227,7 +227,7 @@ describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)",
 
   it('tells a Persona in words what neither setup holds', () => {
     const db = forks()
-    const result = outsideScopeResult({ kind: 'server', serverId: 'calendar' }, chatScope(db, '24'))
+    const result = outsideScopeResult({ kind: 'server', connectionId: 'calendar' }, chatScope(db, '24'))
     expect(result.details).toBeUndefined()
     expect(result.content).toEqual([expect.objectContaining({ text: expect.stringContaining('calendar') })])
   })
@@ -236,10 +236,10 @@ describe("a Persona's fork works with its Topic's setup and its own (ADR 0040)",
 describe('a call outside the setup', () => {
   it('asks the owner to add it to the Topic, and waits', () => {
     const { db } = fixture()
-    const result = outsideScopeResult({ kind: 'server', serverId: 'mail' }, chatScope(db, '21'))
+    const result = outsideScopeResult({ kind: 'server', connectionId: 'mail' }, chatScope(db, '21'))
     expect(result.details).toEqual({
       kind: 'not-in-topic',
-      target: { kind: 'server', serverId: 'mail' },
+      target: { kind: 'server', connectionId: 'mail' },
       topic: { id: 2, name: 'Work' },
     })
     expect(result.content).toEqual([expect.objectContaining({ text: expect.stringContaining('wait for their reply') })])
@@ -248,7 +248,7 @@ describe('a call outside the setup', () => {
 
   it('names a skills library as a library, and gives a subagent words only', () => {
     const { db } = fixture()
-    const library = outsideScopeResult({ kind: 'skills', serverId: 'other' }, chatScope(db, '22'))
+    const library = outsideScopeResult({ kind: 'skills', connectionId: 'other' }, chatScope(db, '22'))
     expect(library.details).toBeUndefined()
     expect(library.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining("Not in #Work's setup: skills from other") }),
@@ -259,9 +259,9 @@ describe('a call outside the setup', () => {
     const { db, raw } = fixture()
     raw
       .insert(appHelperExclusions)
-      .values({ sessionId: '22', kind: 'tool', serverId: 'notes', name: 'read', offAt: 1 })
+      .values({ sessionId: '22', kind: 'tool', connectionId: 'notes', name: 'read', offAt: 1 })
       .run()
-    const result = outsideScopeResult({ kind: 'tool', serverId: 'notes', name: 'read' }, chatScope(db, '22'))
+    const result = outsideScopeResult({ kind: 'tool', connectionId: 'notes', name: 'read' }, chatScope(db, '22'))
     expect(result.details).toBeUndefined()
     expect(result.content).toEqual([
       expect.objectContaining({ text: expect.stringContaining('Off for the conversation') }),
@@ -270,7 +270,7 @@ describe('a call outside the setup', () => {
 
   it('shows the owner what to add, and where, among what waits on them', () => {
     const { db } = fixture()
-    const result = outsideScopeResult({ kind: 'tool', serverId: 'notes', name: 'write' }, chatScope(db, '21'))
+    const result = outsideScopeResult({ kind: 'tool', connectionId: 'notes', name: 'write' }, chatScope(db, '21'))
     const entry = {
       id: '5',
       kind: 'pi.tool_result',
@@ -308,8 +308,8 @@ describe('the routines a setup leaves out', () => {
         id: 'r_live',
         title: 'Daily',
         outside: [
-          { serverId: 'notes', name: 'write' },
-          { serverId: 'mail', name: 'send' },
+          { connectionId: 'notes', name: 'write' },
+          { connectionId: 'mail', name: 'send' },
         ],
       },
     ])
@@ -334,8 +334,8 @@ describe('the routines a setup leaves out', () => {
     expect(new RoutineStore(db, 'owner').view('r_1')).toMatchObject({
       topic: 2,
       outsideSetup: [
-        { serverId: 'notes', name: 'write' },
-        { serverId: 'mail', name: 'send' },
+        { connectionId: 'notes', name: 'write' },
+        { connectionId: 'mail', name: 'send' },
       ],
     })
   })

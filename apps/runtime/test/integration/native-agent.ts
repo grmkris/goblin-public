@@ -70,7 +70,7 @@ const Binding = Schema.Struct({
   kept: Stored,
   moved: Schema.Array(Schema.String),
   after: Stored,
-  bound: Schema.Array(Schema.Struct({ serverId: Schema.String, endpoint: Schema.String, boundAt: Schema.Number })),
+  bound: Schema.Array(Schema.Struct({ connectionId: Schema.String, endpoint: Schema.String, boundAt: Schema.Number })),
   removed: Schema.Struct({
     listed: Schema.Array(Schema.String),
     left: Schema.Number,
@@ -238,7 +238,7 @@ export const agentCases = (phase: Phase): readonly NativeCase[] => [
       expect(result.kept).toEqual({ credentials: 1, grants: 1, pending: 1 })
       expect(result.moved).toEqual(['notes'])
       expect(result.after).toEqual({ credentials: 0, grants: 0, pending: 0 })
-      expect(result.bound).toEqual([{ serverId: 'notes', endpoint: 'https://b.test/mcp', boundAt: 3 }])
+      expect(result.bound).toEqual([{ connectionId: 'notes', endpoint: 'https://b.test/mcp', boundAt: 3 }])
       expect(result.removed).toEqual({
         listed: ['extra'],
         left: 0,

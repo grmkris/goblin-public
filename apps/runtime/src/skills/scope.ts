@@ -13,18 +13,19 @@ import { type Resident, requireResident } from '../mcp/service.ts'
 export const skillScope = (
   session: string,
 ): Effect.Effect<
-  (serverId: string, skill?: SkillIdentity) => Effect.Effect<void, AppError>,
+  (connectionId: string, skill?: SkillIdentity) => Effect.Effect<void, AppError>,
   never,
   Entitlements | Resident | Setups
 > =>
   Effect.map(
     Effect.context<Entitlements | Resident | Setups>(),
-    (context) => (serverId: string, skill?: SkillIdentity) =>
+    (context) => (connectionId: string, skill?: SkillIdentity) =>
       Effect.gen(function* () {
         yield* requirePlan()
         yield* requireResident
         const scope = yield* Setups.use((setups) => setups.scope(session))
-        const allowed = skill === undefined ? scope.skills(serverId) : scope.skill(serverId, skill.name, skill.uri)
+        const allowed =
+          skill === undefined ? scope.skills(connectionId) : scope.skill(connectionId, skill.name, skill.uri)
         if (!allowed) return yield* new NotFound({ what: 'skill scope' })
       }).pipe(Effect.provideContext(context)),
   )

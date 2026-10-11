@@ -34,14 +34,14 @@ const result = (toolName: string, isError: boolean, details: Details) =>
 describe('attention (A5, ADR 0032)', () => {
   it('keeps the asks since the newest user message, from goblin markers only', () => {
     const question = result('ask_user', false, { kind: 'question', questions: [{ id: 'q', prompt: 'Which day?' }] })
-    const grant = result('mcp_call', true, { kind: 'grant-required', serverId: 'notes', name: 'write' })
+    const grant = result('mcp_call', true, { kind: 'grant-required', connectionId: 'notes', name: 'write' })
     const capability = result('subagent_spawn', true, {
       kind: 'not-in-topic',
       target: { kind: 'subagents' },
       topic: { id: 2, name: 'Work' },
     })
-    const remote = result('mcp_call', true, { kind: 'grant-required', serverId: 'x', name: 'y', origin: 'remote' })
-    const settled = result('mcp_call', true, { kind: 'grant-required', serverId: 'old', name: 'call' })
+    const remote = result('mcp_call', true, { kind: 'grant-required', connectionId: 'x', name: 'y', origin: 'remote' })
+    const settled = result('mcp_call', true, { kind: 'grant-required', connectionId: 'old', name: 'call' })
     expect(openAsks([settled, user('go on'), question, grant, capability, remote])).toEqual([
       { kind: 'question', since: question.id, entry: question.id, label: 'Which day?' },
       { kind: 'grant', since: grant.id, entry: grant.id, label: 'notes · write' },
@@ -56,7 +56,7 @@ describe('attention (A5, ADR 0032)', () => {
     cleanups.push(close)
     const held = {
       caller: 'model' as const,
-      serverId: 'mail',
+      connectionId: 'mail',
       name: 'send',
       endpoint: 'https://mail.example/mcp',
       grantVersion: 'v1',

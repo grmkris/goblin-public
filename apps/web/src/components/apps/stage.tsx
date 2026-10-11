@@ -214,13 +214,15 @@ function StageOffers({ instance, origin }: { readonly instance: Instance; readon
           key={receiptText(message)}
           app={id}
           conversation={instance.app.conversation}
-          serverId={instance.selection.serverId}
+          connectionId={instance.selection.connectionId}
           resourceUri={instance.selection.uri}
           receipt={message}
           onDone={() => host.dropMessage(id, message)}
         />
       )}
-      {instance.link && <LinkOffer link={instance.link} serverId={origin} onDone={() => host.setLink(id, undefined)} />}
+      {instance.link && (
+        <LinkOffer link={instance.link} connectionId={origin} onDone={() => host.setLink(id, undefined)} />
+      )}
       {instance.download && (
         <DownloadOffer file={instance.download} from={origin} onDone={() => host.setDownload(id, undefined)} />
       )}

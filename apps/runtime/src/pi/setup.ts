@@ -5,8 +5,8 @@ import type { SetupScope, ScopeTopic } from '../setup/scope.ts'
 /** How a target reads in a tool result: the server, the server's tool, its skills, or subagents. */
 const named = (target: ExclusionTarget): string => {
   if (target.kind === 'subagents') return 'subagents'
-  if (target.kind === 'skills') return `skills from ${target.serverId}`
-  return target.kind === 'tool' ? `${target.serverId} · ${target.name}` : target.serverId
+  if (target.kind === 'skills') return `skills from ${target.connectionId}`
+  return target.kind === 'tool' ? `${target.connectionId} · ${target.name}` : target.connectionId
 }
 
 /** The setup item a switch target names: a skills switch is a library. */
@@ -71,14 +71,17 @@ export function outsideScopeResult(target: ExclusionTarget, scope: SetupScope): 
  * What the model gets for one skill it may not use: outside the Topic's setup, the refusal that names the Topic; else
  * words. Its library is held (the caller checked), so only a setup that leaves the skill out refuses it here.
  */
-export function skillOutsideResult(skill: { serverId: string; name: string }, scope: SetupScope): ToolExecutionResult {
+export function skillOutsideResult(
+  skill: { connectionId: string; name: string },
+  scope: SetupScope,
+): ToolExecutionResult {
   const item: SetupItem = { kind: 'skill', ...skill }
   if (scope.topic !== undefined && !scope.topic.holds(item)) return notInTopicResult(item, scope.topic, scope.editable)
-  return outsideScopeResult({ kind: 'skills', serverId: skill.serverId }, scope)
+  return outsideScopeResult({ kind: 'skills', connectionId: skill.connectionId }, scope)
 }
 
 /** What of an MCP server and tool is switched off in `scope`: the server first, then the tool; none when both are on. */
-export function mcpOff(scope: SetupScope, serverId: string, name: string): ExclusionTarget | undefined {
-  if (!scope.server(serverId)) return { kind: 'server', serverId }
-  return scope.tool(serverId, name) ? undefined : { kind: 'tool', serverId, name }
+export function mcpOff(scope: SetupScope, connectionId: string, name: string): ExclusionTarget | undefined {
+  if (!scope.server(connectionId)) return { kind: 'server', connectionId }
+  return scope.tool(connectionId, name) ? undefined : { kind: 'tool', connectionId, name }
 }

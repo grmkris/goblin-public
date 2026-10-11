@@ -136,7 +136,7 @@ async function setupSequence(agent: ProbeStub) {
       payload: {
         name: 'Narrow',
         operationId: 'setup-narrow',
-        setup: { mcpServers: [{ serverId: 'notes', tools: ['read'] }], skills: [], apps: [], subagents: false },
+        setup: { mcpServers: [{ connectionId: 'notes', tools: ['read'] }], skills: [], apps: [], subagents: false },
       },
     }),
   )
@@ -148,7 +148,7 @@ async function setupSequence(agent: ProbeStub) {
   if (!thread.ok) return { narrow, thread }
   await exchange(agent, thread.value.id, 'and in its thread?', 'setup-thread')
   // A tool outside the setup runs nothing (the unreachable server is never asked) and the result offers it to the owner.
-  const offCall = 'call mcp_call {"serverId":"notes","name":"write","arguments":{}}'
+  const offCall = 'call mcp_call {"connectionId":"notes","name":"write","arguments":{}}'
   const off = await exchange(agent, chat, offCall, 'setup-off-call')
   const offResult = ((await historyOf(agent, chat)).entries ?? []).findLast(({ kind }) => kind === 'pi.tool-result')
   const listed = await exchange(agent, chat, 'call mcp_list {}', 'setup-list')

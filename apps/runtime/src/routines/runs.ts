@@ -78,7 +78,7 @@ function newRun(firing: Firing, id: string, skip: string | undefined, at: number
     notificationText: skip === undefined ? null : `Routine skipped: ${skip}`,
     notificationState: 'none',
     notificationReceipt: null,
-    notificationServerId: null,
+    notificationConnectionId: null,
     notificationAttempts: 0,
     notificationNextAt: 0,
     createdAt: at,
@@ -339,25 +339,25 @@ export class RoutineRunStore {
   }
   notification(
     id: string,
-    values: { state: string; serverId: string | null; receipt: string | null; nextAt: number; attempt: number },
+    values: { state: string; connectionId: string | null; receipt: string | null; nextAt: number; attempt: number },
   ): void {
     this.db
       .update(appRoutineRuns)
       .set({
         notificationState: values.state,
-        notificationServerId: values.serverId,
+        notificationConnectionId: values.connectionId,
         notificationReceipt: values.receipt,
         notificationNextAt: values.nextAt,
       })
       .where(and(eq(appRoutineRuns.id, id), eq(appRoutineRuns.notificationAttempts, values.attempt)))
       .run()
   }
-  claimNotification(id: string, attempts: number, serverId: string | null, at: number): boolean {
+  claimNotification(id: string, attempts: number, connectionId: string | null, at: number): boolean {
     return (
       this.db
         .update(appRoutineRuns)
         .set({
-          notificationServerId: serverId,
+          notificationConnectionId: connectionId,
           notificationAttempts: attempts + 1,
           notificationNextAt: at + 30_000,
         })

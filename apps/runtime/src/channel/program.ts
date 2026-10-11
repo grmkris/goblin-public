@@ -22,7 +22,7 @@ const retirePrevious = (events: typeof Events.Service, bindings: readonly Option
 
 /** Owner choice grants only the transport it selects. Fence the cursor after both Events leases confirm. */
 export const enableTelegram = Effect.fn('channel.enable')(function* (
-  serverId: string,
+  connectionId: string,
   appUrl: string,
   key: string,
   userId: string,
@@ -31,38 +31,39 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   const connections = yield* McpConnections
   const channel = yield* Channel
   const events = yield* Events
-  const tools = yield* McpServers.use((servers) => servers.tools(serverId, true))
-  const snapshot = yield* connections.snapshot(serverId)
+  const tools = yield* McpServers.use((servers) => servers.tools(connectionId, true))
+  const snapshot = yield* connections.snapshot(connectionId)
   const modern = Option.isSome(snapshot) && offersEvents(snapshot.value)
   const required = modern ? CHANNEL_TOOLS : [...CHANNEL_TOOLS, ...DOORBELL_TOOLS]
   const missing = required.filter((name) => !tools.some((tool) => tool.name === name))
-  if (missing.length > 0) return yield* new InvalidInput({ reason: `${serverId} does not offer ${missing.join(', ')}` })
+  if (missing.length > 0)
+    return yield* new InvalidInput({ reason: `${connectionId} does not offer ${missing.join(', ')}` })
   const grants = yield* McpGrants
-  for (const name of required) yield* grants.setTool(serverId, name, true)
+  for (const name of required) yield* grants.setTool(connectionId, name, true)
   if (!modern) {
     const url = hookUrl(appUrl, userId, yield* attempt(() => hookToken(key, userId)))
     const now = yield* epochSeconds
-    return yield* channel.enable(serverId, url, channelTool(connections, serverId), now)
+    return yield* channel.enable(connectionId, url, channelTool(connections, connectionId), now)
   }
-  const cursor = yield* channel.startCursor(serverId, channelTool(connections, serverId))
+  const cursor = yield* channel.startCursor(connectionId, channelTool(connections, connectionId))
   const revision = yield* Clock.currentTimeMillis
   const previous: Option.Option<Consumer>[] = []
   for (const name of TELEGRAM_EVENTS) {
-    const current = (yield* channel.status)?.serverId ?? serverId
+    const current = (yield* channel.status)?.connectionId ?? connectionId
     previous.push(yield* events.activeConsumer(`telegram:${current}:${name}`))
   }
   for (const name of TELEGRAM_EVENTS) {
-    yield* events.grant(serverId, name, {}, true)
+    yield* events.grant(connectionId, name, {}, true)
     yield* events.subscribe({
-      consumerId: `telegram:${serverId}:${name}`,
+      consumerId: `telegram:${connectionId}:${name}`,
       revision,
-      serverId,
+      connectionId,
       name,
       arguments: {},
       handlerKey: 'telegram-inbox',
     })
   }
-  const status = yield* channel.enableEvents(serverId, cursor, yield* epochSeconds)
+  const status = yield* channel.enableEvents(connectionId, cursor, yield* epochSeconds)
   yield* retirePrevious(events, previous)
   yield* attempt(wake)
   return status
@@ -73,13 +74,13 @@ export const disableTelegram = Effect.gen(function* () {
   const events = yield* Events
   const status = yield* channel.status
   for (const name of TELEGRAM_EVENTS) {
-    const binding = yield* events.activeConsumer(`telegram:${status?.serverId}:${name}`)
+    const binding = yield* events.activeConsumer(`telegram:${status?.connectionId}:${name}`)
     if (Option.isSome(binding)) yield* events.unsubscribe(binding.value)
   }
   if (status !== null && status.transport === 'doorbell') {
     const connections = yield* McpConnections
     // expected: the doorbell is off on this side whatever myagent answers; a later ring finds no secret.
-    yield* Effect.ignore(channelTool(connections, status.serverId)('unsubscribe', {}))
+    yield* Effect.ignore(channelTool(connections, status.connectionId)('unsubscribe', {}))
   }
   yield* channel.disable
   return null

@@ -51,7 +51,7 @@ describe('queued content from real Pi (in memory, keyless fixture)', () => {
     try {
       const content = ownerContent(
         'same words',
-        [{ origin: { serverId: 'board' }, text: 'shared' }],
+        [{ origin: { connectionId: 'board' }, text: 'shared' }],
         [{ path: '/uploads/file.txt', name: 'file.txt', mimeType: 'text/plain', size: 3 }],
       )
       const second = await root.submit({ type: 'input', content, requestId: 'second' }, BACKGROUND)

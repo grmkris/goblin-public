@@ -23,14 +23,14 @@ export const isOAuthRejection = (error: unknown): boolean =>
  * Map an SDK or transport failure to a safe `UpstreamMcp`; app errors raised by our own code pass through. The remote
  * payload, token, request and response are never retained.
  */
-export const mapMcpError = (error: unknown, serverId: string): AppError => {
-  if (UnauthorizedError.isInstance(error)) return new UpstreamMcp({ serverId, reason: 'unauthorized' })
-  if (ProtocolError.isInstance(error)) return new UpstreamMcp({ serverId, reason: 'remote-rpc', code: error.code })
-  if (SdkHttpError.isInstance(error)) return new UpstreamMcp({ serverId, reason: 'transport' })
+export const mapMcpError = (error: unknown, connectionId: string): AppError => {
+  if (UnauthorizedError.isInstance(error)) return new UpstreamMcp({ connectionId, reason: 'unauthorized' })
+  if (ProtocolError.isInstance(error)) return new UpstreamMcp({ connectionId, reason: 'remote-rpc', code: error.code })
+  if (SdkHttpError.isInstance(error)) return new UpstreamMcp({ connectionId, reason: 'transport' })
   if (SdkError.isInstance(error) && /timeout/iu.test(error.message))
-    return new UpstreamMcp({ serverId, reason: 'timeout' })
+    return new UpstreamMcp({ connectionId, reason: 'timeout' })
   if (error instanceof DOMException && error.name === 'AbortError')
-    return new UpstreamMcp({ serverId, reason: 'cancelled' })
+    return new UpstreamMcp({ connectionId, reason: 'cancelled' })
   const known = toAppError(error)
-  return known instanceof Internal ? new UpstreamMcp({ serverId, reason: 'transport' }) : known
+  return known instanceof Internal ? new UpstreamMcp({ connectionId, reason: 'transport' }) : known
 }

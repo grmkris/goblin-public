@@ -63,9 +63,14 @@ export async function receiptOperationId(app: string, receipt: QuestionAnswerRec
 }
 
 /** Owner instructions are local text; the remote receipt travels only as untrusted App context. */
-export function answerContinuation(app: string, serverId: string, resourceUri: string, receipt: QuestionAnswerReceipt) {
+export function answerContinuation(
+  app: string,
+  connectionId: string,
+  resourceUri: string,
+  receipt: QuestionAnswerReceipt,
+) {
   return {
     input: 'Continue with the saved MyPlan answer.',
-    appContext: [{ app, text: JSON.stringify({ from: 'mcp-app', serverId, resourceUri, receipt }) }],
+    appContext: [{ app, text: JSON.stringify({ from: 'mcp-app', connectionId, resourceUri, receipt }) }],
   }
 }

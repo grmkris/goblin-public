@@ -103,11 +103,11 @@ const readPage = (url: URL, fetcher: FetchLike) =>
       const response = await fetcher(url, { redirect: 'manual', signal })
       return response.ok ? await response.text() : undefined
     },
-    catch: () => new UpstreamMcp({ serverId: url.host, reason: 'transport' }),
+    catch: () => new UpstreamMcp({ connectionId: url.host, reason: 'transport' }),
   }).pipe(
     Effect.timeoutOrElse({
       duration: REGISTRY_TIMEOUT,
-      orElse: () => Effect.fail(new UpstreamMcp({ serverId: url.host, reason: 'transport' })),
+      orElse: () => Effect.fail(new UpstreamMcp({ connectionId: url.host, reason: 'transport' })),
     }),
     Effect.flatMap((body) => {
       if (body === undefined || body.length > MAX_PAGE_BYTES) return Effect.fail(notARegistry())

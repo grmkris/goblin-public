@@ -8,7 +8,7 @@ import { answerOf } from './probe-reads.ts'
 const APP_CALLER = { 'x-mcp-caller': 'app' }
 
 const grant = (me: AgentFetch, allowed: boolean) =>
-  callOwner(me, (api) => api.mcp.setToolGrant({ payload: { serverId: 'apps-fixture', name: 'board', allowed } }))
+  callOwner(me, (api) => api.mcp.setToolGrant({ payload: { connectionId: 'apps-fixture', name: 'board', allowed } }))
 /** The board's resource, read as the App reads it. */
 const read = (api: OwnerClient) =>
   api.mcp.readResource({ params: { id: 'apps-fixture' }, headers: APP_CALLER, payload: { uri: BOARD } })
@@ -17,7 +17,7 @@ const read = (api: OwnerClient) =>
 async function keptApp(base: string, owner: Person) {
   const me = signedIn(base, owner)
   const thread = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
-  const input = `call mcp_call ${JSON.stringify({ serverId: 'apps-fixture', name: 'board', arguments: { marker: 'kept' } })}`
+  const input = `call mcp_call ${JSON.stringify({ connectionId: 'apps-fixture', name: 'board', arguments: { marker: 'kept' } })}`
   await callOwner(me, (api) =>
     api.conversations.submit({ params: { id: thread.id }, payload: { input, operationId: crypto.randomUUID() } }),
   )
@@ -26,7 +26,7 @@ async function keptApp(base: string, owner: Person) {
   expect(app).toMatchObject({
     conversation: thread.id,
     title: 'Board',
-    source: { kind: 'mcp', serverId: 'apps-fixture', tool: 'board', uri: BOARD },
+    source: { kind: 'mcp', connectionId: 'apps-fixture', tool: 'board', uri: BOARD },
   })
   if (app === undefined) throw new Error('no app kept')
   return { app, thread: thread.id }
@@ -52,7 +52,7 @@ async function grantsLive(base: string, owner: Person): Promise<void> {
       base,
       owner,
       '/api/mcp/grants',
-      { serverId: 'apps-fixture', name: 'board', allowed: true },
+      { connectionId: 'apps-fixture', name: 'board', allowed: true },
       headers,
     )
     expect(refused.status).toBe(403)
@@ -72,7 +72,7 @@ export async function appsCase(base: string): Promise<void> {
   await grant(me, true)
   const { app, thread } = await keptApp(base, owner)
   const launch = await callOwner(me, (api) => api.apps.launch({ params: { id: app.id } }))
-  expect(launch).toMatchObject({ kind: 'mcp', serverId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
+  expect(launch).toMatchObject({ kind: 'mcp', connectionId: 'apps-fixture', uri: BOARD, arguments: { marker: 'kept' } })
   expect(JSON.stringify(launch.kind === 'mcp' ? launch.result : null)).toContain('fixture-board')
   await callOwner(me, read)
   const crossed = await answerOf(me, (api) =>

@@ -9,7 +9,7 @@ export const RoutineTrigger = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('cron'), expression: NonEmptyString(120) }),
   Schema.Struct({
     kind: Schema.Literal('event'),
-    serverId: server,
+    connectionId: server,
     name: NonEmptyString(256),
     arguments: Schema.Record(Schema.String, Schema.Json),
   }),
@@ -20,7 +20,7 @@ export const RoutineDefinition = Schema.Struct({
   trigger: RoutineTrigger,
   timezone: NonEmptyString(80),
   notifyTelegram: Schema.Boolean,
-  allowedTools: Schema.Array(Schema.Struct({ serverId: server, name: NonEmptyString(256) })).check(
+  allowedTools: Schema.Array(Schema.Struct({ connectionId: server, name: NonEmptyString(256) })).check(
     Schema.isMaxLength(100),
   ),
   budget: Schema.Struct({
@@ -47,7 +47,7 @@ export const RoutineView = Schema.Struct({
   /** The Topic the routine lives in (ADR 0040). */
   topic: Schema.optional(Schema.Int),
   /** Its allowed tools that its Topic's setup does not hold now: a run that calls one is refused. */
-  outsideSetup: Schema.optional(Schema.Array(Schema.Struct({ serverId: Schema.String, name: Schema.String }))),
+  outsideSetup: Schema.optional(Schema.Array(Schema.Struct({ connectionId: Schema.String, name: Schema.String }))),
 })
 export type RoutineView = typeof RoutineView.Type
 export const RoutinePage = Schema.Struct({

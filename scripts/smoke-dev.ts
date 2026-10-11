@@ -168,33 +168,33 @@ class InboundClient {
   }
 }
 
-type ServerReport = { serverId: string; status: string; tools?: number; granted?: number; probe?: string }
+type ServerReport = { connectionId: string; status: string; tools?: number; granted?: number; probe?: string }
 
 async function serverReport(
   dev: DevClient,
-  server: { readonly serverId: string; readonly status: string },
+  server: { readonly connectionId: string; readonly status: string },
 ): Promise<ServerReport> {
-  const { serverId } = server
-  const report: ServerReport = { serverId, status: server.status }
+  const { connectionId } = server
+  const report: ServerReport = { connectionId, status: server.status }
   if (report.status !== 'connected') return report
   // A connected server whose host no longer answers (a stopped tunnel) is the server's outage, not goblin's: the
   // agent answers it as UpstreamMcp (502, or 504 on a timeout), which the report records instead of failing.
   const tools = await dev.owner((api) =>
     api.mcp
-      .tools({ params: { id: serverId }, query: { refresh: '' } })
+      .tools({ params: { id: connectionId }, query: { refresh: '' } })
       .pipe(Effect.catchTag('UpstreamMcp', () => Effect.succeed(undefined))),
   )
   if (tools === undefined) return { ...report, probe: 'unreachable' }
   report.tools = tools.length
   report.granted = tools.filter((tool) => tool.granted).length
-  const probe = PROBES[serverId]
+  const probe = PROBES[connectionId]
   const granted = tools.some((tool) => tool.name === probe && tool.granted)
   if (probe === undefined || !granted) {
     report.probe = 'not-granted'
     return report
   }
   const result = await dev.owner((api) =>
-    api.mcp.callTool({ params: { id: serverId }, headers: {}, payload: { name: probe, arguments: {} } }),
+    api.mcp.callTool({ params: { id: connectionId }, headers: {}, payload: { name: probe, arguments: {} } }),
   )
   report.probe = result.isError === true ? 'error' : 'ok'
   return report
@@ -202,9 +202,9 @@ async function serverReport(
 
 /** If the owner has granted the MyPlan probe, the agent must be able to call it through its resident authority. */
 async function residentToolTurn(client: InboundClient, servers: readonly ServerReport[]): Promise<'ok' | 'skipped'> {
-  if (!servers.some((server) => server.serverId === 'myplan' && server.probe === 'ok')) return 'skipped'
+  if (!servers.some((server) => server.connectionId === 'myplan' && server.probe === 'ok')) return 'skipped'
   const used = await client.ask(
-    `Call mcp_call exactly once with serverId "myplan", name "${PROBES['myplan'] ?? ''}" and arguments {}. ` +
+    `Call mcp_call exactly once with connectionId "myplan", name "${PROBES['myplan'] ?? ''}" and arguments {}. ` +
       `After a successful result reply with exactly ${MCP_MARKER}; otherwise describe the failure.`,
   )
   if (used['status'] !== 'done' || used['text'] !== MCP_MARKER) throw new Error('resident_tool_turn_failed')

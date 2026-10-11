@@ -71,21 +71,21 @@ export class McpServers extends Context.Service<
     /** Every server offered, configured first, with its connection status. */
     readonly list: () => Effect.Effect<readonly ServerView[]>
     /** One server's connection status: signed in, needing sign-in, or never connected. */
-    readonly status: (serverId: string) => Effect.Effect<ConnectionStatus>
+    readonly status: (connectionId: string) => Effect.Effect<ConnectionStatus>
     /** goblin's suggested servers for `stage`, each marked added when the owner already has its endpoint. */
     readonly suggested: (stage: Stage | undefined) => Effect.Effect<readonly ServerSuggestion[]>
     /** Adds a public https endpoint, labelled from its server card; it starts disconnected. */
     readonly add: (endpoint: string, source?: ServerSource) => Effect.Effect<ServerView, AppError>
     /** Removes an added server with its credentials, grants and pending sign-ins. Configured ones stay. */
-    readonly remove: (serverId: string) => Effect.Effect<void, AppError>
+    readonly remove: (connectionId: string) => Effect.Effect<void, AppError>
     /** Starts (or silently renews) sign-in: the URL to send the owner's browser to, when one is needed. */
-    readonly beginConnect: (serverId: string) => Effect.Effect<ConnectStart, AppError>
+    readonly beginConnect: (connectionId: string) => Effect.Effect<ConnectStart, AppError>
     /** Completes the sign-in the browser came back from; answers the server's id. The `state` is single-use. */
     readonly finishConnect: (state: string, code: string, issuer?: string) => Effect.Effect<string, AppError>
     /** Forgets the server's credentials and closes its connection; grants stay. */
-    readonly disconnect: (serverId: string) => Effect.Effect<void, AppError>
+    readonly disconnect: (connectionId: string) => Effect.Effect<void, AppError>
     /** The server's tools as the owner sees them, from the live connection or a fresh one. */
-    readonly tools: (serverId: string, refresh: boolean) => Effect.Effect<readonly ToolView[], AppError>
+    readonly tools: (connectionId: string, refresh: boolean) => Effect.Effect<readonly ToolView[], AppError>
     /**
      * Registry entries matching `query`, marking the ones already offered; `partial` when a registry could not be
      * searched (it is logged, and the answer is not cached).
@@ -107,19 +107,23 @@ export class McpGrants extends Context.Service<
     readonly list: () => Effect.Effect<readonly Grant[]>
     /** A granted tool's ask-first switch and version, which a held call is checked against. */
     readonly policy: (
-      serverId: string,
+      connectionId: string,
       name: string,
     ) => Effect.Effect<Option.Option<{ readonly askFirst: boolean; readonly version: string }>>
     /** Grants or revokes one discovered tool; its App resource follows the tools that use it. */
-    readonly setTool: (serverId: string, name: string, allowed: boolean) => Effect.Effect<readonly Grant[], AppError>
+    readonly setTool: (
+      connectionId: string,
+      name: string,
+      allowed: boolean,
+    ) => Effect.Effect<readonly Grant[], AppError>
     /** A granted tool's calls wait for the owner's decision, or no longer do. */
     readonly setAskFirst: (
-      serverId: string,
+      connectionId: string,
       name: string,
       enabled: boolean,
     ) => Effect.Effect<readonly Grant[], AppError>
     /** Grants or revokes an App as a whole: exactly the tools declaring `uri` and the resource itself. */
-    readonly setApp: (serverId: string, uri: string, allowed: boolean) => Effect.Effect<readonly Grant[], AppError>
+    readonly setApp: (connectionId: string, uri: string, allowed: boolean) => Effect.Effect<readonly Grant[], AppError>
   }
 >()('goblin/mcp/McpGrants') {}
 
@@ -133,24 +137,27 @@ export class McpConnections extends Context.Service<
     /** Every server the manager offers (configured and added), by id and endpoint. */
     readonly servers: () => Effect.Effect<readonly McpServerConfig[]>
     /** One offered server, or `NotFound`. */
-    readonly server: (serverId: string) => Effect.Effect<McpServerConfig, AppError>
+    readonly server: (connectionId: string) => Effect.Effect<McpServerConfig, AppError>
     /** The live connection's discovered snapshot; none without a connection. */
-    readonly snapshot: (serverId: string) => Effect.Effect<Option.Option<McpConnectionSnapshot>>
+    readonly snapshot: (connectionId: string) => Effect.Effect<Option.Option<McpConnectionSnapshot>>
     /** Connects (or reuses the live connection) and answers what it discovered. */
-    readonly connect: (serverId: string, options?: McpRequestOptions) => Effect.Effect<McpConnectionSnapshot, AppError>
+    readonly connect: (
+      connectionId: string,
+      options?: McpRequestOptions,
+    ) => Effect.Effect<McpConnectionSnapshot, AppError>
     /** Drops the live connection and discovers again over a fresh handshake. */
-    readonly reconnect: (serverId: string) => Effect.Effect<McpConnectionSnapshot, AppError>
+    readonly reconnect: (connectionId: string) => Effect.Effect<McpConnectionSnapshot, AppError>
     /** Closes the server's connection, if it has one. */
-    readonly close: (serverId: string) => Effect.Effect<void>
+    readonly close: (connectionId: string) => Effect.Effect<void>
     readonly callTool: (
-      serverId: string,
+      connectionId: string,
       name: string,
       args: Record<string, unknown>,
       options?: McpCallOptions,
     ) => Effect.Effect<McpToolResult, AppError>
     /** A granted resource; `app` reads an App's `ui://` HTML bundle, under its larger bound. */
     readonly readResource: (
-      serverId: string,
+      connectionId: string,
       uri: string,
       caller: 'human' | 'app',
     ) => Effect.Effect<ReadResourceResult, AppError>
@@ -159,7 +166,7 @@ export class McpConnections extends Context.Service<
      * checked before it connects and again before it is sent; the result decoded with `schema`.
      */
     readonly events: <S extends Schema.ConstraintDecoder<unknown>>(
-      serverId: string,
+      connectionId: string,
       method: EventMethod,
       params: Record<string, unknown>,
       schema: S,
@@ -170,12 +177,12 @@ export class McpConnections extends Context.Service<
      * shortest `ttlMs` seen for the caller's cache.
      */
     readonly skills: (
-      serverId: string,
+      connectionId: string,
       options?: SkillRequestOptions,
     ) => Effect.Effect<{ readonly skills: readonly SkillEntry[]; readonly ttlMs: number | undefined }, AppError>
     /** One skill file through `resources/read`, bounded; the caller verifies its bytes against the manifest. */
     readonly skillFile: (
-      serverId: string,
+      connectionId: string,
       uri: string,
       options?: SkillRequestOptions,
     ) => Effect.Effect<ReadResourceResult, AppError>
@@ -225,10 +232,10 @@ export class Events extends Context.Service<
   Events,
   {
     /** The server's subscriptions as the owner sees them; no callback URL, secret or event body. */
-    readonly health: (serverId: string) => Effect.Effect<readonly EventHealth[]>
+    readonly health: (connectionId: string) => Effect.Effect<readonly EventHealth[]>
     /** Grants or revokes one exact selector (server, event name and canonical arguments). */
     readonly grant: (
-      serverId: string,
+      connectionId: string,
       name: string,
       args: Record<string, unknown>,
       allowed: boolean,
@@ -258,7 +265,7 @@ export class Events extends Context.Service<
       write: () => void,
     ) => Effect.Effect<void, AppError>
     /** Unsubscribes every consumer of one server (or of all), while the authorization that made them still holds. */
-    readonly disableServer: (serverId?: string) => Effect.Effect<void, AppError>
+    readonly disableServer: (connectionId?: string) => Effect.Effect<void, AppError>
     /** One signed webhook delivery, verified and stored before it is answered. */
     readonly receive: (input: EventWebhook) => Effect.Effect<EventWebhookResult, AppError>
     /**

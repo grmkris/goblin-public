@@ -42,15 +42,15 @@ export const chooseModelMutation = mutationOptions({
 export const channelQuery = owner.apiQuery({ queryKey: agentKeys.channel, queryFn: (api) => api.agent.channel() })
 
 /**
- * Moves Telegram to `serverId`, or turns it off with null. The channel is read again either way, and the servers,
+ * Moves Telegram to `connectionId`, or turns it off with null. The channel is read again either way, and the servers,
  * whose grants and Events the channel changes.
  */
 export const changeChannelMutation = mutationOptions({
   ...owner.apiMutation({
-    mutationFn: (api, serverId: string | null) =>
-      serverId === null ? api.agent.disableChannel() : api.agent.enableChannel({ payload: { serverId } }),
+    mutationFn: (api, connectionId: string | null) =>
+      connectionId === null ? api.agent.disableChannel() : api.agent.enableChannel({ payload: { connectionId } }),
   }),
-  onSettled: (_channel, _error, _serverId, _result, { client }) =>
+  onSettled: (_channel, _error, _connectionId, _result, { client }) =>
     Promise.all([
       client.invalidateQueries({ queryKey: agentKeys.channel }),
       client.invalidateQueries({ queryKey: mcpKeys.servers }),

@@ -55,7 +55,7 @@ test('bodies decode through the schema; mismatches are InvalidInput', async () =
 })
 
 test('a typed failure passes through; anything else, stored data that does not decode included, is ours (H2)', () => {
-  const known = new GrantDenied({ serverId: 'myplan', name: 'x' })
+  const known = new GrantDenied({ connectionId: 'myplan', name: 'x' })
   expect(toAppError(known)).toBe(known)
   const Stored = Schema.Struct({ revision: Schema.Number })
   const decoded = Schema.decodeUnknownExit(Stored)({ revision: SECRET })
@@ -91,7 +91,7 @@ test('the failure line keeps the frames that name a location, even beside one th
 })
 
 test('attempt and attemptSync keep a typed failure, and report anything else under `where` as Internal', async () => {
-  const known = new GrantDenied({ serverId: 'myplan', name: 'x' })
+  const known = new GrantDenied({ connectionId: 'myplan', name: 'x' })
   expect(isAppError(known)).toBe(true)
   expect(isAppError(new TypeError(SECRET))).toBe(false)
   expect(await Effect.runPromise(attempt(async () => 'value'))).toBe('value')

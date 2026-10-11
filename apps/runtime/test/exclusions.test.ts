@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Exclusion, scopeOf } from '../src/setup/scope.ts'
 
-const off = (kind: Exclusion['kind'], serverId = '', name = ''): Exclusion => ({ kind, serverId, name })
+const off = (kind: Exclusion['kind'], connectionId = '', name = ''): Exclusion => ({ kind, connectionId, name })
 
 describe("what a spawner switched off for its subagent (ADR 0018's exclusions)", () => {
   it('leaves everything on that it did not switch off, including tools granted later', () => {

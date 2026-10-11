@@ -3,7 +3,7 @@ import { NonEmptyString } from './ids.ts'
 
 // A Topic's setup and a Persona's (ADR 0040): what a Topic's chats work with, and what a Persona adds there.
 
-const ServerId = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
+const ConnectionId = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 const ToolName = NonEmptyString(256)
 /** A skill's name: the name of its directory, which stays when a new version changes its URI. */
 const SkillName = NonEmptyString(128)
@@ -16,7 +16,7 @@ const pick = <S extends Schema.Top>(item: S, max: number) =>
 
 /** One MCP server in a setup: every tool the owner granted on it, or only these. */
 export const SetupServer = Schema.Struct({
-  serverId: ServerId,
+  connectionId: ConnectionId,
   tools: pick(ToolName, 200),
 })
 export type SetupServer = typeof SetupServer.Type
@@ -26,7 +26,7 @@ export type SetupServer = typeof SetupServer.Type
  * two skills of the server share the name, to say which.
  */
 export const SetupSkill = Schema.Struct({
-  serverId: ServerId,
+  connectionId: ConnectionId,
   name: Schema.optionalKey(SkillName),
   uri: Schema.optionalKey(NonEmptyString(2048)),
 }).check(Schema.makeFilter((skill) => skill.uri === undefined || skill.name !== undefined))
@@ -57,12 +57,12 @@ export const NOTHING: PersonaSetup = { mcpServers: [], skills: [], apps: [] }
 
 /** One thing a setup can hold or a call can need: a server, one of its tools, a skills library, a skill, an app. */
 export const SetupItem = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('server'), serverId: ServerId }),
-  Schema.Struct({ kind: Schema.Literal('tool'), serverId: ServerId, name: ToolName }),
-  Schema.Struct({ kind: Schema.Literal('library'), serverId: ServerId }),
+  Schema.Struct({ kind: Schema.Literal('server'), connectionId: ConnectionId }),
+  Schema.Struct({ kind: Schema.Literal('tool'), connectionId: ConnectionId, name: ToolName }),
+  Schema.Struct({ kind: Schema.Literal('library'), connectionId: ConnectionId }),
   Schema.Struct({
     kind: Schema.Literal('skill'),
-    serverId: ServerId,
+    connectionId: ConnectionId,
     name: SkillName,
     uri: Schema.optionalKey(NonEmptyString(2048)),
   }),
@@ -91,7 +91,7 @@ export type NotInTopic = typeof NotInTopic.Type
 export const SetupCatalog = Schema.Struct({
   servers: Schema.Array(
     Schema.Struct({
-      serverId: Schema.String,
+      connectionId: Schema.String,
       label: Schema.String,
       status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
       tools: Schema.Array(Schema.Struct({ name: Schema.String, title: Schema.optional(Schema.String) })),
@@ -99,7 +99,7 @@ export const SetupCatalog = Schema.Struct({
   ),
   libraries: Schema.Array(
     Schema.Struct({
-      serverId: Schema.String,
+      connectionId: Schema.String,
       label: Schema.String,
       available: Schema.Boolean,
       skills: Schema.Array(Schema.Struct({ name: Schema.String, uri: Schema.String, description: Schema.String })),
@@ -111,9 +111,9 @@ export type SetupCatalog = typeof SetupCatalog.Type
 
 /** What the owner allows now, by identity: what `withoutItems` lists when it narrows a category that was `all`. */
 export type Allowed = {
-  readonly servers: readonly { readonly serverId: string; readonly tools: readonly { readonly name: string }[] }[]
+  readonly servers: readonly { readonly connectionId: string; readonly tools: readonly { readonly name: string }[] }[]
   readonly libraries: readonly {
-    readonly serverId: string
+    readonly connectionId: string
     readonly skills: readonly { readonly name: string; readonly uri: string }[]
   }[]
   readonly apps: readonly { readonly name: string }[]
@@ -121,33 +121,36 @@ export type Allowed = {
 
 type Setup = TopicSetup | PersonaSetup
 
-const serverOf = (setup: Setup, serverId: string) =>
-  setup.mcpServers === 'all' ? undefined : setup.mcpServers.find((server) => server.serverId === serverId)
+const serverOf = (setup: Setup, connectionId: string) =>
+  setup.mcpServers === 'all' ? undefined : setup.mcpServers.find((server) => server.connectionId === connectionId)
 
 /** Whether `setup` holds the server: wholly or with some of its tools. */
-export const hasServer = (setup: Setup, serverId: string): boolean =>
-  setup.mcpServers === 'all' || serverOf(setup, serverId) !== undefined
+export const hasServer = (setup: Setup, connectionId: string): boolean =>
+  setup.mcpServers === 'all' || serverOf(setup, connectionId) !== undefined
 
 /** Whether `setup` holds the server's tool. */
-export const hasTool = (setup: Setup, serverId: string, name: string): boolean => {
+export const hasTool = (setup: Setup, connectionId: string, name: string): boolean => {
   if (setup.mcpServers === 'all') return true
-  const server = serverOf(setup, serverId)
+  const server = serverOf(setup, connectionId)
   return server !== undefined && (server.tools === 'all' || server.tools.includes(name))
 }
 
 /** Whether `setup` holds any of the server's skills: the library or one of its skills. */
-export const hasLibrary = (setup: Setup, serverId: string): boolean =>
-  setup.skills === 'all' || setup.skills.some((skill) => skill.serverId === serverId)
+export const hasLibrary = (setup: Setup, connectionId: string): boolean =>
+  setup.skills === 'all' || setup.skills.some((skill) => skill.connectionId === connectionId)
 
 /**
  * Whether `setup` holds the skill: every skill, its whole library, or it by name (and URI, when one was kept and the
  * caller knows the skill's; a check by handle, before the skill is looked up, matches by name).
  */
-export const hasSkill = (setup: Setup, skill: { serverId: string; name: string; uri?: string | undefined }): boolean =>
+export const hasSkill = (
+  setup: Setup,
+  skill: { connectionId: string; name: string; uri?: string | undefined },
+): boolean =>
   setup.skills === 'all' ||
   setup.skills.some(
     (held) =>
-      held.serverId === skill.serverId &&
+      held.connectionId === skill.connectionId &&
       (held.name === undefined ||
         (held.name === skill.name && (held.uri === undefined || skill.uri === undefined || held.uri === skill.uri))),
   )
@@ -159,11 +162,11 @@ export const hasApp = (setup: Setup, app: string): boolean => setup.apps === 'al
 export function holds(setup: Setup, item: SetupItem): boolean {
   switch (item.kind) {
     case 'server':
-      return hasServer(setup, item.serverId)
+      return hasServer(setup, item.connectionId)
     case 'tool':
-      return hasTool(setup, item.serverId, item.name)
+      return hasTool(setup, item.connectionId, item.name)
     case 'library':
-      return hasLibrary(setup, item.serverId)
+      return hasLibrary(setup, item.connectionId)
     case 'skill':
       return hasSkill(setup, item)
     case 'app':
@@ -179,21 +182,21 @@ function withItem<S extends Setup>(setup: S, item: SetupItem): S {
     case 'server':
     case 'tool': {
       if (setup.mcpServers === 'all') return setup
-      const held = serverOf(setup, item.serverId)
-      const rest = setup.mcpServers.filter((server) => server.serverId !== item.serverId)
+      const held = serverOf(setup, item.connectionId)
+      const rest = setup.mcpServers.filter((server) => server.connectionId !== item.connectionId)
       const tools: 'all' | readonly string[] =
         item.kind === 'server' || held?.tools === 'all' ? 'all' : [...new Set([...(held?.tools ?? []), item.name])]
-      return { ...setup, mcpServers: [...rest, { serverId: item.serverId, tools }] }
+      return { ...setup, mcpServers: [...rest, { connectionId: item.connectionId, tools }] }
     }
     case 'library': {
       if (setup.skills === 'all') return setup
-      const rest = setup.skills.filter((skill) => skill.serverId !== item.serverId)
-      return { ...setup, skills: [...rest, { serverId: item.serverId }] }
+      const rest = setup.skills.filter((skill) => skill.connectionId !== item.connectionId)
+      return { ...setup, skills: [...rest, { connectionId: item.connectionId }] }
     }
     case 'skill': {
       if (setup.skills === 'all' || hasSkill(setup, item)) return setup
       const added: SetupSkill = {
-        serverId: item.serverId,
+        connectionId: item.connectionId,
         name: item.name,
         ...(item.uri === undefined ? {} : { uri: item.uri }),
       }
@@ -213,16 +216,18 @@ export const withItems = <S extends Setup>(setup: S, items: readonly SetupItem[]
 
 /** The servers a setup holds, as a list: a category that held everything lists every server allowed now. */
 const serverList = (setup: Setup, allowed: Allowed): readonly SetupServer[] =>
-  setup.mcpServers === 'all' ? allowed.servers.map(({ serverId }) => ({ serverId, tools: 'all' })) : setup.mcpServers
+  setup.mcpServers === 'all'
+    ? allowed.servers.map(({ connectionId }) => ({ connectionId, tools: 'all' }))
+    : setup.mcpServers
 
 /** The skills a setup holds, as a list: a category that held everything lists every library allowed now. */
 const skillList = (setup: Setup, allowed: Allowed): readonly SetupSkill[] =>
-  setup.skills === 'all' ? allowed.libraries.map(({ serverId }) => ({ serverId })) : setup.skills
+  setup.skills === 'all' ? allowed.libraries.map(({ connectionId }) => ({ connectionId })) : setup.skills
 
 /** A server's tools as a list: one that held all of them lists every tool allowed on it now. */
 const toolsOf = (server: SetupServer, allowed: Allowed): readonly string[] => {
   if (server.tools !== 'all') return server.tools
-  const now = allowed.servers.find((candidate) => candidate.serverId === server.serverId)
+  const now = allowed.servers.find((candidate) => candidate.connectionId === server.connectionId)
   return (now?.tools ?? []).map(({ name }) => name)
 }
 
@@ -235,11 +240,11 @@ type SkillItem = Extract<SetupItem, { kind: 'skill' }>
  */
 function serversWithout(setup: Setup, item: ServerItem, allowed: Allowed): readonly SetupServer[] {
   const servers = serverList(setup, allowed)
-  const rest = servers.filter((server) => server.serverId !== item.serverId)
-  const held = servers.find((server) => server.serverId === item.serverId)
+  const rest = servers.filter((server) => server.connectionId !== item.connectionId)
+  const held = servers.find((server) => server.connectionId === item.connectionId)
   if (held === undefined || item.kind === 'server') return rest
   const tools = toolsOf(held, allowed).filter((name) => name !== item.name)
-  return tools.length === 0 ? rest : [...rest, { serverId: item.serverId, tools }]
+  return tools.length === 0 ? rest : [...rest, { connectionId: item.connectionId, tools }]
 }
 
 /**
@@ -248,13 +253,13 @@ function serversWithout(setup: Setup, item: ServerItem, allowed: Allowed): reado
  */
 function skillsWithout(setup: Setup, item: SkillItem, allowed: Allowed): readonly SetupSkill[] {
   const skills = skillList(setup, allowed)
-  const ofServer = (skill: SetupSkill) => skill.serverId === item.serverId
+  const ofServer = (skill: SetupSkill) => skill.connectionId === item.connectionId
   const whole = skills.some((skill) => ofServer(skill) && skill.name === undefined)
-  const library = allowed.libraries.find((candidate) => candidate.serverId === item.serverId)
+  const library = allowed.libraries.find((candidate) => candidate.connectionId === item.connectionId)
   const expanded = whole
     ? [
         ...skills.filter((skill) => !ofServer(skill)),
-        ...(library?.skills ?? []).map(({ name }) => ({ serverId: item.serverId, name })),
+        ...(library?.skills ?? []).map(({ name }) => ({ connectionId: item.connectionId, name })),
       ]
     : skills
   return expanded.filter((skill) => !(ofServer(skill) && skill.name === item.name))
@@ -267,7 +272,7 @@ function withoutItem<S extends Setup>(setup: S, item: SetupItem, allowed: Allowe
     case 'tool':
       return { ...setup, mcpServers: serversWithout(setup, item, allowed) }
     case 'library':
-      return { ...setup, skills: skillList(setup, allowed).filter((skill) => skill.serverId !== item.serverId) }
+      return { ...setup, skills: skillList(setup, allowed).filter((skill) => skill.connectionId !== item.connectionId) }
     case 'skill':
       return { ...setup, skills: skillsWithout(setup, item, allowed) }
     case 'app': {
@@ -287,13 +292,13 @@ export const withoutItems = <S extends Setup>(setup: S, items: readonly SetupIte
 export function itemLabel(item: SetupItem): string {
   switch (item.kind) {
     case 'server':
-      return item.serverId
+      return item.connectionId
     case 'tool':
-      return `${item.serverId} · ${item.name}`
+      return `${item.connectionId} · ${item.name}`
     case 'library':
-      return `skills from ${item.serverId}`
+      return `skills from ${item.connectionId}`
     case 'skill':
-      return `${item.serverId} · ${item.name}`
+      return `${item.connectionId} · ${item.name}`
     case 'app':
       return `app ${item.app}`
     case 'subagents':
@@ -306,9 +311,9 @@ export function itemLabel(item: SetupItem): string {
  * server's skills library, or starting subagents. Switching off only narrows (ADR 0018).
  */
 export const ExclusionTarget = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal('server'), serverId: ServerId }),
-  Schema.Struct({ kind: Schema.Literal('tool'), serverId: ServerId, name: ToolName }),
-  Schema.Struct({ kind: Schema.Literal('skills'), serverId: ServerId }),
+  Schema.Struct({ kind: Schema.Literal('server'), connectionId: ConnectionId }),
+  Schema.Struct({ kind: Schema.Literal('tool'), connectionId: ConnectionId, name: ToolName }),
+  Schema.Struct({ kind: Schema.Literal('skills'), connectionId: ConnectionId }),
   Schema.Struct({ kind: Schema.Literal('subagents') }),
 ])
 export type ExclusionTarget = typeof ExclusionTarget.Type

@@ -16,13 +16,13 @@ import type { McpStep } from '../../src/telemetry/report.ts'
 import { lowLevelServer } from './low-level-server.ts'
 
 const serverConfig = {
-  serverId: 'fixture',
+  connectionId: 'fixture',
   endpoint: 'https://fixture.test/mcp',
   issuer: 'https://fixture.test/api/auth',
 }
 const grants = new MemoryGrants([
-  { serverId: 'fixture', capability: 'tool', name: 'read' },
-  { serverId: 'fixture', capability: 'resource', name: 'ui://fixture/view.html' },
+  { connectionId: 'fixture', capability: 'tool', name: 'read' },
+  { connectionId: 'fixture', capability: 'resource', name: 'ui://fixture/view.html' },
 ])
 type ResourceFixture = { readonly text?: string; readonly mimeType?: string; readonly returnedUri?: string }
 const handler = (resourceTemplates = true, resource: ResourceFixture = {}) =>
@@ -106,9 +106,9 @@ describe('official MCP SDK host interoperability (unit)', () => {
       expect(connected).toHaveLength(3)
       expect(connected).toEqual(
         expect.arrayContaining([
-          { step: { step: 'connect', serverId: 'fixture', sharedConnection: true }, outcome: 'ok' },
-          { step: { step: 'connect', serverId: 'fixture', scope: one }, outcome: 'ok' },
-          { step: { step: 'connect', serverId: 'fixture', scope: two }, outcome: 'ok' },
+          { step: { step: 'connect', connectionId: 'fixture', sharedConnection: true }, outcome: 'ok' },
+          { step: { step: 'connect', connectionId: 'fixture', scope: one }, outcome: 'ok' },
+          { step: { step: 'connect', connectionId: 'fixture', scope: two }, outcome: 'ok' },
         ]),
       )
       await manager.connections.callTool('fixture', 'read', {}, { runContext: two })
@@ -116,8 +116,8 @@ describe('official MCP SDK host interoperability (unit)', () => {
         _tag: 'GrantDenied',
       })
       expect(reports.filter(({ step }) => step.step === 'call')).toEqual([
-        { step: { step: 'call', serverId: 'fixture', tool: 'read', scope: two }, outcome: 'ok' },
-        { step: { step: 'call', serverId: 'fixture', tool: 'missing', scope: one }, outcome: 'GrantDenied' },
+        { step: { step: 'call', connectionId: 'fixture', tool: 'read', scope: two }, outcome: 'ok' },
+        { step: { step: 'call', connectionId: 'fixture', tool: 'missing', scope: one }, outcome: 'GrantDenied' },
       ])
     } finally {
       await manager.dispose()

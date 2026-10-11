@@ -39,18 +39,18 @@ type Db = DrizzleSqliteDODatabase
 /** A conversation's Pi tool filter: the subagent tools removed, or none (`null` clears an inherited one). */
 export type PiTools = { readonly remove: readonly ToolRegistration[] } | null
 
-/** One thing switched off in a conversation, as stored: `serverId` empty for subagents, `name` set only for a tool. */
-export type Exclusion = { readonly kind: Kind; readonly serverId: string; readonly name: string }
+/** One thing switched off in a conversation, as stored: `connectionId` empty for subagents, `name` set only for a tool. */
+export type Exclusion = { readonly kind: Kind; readonly connectionId: string; readonly name: string }
 
 /** What one bound lets a chat use: its Topic's setup, the switches of a chat, a routine's allowed tools. */
 type Allow = {
-  readonly server: (serverId: string) => boolean
+  readonly server: (connectionId: string) => boolean
   /** A tool is off when it or its server is. */
-  readonly tool: (serverId: string, name: string) => boolean
+  readonly tool: (connectionId: string, name: string) => boolean
   /** Whether any skill of the server's library may be used: what reading its listing needs. */
-  readonly skills: (serverId: string) => boolean
+  readonly skills: (connectionId: string) => boolean
   /** Whether this one skill may be used, by name and, when known, URI. */
-  readonly skill: (serverId: string, name: string, uri?: string) => boolean
+  readonly skill: (connectionId: string, name: string, uri?: string) => boolean
   readonly subagents: () => boolean
   readonly app: (name: string) => boolean
 }
@@ -79,20 +79,20 @@ export const CLOSED: SetupScope = {
 
 /** Everything both bounds allow. */
 const both = (one: Allow, other: Allow): Allow => ({
-  server: (serverId) => one.server(serverId) && other.server(serverId),
-  tool: (serverId, name) => one.tool(serverId, name) && other.tool(serverId, name),
-  skills: (serverId) => one.skills(serverId) && other.skills(serverId),
-  skill: (serverId, name, uri) => one.skill(serverId, name, uri) && other.skill(serverId, name, uri),
+  server: (connectionId) => one.server(connectionId) && other.server(connectionId),
+  tool: (connectionId, name) => one.tool(connectionId, name) && other.tool(connectionId, name),
+  skills: (connectionId) => one.skills(connectionId) && other.skills(connectionId),
+  skill: (connectionId, name, uri) => one.skill(connectionId, name, uri) && other.skill(connectionId, name, uri),
   subagents: () => one.subagents() && other.subagents(),
   app: (name) => one.app(name) && other.app(name),
 })
 
 /** What a setup lets a chat use: only what it holds. A Persona's setup never holds subagents. */
 const setupAllows = (setup: TopicSetup | PersonaSetup): Allow => ({
-  server: (serverId) => hasServer(setup, serverId),
-  tool: (serverId, name) => hasTool(setup, serverId, name),
-  skills: (serverId) => hasLibrary(setup, serverId),
-  skill: (serverId, name, uri) => hasSkill(setup, { serverId, name, uri }),
+  server: (connectionId) => hasServer(setup, connectionId),
+  tool: (connectionId, name) => hasTool(setup, connectionId, name),
+  skills: (connectionId) => hasLibrary(setup, connectionId),
+  skill: (connectionId, name, uri) => hasSkill(setup, { connectionId, name, uri }),
   subagents: () => 'subagents' in setup && setup.subagents,
   app: (name) => hasApp(setup, name),
 })
@@ -109,20 +109,20 @@ export const topicScope = (
 
 /** Everything either bound allows. */
 const either = (one: Allow, other: Allow): Allow => ({
-  server: (serverId) => one.server(serverId) || other.server(serverId),
-  tool: (serverId, name) => one.tool(serverId, name) || other.tool(serverId, name),
-  skills: (serverId) => one.skills(serverId) || other.skills(serverId),
-  skill: (serverId, name, uri) => one.skill(serverId, name, uri) || other.skill(serverId, name, uri),
+  server: (connectionId) => one.server(connectionId) || other.server(connectionId),
+  tool: (connectionId, name) => one.tool(connectionId, name) || other.tool(connectionId, name),
+  skills: (connectionId) => one.skills(connectionId) || other.skills(connectionId),
+  skill: (connectionId, name, uri) => one.skill(connectionId, name, uri) || other.skill(connectionId, name, uri),
   subagents: () => one.subagents() || other.subagents(),
   app: (name) => one.app(name) || other.app(name),
 })
 
-const key = ({ kind, serverId, name }: Exclusion) => `${kind}\n${serverId}\n${name}`
+const key = ({ kind, connectionId, name }: Exclusion) => `${kind}\n${connectionId}\n${name}`
 
 /** The stored row for a target. */
 export const exclusionOf = (target: ExclusionTarget): Exclusion => ({
   kind: target.kind,
-  serverId: target.kind === 'subagents' ? '' : target.serverId,
+  connectionId: target.kind === 'subagents' ? '' : target.connectionId,
   name: target.kind === 'tool' ? target.name : '',
 })
 
@@ -136,14 +136,14 @@ export function scopeOf(
   appsOff: ReadonlySet<string> = new Set(),
 ): SetupScope {
   const off = new Set(exclusions.map(key))
-  const server = (serverId: string) => !off.has(key({ kind: 'server', serverId, name: '' }))
+  const server = (connectionId: string) => !off.has(key({ kind: 'server', connectionId, name: '' }))
   return {
     editable,
     server,
-    tool: (serverId, name) => server(serverId) && !off.has(key({ kind: 'tool', serverId, name })),
-    skills: (serverId) => !off.has(key({ kind: 'skills', serverId, name: '' })),
-    skill: (serverId) => !off.has(key({ kind: 'skills', serverId, name: '' })),
-    subagents: () => !off.has(key({ kind: 'subagents', serverId: '', name: '' })),
+    tool: (connectionId, name) => server(connectionId) && !off.has(key({ kind: 'tool', connectionId, name })),
+    skills: (connectionId) => !off.has(key({ kind: 'skills', connectionId, name: '' })),
+    skill: (connectionId) => !off.has(key({ kind: 'skills', connectionId, name: '' })),
+    subagents: () => !off.has(key({ kind: 'subagents', connectionId: '', name: '' })),
     app: (name) => !appsOff.has(name),
   }
 }
@@ -191,7 +191,7 @@ export const ownExclusions = (db: Db, session: string): readonly Exclusion[] =>
   db
     .select({
       kind: appHelperExclusions.kind,
-      serverId: appHelperExclusions.serverId,
+      connectionId: appHelperExclusions.connectionId,
       name: appHelperExclusions.name,
     })
     .from(appHelperExclusions)
@@ -242,11 +242,11 @@ const routineScope = (db: Db, scope: SetupScope, runId: string): SetupScope => {
   return {
     editable: false,
     ...(scope.topic === undefined ? {} : { topic: scope.topic }),
-    server: (id) => scope.server(id) && definition.allowedTools.some((tool) => tool.serverId === id),
+    server: (id) => scope.server(id) && definition.allowedTools.some((tool) => tool.connectionId === id),
     tool: (id, name) =>
       scope.tool(id, name) &&
-      (definition.notifyTelegram || channel?.serverId !== id || name !== 'send_message') &&
-      definition.allowedTools.some((tool) => tool.serverId === id && tool.name === name),
+      (definition.notifyTelegram || channel?.connectionId !== id || name !== 'send_message') &&
+      definition.allowedTools.some((tool) => tool.connectionId === id && tool.name === name),
     skills: () => false,
     skill: () => false,
     subagents: () => false,
@@ -433,8 +433,8 @@ export const routinesOutside = (db: Db, topic: number, setup: TopicSetup) =>
     .flatMap((routine) => {
       const definition = definitionOf(routine)
       const outside = definition.allowedTools
-        .filter((tool) => !hasTool(setup, tool.serverId, tool.name))
-        .map(({ serverId, name }) => ({ serverId, name }))
+        .filter((tool) => !hasTool(setup, tool.connectionId, tool.name))
+        .map(({ connectionId, name }) => ({ connectionId, name }))
       return outside.length === 0 ? [] : [{ id: routine.id, title: definition.title, outside }]
     })
 

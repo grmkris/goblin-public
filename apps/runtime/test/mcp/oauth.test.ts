@@ -118,7 +118,7 @@ const setup = () => {
   const authorizationServer = new FixtureAuthorizationServer()
   const credentials = new MemoryCredentials()
   const { servers, connections, grants, run, dispose } = hostOf({
-    servers: [{ serverId: 'fixture', endpoint: `${BASE}/mcp` }],
+    servers: [{ connectionId: 'fixture', endpoint: `${BASE}/mcp` }],
     credentials,
     grants: new MemoryGrants(),
     fetch: authorizationServer.fetch,

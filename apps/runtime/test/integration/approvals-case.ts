@@ -44,7 +44,7 @@ export const decide = (me: AgentFetch, id: string, allowed: boolean) =>
 
 async function hold(me: AgentFetch, inputArgs: unknown = args) {
   const thread = await callOwner(me, (api) => api.conversations.create({ payload: {} }))
-  const input = `call mcp_call ${JSON.stringify({ serverId: SERVER, name: TOOL, arguments: inputArgs })}`
+  const input = `call mcp_call ${JSON.stringify({ connectionId: SERVER, name: TOOL, arguments: inputArgs })}`
   const sent = await callOwner(me, (api) =>
     api.conversations.submit({ params: { id: thread.id }, payload: { input, operationId: crypto.randomUUID() } }),
   )
@@ -55,9 +55,9 @@ async function hold(me: AgentFetch, inputArgs: unknown = args) {
 const calls = async (base: string, owner: Person) =>
   decodeCalls(await (await lever(base, owner, 'approvals/calls')).json())
 const mark = (me: AgentFetch, enabled: boolean) =>
-  callOwner(me, (api) => api.mcp.setAskFirst({ payload: { serverId: SERVER, name: TOOL, enabled } }))
+  callOwner(me, (api) => api.mcp.setAskFirst({ payload: { connectionId: SERVER, name: TOOL, enabled } }))
 const grant = (me: AgentFetch, allowed: boolean) =>
-  callOwner(me, (api) => api.mcp.setToolGrant({ payload: { serverId: SERVER, name: TOOL, allowed } }))
+  callOwner(me, (api) => api.mcp.setToolGrant({ payload: { connectionId: SERVER, name: TOOL, allowed } }))
 const approval = (me: AgentFetch, id: string) => callOwner(me, (api) => api.mcp.approval({ params: { id } }))
 
 export async function approvalsCase(base: string): Promise<void> {
@@ -103,7 +103,10 @@ export async function approvalsCase(base: string): Promise<void> {
   // A held call whose tool Personal's setup no longer holds is refused when approved (ADR 0040); then it holds it again.
   const scoped = await hold(me, { operationKey: 'op-scoped' })
   const narrowed = await callOwner(me, (api) =>
-    api.topics.setSetup({ params: { id: 1 }, payload: { remove: [{ kind: 'tool', serverId: SERVER, name: TOOL }] } }),
+    api.topics.setSetup({
+      params: { id: 1 },
+      payload: { remove: [{ kind: 'tool', connectionId: SERVER, name: TOOL }] },
+    }),
   )
   expect((await decide(me, scoped.id, true)).state).toBe('failed')
   expect(await calls(base, owner)).toHaveLength(1)

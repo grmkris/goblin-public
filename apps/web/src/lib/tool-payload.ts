@@ -24,7 +24,7 @@ function textBlock(text: string): PayloadBlock {
 
 function isMcpEnvelope(details: Record<string, unknown> | undefined): details is Record<string, unknown> {
   const origin = record(details?.['origin'])
-  return origin?.['trust'] === 'untrusted' && isString(origin['serverId']) && Array.isArray(details?.['content'])
+  return origin?.['trust'] === 'untrusted' && isString(origin['connectionId']) && Array.isArray(details?.['content'])
 }
 
 function structuredBlock(

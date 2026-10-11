@@ -15,8 +15,8 @@ import { type Probes, inAgent } from './probe.ts'
 
 /** The probe Topic's setup: the notes server's `read` only, the whole `myskills` library, every app, subagents. */
 const WORK = {
-  mcpServers: [{ serverId: 'notes', tools: ['read'] }],
-  skills: [{ serverId: 'myskills' }],
+  mcpServers: [{ connectionId: 'notes', tools: ['read'] }],
+  skills: [{ connectionId: 'myskills' }],
   apps: 'all',
   subagents: true,
 } as const
@@ -61,7 +61,7 @@ async function scopeProbe(storage: DurableObjectStorage) {
   })
   const retooled: string[] = []
   const profiles = new SetupScopes(db, [tool], async (session) => void retooled.push(session))
-  await profiles.configureHelper('900', '901', [{ kind: 'skills', serverId: 'myskills' }], 2)
+  await profiles.configureHelper('900', '901', [{ kind: 'skills', connectionId: 'myskills' }], 2)
   const view = (session: string) => {
     const scope = profiles.scope(session)
     return {
@@ -119,7 +119,9 @@ async function scopeProbe(storage: DurableObjectStorage) {
   await profiles.retoolOnce('retool:probe', 6)
   const again = retooled.length - configured.length - once.length
   // An owner switch left from before setups goes; the helper's exclusions stay.
-  db.insert(appHelperExclusions).values({ sessionId: '900', kind: 'subagents', serverId: '', name: '', offAt: 1 }).run()
+  db.insert(appHelperExclusions)
+    .values({ sessionId: '900', kind: 'subagents', connectionId: '', name: '', offAt: 1 })
+    .run()
   const dropped = await profiles.dropSwitchesOnce('drop:probe', 7)
   const droppedAgain = await profiles.dropSwitchesOnce('drop:probe', 8)
   const helperKept = view('902').skills

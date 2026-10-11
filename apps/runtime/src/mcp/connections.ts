@@ -47,26 +47,27 @@ export type McpManager = McpConnections['Service'] & {
   /** Starts offering a server the owner added. */
   readonly add: (server: McpServerConfig) => Effect.Effect<void, AppError>
   /** Stops offering a server and closes its connection. */
-  readonly remove: (serverId: string) => Effect.Effect<void>
+  readonly remove: (connectionId: string) => Effect.Effect<void>
 }
 
 /** `value` when its JSON fits `max` bytes, else the `UpstreamMcp` the host answers for it. */
-export const fits = <T>(serverId: string, value: T, max: number) => attemptSync(() => bounded(serverId, value, max))
+export const fits = <T>(connectionId: string, value: T, max: number) =>
+  attemptSync(() => bounded(connectionId, value, max))
 
-export const serverOf = (manager: Manager, serverId: string): Effect.Effect<McpServerConfig, AppError> =>
+export const serverOf = (manager: Manager, connectionId: string): Effect.Effect<McpServerConfig, AppError> =>
   Effect.suspend(() => {
-    const found = manager.servers.get(serverId)
-    return found === undefined ? Effect.fail(new NotFound({ what: `server ${serverId}` })) : Effect.succeed(found)
+    const found = manager.servers.get(connectionId)
+    return found === undefined ? Effect.fail(new NotFound({ what: `server ${connectionId}` })) : Effect.succeed(found)
   })
 
 const closeClient = (connection: Connection) =>
   // expected: the connection is forgotten either way; a transport that fails to close has nothing left to release.
   Effect.promise(() => connection.client.close().catch(() => undefined))
 
-export const close = (manager: Manager, serverId: string): Effect.Effect<void> =>
+export const close = (manager: Manager, connectionId: string): Effect.Effect<void> =>
   Effect.gen(function* () {
-    const connection = manager.connections.get(serverId)
-    manager.connections.delete(serverId)
+    const connection = manager.connections.get(connectionId)
+    manager.connections.delete(connectionId)
     if (connection === undefined) return
     if (connection.idle !== undefined) yield* Fiber.interrupt(connection.idle)
     yield* closeClient(connection)
@@ -80,8 +81,8 @@ const idleClose = (manager: Manager, connection: Connection) =>
       yield* Effect.sleep(connection.usedAt + manager.idleMs - now)
       now = yield* Clock.currentTimeMillis
     }
-    if (manager.connections.get(connection.server.serverId) !== connection) return
-    manager.connections.delete(connection.server.serverId)
+    if (manager.connections.get(connection.server.connectionId) !== connection) return
+    manager.connections.delete(connection.server.connectionId)
     yield* closeClient(connection)
   })
 
@@ -98,11 +99,11 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
           maxPages: manager.maxPages,
           maxResultBytes: manager.maxResultBytes,
         }),
-      catch: (error) => mapMcpError(error, server.serverId),
+      catch: (error) => mapMcpError(error, server.connectionId),
     })
     const usedAt = yield* Clock.currentTimeMillis
     const connection: Connection = { client, server, snapshot, usedAt, idle: undefined }
-    manager.connections.set(server.serverId, connection)
+    manager.connections.set(server.connectionId, connection)
     connection.idle = yield* Effect.forkIn(idleClose(manager, connection), manager.scope)
     return connection
   })
@@ -110,20 +111,20 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
 /** The live connection, its idle time restarted, or one flight (`mcp.connect:<server>`) that opens it. */
 export const connectionOf = (
   manager: Manager,
-  serverId: string,
+  connectionId: string,
   request: RequestOptions,
 ): Effect.Effect<Connection, AppError> =>
   Effect.suspend(() => {
-    const existing = manager.connections.get(serverId)
+    const existing = manager.connections.get(connectionId)
     if (existing !== undefined)
       return Effect.map(Clock.currentTimeMillis, (now) => {
         existing.usedAt = now
         return existing
       })
     return manager.flights.run(
-      `mcp.connect:${serverId}`,
-      Effect.flatMap(serverOf(manager, serverId), (server) => open(manager, server, request)).pipe(
-        timed({ step: 'connect', serverId, sharedConnection: true }, manager.options.report),
+      `mcp.connect:${connectionId}`,
+      Effect.flatMap(serverOf(manager, connectionId), (server) => open(manager, server, request)).pipe(
+        timed({ step: 'connect', connectionId, sharedConnection: true }, manager.options.report),
       ),
     )
   })
@@ -131,16 +132,16 @@ export const connectionOf = (
 /** A connection for a capability the owner granted; nothing is opened for one they did not. */
 export const authorized = (
   manager: Manager,
-  serverId: string,
+  connectionId: string,
   grant: { readonly capability: GrantCapability; readonly name: string },
   request: RequestOptions,
 ) =>
   Effect.gen(function* () {
-    yield* serverOf(manager, serverId)
+    yield* serverOf(manager, connectionId)
     const { capability, name } = grant
-    if (name === '' || !manager.options.allows({ serverId, capability, name }))
-      return yield* new GrantDenied({ serverId, name })
-    return yield* connectionOf(manager, serverId, request)
+    if (name === '' || !manager.options.allows({ connectionId, capability, name }))
+      return yield* new GrantDenied({ connectionId, name })
+    return yield* connectionOf(manager, connectionId, request)
   })
 
 /** One remote request; a transport or auth failure drops the cached connection so the next call reconnects. */
@@ -150,19 +151,21 @@ export const remote = <A>(
   request: () => Promise<A>,
   max = manager.maxResultBytes,
 ) => {
-  const serverId = connection.server.serverId
+  const connectionId = connection.server.connectionId
   return Effect.tryPromise({
-    try: async () => bounded(serverId, await request(), max),
-    catch: (error) => mapMcpError(error, serverId),
+    try: async () => bounded(connectionId, await request(), max),
+    catch: (error) => mapMcpError(error, connectionId),
   }).pipe(
-    Effect.tapErrorTag('UpstreamMcp', (error) => (ANSWERED.has(error.reason) ? Effect.void : close(manager, serverId))),
+    Effect.tapErrorTag('UpstreamMcp', (error) =>
+      ANSWERED.has(error.reason) ? Effect.void : close(manager, connectionId),
+    ),
   )
 }
 
 /** Closes every connection: the manager's finalizer, when the agent's runtime goes. */
 const closeAll = (manager: Manager) =>
   Effect.suspend(() =>
-    Effect.forEach([...manager.connections.keys()], (serverId) => close(manager, serverId), {
+    Effect.forEach([...manager.connections.keys()], (connectionId) => close(manager, connectionId), {
       concurrency: 'unbounded',
       discard: true,
     }),
@@ -171,30 +174,31 @@ const closeAll = (manager: Manager) =>
 /** The servers offered, the connections and their snapshots, as the service answers them. */
 export const lifecycle = (manager: Manager) => ({
   servers: () => Effect.sync(() => [...manager.servers.values()]),
-  server: (serverId: string) => serverOf(manager, serverId),
-  snapshot: (serverId: string) => Effect.sync(() => Option.fromNullishOr(manager.connections.get(serverId)?.snapshot)),
-  connect: Effect.fn('McpConnections.connect')(function* (serverId: string, options: McpRequestOptions = {}) {
+  server: (connectionId: string) => serverOf(manager, connectionId),
+  snapshot: (connectionId: string) =>
+    Effect.sync(() => Option.fromNullishOr(manager.connections.get(connectionId)?.snapshot)),
+  connect: Effect.fn('McpConnections.connect')(function* (connectionId: string, options: McpRequestOptions = {}) {
     const { runContext, ...request } = options
-    const opened = Effect.map(connectionOf(manager, serverId, request), (live) => live.snapshot)
+    const opened = Effect.map(connectionOf(manager, connectionId, request), (live) => live.snapshot)
     return yield* runContext === undefined
       ? opened
-      : opened.pipe(timed({ step: 'connect', serverId, scope: runContext }, manager.options.report))
+      : opened.pipe(timed({ step: 'connect', connectionId, scope: runContext }, manager.options.report))
   }),
-  reconnect: Effect.fn('McpConnections.reconnect')(function* (serverId: string) {
-    yield* close(manager, serverId)
-    return (yield* connectionOf(manager, serverId, {})).snapshot
+  reconnect: Effect.fn('McpConnections.reconnect')(function* (connectionId: string) {
+    yield* close(manager, connectionId)
+    return (yield* connectionOf(manager, connectionId, {})).snapshot
   }),
-  close: (serverId: string) => close(manager, serverId),
+  close: (connectionId: string) => close(manager, connectionId),
   add: (server: McpServerConfig) =>
     attemptSync(() => {
       assertEndpoint(server)
-      if (manager.servers.has(server.serverId)) throw new Internal({ reason: 'mcp_server_id_duplicate' })
-      manager.servers.set(server.serverId, server)
+      if (manager.servers.has(server.connectionId)) throw new Internal({ reason: 'mcp_connection_id_duplicate' })
+      manager.servers.set(server.connectionId, server)
     }),
-  remove: (serverId: string) =>
+  remove: (connectionId: string) =>
     Effect.andThen(
-      close(manager, serverId),
-      Effect.sync(() => manager.servers.delete(serverId)),
+      close(manager, connectionId),
+      Effect.sync(() => manager.servers.delete(connectionId)),
     ),
 })
 
@@ -203,9 +207,9 @@ export const lifecycle = (manager: Manager) => ({
  * connections close when the scope ends.
  */
 export const managerState = Effect.fnUntraced(function* (options: McpManagerOptions) {
-  const servers = new Map(options.servers.map((server) => [server.serverId, server]))
+  const servers = new Map(options.servers.map((server) => [server.connectionId, server]))
   yield* attemptSync(() => {
-    if (servers.size !== options.servers.length) throw new Internal({ reason: 'mcp_server_id_duplicate' })
+    if (servers.size !== options.servers.length) throw new Internal({ reason: 'mcp_connection_id_duplicate' })
     for (const server of options.servers) assertEndpoint(server)
   })
   const manager: Manager = {

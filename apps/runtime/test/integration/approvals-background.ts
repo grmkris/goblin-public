@@ -9,7 +9,7 @@ import { waitFor } from './until.ts'
 const approver = (view: ConversationView) => view.kind === 'subagent' && view.title === 'approver'
 
 const toolInput = (operationKey: string) =>
-  `call mcp_call ${JSON.stringify({ serverId: 'apps-fixture', name: 'board', arguments: { operationKey } })}`
+  `call mcp_call ${JSON.stringify({ connectionId: 'apps-fixture', name: 'board', arguments: { operationKey } })}`
 
 /** A routine run and a subagent each hold an ask-first call: the owner approves the routine's and refuses the other. */
 export async function approvalsBackground(base: string, owner: Person) {
@@ -24,7 +24,7 @@ export async function approvalsBackground(base: string, owner: Person) {
           timezone: 'UTC',
           trigger: { kind: 'once', at: new Date(Date.now() + 3_600_000).toISOString() },
           notifyTelegram: false,
-          allowedTools: [{ serverId: 'apps-fixture', name: 'board' }],
+          allowedTools: [{ connectionId: 'apps-fixture', name: 'board' }],
           budget: { tokensPerRun: 1000, tokensPerDay: 2000, runtimeSeconds: 60 },
         },
       },

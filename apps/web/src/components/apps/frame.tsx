@@ -36,7 +36,7 @@ import { browserZone } from '../../lib/format.ts'
 /** An MCP App: its server and `ui://` resource, and the call it shows with its result. */
 export type McpSelection = {
   readonly kind: 'mcp'
-  readonly serverId: string
+  readonly connectionId: string
   readonly uri: string
   readonly arguments: Record<string, unknown>
   readonly result: CallToolResult
@@ -47,7 +47,7 @@ export type AppSelection = McpSelection | AgentSelection
 
 /** Whom an App's offers and asks name: an MCP App's server, or an agent app's name. */
 export const selectionOrigin = (selection: AppSelection): string =>
-  selection.kind === 'mcp' ? selection.serverId : selection.launch.name
+  selection.kind === 'mcp' ? selection.connectionId : selection.launch.name
 
 /** What the App asks of the host: to report a failure, a height, to close, or another display mode. */
 export type FrameEvents = {
@@ -108,12 +108,12 @@ function appCalls(queryClient: QueryClient): AppCalls {
         await perform(queryClient, appDiagnosticMutation, { id, message })
       },
     },
-    tool: async (serverId, call) =>
+    tool: async (connectionId, call) =>
       // SAFETY: the server's tools/call result, validated by the SDK and answered whole (McpToolResult passes it on).
-      (await perform(queryClient, appToolCallMutation, { serverId, call })) as CallToolResult,
-    resource: async (serverId, read) =>
+      (await perform(queryClient, appToolCallMutation, { connectionId, call })) as CallToolResult,
+    resource: async (connectionId, read) =>
       // SAFETY: the server's resources/read result, validated by the SDK and answered whole (McpResourceResult).
-      (await perform(queryClient, appResourceReadMutation, { serverId, read })) as ReadResourceResult,
+      (await perform(queryClient, appResourceReadMutation, { connectionId, read })) as ReadResourceResult,
   }
 }
 
@@ -122,7 +122,7 @@ async function appHtml(selection: AppSelection, calls: AppCalls): Promise<string
     const { frameAssets } = await import('../../lib/app-assets.ts')
     return agentAppHtml(selection.launch.ui, await frameAssets())
   }
-  const data = await calls.resource(selection.serverId, { uri: selection.uri })
+  const data = await calls.resource(selection.connectionId, { uri: selection.uri })
   const content = records(data.contents).find(
     (item) =>
       item.uri === selection.uri &&
@@ -246,7 +246,7 @@ export function AppFrame({
   return (
     <iframe
       ref={iframe}
-      title={selection.kind === 'mcp' ? `MCP App from ${selection.serverId}` : `App ${selection.launch.name}`}
+      title={selection.kind === 'mcp' ? `MCP App from ${selection.connectionId}` : `App ${selection.launch.name}`}
       sandbox={appSandbox(selection.kind)}
       referrerPolicy="no-referrer"
       className={height === undefined ? 'app-stage-frame' : 'mcp-app-frame'}
@@ -280,7 +280,7 @@ export function McpApp({ selection, onClose }: { readonly selection: McpSelectio
           <AlertDescription>{error}. The ordinary tool result remains available.</AlertDescription>
         </Alert>
       )}
-      {link && <LinkOffer link={link} serverId={selectionOrigin(selection)} onDone={() => setLink(undefined)} />}
+      {link && <LinkOffer link={link} connectionId={selectionOrigin(selection)} onDone={() => setLink(undefined)} />}
       <AppFrame
         height={shown}
         selection={selection}

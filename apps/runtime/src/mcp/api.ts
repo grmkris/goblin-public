@@ -48,14 +48,14 @@ const removeRegistry = endpoint('removeRegistry')(({ payload }) =>
 )
 const grants = endpoint('grants')(() => McpGrants.use((owned) => owned.list()))
 const setToolGrant = endpoint('setToolGrant')(({ payload }) =>
-  McpGrants.use((owned) => owned.setTool(payload.serverId, payload.name, payload.allowed)),
+  McpGrants.use((owned) => owned.setTool(payload.connectionId, payload.name, payload.allowed)),
 )
 const setToolAskFirst = endpoint('setAskFirst')(({ payload }) =>
-  setAskFirst(payload.serverId, payload.name, payload.enabled),
+  setAskFirst(payload.connectionId, payload.name, payload.enabled),
 )
-const setSkills = endpoint('setSkills')(({ payload }) => setSkillEvents(payload.serverId, payload.enabled))
+const setSkills = endpoint('setSkills')(({ payload }) => setSkillEvents(payload.connectionId, payload.enabled))
 const setAppGrant = endpoint('setAppGrant')(({ payload }) =>
-  McpGrants.use((owned) => owned.setApp(payload.serverId, payload.uri, payload.allowed)),
+  McpGrants.use((owned) => owned.setApp(payload.connectionId, payload.uri, payload.allowed)),
 )
 const approval = endpoint('approval')(({ params }) => approvalView(params.id))
 const decideApproval = endpoint('decideApproval')(({ params, payload }) =>

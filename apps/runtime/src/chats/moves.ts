@@ -219,8 +219,8 @@ export const registerMovedThread = (db: MoveDb, row: MoveRow, thread: ThreadRow,
       .run()
     // Skills the moved turn loaded stay loaded in the Thread, whose context holds them.
     db.run(
-      sql`INSERT OR IGNORE INTO app_skill_activations (session_id, server_id, uri, entry, activated_at)
-          SELECT ${fork}, server_id, uri, entry, activated_at FROM app_skill_activations WHERE session_id = ${source}`,
+      sql`INSERT OR IGNORE INTO app_skill_activations (session_id, connection_id, uri, entry, activated_at)
+          SELECT ${fork}, connection_id, uri, entry, activated_at FROM app_skill_activations WHERE session_id = ${source}`,
     )
     db.update(appChatMoves)
       .set({ threadChat: thread.chat, updatedAt: now })

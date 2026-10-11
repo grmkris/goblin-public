@@ -63,10 +63,10 @@ function notificationHost(
 ) {
   const handler = notificationHandler(accepted)
   return mcpHost({
-    servers: [{ serverId: 'mygram', endpoint: 'https://notification.test/mcp' }],
+    servers: [{ connectionId: 'mygram', endpoint: 'https://notification.test/mcp' }],
     appUrl: 'https://goblin.test',
     credentials,
-    grants: new MemoryGrants([{ serverId: 'mygram', capability: 'tool', name: 'send_message' }]),
+    grants: new MemoryGrants([{ connectionId: 'mygram', capability: 'tool', name: 'send_message' }]),
     registries: new MemoryRegistries(),
     fetch: async (input, init) => {
       const request = new Request(input, init)
@@ -162,7 +162,7 @@ async function routineNotificationProbe(storage: DurableObjectStorage, owner: st
   await notify(on)
   return {
     offCalls,
-    frozenServer: failed.notificationServerId,
+    frozenServer: failed.notificationConnectionId,
     retryState: failed.notificationState,
     attempts: attempts.length,
     stableBytes: JSON.stringify(attempts[0]) === JSON.stringify(attempts[1]),

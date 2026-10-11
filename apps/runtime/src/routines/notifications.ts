@@ -19,11 +19,11 @@ const authority = Effect.gen(function* () {
   yield* requirePlan('routines')
   yield* requireResident
 })
-/** Checked again right before the call leaves: the plan, resident authority, and that the channel is still `serverId`. */
-const stillAuthorized = (serverId: string) =>
+/** Checked again right before the call leaves: the plan, resident authority, and that the channel is still `connectionId`. */
+const stillAuthorized = (connectionId: string) =>
   Effect.gen(function* () {
     yield* authority
-    if ((yield* Channel.use((channel) => channel.status))?.serverId !== serverId)
+    if ((yield* Channel.use((channel) => channel.status))?.connectionId !== connectionId)
       return yield* new Forbidden({ reason: 'routine notification channel changed' })
   })
 type Delivery = { state: 'accepted' | 'suppressed' | 'pending'; receipt: string | null }
@@ -38,10 +38,10 @@ export const notifyRoutine = (record: RoutineRun) =>
     const text = record.notificationText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     const channels = yield* Channel
     const channel = yield* channels.status
-    const serverId = record.notificationServerId ?? channel?.serverId ?? null
+    const connectionId = record.notificationConnectionId ?? channel?.connectionId ?? null
     if (record.notificationAttempts >= 5 || at >= record.updatedAt + 900_000) {
       yield* store.notification(record.id, {
-        serverId,
+        connectionId,
         state: 'failed',
         receipt: null,
         nextAt: 0,
@@ -49,16 +49,16 @@ export const notifyRoutine = (record: RoutineRun) =>
       })
       return
     }
-    const claimed = yield* store.claimNotification(record.id, record.notificationAttempts, serverId, at)
+    const claimed = yield* store.claimNotification(record.id, record.notificationAttempts, connectionId, at)
     if (!claimed) return
     const receipt = yield* Effect.gen(function* () {
       yield* authority
-      if (serverId === null || channel?.serverId !== serverId)
+      if (connectionId === null || channel?.connectionId !== connectionId)
         return yield* new Forbidden({ reason: 'routine notification channel changed' })
-      const authorize = yield* bound(stillAuthorized(serverId))
+      const authorize = yield* bound(stillAuthorized(connectionId))
       const result = yield* McpConnections.use((connections) =>
         connections.callTool(
-          serverId,
+          connectionId,
           'send_message',
           { operationId: `routine-${record.id}-0`, text },
           { caller: 'model', timeout: 5000, authorize },
@@ -81,7 +81,7 @@ export const notifyRoutine = (record: RoutineRun) =>
     )
     const attempts = record.notificationAttempts + 1
     yield* store.notification(record.id, {
-      serverId,
+      connectionId,
       receipt: receipt.receipt,
       state:
         receipt.state === 'pending' && (attempts >= 5 || at >= record.updatedAt + 900_000) ? 'failed' : receipt.state,

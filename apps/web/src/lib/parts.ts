@@ -19,7 +19,7 @@ type ToolResultMessage = Extract<ChatMessage, { role: 'tool' }>
 export type ToolState = 'pending' | 'running' | 'done' | 'error' | 'stopped'
 /** The MCP server, tool and arguments behind an `mcp_call`. */
 export type McpTarget = {
-  readonly serverId: string
+  readonly connectionId: string
   readonly name: string
   readonly arguments: Record<string, unknown>
 }
@@ -234,7 +234,7 @@ const OWN_TOOLS: Readonly<Record<string, string>> = {
  * the agent's own tools in words.
  */
 export function toolLine(part: ToolPart): { readonly lead: string; readonly server?: string; readonly tool?: string } {
-  if (part.target) return { lead: 'Used', server: part.target.serverId, tool: part.target.name }
+  if (part.target) return { lead: 'Used', server: part.target.connectionId, tool: part.target.name }
   const { app, member } = part.call.arguments
   if (part.call.name === 'app_call' && isString(app) && isString(member))
     return { lead: 'Used', server: app, tool: member }

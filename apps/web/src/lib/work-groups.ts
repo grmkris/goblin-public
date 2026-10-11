@@ -69,7 +69,7 @@ export type StepLine =
   | { readonly kind: 'step'; readonly step: WorkStep }
   | { readonly kind: 'server'; readonly server: string; readonly calls: readonly ToolPart[] }
 
-const serverOf = (step: WorkStep): string | undefined => (step.kind === 'tool' ? step.target?.serverId : undefined)
+const serverOf = (step: WorkStep): string | undefined => (step.kind === 'tool' ? step.target?.connectionId : undefined)
 
 /** The open group's lines: two or more calls in a row to one MCP server merge, with their order kept. */
 export function stepLines(steps: readonly WorkStep[]): StepLine[] {
@@ -99,8 +99,10 @@ export function liveLabel(steps: readonly WorkStep[]): string {
   const [only] = going
   if (only === undefined) return 'Thinking…'
   if (going.length === 1)
-    return only.target ? `Using ${only.target.serverId} · ${only.target.name}` : `Using ${only.call.name || 'a tool'}`
-  const servers = new Set(going.map((step) => step.target?.serverId))
+    return only.target
+      ? `Using ${only.target.connectionId} · ${only.target.name}`
+      : `Using ${only.call.name || 'a tool'}`
+  const servers = new Set(going.map((step) => step.target?.connectionId))
   const [server] = servers
   return servers.size === 1 && server !== undefined
     ? `Using ${server} · ${going.length} tools`

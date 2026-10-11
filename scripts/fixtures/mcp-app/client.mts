@@ -38,7 +38,7 @@ const display = async (wanted: 'fullscreen' | 'inline') => {
 /** Calls a tool of another server, which the host must refuse. */
 const callOther = async () => {
   try {
-    const result = await app.callServerTool({ name: 'board', arguments: { serverId: 'other-server' } })
+    const result = await app.callServerTool({ name: 'board', arguments: { connectionId: 'other-server' } })
     element('result').textContent = result.isError ? 'denied' : 'called origin'
   } catch {
     // expected: a refused call is the denial this fixture shows

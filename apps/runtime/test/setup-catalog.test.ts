@@ -4,8 +4,8 @@ import { allows, unallowed } from '../src/setup/catalog.ts'
 import { PERSONA_DENIED_TOOLS } from '../src/pi/persona-turn.ts'
 
 const allowed: Allowed = {
-  servers: [{ serverId: 'notes', tools: [{ name: 'read' }] }],
-  libraries: [{ serverId: 'lib', skills: [{ name: 'review', uri: 'skill://v1/review/SKILL.md' }] }],
+  servers: [{ connectionId: 'notes', tools: [{ name: 'read' }] }],
+  libraries: [{ connectionId: 'lib', skills: [{ name: 'review', uri: 'skill://v1/review/SKILL.md' }] }],
   apps: [{ name: 'tracker' }],
 }
 
@@ -14,16 +14,16 @@ const outcome = (before: TopicSetup, next: TopicSetup) =>
 
 describe('what the agent may add to a setup (ADR 0040)', () => {
   it('allows what the owner granted or turned on now, and subagents', () => {
-    expect(allows(allowed, { kind: 'tool', serverId: 'notes', name: 'read' })).toBe(true)
-    expect(allows(allowed, { kind: 'tool', serverId: 'notes', name: 'write' })).toBe(false)
-    expect(allows(allowed, { kind: 'skill', serverId: 'lib', name: 'review' })).toBe(true)
-    expect(allows(allowed, { kind: 'library', serverId: 'other' })).toBe(false)
+    expect(allows(allowed, { kind: 'tool', connectionId: 'notes', name: 'read' })).toBe(true)
+    expect(allows(allowed, { kind: 'tool', connectionId: 'notes', name: 'write' })).toBe(false)
+    expect(allows(allowed, { kind: 'skill', connectionId: 'lib', name: 'review' })).toBe(true)
+    expect(allows(allowed, { kind: 'library', connectionId: 'other' })).toBe(false)
     expect(allows(allowed, { kind: 'app', app: 'tracker' })).toBe(true)
     expect(allows(allowed, { kind: 'subagents' })).toBe(true)
   })
 
   it('refuses a list naming something new the owner does not allow, and keeps what was already there', () => {
-    const narrow: TopicSetup = { ...EVERYTHING, mcpServers: [{ serverId: 'gone', tools: 'all' }], apps: [] }
+    const narrow: TopicSetup = { ...EVERYTHING, mcpServers: [{ connectionId: 'gone', tools: 'all' }], apps: [] }
     expect(outcome(narrow, narrow)).toBe('ok')
     expect(outcome(EVERYTHING, narrow)).toBe('ok')
     const added: TopicSetup = { ...narrow, apps: ['tracker', 'diary'] }

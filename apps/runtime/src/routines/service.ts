@@ -140,13 +140,13 @@ export class RoutineRuns extends Context.Service<
     readonly notifications: (at: number) => Effect.Effect<RoutineRun[]>
     readonly notification: (
       id: string,
-      values: { state: string; serverId: string | null; receipt: string | null; nextAt: number; attempt: number },
+      values: { state: string; connectionId: string | null; receipt: string | null; nextAt: number; attempt: number },
     ) => Effect.Effect<void>
     /** Claims one notification attempt; false when another attempt holds it. */
     readonly claimNotification: (
       id: string,
       attempts: number,
-      serverId: string | null,
+      connectionId: string | null,
       at: number,
     ) => Effect.Effect<boolean>
     /** Tokens the run and its routine's UTC day have used. */

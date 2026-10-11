@@ -46,7 +46,7 @@ export type McpManagerOptions = {
     authorize: Effect.Effect<void, AppError> | undefined,
   ) => Effect.Effect<void, AppError>
   /** Whether the owner uses skills from a server (skills/store.ts); checked before any skill request. */
-  readonly skillsEnabled?: (serverId: string) => boolean
+  readonly skillsEnabled?: (connectionId: string) => boolean
   /** Bearer token source per server, with refresh on 401 (mcp/host.ts). */
   readonly auth: (server: McpServerConfig) => AuthProvider
   readonly fetch: typeof fetch
@@ -69,7 +69,7 @@ export type ApprovalContext = {
   readonly taskId: string
 }
 export type ApprovedDispatch = {
-  readonly serverId: string
+  readonly connectionId: string
   readonly name: string
   readonly endpoint: string
   readonly arguments: Record<string, unknown>
@@ -96,5 +96,5 @@ export type SkillIdentity = { readonly name: string; readonly uri?: string }
  * bound to the caller's services. The library asks it about one skill too (`skill`), before loading or reading it.
  */
 export type SkillRequestOptions = RequestOptions & {
-  readonly authorize?: (serverId: string, skill?: SkillIdentity) => Effect.Effect<void, AppError>
+  readonly authorize?: (connectionId: string, skill?: SkillIdentity) => Effect.Effect<void, AppError>
 }

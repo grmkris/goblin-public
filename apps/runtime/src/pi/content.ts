@@ -4,7 +4,7 @@ import type { ResolvedSelections } from '../composer.ts'
 
 /** What an open App shared, with where it comes from: an MCP App's server, or the agent app it is. */
 export type SharedContext = {
-  readonly origin: { readonly serverId: string } | { readonly app: string }
+  readonly origin: { readonly connectionId: string } | { readonly app: string }
   readonly text: string
 }
 

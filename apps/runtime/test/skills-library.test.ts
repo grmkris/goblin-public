@@ -98,11 +98,11 @@ await credentials.saveTokens('lib', { access_token: 'fixture-token', token_type:
 /** The skills service over an MCP host for the skills server, on a test clock that starts at 1,000,000 ms. */
 const skillsAt = () => {
   const host = mcpHost({
-    servers: [{ serverId: 'lib', endpoint: 'https://skills.test/mcp' }],
+    servers: [{ connectionId: 'lib', endpoint: 'https://skills.test/mcp' }],
     credentials,
     grants: new MemoryGrants(),
     registries: new MemoryRegistries(),
-    skillsEnabled: (serverId) => state.enabled(serverId),
+    skillsEnabled: (connectionId) => state.enabled(connectionId),
     appUrl: 'https://goblin.test',
     fetch: async (input, init) => {
       if (served.down) throw new TypeError('network down')
@@ -146,7 +146,7 @@ describe('skills over MCP (unit)', () => {
   it('shows the owner which servers offer skills and which are on', async () => {
     const offered = async () => (await run(McpServers.use((servers) => servers.list())))[0]
     await run(library.catalog())
-    expect(await offered()).toMatchObject({ serverId: 'lib', skillsOffered: true, skillsEnabled: true })
+    expect(await offered()).toMatchObject({ connectionId: 'lib', skillsOffered: true, skillsEnabled: true })
     await run(library.setEnabled('lib', false))
     expect(await offered()).toMatchObject({ skillsOffered: true, skillsEnabled: false })
   })
@@ -255,18 +255,22 @@ describe("a skills library outside the Topic's setup (unit)", () => {
   it("loads nothing when the model still asks for one of its skills, and offers to add it to the Topic's setup", async () => {
     expect(await activateIn([], 'lib:code-review')).toMatchObject({
       isError: true,
-      details: { kind: 'not-in-topic', target: { kind: 'library', serverId: 'lib' }, topic: { id: 2, name: 'Work' } },
+      details: {
+        kind: 'not-in-topic',
+        target: { kind: 'library', connectionId: 'lib' },
+        topic: { id: 2, name: 'Work' },
+      },
     })
   })
 
   it('loads a skill the setup names, whatever its URI now, and refuses its namesake-free neighbours', async () => {
-    const loaded = await activateIn([{ serverId: 'lib', name: 'code-review' }], 'lib:code-review')
+    const loaded = await activateIn([{ connectionId: 'lib', name: 'code-review' }], 'lib:code-review')
     expect(JSON.stringify(loaded.content)).toContain('<skill handle=\\"lib:code-review\\"')
-    expect(await activateIn([{ serverId: 'lib', name: 'plan' }], 'lib:code-review')).toMatchObject({
+    expect(await activateIn([{ connectionId: 'lib', name: 'plan' }], 'lib:code-review')).toMatchObject({
       isError: true,
       details: {
         kind: 'not-in-topic',
-        target: { kind: 'skill', serverId: 'lib', name: 'code-review' },
+        target: { kind: 'skill', connectionId: 'lib', name: 'code-review' },
         topic: { id: 2, name: 'Work' },
       },
     })
@@ -275,9 +279,9 @@ describe("a skills library outside the Topic's setup (unit)", () => {
   it('asks about the one skill before loading it or reading its files, cached bytes too', async () => {
     const refused = new NotFound({ what: 'skill scope' })
     const asked: string[] = []
-    const authorize = (serverId: string, skill?: { readonly name: string; readonly uri?: string }) =>
+    const authorize = (connectionId: string, skill?: { readonly name: string; readonly uri?: string }) =>
       Effect.suspend(() => {
-        asked.push(skill === undefined ? serverId : `${serverId}:${skill.name}@${skill.uri ?? ''}`)
+        asked.push(skill === undefined ? connectionId : `${connectionId}:${skill.name}@${skill.uri ?? ''}`)
         return skill === undefined || allow ? Effect.void : Effect.fail(refused)
       })
     let allow = true

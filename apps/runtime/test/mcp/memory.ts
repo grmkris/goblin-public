@@ -21,47 +21,47 @@ type Row = {
 /** The credential records in memory, with the same semantics as the SQLite store (minus encryption). */
 export class MemoryCredentials implements Credentials {
   readonly rows = new Map<string, Row>()
-  readonly pending = new Map<string, { serverId: string; codeVerifier: string; createdAt: number }>()
-  #row(serverId: string): Row {
-    const row = this.rows.get(serverId) ?? { status: 'needs_auth' }
-    this.rows.set(serverId, row)
+  readonly pending = new Map<string, { connectionId: string; codeVerifier: string; createdAt: number }>()
+  #row(connectionId: string): Row {
+    const row = this.rows.get(connectionId) ?? { status: 'needs_auth' }
+    this.rows.set(connectionId, row)
     return row
   }
-  status(serverId: string): ConnectionStatus {
-    const row = this.rows.get(serverId)
+  status(connectionId: string): ConnectionStatus {
+    const row = this.rows.get(connectionId)
     if (row === undefined) return 'disconnected'
     return row.status === 'connected' && row.tokens !== undefined ? 'connected' : 'needs_auth'
   }
-  tokenExpiresAt(serverId: string): number | undefined {
-    return this.rows.get(serverId)?.expiresAt
+  tokenExpiresAt(connectionId: string): number | undefined {
+    return this.rows.get(connectionId)?.expiresAt
   }
-  async clientInformation(serverId: string) {
-    return this.rows.get(serverId)?.client
+  async clientInformation(connectionId: string) {
+    return this.rows.get(connectionId)?.client
   }
-  async saveClientInformation(serverId: string, info: StoredOAuthClientInformation) {
-    this.#row(serverId).client = info
+  async saveClientInformation(connectionId: string, info: StoredOAuthClientInformation) {
+    this.#row(connectionId).client = info
   }
-  async tokens(serverId: string) {
-    return this.rows.get(serverId)?.tokens
+  async tokens(connectionId: string) {
+    return this.rows.get(connectionId)?.tokens
   }
-  async saveTokens(serverId: string, tokens: StoredOAuthTokens, now: number) {
-    const row = this.#row(serverId)
+  async saveTokens(connectionId: string, tokens: StoredOAuthTokens, now: number) {
+    const row = this.#row(connectionId)
     row.tokens = tokens
     row.status = 'connected'
     if (tokens.expires_in === undefined) delete row.expiresAt
     else row.expiresAt = now + tokens.expires_in
   }
-  discoveryState(serverId: string) {
-    return this.rows.get(serverId)?.discovery
+  discoveryState(connectionId: string) {
+    return this.rows.get(connectionId)?.discovery
   }
-  saveDiscoveryState(serverId: string, state: OAuthDiscoveryState) {
-    this.#row(serverId).discovery = state
+  saveDiscoveryState(connectionId: string, state: OAuthDiscoveryState) {
+    this.#row(connectionId).discovery = state
   }
-  markNeedsAuth(serverId: string) {
-    this.#row(serverId).status = 'needs_auth'
+  markNeedsAuth(connectionId: string) {
+    this.#row(connectionId).status = 'needs_auth'
   }
-  invalidate(serverId: string, scope: InvalidationScope) {
-    const row = this.#row(serverId)
+  invalidate(connectionId: string, scope: InvalidationScope) {
+    const row = this.#row(connectionId)
     if (scope === 'all' || scope === 'tokens') {
       delete row.tokens
       delete row.expiresAt
@@ -70,17 +70,17 @@ export class MemoryCredentials implements Credentials {
     if (scope === 'all' || scope === 'client') delete row.client
     if (scope === 'all' || scope === 'discovery') delete row.discovery
   }
-  remove(serverId: string) {
-    this.rows.delete(serverId)
+  remove(connectionId: string) {
+    this.rows.delete(connectionId)
   }
-  async savePending(state: string, serverId: string, codeVerifier: string, now: number) {
-    this.pending.set(state, { serverId, codeVerifier, createdAt: now })
+  async savePending(state: string, connectionId: string, codeVerifier: string, now: number) {
+    this.pending.set(state, { connectionId, codeVerifier, createdAt: now })
   }
   async takePending(state: string, now: number) {
     const entry = this.pending.get(state)
     this.pending.delete(state)
     if (entry === undefined || entry.createdAt < now - PENDING_TTL_SECONDS) return undefined
-    return { serverId: entry.serverId, codeVerifier: entry.codeVerifier }
+    return { connectionId: entry.connectionId, codeVerifier: entry.codeVerifier }
   }
 }
 
@@ -90,12 +90,14 @@ export class MemoryGrants implements Grants {
   constructor(initial: readonly Grant[] = []) {
     for (const grant of initial) this.set(grant, true)
   }
-  #key = (grant: Grant): string => JSON.stringify([grant.serverId, grant.capability, grant.name])
+  #key = (grant: Grant): string => JSON.stringify([grant.connectionId, grant.capability, grant.name])
   allows(grant: Grant): boolean {
     return this.#grants.has(this.#key(grant))
   }
-  list(serverId?: string): readonly Grant[] {
-    return [...this.#grants.values()].filter((grant) => serverId === undefined || grant.serverId === serverId)
+  list(connectionId?: string): readonly Grant[] {
+    return [...this.#grants.values()].filter(
+      (grant) => connectionId === undefined || grant.connectionId === connectionId,
+    )
   }
   set(grant: Grant, allowed: boolean): void {
     if (allowed) {
@@ -132,12 +134,12 @@ export class MemoryAddedServers implements AddedServers {
     return [...this.#servers.values()]
   }
   add(server: AddedServer): void {
-    this.#servers.set(server.serverId, server)
+    this.#servers.set(server.connectionId, server)
   }
-  remove(serverId: string): void {
-    this.#servers.delete(serverId)
-    this.#credentials.remove(serverId)
-    for (const grant of this.#grants.list(serverId)) this.#grants.set(grant, false)
+  remove(connectionId: string): void {
+    this.#servers.delete(connectionId)
+    this.#credentials.remove(connectionId)
+    for (const grant of this.#grants.list(connectionId)) this.#grants.set(grant, false)
   }
 }
 

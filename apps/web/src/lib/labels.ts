@@ -37,8 +37,8 @@ export function eventStatus(status: string): Label {
 }
 
 /** What to call a server: its own title, else the name it reports, else its id. */
-export const serverTitle = (server: Pick<ServerView, 'title' | 'serverName' | 'serverId'>): string =>
-  server.title ?? server.serverName ?? server.serverId
+export const serverTitle = (server: Pick<ServerView, 'title' | 'serverName' | 'connectionId'>): string =>
+  server.title ?? server.serverName ?? server.connectionId
 
 /** The owner's plan, from billing state. */
 export function planStatus(state: BillingState): Label {

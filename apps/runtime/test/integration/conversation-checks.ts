@@ -276,10 +276,10 @@ async function setupChecks(base: string): Promise<void> {
   expect(result.off.text).toContain("Not in #Narrow's setup: notes · write. Nothing ran.")
   expect(result.offDetails).toEqual({
     kind: 'not-in-topic',
-    target: { kind: 'tool', serverId: 'notes', name: 'write' },
+    target: { kind: 'tool', connectionId: 'notes', name: 'write' },
     topic: { id: result.narrow.value.id, name: 'Narrow' },
   })
-  expect(result.listed.text).toContain('"serverId":"notes"')
+  expect(result.listed.text).toContain('"connectionId":"notes"')
 }
 
 const SubagentRun = Schema.Struct({

@@ -8,8 +8,8 @@ import { RoutineControl, RoutineRuns } from '../routines/service.ts'
 import { decideApproval } from './approval-decision.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
 
-export const setAskFirst = (serverId: string, name: string, enabled: boolean) =>
-  McpGrants.use((grants) => grants.setAskFirst(serverId, name, enabled))
+export const setAskFirst = (connectionId: string, name: string, enabled: boolean) =>
+  McpGrants.use((grants) => grants.setAskFirst(connectionId, name, enabled))
 
 export const approvalView = (id: string) => Approvals.use((approvals) => approvals.view(id))
 
@@ -49,5 +49,5 @@ export const decideOwnerApproval = (id: string, allowed: boolean) =>
   })
 
 /** A direct owner read, with the same exact App resource grant as the existing bridge. */
-export const ownerResource = (serverId: string, uri: string, caller: 'human' | 'app') =>
-  McpConnections.use((connections) => connections.readResource(serverId, uri, caller))
+export const ownerResource = (connectionId: string, uri: string, caller: 'human' | 'app') =>
+  McpConnections.use((connections) => connections.readResource(connectionId, uri, caller))

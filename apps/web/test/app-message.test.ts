@@ -29,7 +29,7 @@ describe('MyPlan answer receipt messages', () => {
         app: '42',
         text: JSON.stringify({
           from: 'mcp-app',
-          serverId: 'origin-server',
+          connectionId: 'origin-server',
           resourceUri: 'ui://myplan/question.html',
           receipt,
         }),

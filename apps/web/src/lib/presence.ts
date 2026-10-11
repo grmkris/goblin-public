@@ -31,7 +31,7 @@ function runningTool(parts: readonly Part[]): string | undefined {
   for (let index = parts.length - 1; index >= 0; index -= 1) {
     const part = parts[index]
     if (part?.kind === 'tool' && part.state === 'running')
-      return part.target ? `${part.target.serverId} · ${part.target.name}` : part.call.name
+      return part.target ? `${part.target.connectionId} · ${part.target.name}` : part.call.name
   }
   return undefined
 }

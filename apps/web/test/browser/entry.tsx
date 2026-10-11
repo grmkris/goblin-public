@@ -88,7 +88,7 @@ function Styles() {
         </ul>
       </nav>
       <div className="app-stage" data-mode="inline" style={{ position: 'relative', height: 140 }}>
-        <LinkOffer link={new URL('https://example.com')} serverId="Example" onDone={() => undefined} />
+        <LinkOffer link={new URL('https://example.com')} connectionId="Example" onDone={() => undefined} />
       </div>
       <div className="composer-context">
         <Button variant="ghost" size="model" aria-label="Model: Example" data-sample="model">

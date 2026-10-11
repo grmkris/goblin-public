@@ -41,7 +41,7 @@ export async function startupCheck(storage: DurableObjectStorage, constructed: r
   return Response.json({ snapshot: await ownerSnapshot(api, PRIMARY_CHAT), before, after, metadata })
 }
 
-const notesAt = (endpoint: string) => [{ serverId: 'notes', endpoint }]
+const notesAt = (endpoint: string) => [{ connectionId: 'notes', endpoint }]
 
 /** Endpoint binding on the real SQLite store: a re-pointed server loses its credentials, grants and pending state. */
 function bindingProbe(storage: DurableObjectStorage) {
@@ -53,19 +53,23 @@ function bindingProbe(storage: DurableObjectStorage) {
     pending: db.select().from(appMcpOauthPending).all().length,
   })
   const first = bindEndpoints(db, notesAt('https://a.test/mcp'), 1)
-  db.insert(appMcpCredentials).values({ serverId: 'notes', status: 'connected', tokens: 'sealed', updatedAt: 1 }).run()
-  db.insert(appMcpGrants).values({ serverId: 'notes', capability: 'tool', name: 'read', createdAt: 1 }).run()
-  db.insert(appMcpOauthPending).values({ state: 's', serverId: 'notes', codeVerifier: 'v', createdAt: 1 }).run()
+  db.insert(appMcpCredentials)
+    .values({ connectionId: 'notes', status: 'connected', tokens: 'sealed', updatedAt: 1 })
+    .run()
+  db.insert(appMcpGrants).values({ connectionId: 'notes', capability: 'tool', name: 'read', createdAt: 1 }).run()
+  db.insert(appMcpOauthPending).values({ state: 's', connectionId: 'notes', codeVerifier: 'v', createdAt: 1 }).run()
   const same = bindEndpoints(db, notesAt('https://a.test/mcp'), 2)
   const kept = stored()
   const moved = bindEndpoints(db, notesAt('https://b.test/mcp'), 3)
   const bound = db.select().from(appMcpEndpoints).all()
   // An added server, removed: its row, binding, credentials, grants and pending sign-ins all go.
   const added = new AddedServerStore(db)
-  added.add({ serverId: 'extra', endpoint: 'https://extra.test/mcp', title: 'Extra' }, 4)
-  db.insert(appMcpCredentials).values({ serverId: 'extra', status: 'connected', tokens: 'sealed', updatedAt: 4 }).run()
-  db.insert(appMcpGrants).values({ serverId: 'extra', capability: 'tool', name: 'read', createdAt: 4 }).run()
-  const listed = added.list().map((server) => server.serverId)
+  added.add({ connectionId: 'extra', endpoint: 'https://extra.test/mcp', title: 'Extra' }, 4)
+  db.insert(appMcpCredentials)
+    .values({ connectionId: 'extra', status: 'connected', tokens: 'sealed', updatedAt: 4 })
+    .run()
+  db.insert(appMcpGrants).values({ connectionId: 'extra', capability: 'tool', name: 'read', createdAt: 4 }).run()
+  const listed = added.list().map((server) => server.connectionId)
   added.remove('extra')
   const removed = {
     listed,
@@ -80,9 +84,9 @@ function bindingProbe(storage: DurableObjectStorage) {
 function seedNotes(storage: DurableObjectStorage) {
   runApplicationMigrations(storage)
   const db = drizzle(storage)
-  new AddedServerStore(db).add({ serverId: 'notes', endpoint: 'https://notes.test/mcp', title: 'Notes' }, 1)
+  new AddedServerStore(db).add({ connectionId: 'notes', endpoint: 'https://notes.test/mcp', title: 'Notes' }, 1)
   for (const name of ['read', 'write'])
-    db.insert(appMcpGrants).values({ serverId: 'notes', capability: 'tool', name, createdAt: 1 }).run()
+    db.insert(appMcpGrants).values({ connectionId: 'notes', capability: 'tool', name, createdAt: 1 }).run()
   return { seeded: 'notes' }
 }
 
@@ -97,10 +101,10 @@ async function ownerApiSequence(agent: ProbeStub) {
   const enabled = await ownerResult(agent, (api) => api.resident.set({ payload: { enabled: true } }))
   const servers = await ownerResult(agent, (api) => api.mcp.servers())
   const unknownServer = await ownerResult(agent, (api) =>
-    api.mcp.setToolGrant({ payload: { serverId: 'missing', name: 'tool', allowed: true } }),
+    api.mcp.setToolGrant({ payload: { connectionId: 'missing', name: 'tool', allowed: true } }),
   )
   const unknownApp = await ownerResult(agent, (api) =>
-    api.mcp.setAppGrant({ payload: { serverId: 'missing', uri: 'ui://missing/app.html', allowed: true } }),
+    api.mcp.setAppGrant({ payload: { connectionId: 'missing', uri: 'ui://missing/app.html', allowed: true } }),
   )
   const noConversation = await recentResult(agent, 5)
   const thread = await ownerCreate(agent, {})

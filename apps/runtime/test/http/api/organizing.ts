@@ -37,10 +37,16 @@ const setupServices = (retooled: number[]) =>
     stub(McpServers, {
       list: () =>
         Effect.succeed([
-          { serverId: 'notes', endpoint: 'https://notes.test/mcp', status: 'connected', live: true, source: 'config' },
+          {
+            connectionId: 'notes',
+            endpoint: 'https://notes.test/mcp',
+            status: 'connected',
+            live: true,
+            source: 'config',
+          },
         ]),
     }),
-    stub(McpGrants, { list: () => Effect.succeed([{ serverId: 'notes', capability: 'tool', name: 'read' }]) }),
+    stub(McpGrants, { list: () => Effect.succeed([{ connectionId: 'notes', capability: 'tool', name: 'read' }]) }),
     stub(Skills, { sources: () => Effect.succeed([]), catalog: () => Effect.succeed({ skills: [], unavailable: [] }) }),
     stub(AppEngine, { summaries: Effect.succeed([]) }),
     stub(Setups, {

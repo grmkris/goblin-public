@@ -24,7 +24,7 @@ export class Unauthenticated extends Schema.TaggedError<Unauthenticated>()('Unau
 }) {}
 export class Forbidden extends Schema.TaggedError<Forbidden>()('Forbidden', { reason: Schema.String, ref }) {}
 export class GrantDenied extends Schema.TaggedError<GrantDenied>()('GrantDenied', {
-  serverId: Schema.String,
+  connectionId: Schema.String,
   name: Schema.String,
   ref,
 }) {}
@@ -49,7 +49,7 @@ export class SubscriptionRequired extends Schema.TaggedError<SubscriptionRequire
   ref,
 }) {}
 export class NeedsAuthorization extends Schema.TaggedError<NeedsAuthorization>()('NeedsAuthorization', {
-  serverId: Schema.String,
+  connectionId: Schema.String,
   ref,
 }) {}
 export const UpstreamReason = Schema.Literals([
@@ -62,7 +62,7 @@ export const UpstreamReason = Schema.Literals([
   'content-limit',
 ])
 export class UpstreamMcp extends Schema.TaggedError<UpstreamMcp>()('UpstreamMcp', {
-  serverId: Schema.String,
+  connectionId: Schema.String,
   reason: UpstreamReason,
   code: Schema.optional(Schema.Number),
   ref,
@@ -148,7 +148,7 @@ const DETAIL_FIELDS = {
   recovery: Schema.optionalKey(Schema.String),
   reason: Schema.optionalKey(Schema.String),
   what: Schema.optionalKey(Schema.String),
-  serverId: Schema.optionalKey(Schema.String),
+  connectionId: Schema.optionalKey(Schema.String),
   name: Schema.optionalKey(Schema.String),
   state: Schema.optionalKey(Schema.String),
   subscribe: Schema.optionalKey(Schema.String),

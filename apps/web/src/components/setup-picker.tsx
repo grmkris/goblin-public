@@ -155,11 +155,11 @@ function ServersSection<S extends Setup>({ setup, catalog, onChange }: Section<S
         catalog.servers.map((server) => {
           const state = serverHold(setup, server)
           const held = server.tools.filter(({ name }) =>
-            holds(setup, { kind: 'tool', serverId: server.serverId, name }),
+            holds(setup, { kind: 'tool', connectionId: server.connectionId, name }),
           ).length
           return (
             <GroupRow
-              key={server.serverId}
+              key={server.connectionId}
               label={server.label}
               state={state}
               detail={
@@ -170,14 +170,14 @@ function ServersSection<S extends Setup>({ setup, catalog, onChange }: Section<S
                     : 'Off'
               }
               checked={state !== 'none'}
-              onChange={(on) => toggle({ kind: 'server', serverId: server.serverId }, on)}
+              onChange={(on) => toggle({ kind: 'server', connectionId: server.connectionId }, on)}
             >
               {server.tools.map((tool) => (
                 <SwitchRow
                   key={tool.name}
                   label={tool.title ?? tool.name}
-                  checked={holds(setup, { kind: 'tool', serverId: server.serverId, name: tool.name })}
-                  onChange={(on) => toggle({ kind: 'tool', serverId: server.serverId, name: tool.name }, on)}
+                  checked={holds(setup, { kind: 'tool', connectionId: server.connectionId, name: tool.name })}
+                  onChange={(on) => toggle({ kind: 'tool', connectionId: server.connectionId, name: tool.name }, on)}
                 />
               ))}
             </GroupRow>
@@ -214,7 +214,7 @@ function LibrarySkills<S extends Setup>({
       )}
       {!library.available && <p className="setup-empty">Its skills cannot be read right now.</p>}
       {shown.map((skill) => {
-        const item: SetupItem = { kind: 'skill', serverId: library.serverId, name: skill.name }
+        const item: SetupItem = { kind: 'skill', connectionId: library.connectionId, name: skill.name }
         return (
           <SwitchRow
             key={skill.uri}
@@ -242,12 +242,14 @@ function SkillsSection<S extends Setup>({ setup, catalog, onChange }: Section<S>
           const state = libraryHold(setup, library)
           return (
             <GroupRow
-              key={library.serverId}
+              key={library.connectionId}
               label={library.label}
               state={state}
               detail={state === 'all' ? 'Every skill' : state === 'some' ? 'Some skills' : 'Off'}
               checked={state !== 'none'}
-              onChange={(on) => onChange(switched(setup, { kind: 'library', serverId: library.serverId }, on, catalog))}
+              onChange={(on) =>
+                onChange(switched(setup, { kind: 'library', connectionId: library.connectionId }, on, catalog))
+              }
             >
               <LibrarySkills library={library} setup={setup} catalog={catalog} onChange={onChange} />
             </GroupRow>

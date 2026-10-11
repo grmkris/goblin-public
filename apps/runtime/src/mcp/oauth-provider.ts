@@ -28,7 +28,7 @@ export type OAuthMode =
  */
 export class StoredOAuthProvider implements OAuthClientProvider {
   readonly #store: Credentials
-  readonly #serverId: string
+  readonly #connectionId: string
   readonly #redirectUrl: string
   readonly #appUrl: string
   readonly #mode: OAuthMode
@@ -36,9 +36,9 @@ export class StoredOAuthProvider implements OAuthClientProvider {
   /** Set by `redirectToAuthorization` in interactive mode. */
   authorizationUrl: URL | undefined
 
-  constructor(store: Credentials, serverId: string, appUrl: string, mode: OAuthMode) {
+  constructor(store: Credentials, connectionId: string, appUrl: string, mode: OAuthMode) {
     this.#store = store
-    this.#serverId = serverId
+    this.#connectionId = connectionId
     this.#appUrl = appUrl.replace(/\/$/u, '')
     this.#redirectUrl = `${this.#appUrl}/api/mcp/oauth/callback`
     this.#mode = mode
@@ -64,19 +64,19 @@ export class StoredOAuthProvider implements OAuthClientProvider {
   }
 
   clientInformation(): Promise<StoredOAuthClientInformation | undefined> {
-    return this.#store.clientInformation(this.#serverId)
+    return this.#store.clientInformation(this.#connectionId)
   }
 
   saveClientInformation(info: StoredOAuthClientInformation): Promise<void> {
-    return this.#store.saveClientInformation(this.#serverId, info, nowSeconds())
+    return this.#store.saveClientInformation(this.#connectionId, info, nowSeconds())
   }
 
   tokens(): Promise<StoredOAuthTokens | undefined> {
-    return this.#store.tokens(this.#serverId)
+    return this.#store.tokens(this.#connectionId)
   }
 
   saveTokens(tokens: StoredOAuthTokens): Promise<void> {
-    return this.#store.saveTokens(this.#serverId, tokens, nowSeconds())
+    return this.#store.saveTokens(this.#connectionId, tokens, nowSeconds())
   }
 
   saveCodeVerifier(codeVerifier: string): void {
@@ -92,27 +92,27 @@ export class StoredOAuthProvider implements OAuthClientProvider {
   /** Persist the pending exchange under the URL's `state`; only an interactive Connect returns the URL. */
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
     if (this.#mode.kind === 'background' && this.#mode.reached?.() === false)
-      throw new UpstreamMcp({ serverId: this.#serverId, reason: 'transport' })
+      throw new UpstreamMcp({ connectionId: this.#connectionId, reason: 'transport' })
     if (this.#mode.kind !== 'interactive') {
-      this.#store.markNeedsAuth(this.#serverId, nowSeconds())
+      this.#store.markNeedsAuth(this.#connectionId, nowSeconds())
       return
     }
     const state = authorizationUrl.searchParams.get('state')
     if (state === null || this.#codeVerifier === undefined)
       throw new Internal({ reason: 'authorization request without state or verifier' })
-    await this.#store.savePending(state, this.#serverId, this.#codeVerifier, nowSeconds())
+    await this.#store.savePending(state, this.#connectionId, this.#codeVerifier, nowSeconds())
     this.authorizationUrl = authorizationUrl
   }
 
   invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): void {
-    this.#store.invalidate(this.#serverId, scope, nowSeconds())
+    this.#store.invalidate(this.#connectionId, scope, nowSeconds())
   }
 
   saveDiscoveryState(state: OAuthDiscoveryState): void {
-    this.#store.saveDiscoveryState(this.#serverId, state, nowSeconds())
+    this.#store.saveDiscoveryState(this.#connectionId, state, nowSeconds())
   }
 
   discoveryState(): OAuthDiscoveryState | undefined {
-    return this.#store.discoveryState(this.#serverId)
+    return this.#store.discoveryState(this.#connectionId)
   }
 }

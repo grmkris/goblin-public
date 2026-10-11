@@ -32,7 +32,7 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
         <p>
           Approve{' '}
           <strong>
-            {interaction.serverId} · {interaction.name}
+            {interaction.connectionId} · {interaction.name}
           </strong>
           ?
         </p>

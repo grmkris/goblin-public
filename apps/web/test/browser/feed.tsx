@@ -28,7 +28,7 @@ const WORKSPACE = {
       source: {
         kind: 'mcp' as const,
         callId: 'call-3',
-        serverId: 'notes',
+        connectionId: 'notes',
         tool: 'board',
         uri: 'ui://notes/board.html',
       },

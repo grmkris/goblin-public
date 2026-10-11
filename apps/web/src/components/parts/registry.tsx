@@ -49,7 +49,7 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
       <Receipt>
         <KeyRoundIcon aria-hidden />
         <span>
-          Asked to approve {interaction.serverId} · {interaction.name}
+          Asked to approve {interaction.connectionId} · {interaction.name}
         </span>
       </Receipt>
     )
@@ -58,7 +58,7 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
       <Receipt>
         <KeyRoundIcon aria-hidden />
         <span>
-          Asked to use {interaction.serverId} · {interaction.name}
+          Asked to use {interaction.connectionId} · {interaction.name}
         </span>
       </Receipt>
     )

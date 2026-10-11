@@ -25,7 +25,7 @@ const definition = {
   trigger: { kind: 'cron', expression: '0 8 * * *' },
   timezone: 'Europe/Tallinn',
   notifyTelegram: true,
-  allowedTools: [{ serverId: 'myplan', name: 'calendar_list' }],
+  allowedTools: [{ connectionId: 'myplan', name: 'calendar_list' }],
   budget: { tokensPerRun: 20_000, tokensPerDay: 40_000, runtimeSeconds: 120 },
 }
 

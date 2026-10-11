@@ -70,12 +70,12 @@ const kept: AppView = {
   conversation: '7',
   title: 'Board',
   createdAt: 100,
-  source: { kind: 'mcp', callId: 'call-1', serverId: 'fixture', tool: 'board', uri: BOARD },
+  source: { kind: 'mcp', callId: 'call-1', connectionId: 'fixture', tool: 'board', uri: BOARD },
 }
 
 /** The fixture server as the host connects to it now: one tool, `board`, rendering `uri` when it is given. */
 const connected = (uri?: string): McpConnectionSnapshot => ({
-  config: { serverId: 'fixture', endpoint: 'https://fixture.test/mcp' },
+  config: { connectionId: 'fixture', endpoint: 'https://fixture.test/mcp' },
   capabilities: {},
   tools: [
     {
@@ -95,7 +95,13 @@ const registry = (registered: { session: string; callId: string; origin: AppOrig
   fakeApps({
     call: (session, callId) =>
       session === 'session-7' && callId === 'call-1'
-        ? Effect.succeed({ entry: 4, serverId: 'fixture', tool: 'board', arguments: { marker: 'kept' }, result: null })
+        ? Effect.succeed({
+            entry: 4,
+            connectionId: 'fixture',
+            tool: 'board',
+            arguments: { marker: 'kept' },
+            result: null,
+          })
         : Effect.fail(new NotFound({ what: 'app call' })),
     register: (session, callId, origin) =>
       Effect.sync(() => {
@@ -128,7 +134,7 @@ describe('the apps group served by the agent', () => {
     expect(registered.at(-1)).toEqual({
       session: 'session-7',
       callId: 'call-1',
-      origin: { serverId: 'fixture', tool: 'board', uri: BOARD, title: 'Board' },
+      origin: { connectionId: 'fixture', tool: 'board', uri: BOARD, title: 'Board' },
     })
     expect(resident.renewals).toHaveLength(1)
     uri = undefined

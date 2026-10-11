@@ -15,7 +15,7 @@ const verifyMcpApp = (id: string) =>
     if (placement.closed) return yield* new InvalidInput({ reason: 'Open the MCP App before putting it on Home' })
     const launch = yield* apps.launch(id)
     if (launch.kind !== 'mcp') return
-    const snapshot = yield* McpConnections.use((connections) => connections.connect(launch.serverId))
+    const snapshot = yield* McpConnections.use((connections) => connections.connect(launch.connectionId))
     const tool = snapshot.tools.find(({ name }) => name === placement.tool)
     if (tool === undefined || toolAppResource(tool) !== launch.uri)
       return yield* new InvalidInput({ reason: 'The tool no longer declares this MCP App' })

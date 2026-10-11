@@ -10,7 +10,7 @@ export const ownerServers = Effect.gen(function* () {
   const servers = yield* (yield* McpServers).list()
   const events = yield* Events
   return yield* Effect.forEach(servers, (server) =>
-    Effect.map(events.health(server.serverId), (eventHealth) => ({ ...server, eventHealth })),
+    Effect.map(events.health(server.connectionId), (eventHealth) => ({ ...server, eventHealth })),
   )
 })
 
@@ -18,24 +18,24 @@ export const ownerServers = Effect.gen(function* () {
 export const suggestedServers = (stage: Stage | undefined) => McpServers.use((servers) => servers.suggested(stage))
 
 /** Removes a server, its Events subscriptions first. */
-export const removeOwnerServer = (serverId: string) =>
+export const removeOwnerServer = (connectionId: string) =>
   Effect.gen(function* () {
-    yield* (yield* Events).disableServer(serverId)
-    yield* (yield* McpServers).remove(serverId)
+    yield* (yield* Events).disableServer(connectionId)
+    yield* (yield* McpServers).remove(connectionId)
     return null
   })
 
 /** Disconnects a server (its credentials go), its Events subscriptions first. */
-export const disconnectOwnerServer = (serverId: string) =>
+export const disconnectOwnerServer = (connectionId: string) =>
   Effect.gen(function* () {
-    yield* (yield* Events).disableServer(serverId)
-    yield* (yield* McpServers).disconnect(serverId)
+    yield* (yield* Events).disableServer(connectionId)
+    yield* (yield* McpServers).disconnect(connectionId)
     return null
   })
 
 /**
  * Where an outbound sign-in comes back (`GET /api/mcp/oauth/callback`, the `mcp` group's raw `oauthCallback`: it
- * answers a redirect, not JSON). The owner lands on Connections with `connected=<serverId>`, or with `error=` and the
+ * answers a redirect, not JSON). The owner lands on Connections with `connected=<connectionId>`, or with `error=` and the
  * authorization server's own error, `authorization_failed` for an incomplete callback, or the tag of the failure that
  * stopped it. Finishing is an owner request: owner admission checks the plan and, as for every raw endpoint, does not
  * renew resident authority.
@@ -60,8 +60,8 @@ export const connectCallback = (
     })
     return yield* finish.pipe(
       Effect.matchCause({
-        onSuccess: (serverId) => {
-          target.searchParams.set('connected', serverId)
+        onSuccess: (connectionId) => {
+          target.searchParams.set('connected', connectionId)
           return target
         },
         onFailure: (cause) => {

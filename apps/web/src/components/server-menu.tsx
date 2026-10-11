@@ -76,7 +76,7 @@ export function RemoveConfirm({
   const removing = useMutation(removeServerMutation)
   const pending = removing.isPending || removing.isSuccess
   const remove = () =>
-    removing.mutate(server.serverId, {
+    removing.mutate(server.connectionId, {
       onError: (error) => onMessage(messageOf(error, `remove ${serverTitle(server)}`)),
     })
   return (

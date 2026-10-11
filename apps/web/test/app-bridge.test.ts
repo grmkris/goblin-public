@@ -29,9 +29,9 @@ const noAgent: AgentAppCalls = {
     throw new Error('not an agent app')
   },
 }
-async function pair(serverId: string, calls: Omit<AppCalls, 'agent'>, extra: Partial<FrameEvents> = {}) {
+async function pair(connectionId: string, calls: Omit<AppCalls, 'agent'>, extra: Partial<FrameEvents> = {}) {
   const { bridge } = createAppBridge(
-    { kind: 'mcp', serverId, uri: `ui://${serverId}/app`, arguments: {}, result: { content: [] } },
+    { kind: 'mcp', connectionId, uri: `ui://${connectionId}/app`, arguments: {}, result: { content: [] } },
     '',
     { displayMode: 'inline' },
     { ...calls, agent: noAgent },
@@ -55,11 +55,11 @@ describe('official MCP App bridge stays bound to its originating connection', ()
   it('reconnects the same originating App after teardown without retaining the old bridge', async () => {
     const reached: string[] = []
     const calls: Omit<AppCalls, 'agent'> = {
-      tool: async (serverId, params) => {
-        reached.push(`${serverId}:${params.name}`)
-        return { content: [{ type: 'text', text: serverId }] }
+      tool: async (connectionId, params) => {
+        reached.push(`${connectionId}:${params.name}`)
+        return { content: [{ type: 'text', text: connectionId }] }
       },
-      resource: async (serverId, params) => ({ contents: [{ uri: params.uri, text: serverId }] }),
+      resource: async (connectionId, params) => ({ contents: [{ uri: params.uri, text: connectionId }] }),
     }
     const first = await pair('notes', calls)
     try {
@@ -70,9 +70,11 @@ describe('official MCP App bridge stays bound to its originating connection', ()
     await expect(first.app.callServerTool({ name: 'stale' })).rejects.toThrow()
     const remounted = await pair('notes', calls)
     try {
-      expect(await remounted.app.callServerTool({ name: 'after', arguments: { serverId: 'other' } })).toMatchObject({
-        content: [{ text: 'notes' }],
-      })
+      expect(await remounted.app.callServerTool({ name: 'after', arguments: { connectionId: 'other' } })).toMatchObject(
+        {
+          content: [{ text: 'notes' }],
+        },
+      )
     } finally {
       await remounted.close()
     }
@@ -82,18 +84,18 @@ describe('official MCP App bridge stays bound to its originating connection', ()
   it('continues tool/resource calls after placement updates and reconnects a new selection cleanly', async () => {
     const reached: string[] = []
     const calls: Omit<AppCalls, 'agent'> = {
-      tool: async (serverId, params) => {
-        reached.push(`${serverId}:${params.name}`)
-        return { content: [{ type: 'text', text: serverId }] }
+      tool: async (connectionId, params) => {
+        reached.push(`${connectionId}:${params.name}`)
+        return { content: [{ type: 'text', text: connectionId }] }
       },
-      resource: async (serverId, params) => {
-        reached.push(`${serverId}:${params.uri}`)
-        return { contents: [{ uri: params.uri, text: serverId }] }
+      resource: async (connectionId, params) => {
+        reached.push(`${connectionId}:${params.uri}`)
+        return { contents: [{ uri: params.uri, text: connectionId }] }
       },
     }
     const first = await pair('notes', calls)
     try {
-      expect(await first.app.callServerTool({ name: 'read', arguments: { serverId: 'evil' } })).toMatchObject({
+      expect(await first.app.callServerTool({ name: 'read', arguments: { connectionId: 'evil' } })).toMatchObject({
         content: [{ text: 'notes' }],
       })
       for (const surface of ['page', 'inline'] as const) {
@@ -103,7 +105,7 @@ describe('official MCP App bridge stays bound to its originating connection', ()
           surface,
         })
         expect(
-          await first.app.callServerTool({ name: 'after-placement', arguments: { serverId: 'evil' } }),
+          await first.app.callServerTool({ name: 'after-placement', arguments: { connectionId: 'evil' } }),
         ).toMatchObject({ content: [{ text: 'notes' }] })
         expect(await first.app.readServerResource({ uri: 'data://value' })).toMatchObject({
           contents: [{ text: 'notes' }],
@@ -262,11 +264,11 @@ describe('an MCP App calling a tool the owner has not granted', () => {
     let granted = false
     const asked: string[] = []
     const calls: Omit<AppCalls, 'agent'> = {
-      tool: async (_serverId, params) => {
-        if (!granted) throw new GrantDenied({ serverId: 'myplan', name: params.name, ref: 'ray-403' })
+      tool: async (_connectionId, params) => {
+        if (!granted) throw new GrantDenied({ connectionId: 'myplan', name: params.name, ref: 'ray-403' })
         return { content: [{ type: 'text', text: 'done' }] }
       },
-      resource: async (_serverId, params) => ({ contents: [{ uri: params.uri, text: '' }] }),
+      resource: async (_connectionId, params) => ({ contents: [{ uri: params.uri, text: '' }] }),
     }
     const allowing = await pair('myplan', calls, {
       askGrant: async (name) => {

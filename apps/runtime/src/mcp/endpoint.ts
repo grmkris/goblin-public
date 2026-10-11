@@ -34,7 +34,7 @@ export function userEndpoint(raw: string): URL {
 }
 
 /** A server id for an added endpoint: its host as a slug plus a random suffix, never one the deployment configures. */
-export function addedServerId(endpoint: URL, taken: ReadonlySet<string>, random: () => string): string {
+export function addedConnectionId(endpoint: URL, taken: ReadonlySet<string>, random: () => string): string {
   const slug = endpoint.hostname
     .toLowerCase()
     .replace(/^www\./u, '')

@@ -20,7 +20,7 @@ afterEach(() => {
   for (const close of closes.splice(0)) close()
 })
 
-const ORIGIN = { serverId: 'notes', tool: 'show', uri: 'ui://notes/show', title: 'Notes' }
+const ORIGIN = { connectionId: 'notes', tool: 'show', uri: 'ui://notes/show', title: 'Notes' }
 const INFO: AgentAppInfo = { title: 'Counter', home: '1', release: 'r1', version: 1, revision: 1, ui: true, jobs: [] }
 
 /** The Apps service over the registry's rows on SQLite, and every change it told the bus, in order. */

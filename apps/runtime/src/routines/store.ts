@@ -24,7 +24,7 @@ export type RoutineOperationResult = typeof OperationResult.Type
 function validate(input: RoutineDefinition, at: number): RoutineDefinition {
   const definition = Schema.decodeUnknownSync(RoutineDefinition)(input)
   canonicalArguments(definition.trigger.kind === 'event' ? definition.trigger.arguments : {})
-  if (definition.allowedTools.some((tool) => tool.serverId === '' || tool.name === ''))
+  if (definition.allowedTools.some((tool) => tool.connectionId === '' || tool.name === ''))
     throw new InvalidInput({ reason: 'empty tool selector' })
   timezoneValid(definition.timezone)
   if (definition.budget.tokensPerDay < definition.budget.tokensPerRun)
@@ -58,8 +58,8 @@ export class RoutineStore {
     const row = this.#db.select({ setup: appTopics.setup }).from(appTopics).where(eq(appTopics.id, topic)).get()
     const setup = row === undefined ? undefined : topicSetupOf(row.setup)
     return definition.allowedTools
-      .filter((tool) => setup === undefined || !hasTool(setup, tool.serverId, tool.name))
-      .map(({ serverId, name }) => ({ serverId, name }))
+      .filter((tool) => setup === undefined || !hasTool(setup, tool.connectionId, tool.name))
+      .map(({ connectionId, name }) => ({ connectionId, name }))
   }
 
   #view(row: RoutineRow): RoutineView {

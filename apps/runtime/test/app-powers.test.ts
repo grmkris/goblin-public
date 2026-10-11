@@ -33,11 +33,11 @@ const part = <S>(service: Partial<S>): S =>
 
 /** The services an app's powers read, each the part these tests use, with what the tests change about them. */
 const world = (options: { readonly resident?: boolean; readonly plan?: boolean; readonly channel?: string } = {}) => {
-  const calls: { readonly serverId: string; readonly name: string; readonly authorized: boolean }[] = []
+  const calls: { readonly connectionId: string; readonly name: string; readonly authorized: boolean }[] = []
   const scope: SetupScope = {
     editable: true,
     server: () => true,
-    tool: (_serverId, name) => name !== 'off',
+    tool: (_connectionId, name) => name !== 'off',
     skills: () => true,
     skill: () => true,
     subagents: () => true,
@@ -68,20 +68,20 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
     Layer.succeed(
       Channel,
       part<Channel['Service']>({
-        status: Effect.succeed(options.channel === undefined ? null : { serverId: options.channel, enabledAt: 1 }),
+        status: Effect.succeed(options.channel === undefined ? null : { connectionId: options.channel, enabledAt: 1 }),
       }),
     ),
     Layer.succeed(
       McpConnections,
       part<McpConnections['Service']>({
-        callTool: (serverId: string, name: string, _args: unknown, call?: McpCallOptions) =>
+        callTool: (connectionId: string, name: string, _args: unknown, call?: McpCallOptions) =>
           Effect.gen(function* () {
             const authorized = yield* (call?.authorize ?? Effect.void).pipe(
               Effect.as(true),
               // expected: a refused re-check is what the test reads, as `authorized: false`
               Effect.orElseSucceed(() => false),
             )
-            calls.push({ serverId, name, authorized })
+            calls.push({ connectionId, name, authorized })
             return { content: [], isError: name === 'refuse' }
           }),
       }),
@@ -102,9 +102,9 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
 describe("an agent app's powers over the agent's services", () => {
   it('call a tool once authority and the conversation allow it, and check again right before it leaves', async () => {
     const { powers, calls } = world()
-    await powers.tool({ serverId: 'notes', name: 'write', args: {}, session: '7' })
-    expect(calls).toEqual([{ serverId: 'notes', name: 'write', authorized: true }])
-    await expect(powers.tool({ serverId: 'notes', name: 'off', args: {}, session: '7' })).rejects.toBeInstanceOf(
+    await powers.tool({ connectionId: 'notes', name: 'write', args: {}, session: '7' })
+    expect(calls).toEqual([{ connectionId: 'notes', name: 'write', authorized: true }])
+    await expect(powers.tool({ connectionId: 'notes', name: 'off', args: {}, session: '7' })).rejects.toBeInstanceOf(
       Forbidden,
     )
     expect(calls).toHaveLength(1)
@@ -126,6 +126,6 @@ describe("an agent app's powers over the agent's services", () => {
     await expect(world().powers.notify('op-1', 'hi')).rejects.toBeInstanceOf(AppCodeError)
     const { powers, calls } = world({ channel: 'telegram' })
     await powers.notify('op-1', '<b>')
-    expect(calls).toEqual([{ serverId: 'telegram', name: 'send_message', authorized: true }])
+    expect(calls).toEqual([{ connectionId: 'telegram', name: 'send_message', authorized: true }])
   })
 })

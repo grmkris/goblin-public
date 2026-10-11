@@ -24,9 +24,9 @@ describe('labels', () => {
   })
 
   it('calls a server by its title, then its reported name, then its id', () => {
-    expect(serverTitle({ serverId: 'board', title: 'Board', serverName: 'fixture-board' })).toBe('Board')
-    expect(serverTitle({ serverId: 'board', serverName: 'fixture-board' })).toBe('fixture-board')
-    expect(serverTitle({ serverId: 'board' })).toBe('board')
+    expect(serverTitle({ connectionId: 'board', title: 'Board', serverName: 'fixture-board' })).toBe('Board')
+    expect(serverTitle({ connectionId: 'board', serverName: 'fixture-board' })).toBe('fixture-board')
+    expect(serverTitle({ connectionId: 'board' })).toBe('board')
   })
 
   it('says the plan, the agent standing, a routine and a run in words', () => {

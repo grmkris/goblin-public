@@ -26,11 +26,11 @@ export const createOwnerApp = ({ conversation, callId }: CreateApp) =>
     const session = yield* Conversations.use((conversations) => conversations.require(conversation))
     const apps = yield* Apps
     const call = yield* apps.call(session, callId)
-    const snapshot = yield* McpConnections.use((connections) => connections.connect(call.serverId))
+    const snapshot = yield* McpConnections.use((connections) => connections.connect(call.connectionId))
     const tool = snapshot.tools.find(({ name }) => name === call.tool)
     const uri = tool === undefined ? undefined : toolAppResource(tool)
     if (uri === undefined) return yield* new NotFound({ what: 'app' })
-    const origin = { serverId: call.serverId, tool: call.tool, uri, title: tool?.title ?? call.tool }
+    const origin = { connectionId: call.connectionId, tool: call.tool, uri, title: tool?.title ?? call.tool }
     return yield* apps.register(session, callId, origin)
   })
 

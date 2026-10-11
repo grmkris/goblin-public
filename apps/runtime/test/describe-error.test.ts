@@ -6,8 +6,8 @@ describe('a failure as one line (unit, ADR 0024)', () => {
   it('names what failed and why', () => {
     expect(describeError(new Error('boom'))).toBe('boom')
     expect(describeError(new TypeError('x is not a function'))).toBe('TypeError: x is not a function')
-    expect(describeError(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' }))).toBe(
-      'UpstreamMcp (serverId: myplan, reason: timeout)',
+    expect(describeError(new UpstreamMcp({ connectionId: 'myplan', reason: 'timeout' }))).toBe(
+      'UpstreamMcp (connectionId: myplan, reason: timeout)',
     )
     expect(describeError(new Internal({ reason: 'unexpected' }))).toBe('Internal (reason: unexpected)')
     expect(describeError('empty line')).toBe('empty line')

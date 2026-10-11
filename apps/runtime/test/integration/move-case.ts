@@ -366,10 +366,12 @@ export async function moveApprovalCase(url: string): Promise<void> {
   const server = 'apps-fixture'
   const me = signedIn(url, owner)
   await callOwner(me, (api) => api.mcp.connect({ params: { id: server } }))
-  await callOwner(me, (api) => api.mcp.setToolGrant({ payload: { serverId: server, name: 'board', allowed: true } }))
-  await callOwner(me, (api) => api.mcp.setAskFirst({ payload: { serverId: server, name: 'board', enabled: true } }))
+  await callOwner(me, (api) =>
+    api.mcp.setToolGrant({ payload: { connectionId: server, name: 'board', allowed: true } }),
+  )
+  await callOwner(me, (api) => api.mcp.setAskFirst({ payload: { connectionId: server, name: 'board', enabled: true } }))
   await turn(url, owner, '1', 'approval history')
-  const args = { serverId: server, name: 'board', arguments: { operationKey: 'moved-approval' } }
+  const args = { connectionId: server, name: 'board', arguments: { operationKey: 'moved-approval' } }
   const asking = `call mcp_call ${JSON.stringify(args)}`
   await send(url, owner, '1', asking)
   await showing(signedIn(url, owner), '1', 'approval-required')

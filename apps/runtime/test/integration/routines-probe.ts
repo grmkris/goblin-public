@@ -19,7 +19,7 @@ const definition: RoutineDefinition = {
   trigger: { kind: 'cron', expression: '0 9 * * 1-5' },
   timezone: 'Europe/Berlin',
   notifyTelegram: false,
-  allowedTools: [{ serverId: 'myplan', name: 'workspace_read' }],
+  allowedTools: [{ connectionId: 'myplan', name: 'workspace_read' }],
   budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
 }
 const rejected = (call: () => unknown) => {

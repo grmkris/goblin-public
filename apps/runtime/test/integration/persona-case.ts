@@ -331,10 +331,10 @@ async function setups(url: string, owner: Person): Promise<void> {
     url,
     owner,
     definition('Fetcher', {
-      setup: { mcpServers: [{ serverId: 'apps-fixture', tools: 'all' }], skills: [], apps: [] },
+      setup: { mcpServers: [{ connectionId: 'apps-fixture', tools: 'all' }], skills: [], apps: [] },
     }),
   )
-  const call_ = 'persona-call mcp_call {"serverId":"apps-fixture","name":"anything","arguments":{}}'
+  const call_ = 'persona-call mcp_call {"connectionId":"apps-fixture","name":"anything","arguments":{}}'
   await send(url, owner, call_, [guard], { chat: narrow.conversation })
   await send(url, owner, call_, [fetcher], { chat: narrow.conversation })
   const all = await until(

@@ -10,7 +10,7 @@ import { chatDatabase, durable } from './chats-sqlite.ts'
 const KEY = 'cHVycmFibGUtdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE='
 
 /** A channel server that cannot be reached. */
-const unreachable: ChannelCall = () => Effect.fail(new UpstreamMcp({ serverId: 'mygram', reason: 'transport' }))
+const unreachable: ChannelCall = () => Effect.fail(new UpstreamMcp({ connectionId: 'mygram', reason: 'transport' }))
 
 const closes: (() => void)[] = []
 afterEach(() => {
@@ -48,7 +48,7 @@ describe('turning the Telegram channel on', () => {
     Effect.gen(function* () {
       const { channel, call, calls } = yield* fixture(2)
       const status = yield* channel.enable('mygram', 'https://goblin.test/hooks/x', call, 100)
-      expect(status).toEqual({ serverId: 'mygram', enabledAt: 100, transport: 'doorbell' })
+      expect(status).toEqual({ connectionId: 'mygram', enabledAt: 100, transport: 'doorbell' })
       expect(calls).toEqual(['inbox:', 'inbox:c1', 'inbox:c2', 'subscribe:'])
       expect(yield* channel.secret).toMatch(/^[A-Za-z0-9+/]{43}=$/u)
       expect(yield* channel.startCursor('mygram', call)).toBe('c3')

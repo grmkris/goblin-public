@@ -27,8 +27,8 @@ async function helperExclusionsProbe(storage: DurableObjectStorage) {
     '701',
     [
       { kind: 'app', app: 'counter' },
-      { kind: 'skills', serverId: 'lib' },
-      { kind: 'tool', serverId: 'notes', name: 'write' },
+      { kind: 'skills', connectionId: 'lib' },
+      { kind: 'tool', connectionId: 'notes', name: 'write' },
       { kind: 'subagents' },
     ],
     2,
@@ -56,7 +56,7 @@ async function helperExclusionsProbe(storage: DurableObjectStorage) {
 async function composerSequence(agent: ProbeStub) {
   const before = await agent.modelRequestCount()
   const invalid = await ownerSend(agent, PRIMARY_CHAT, 'Keep this draft', 'invalid-selection', {
-    selections: [{ kind: 'skill', serverId: 'missing', uri: 'skill://missing/SKILL.md' }],
+    selections: [{ kind: 'skill', connectionId: 'missing', uri: 'skill://missing/SKILL.md' }],
   })
   const noInvalidModelWork = before === (await agent.modelRequestCount())
   await exchange(

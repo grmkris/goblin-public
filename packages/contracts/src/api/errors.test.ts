@@ -39,7 +39,7 @@ import {
 const CASES: readonly (readonly [AppError, number])[] = [
   [new Unauthenticated({ reason: 'session' }), 401],
   [new Forbidden({ reason: 'csrf' }), 403],
-  [new GrantDenied({ serverId: 'myplan', name: 'search' }), 403],
+  [new GrantDenied({ connectionId: 'myplan', name: 'search' }), 403],
   [new NotFound({ what: 'topic' }), 404],
   [new Conflict({ reason: 'topic_name_taken', ref: '7f3a9c12' }), 409],
   [new InvalidInput({ reason: 'personal_topic' }), 400],
@@ -47,9 +47,9 @@ const CASES: readonly (readonly [AppError, number])[] = [
   [new ResidentInactive({ state: 'revoked' }), 409],
   [new BudgetExhausted({ limit: 1000, resetsAt: 86_400 }), 429],
   [new SubscriptionRequired({ subscribe: '/subscribe' }), 402],
-  [new NeedsAuthorization({ serverId: 'myplan' }), 409],
-  [new UpstreamMcp({ serverId: 'myplan', reason: 'remote-rpc', code: -32_601 }), 502],
-  [new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' }), 504],
+  [new NeedsAuthorization({ connectionId: 'myplan' }), 409],
+  [new UpstreamMcp({ connectionId: 'myplan', reason: 'remote-rpc', code: -32_601 }), 502],
+  [new UpstreamMcp({ connectionId: 'myplan', reason: 'timeout' }), 504],
   [new Internal({ reason: 'unexpected' }), 500],
 ]
 
@@ -112,11 +112,11 @@ describe('the API error envelope', () => {
   })
 
   it('carries safe detail fields only, with the remote JSON-RPC code as rpcCode', () => {
-    expect(envelopeOf(new UpstreamMcp({ serverId: 'myplan', reason: 'remote-rpc', code: -32_601 }))).toEqual({
+    expect(envelopeOf(new UpstreamMcp({ connectionId: 'myplan', reason: 'remote-rpc', code: -32_601 }))).toEqual({
       error: {
         code: 'upstream_mcp',
         message: 'The MCP server did not respond as expected.',
-        serverId: 'myplan',
+        connectionId: 'myplan',
         reason: 'remote-rpc',
         rpcCode: -32_601,
       },

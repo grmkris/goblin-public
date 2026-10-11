@@ -2,7 +2,7 @@ import * as Schema from 'effect/Schema'
 import { NonEmptyString } from './ids.ts'
 
 /** A server id as the owner's requests name it: configured ids and the ones added servers get. */
-const ServerIdField = NonEmptyString(64)
+const ConnectionIdField = NonEmptyString(64)
 
 /** What a grant covers on a server: a tool, a resource (an App's `ui://` bundle) or a prompt. */
 export const GrantCapability = Schema.Literals(['tool', 'resource', 'prompt'])
@@ -13,7 +13,7 @@ export type GrantCapability = typeof GrantCapability.Type
  * wildcards. `askFirst`: each call of the tool waits for the owner's decision (ADR 0028).
  */
 export const Grant = Schema.Struct({
-  serverId: Schema.String,
+  connectionId: Schema.String,
   capability: GrantCapability,
   name: Schema.String,
   askFirst: Schema.optionalKey(Schema.Boolean),
@@ -38,7 +38,7 @@ export type RegistryChange = typeof RegistryChange.Type
 
 /** `PUT /api/mcp/grants`: grant or revoke one discovered tool. */
 export const GrantChange = Schema.Struct({
-  serverId: ServerIdField,
+  connectionId: ConnectionIdField,
   name: NonEmptyString(256),
   allowed: Schema.Boolean,
 })
@@ -46,23 +46,23 @@ export type GrantChange = typeof GrantChange.Type
 
 /** `PUT /api/mcp/ask-first`: a granted tool's calls wait for the owner's decision, or no longer do. */
 export const AskFirstChange = Schema.Struct({
-  serverId: ServerIdField,
+  connectionId: ConnectionIdField,
   name: NonEmptyString(256),
   enabled: Schema.Boolean,
 })
 export type AskFirstChange = typeof AskFirstChange.Type
 
 /** `PUT /api/mcp/skills`: the agent uses a server's skills, or stops. */
-export const SkillsChange = Schema.Struct({ serverId: ServerIdField, enabled: Schema.Boolean })
+export const SkillsChange = Schema.Struct({ connectionId: ConnectionIdField, enabled: Schema.Boolean })
 export type SkillsChange = typeof SkillsChange.Type
 
 /** What `PUT /api/mcp/skills` answers: the server and its switch as it is now. */
-export const SkillsSetting = Schema.Struct({ serverId: Schema.String, enabled: Schema.Boolean })
+export const SkillsSetting = Schema.Struct({ connectionId: Schema.String, enabled: Schema.Boolean })
 export type SkillsSetting = typeof SkillsSetting.Type
 
 /** `PUT /api/mcp/app-grants`: grant or revoke an MCP App as a whole, by its `ui://` resource. */
 export const AppGrantChange = Schema.Struct({
-  serverId: ServerIdField,
+  connectionId: ConnectionIdField,
   uri: NonEmptyString(2048).check(Schema.isPattern(/^ui:\/\//u)),
   allowed: Schema.Boolean,
 })
@@ -121,7 +121,7 @@ export const McpResourceResult = passthrough({ contents: Schema.Array(RemoteObje
 export type McpResourceResult = typeof McpResourceResult.Type
 
 export type McpServerConfig = {
-  readonly serverId: string
+  readonly connectionId: string
   readonly endpoint: string
   readonly issuer?: string
   readonly resource?: string
@@ -143,7 +143,7 @@ export type EventHealth = typeof EventHealth.Type
  * configured it, or the owner added it. `title`, `description` and `icon` are the server's own claims.
  */
 export const ServerView = Schema.Struct({
-  serverId: Schema.String,
+  connectionId: Schema.String,
   endpoint: Schema.String,
   status: Schema.Literals(['connected', 'needs_auth', 'disconnected']),
   live: Schema.Boolean,
@@ -217,7 +217,7 @@ export type ToolView = typeof ToolView.Type
 /** An exact held call, shown only to its signed-in owner. */
 export const ApprovalView = Schema.Struct({
   id: Schema.String,
-  serverId: Schema.String,
+  connectionId: Schema.String,
   name: Schema.String,
   arguments: Schema.Record(Schema.String, Schema.Json),
   conversation: Schema.optional(Schema.String),

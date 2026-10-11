@@ -18,7 +18,7 @@ const logStep: StepReport = (step, outcome, startedAt, endedAt) => {
   writeLine(outcome === 'ok' || expectedFailure(code) ? 'info' : 'warn', {
     event: 'mcp',
     [RunAttribute.mcpStep]: step.step,
-    [RunAttribute.mcpServer]: step.serverId,
+    [RunAttribute.mcpServer]: step.connectionId,
     ...(step.tool === undefined ? {} : { [RunAttribute.mcpTool]: step.tool }),
     ...(step.method === undefined ? {} : { [RunAttribute.mcpMethod]: step.method }),
     ...(step.sharedConnection === undefined ? {} : { [RunAttribute.sharedConnection]: step.sharedConnection }),
@@ -60,7 +60,11 @@ export const timed =
     )
 
 /** One log line per server that lost its credentials and grants because its endpoint changed (ids only). */
-export function logEndpointsReset(serverIds: readonly string[]): void {
-  for (const serverId of serverIds)
-    writeLine('warn', { event: 'mcp', [RunAttribute.mcpStep]: 'endpoint-changed', [RunAttribute.mcpServer]: serverId })
+export function logEndpointsReset(connectionIds: readonly string[]): void {
+  for (const connectionId of connectionIds)
+    writeLine('warn', {
+      event: 'mcp',
+      [RunAttribute.mcpStep]: 'endpoint-changed',
+      [RunAttribute.mcpServer]: connectionId,
+    })
 }

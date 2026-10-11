@@ -25,14 +25,14 @@ export const setupCatalog = Effect.gen(function* () {
   const servers = yield* (yield* McpServers).list()
   const grants = yield* (yield* McpGrants).list()
   const labels = new Map(
-    servers.map((server) => [server.serverId, server.title ?? server.serverName ?? server.serverId]),
+    servers.map((server) => [server.connectionId, server.title ?? server.serverName ?? server.connectionId]),
   )
   const listed = yield* Effect.forEach(servers, (server) =>
-    Effect.map(connections.snapshot(server.serverId), (snapshot) => Option.getOrUndefined(snapshot)?.tools),
+    Effect.map(connections.snapshot(server.connectionId), (snapshot) => Option.getOrUndefined(snapshot)?.tools),
   )
   const withTools = servers.flatMap((server, index) => {
-    const tools = grants.flatMap(({ serverId, capability, name }) => {
-      if (serverId !== server.serverId || capability !== 'tool') return []
+    const tools = grants.flatMap(({ connectionId, capability, name }) => {
+      if (connectionId !== server.connectionId || capability !== 'tool') return []
       const tool = listed[index]?.find((candidate) => candidate.name === name)
       if (tool !== undefined && !toolOffered(tool, 'model')) return []
       return [{ name, ...(tool?.title === undefined ? {} : { title: tool.title }) }]
@@ -41,8 +41,8 @@ export const setupCatalog = Effect.gen(function* () {
       ? []
       : [
           {
-            serverId: server.serverId,
-            label: labels.get(server.serverId) ?? server.serverId,
+            connectionId: server.connectionId,
+            label: labels.get(server.connectionId) ?? server.connectionId,
             status: server.status,
             tools,
           },
@@ -51,12 +51,12 @@ export const setupCatalog = Effect.gen(function* () {
   const skills = yield* Skills
   const sources = yield* skills.sources()
   const catalog = yield* skills.catalog({ timeout: 5000 }, () => true)
-  const libraries = sources.map((serverId) => ({
-    serverId,
-    label: labels.get(serverId) ?? serverId,
-    available: !catalog.unavailable.includes(serverId),
+  const libraries = sources.map((connectionId) => ({
+    connectionId,
+    label: labels.get(connectionId) ?? connectionId,
+    available: !catalog.unavailable.includes(connectionId),
     skills: catalog.skills
-      .filter((skill) => skill.serverId === serverId)
+      .filter((skill) => skill.connectionId === connectionId)
       .map((skill) => ({ name: skill.name, uri: skill.entry.uri, description: skill.description.slice(0, 300) })),
   }))
   const apps = (yield* (yield* AppEngine).summaries).map(({ name, title }) => ({ name, title }))
@@ -70,16 +70,17 @@ export const setupCatalog = Effect.gen(function* () {
 export function allows(allowed: Allowed, item: SetupItem): boolean {
   switch (item.kind) {
     case 'server':
-      return allowed.servers.some((server) => server.serverId === item.serverId)
+      return allowed.servers.some((server) => server.connectionId === item.connectionId)
     case 'tool':
       return allowed.servers.some(
-        (server) => server.serverId === item.serverId && server.tools.some((tool) => tool.name === item.name),
+        (server) => server.connectionId === item.connectionId && server.tools.some((tool) => tool.name === item.name),
       )
     case 'library':
-      return allowed.libraries.some((library) => library.serverId === item.serverId)
+      return allowed.libraries.some((library) => library.connectionId === item.connectionId)
     case 'skill':
       return allowed.libraries.some(
-        (library) => library.serverId === item.serverId && library.skills.some((skill) => skill.name === item.name),
+        (library) =>
+          library.connectionId === item.connectionId && library.skills.some((skill) => skill.name === item.name),
       )
     case 'app':
       return allowed.apps.some((app) => app.name === item.app)
@@ -92,13 +93,15 @@ export function allows(allowed: Allowed, item: SetupItem): boolean {
 const listedItems = (setup: TopicSetup | PersonaSetup): readonly SetupItem[] => [
   ...(setup.mcpServers === 'all'
     ? []
-    : setup.mcpServers.flatMap(({ serverId, tools }): SetupItem[] =>
-        tools === 'all' ? [{ kind: 'server', serverId }] : tools.map((name) => ({ kind: 'tool', serverId, name })),
+    : setup.mcpServers.flatMap(({ connectionId, tools }): SetupItem[] =>
+        tools === 'all'
+          ? [{ kind: 'server', connectionId }]
+          : tools.map((name) => ({ kind: 'tool', connectionId, name })),
       )),
   ...(setup.skills === 'all'
     ? []
-    : setup.skills.map(({ serverId, name }): SetupItem =>
-        name === undefined ? { kind: 'library', serverId } : { kind: 'skill', serverId, name },
+    : setup.skills.map(({ connectionId, name }): SetupItem =>
+        name === undefined ? { kind: 'library', connectionId } : { kind: 'skill', connectionId, name },
       )),
   ...(setup.apps === 'all' ? [] : setup.apps.map((app): SetupItem => ({ kind: 'app', app }))),
 ]

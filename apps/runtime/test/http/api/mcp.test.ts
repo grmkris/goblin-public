@@ -44,7 +44,7 @@ const notes = createMcpHandler(() => {
 
 const VIEW: ApprovalView = {
   id: 'mcp:7:call-1',
-  serverId: 'notes',
+  connectionId: 'notes',
   name: 'delete',
   arguments: { accessToken: '[redacted]' },
   state: 'pending',
@@ -67,7 +67,7 @@ const fixture = async () => {
     return new URL(request.url).pathname === '/mcp' ? notes.fetch(request) : new Response(null, { status: 404 })
   }
   const host = mcpHost({
-    servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
+    servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp' }],
     credentials,
     grants,
     added: new MemoryAddedServers(credentials, grants),
@@ -78,7 +78,7 @@ const fixture = async () => {
   const disabled: (string | undefined)[] = []
   const events = stub(Events, {
     health: () => Effect.succeed([]),
-    disableServer: (serverId?: string) => Effect.sync(() => void disabled.push(serverId)),
+    disableServer: (connectionId?: string) => Effect.sync(() => void disabled.push(connectionId)),
   })
   const approvals = stub(Approvals, {
     view: (id: string) => (id === VIEW.id ? Effect.succeed(VIEW) : Effect.fail(new NotFound({ what: 'MCP approval' }))),
@@ -118,7 +118,7 @@ describe('the mcp group', () => {
     const servers = await fetch(get('/api/mcp/servers'))
     expect(servers.status).toBe(200)
     expect(decodeServers(await servers.json())).toEqual([
-      expect.objectContaining({ serverId: 'notes', status: 'connected', source: 'config', eventHealth: [] }),
+      expect.objectContaining({ connectionId: 'notes', status: 'connected', source: 'config', eventHealth: [] }),
     ])
     const registries = await (await fetch(get('/api/mcp/registries'))).json()
     expect(registries).toEqual([
@@ -130,7 +130,7 @@ describe('the mcp group', () => {
 
   it('grants a tool with its App resource, shows it on the tool, and revokes it again', async () => {
     const { fetch } = await fixture()
-    const granted = await fetch(json('PUT', '/api/mcp/grants', { serverId: 'notes', name: 'open', allowed: true }))
+    const granted = await fetch(json('PUT', '/api/mcp/grants', { connectionId: 'notes', name: 'open', allowed: true }))
     expect(granted.status).toBe(200)
     expect(decodeGrants(await granted.json()).map(({ capability, name }) => `${capability}:${name}`)).toEqual([
       'tool:open',
@@ -139,16 +139,18 @@ describe('the mcp group', () => {
     const tools = decodeTools(await (await fetch(get('/api/mcp/notes/tools?refresh'))).json())
     expect(tools.find((tool) => tool.name === 'open')).toMatchObject({ granted: true, appResource: BOARD })
     expect(tools.find((tool) => tool.name === 'delete')).toMatchObject({ granted: false })
-    const revoked = await fetch(json('PUT', '/api/mcp/grants', { serverId: 'notes', name: 'open', allowed: false }))
+    const revoked = await fetch(json('PUT', '/api/mcp/grants', { connectionId: 'notes', name: 'open', allowed: false }))
     expect(await revoked.json()).toEqual([])
   })
 
   it('answers what names nothing as 404 and a query or body out of bounds as 400', async () => {
     const { fetch } = await fixture()
-    const missing = await fetch(json('PUT', '/api/mcp/grants', { serverId: 'notes', name: 'absent', allowed: true }))
+    const missing = await fetch(
+      json('PUT', '/api/mcp/grants', { connectionId: 'notes', name: 'absent', allowed: true }),
+    )
     expect(missing.status).toBe(404)
     expect(await missing.json()).toMatchObject({ error: { code: 'not_found', what: 'tool absent' } })
-    const unknown = await fetch(json('PUT', '/api/mcp/app-grants', { serverId: 'nope', uri: BOARD, allowed: true }))
+    const unknown = await fetch(json('PUT', '/api/mcp/app-grants', { connectionId: 'nope', uri: BOARD, allowed: true }))
     expect(unknown.status).toBe(404)
     for (const path of ['/api/mcp/not.a.server/tools', '/api/mcp/approvals/has%20space'])
       expect(await (await fetch(get(path))).json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
@@ -158,14 +160,14 @@ describe('the mcp group', () => {
     expect(long.status).toBe(400)
     expect(await long.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'query_too_long' } })
     const notUi = await fetch(
-      json('PUT', '/api/mcp/app-grants', { serverId: 'notes', uri: 'https://x', allowed: true }),
+      json('PUT', '/api/mcp/app-grants', { connectionId: 'notes', uri: 'https://x', allowed: true }),
     )
     expect(notUi.status).toBe(400)
   })
 
   it('calls a granted tool by hand and answers the remote result whole; an App may call only what it is offered', async () => {
     const { fetch } = await fixture()
-    await fetch(json('PUT', '/api/mcp/app-grants', { serverId: 'notes', uri: BOARD, allowed: true }))
+    await fetch(json('PUT', '/api/mcp/app-grants', { connectionId: 'notes', uri: BOARD, allowed: true }))
     const called = await fetch(post('/api/mcp/notes/tools/call', { name: 'open' }))
     expect(called.status).toBe(200)
     // `_meta` is a field the contract does not name: it reaches the owner as the server (and the SDK) sent it.
@@ -178,7 +180,9 @@ describe('the mcp group', () => {
     expect(await app.json()).toMatchObject({ structuredContent: { tool: 'move' } })
     const ungranted = await fetch(post('/api/mcp/notes/tools/call', { name: 'delete', arguments: {} }))
     expect(ungranted.status).toBe(403)
-    expect(await ungranted.json()).toMatchObject({ error: { code: 'grant_denied', serverId: 'notes', name: 'delete' } })
+    expect(await ungranted.json()).toMatchObject({
+      error: { code: 'grant_denied', connectionId: 'notes', name: 'delete' },
+    })
   })
 
   it('shows a held call, and disconnects a server after its Events subscriptions', async () => {
@@ -198,14 +202,16 @@ describe('the mcp group', () => {
   it("serves the probes' typed client: a missing tool decodes as NotFound, an ungranted call as GrantDenied", async () => {
     const { fetch } = await fixture()
     const agent = { fetch }
-    expect(await callOwner(agent, (api) => api.mcp.servers())).toEqual([expect.objectContaining({ serverId: 'notes' })])
+    expect(await callOwner(agent, (api) => api.mcp.servers())).toEqual([
+      expect.objectContaining({ connectionId: 'notes' }),
+    ])
     const failure = await callOwner(agent, (api) =>
-      Effect.flip(api.mcp.setToolGrant({ payload: { serverId: 'notes', name: 'absent', allowed: true } })),
+      Effect.flip(api.mcp.setToolGrant({ payload: { connectionId: 'notes', name: 'absent', allowed: true } })),
     )
     expect(failure).toMatchObject({ _tag: 'NotFound', what: 'tool absent', ref: 'integration-probe' })
     const denied = await callOwner(agent, (api) =>
       Effect.flip(api.mcp.callTool({ params: { id: 'notes' }, headers: {}, payload: { name: 'open' } })),
     )
-    expect(denied).toMatchObject({ _tag: 'GrantDenied', serverId: 'notes', name: 'open' })
+    expect(denied).toMatchObject({ _tag: 'GrantDenied', connectionId: 'notes', name: 'open' })
   })
 })

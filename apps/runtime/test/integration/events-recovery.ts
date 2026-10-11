@@ -41,7 +41,7 @@ export async function eventsSkillsProbe(state: EventsProbeState) {
     events.subscribe({
       consumerId: 'skills:updates',
       revision: 1,
-      serverId: 'mygram',
+      connectionId: 'mygram',
       name: 'skills.updated',
       arguments: {},
       handlerKey: 'skills-refresh',
@@ -86,7 +86,7 @@ export async function eventsRecoveryProbe(state: EventsProbeState) {
   const subscribed = await run(
     events.subscribe({
       ...binding,
-      serverId: 'mygram',
+      connectionId: 'mygram',
       name: 'skills.list_changed',
       arguments: {},
       handlerKey: 'recover-test',

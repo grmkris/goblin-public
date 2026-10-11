@@ -22,7 +22,7 @@ export type AppPlacement = {
 }
 
 /** Where an open App comes from, for what it shares with the owner's message: an MCP App's server, or the agent app. */
-export type AppSharing = { readonly serverId: string } | { readonly app: string }
+export type AppSharing = { readonly connectionId: string } | { readonly app: string }
 
 /**
  * The owner's Apps (ADRs 0020, 0021): an MCP App kept per tool call under the conversation it was made in, and each

@@ -140,7 +140,7 @@ describe('searching registries', () => {
       await probe('https://example.com', async () => {
         throw new TypeError('network down')
       }),
-    ).toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport', serverId: 'example.com' })
+    ).toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport', connectionId: 'example.com' })
     expect(await probe('http://example.com', good)).toMatchObject({ reason: 'endpoint_not_https' })
   })
 })

@@ -8,7 +8,7 @@ import { ApiErrors } from './errors.ts'
 /** The owner's pick of a model the deployment offers. */
 const ModelPick = Schema.Struct({ model: NonEmptyString(128) })
 /** The connection to carry Telegram: a myagent connection bound to the agent's own bot. */
-const ChannelPick = Schema.Struct({ serverId: NonEmptyString(64) })
+const ChannelPick = Schema.Struct({ connectionId: NonEmptyString(64) })
 
 /**
  * The agent itself: today's usage, its model, and its Telegram channel. Paths are relative to the API's `/api` prefix;

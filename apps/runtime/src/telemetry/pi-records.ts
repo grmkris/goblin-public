@@ -88,7 +88,7 @@ const Live = Schema.Struct({
   run: Schema.optional(Schema.Struct({ taskId: Id, inputs: Schema.Array(Id) })),
   generation: Schema.optional(Schema.Struct({ attempt: Schema.Number, message: Schema.optional(Schema.Unknown) })),
 })
-const McpCall = Schema.Struct({ serverId: Schema.String, name: Schema.String })
+const McpCall = Schema.Struct({ connectionId: Schema.String, name: Schema.String })
 
 const decode =
   <S extends Schema.Top & Schema.ConstraintDecoder<unknown>>(schema: S) =>

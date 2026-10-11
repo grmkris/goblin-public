@@ -17,7 +17,7 @@ export type HeldCall = {
   readonly sessionId?: string
   readonly sourceCallId?: string
   readonly taskId?: string
-  readonly serverId: string
+  readonly connectionId: string
   readonly name: string
   readonly endpoint: string
   readonly grantVersion: string
@@ -29,7 +29,7 @@ export const argumentsHash = (args: Record<string, unknown>): Promise<string> =>
   sha256Hex(JSON.stringify(decodeArguments(args)))
 const matches = (row: ApprovalRow, input: HeldCall, hash: string) =>
   row.argumentsHash === hash &&
-  row.serverId === input.serverId &&
+  row.connectionId === input.connectionId &&
   row.name === input.name &&
   row.endpoint === input.endpoint &&
   row.grantVersion === input.grantVersion &&
@@ -86,7 +86,7 @@ export class McpApprovalStore {
         sessionId: input.sessionId ?? null,
         sourceCallId: input.sourceCallId ?? null,
         taskId: input.taskId ?? null,
-        serverId: input.serverId,
+        connectionId: input.connectionId,
         name: input.name,
         endpoint: input.endpoint,
         grantVersion: input.grantVersion,
@@ -160,7 +160,7 @@ export class McpApprovalStore {
       row.expiresAt <= now ||
       row.grantVersion !== version ||
       row.endpoint !== call.endpoint ||
-      row.serverId !== call.serverId ||
+      row.connectionId !== call.connectionId ||
       row.name !== call.name ||
       row.caller !== call.caller ||
       row.argumentsHash !== hash ||
@@ -217,7 +217,7 @@ export class McpApprovalStore {
     const row = this.get(id)
     return {
       id,
-      serverId: row.serverId,
+      connectionId: row.connectionId,
       name: row.name,
       arguments: decodeArguments(redactSecretFields(await this.arguments(id))),
       state: row.state === 'pending' && row.expiresAt <= now ? 'expired' : row.state,

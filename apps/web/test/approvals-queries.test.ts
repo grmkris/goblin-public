@@ -12,7 +12,7 @@ import { unusedHandlers } from './query/unused-handlers.ts'
 
 const HELD: ApprovalView = {
   id: 'apr-1',
-  serverId: 'notes',
+  connectionId: 'notes',
   name: 'delete_note',
   arguments: { id: 'n-1' },
   state: 'pending',

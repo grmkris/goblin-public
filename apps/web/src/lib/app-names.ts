@@ -27,14 +27,15 @@ export const agentApps = (apps: readonly AppView[]): AppView[] =>
     .toReversed()
 
 /** Where an App comes from, as its tile and caption name it: an MCP App's server, or an agent app's own name. */
-export const appOrigin = (app: AppView): string => (app.source.kind === 'mcp' ? app.source.serverId : app.source.name)
+export const appOrigin = (app: AppView): string =>
+  app.source.kind === 'mcp' ? app.source.connectionId : app.source.name
 
 /**
  * A hue for an App's tile, the same every time for its server: tiles tell Apps apart at a glance, as app icons do.
  * FNV-1a over the server id, spread over the colour wheel.
  */
-export function appHue(serverId: string): number {
+export function appHue(connectionId: string): number {
   let hash = 0x811c9dc5
-  for (const char of serverId) hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01000193)
+  for (const char of connectionId) hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01000193)
   return (hash >>> 0) % 360
 }

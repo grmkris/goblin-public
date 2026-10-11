@@ -14,18 +14,22 @@ import { SkillEntry } from './protocol.ts'
 export const MAX_CACHED_FILE_BYTES = 1_048_576
 
 /** What one conversation activated: the server, and the entry exactly as it was loaded. */
-export type Activation = { readonly serverId: string; readonly entry: SkillEntry; readonly activatedAt: number }
+export type Activation = { readonly connectionId: string; readonly entry: SkillEntry; readonly activatedAt: number }
 
 /** The skills state the Agent DO keeps: owner switches, per-conversation activations, verified bytes. */
 export interface SkillState {
   /** Whether the owner uses skills from this server. */
-  catalogState?(serverId: string): { readonly dirty: number; readonly refreshed: number; readonly unavailable: boolean }
-  dirtyCatalog?(serverId: string, unavailable: boolean, now: number): void
-  refreshedCatalog?(serverId: string, generation: number, now: number): boolean
-  enabled(serverId: string): boolean
+  catalogState?(connectionId: string): {
+    readonly dirty: number
+    readonly refreshed: number
+    readonly unavailable: boolean
+  }
+  dirtyCatalog?(connectionId: string, unavailable: boolean, now: number): void
+  refreshedCatalog?(connectionId: string, generation: number, now: number): boolean
+  enabled(connectionId: string): boolean
   sources(): readonly string[]
-  setEnabled(serverId: string, enabled: boolean, now: number): void
-  activation(sessionId: string, serverId: string, uri: string): Activation | undefined
+  setEnabled(connectionId: string, enabled: boolean, now: number): void
+  activation(sessionId: string, connectionId: string, uri: string): Activation | undefined
   activations(sessionId: string): readonly Activation[]
   activate(sessionId: string, activation: Activation): void
   /** Cached bytes by digest; the caller verifies them again before use. */
@@ -44,26 +48,30 @@ export class SqliteSkillState implements SkillState {
     this.#db = db
   }
 
-  catalogState(serverId: string) {
-    const row = this.#db.select().from(appSkillCatalogState).where(eq(appSkillCatalogState.serverId, serverId)).get()
+  catalogState(connectionId: string) {
+    const row = this.#db
+      .select()
+      .from(appSkillCatalogState)
+      .where(eq(appSkillCatalogState.connectionId, connectionId))
+      .get()
     return {
       dirty: row?.dirtyGeneration ?? 0,
       refreshed: row?.refreshedGeneration ?? 0,
       unavailable: row?.lastError === 'terminated',
     }
   }
-  dirtyCatalog(serverId: string, unavailable: boolean, now: number): void {
+  dirtyCatalog(connectionId: string, unavailable: boolean, now: number): void {
     this.#db
       .insert(appSkillCatalogState)
       .values({
-        serverId,
+        connectionId,
         dirtyGeneration: 1,
         refreshedGeneration: 0,
         nextRetryAt: now,
         lastError: unavailable ? 'terminated' : null,
       })
       .onConflictDoUpdate({
-        target: appSkillCatalogState.serverId,
+        target: appSkillCatalogState.connectionId,
         set: {
           dirtyGeneration: sql`${appSkillCatalogState.dirtyGeneration} + 1`,
           nextRetryAt: now,
@@ -72,54 +80,56 @@ export class SqliteSkillState implements SkillState {
       })
       .run()
   }
-  refreshedCatalog(serverId: string, generation: number, now: number): boolean {
+  refreshedCatalog(connectionId: string, generation: number, now: number): boolean {
     this.#db
       .update(appSkillCatalogState)
       .set({ refreshedGeneration: generation, nextRetryAt: now + 300_000, lastError: null })
-      .where(and(eq(appSkillCatalogState.serverId, serverId), eq(appSkillCatalogState.dirtyGeneration, generation)))
+      .where(
+        and(eq(appSkillCatalogState.connectionId, connectionId), eq(appSkillCatalogState.dirtyGeneration, generation)),
+      )
       .run()
-    return this.catalogState(serverId).dirty === generation
+    return this.catalogState(connectionId).dirty === generation
   }
 
-  enabled(serverId: string): boolean {
+  enabled(connectionId: string): boolean {
     return (
       this.#db
-        .select({ serverId: appSkillSources.serverId })
+        .select({ connectionId: appSkillSources.connectionId })
         .from(appSkillSources)
-        .where(eq(appSkillSources.serverId, serverId))
+        .where(eq(appSkillSources.connectionId, connectionId))
         .get() !== undefined
     )
   }
 
   sources(): readonly string[] {
     return this.#db
-      .select({ serverId: appSkillSources.serverId })
+      .select({ connectionId: appSkillSources.connectionId })
       .from(appSkillSources)
       .all()
-      .map((row) => row.serverId)
+      .map((row) => row.connectionId)
   }
 
-  setEnabled(serverId: string, enabled: boolean, now: number): void {
+  setEnabled(connectionId: string, enabled: boolean, now: number): void {
     if (enabled) {
-      this.#db.insert(appSkillSources).values({ serverId, enabledAt: now }).onConflictDoNothing().run()
+      this.#db.insert(appSkillSources).values({ connectionId, enabledAt: now }).onConflictDoNothing().run()
       return
     }
-    this.#db.delete(appSkillSources).where(eq(appSkillSources.serverId, serverId)).run()
+    this.#db.delete(appSkillSources).where(eq(appSkillSources.connectionId, connectionId)).run()
   }
 
-  activation(sessionId: string, serverId: string, uri: string): Activation | undefined {
+  activation(sessionId: string, connectionId: string, uri: string): Activation | undefined {
     const row = this.#db
       .select()
       .from(appSkillActivations)
       .where(
         and(
           eq(appSkillActivations.sessionId, sessionId),
-          eq(appSkillActivations.serverId, serverId),
+          eq(appSkillActivations.connectionId, connectionId),
           eq(appSkillActivations.uri, uri),
         ),
       )
       .get()
-    return row === undefined ? undefined : { serverId, entry: decodeEntry(row.entry), activatedAt: row.activatedAt }
+    return row === undefined ? undefined : { connectionId, entry: decodeEntry(row.entry), activatedAt: row.activatedAt }
   }
 
   activations(sessionId: string): readonly Activation[] {
@@ -128,13 +138,13 @@ export class SqliteSkillState implements SkillState {
       .from(appSkillActivations)
       .where(eq(appSkillActivations.sessionId, sessionId))
       .all()
-      .map((row) => ({ serverId: row.serverId, entry: decodeEntry(row.entry), activatedAt: row.activatedAt }))
+      .map((row) => ({ connectionId: row.connectionId, entry: decodeEntry(row.entry), activatedAt: row.activatedAt }))
   }
 
   activate(sessionId: string, activation: Activation): void {
     const values = {
       sessionId,
-      serverId: activation.serverId,
+      connectionId: activation.connectionId,
       uri: activation.entry.uri,
       entry: encodeEntry(activation.entry),
       activatedAt: activation.activatedAt,
@@ -143,7 +153,7 @@ export class SqliteSkillState implements SkillState {
       .insert(appSkillActivations)
       .values(values)
       .onConflictDoUpdate({
-        target: [appSkillActivations.sessionId, appSkillActivations.serverId, appSkillActivations.uri],
+        target: [appSkillActivations.sessionId, appSkillActivations.connectionId, appSkillActivations.uri],
         set: { entry: values.entry, activatedAt: values.activatedAt },
       })
       .run()
@@ -176,7 +186,7 @@ export type DraftStatus = 'open' | 'accepted' | 'rejected'
 /** A draft the agent proposed: its content hash, the library, the skill it names or improves, and its review. */
 export type DraftRecord = {
   readonly contentHash: string
-  readonly serverId: string
+  readonly connectionId: string
   readonly name: string
   readonly baseUri: string | undefined
   readonly draftId: string | undefined
@@ -190,7 +200,7 @@ export interface DraftLog {
   /** A draft with this content was proposed before. */
   known(contentHash: string): boolean
   /** A draft for this skill waits for review, or one for the same base was rejected. */
-  blocked(serverId: string, name: string, baseUri: string | undefined): boolean
+  blocked(connectionId: string, name: string, baseUri: string | undefined): boolean
   open(limit: number): readonly DraftRecord[]
   add(record: DraftRecord, now: number): void
   update(contentHash: string, change: { readonly draftId?: string; readonly status: DraftStatus }, now: number): void
@@ -219,13 +229,13 @@ export class SqliteDraftLog implements DraftLog {
     )
   }
 
-  blocked(serverId: string, name: string, baseUri: string | undefined): boolean {
+  blocked(connectionId: string, name: string, baseUri: string | undefined): boolean {
     return this.#db
       .select({ status: appSkillDrafts.status, baseUri: appSkillDrafts.baseUri })
       .from(appSkillDrafts)
       .where(
         and(
-          eq(appSkillDrafts.serverId, serverId),
+          eq(appSkillDrafts.connectionId, connectionId),
           eq(appSkillDrafts.name, name),
           inArray(appSkillDrafts.status, ['open', 'rejected']),
         ),
@@ -243,7 +253,7 @@ export class SqliteDraftLog implements DraftLog {
       .all()
       .map((row) => ({
         contentHash: row.contentHash,
-        serverId: row.serverId,
+        connectionId: row.connectionId,
         name: row.name,
         baseUri: row.baseUri ?? undefined,
         draftId: row.draftId ?? undefined,

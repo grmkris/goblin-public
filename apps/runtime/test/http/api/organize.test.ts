@@ -90,11 +90,14 @@ describe('the organize group', () => {
     it('narrows from everything, adds back, and answers the routines it affects', async () => {
       const { fetch, topics } = organizing()
       await fetch(post('/api/topics', { name: 'Work', operationId: 'topic-1' }))
-      const narrowed = await setup(fetch, { remove: [{ kind: 'tool', serverId: 'notes', name: 'read' }] })
+      const narrowed = await setup(fetch, { remove: [{ kind: 'tool', connectionId: 'notes', name: 'read' }] })
       expect(narrowed.status).toBe(200)
       expect(await narrowed.json()).toMatchObject({ topic: { id: 2, setup: { mcpServers: [] } }, routines: [] })
-      await setup(fetch, { add: [{ kind: 'server', serverId: 'notes' }] })
-      expect(topics.get(2).setup).toMatchObject({ mcpServers: [{ serverId: 'notes', tools: 'all' }], skills: 'all' })
+      await setup(fetch, { add: [{ kind: 'server', connectionId: 'notes' }] })
+      expect(topics.get(2).setup).toMatchObject({
+        mcpServers: [{ connectionId: 'notes', tools: 'all' }],
+        skills: 'all',
+      })
     })
 
     it('refuses a whole setup over a stale revision, and writes nothing for the same one', async () => {

@@ -79,11 +79,11 @@ let drafts = new MemoryDraftLog()
 /** The learner over an MCP host for the library server, on a test clock at 10,000,000 ms. */
 const learnerAt = () => {
   const host = mcpHost({
-    servers: [{ serverId: 'lib', endpoint: 'https://library.test/mcp' }],
+    servers: [{ connectionId: 'lib', endpoint: 'https://library.test/mcp' }],
     credentials,
     grants,
     registries: new MemoryRegistries(),
-    skillsEnabled: (serverId) => state.enabled(serverId),
+    skillsEnabled: (connectionId) => state.enabled(connectionId),
     appUrl: 'https://goblin.test',
     fetch: async (input, init) => skills.fetch(new Request(input, init)),
   })
@@ -152,7 +152,7 @@ beforeEach(() => {
   drafts = new MemoryDraftLog()
   state.setEnabled('lib', true)
   for (const name of ['skill_draft', 'skill_draft_status'])
-    grants.set({ serverId: 'lib', capability: 'tool', name }, true)
+    grants.set({ connectionId: 'lib', capability: 'tool', name }, true)
   exchange = [
     { role: 'user', text: 'Do the weekly review.' },
     { role: 'assistant', text: 'Here is the review: decisions first.' },
@@ -256,9 +256,9 @@ describe('the skill learner (unit)', () => {
 
   it('stays quiet when the owner has not allowed the draft tool, or skills are off', async () => {
     model.answer = NEW_SKILL
-    grants.set({ serverId: 'lib', capability: 'tool', name: 'skill_draft' }, false)
+    grants.set({ connectionId: 'lib', capability: 'tool', name: 'skill_draft' }, false)
     expect(await consider(MAIN)).toBe('skipped')
-    grants.set({ serverId: 'lib', capability: 'tool', name: 'skill_draft' }, true)
+    grants.set({ connectionId: 'lib', capability: 'tool', name: 'skill_draft' }, true)
     state.setEnabled('lib', false)
     expect(await consider(MAIN)).toBe('skipped')
     expect(model.calls).toBe(0)

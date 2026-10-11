@@ -24,7 +24,7 @@ afterEach(() => {
 })
 
 /** An MCP App placement's fixed fields. */
-const app = { source: 'mcp', serverId: 'fixture', tool: 'board', resourceUri: 'ui://board' } as const
+const app = { source: 'mcp', connectionId: 'fixture', tool: 'board', resourceUri: 'ui://board' } as const
 
 const fixture = () => {
   const { db, close } = chatDatabase()

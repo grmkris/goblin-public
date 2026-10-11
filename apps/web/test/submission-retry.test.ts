@@ -11,7 +11,10 @@ it('deduplicates an unchanged failed send, and distinguishes new text, attachmen
   expect(retry.operation(draft)).not.toBe(first)
   const attachment = retry.operation({ ...draft, context: { attachments: ['other.txt'] } })
   expect(retry.operation({ ...draft, input: 'changed' })).not.toBe(attachment)
-  const reference = retry.operation({ ...draft, context: { selections: [{ kind: 'connection', serverId: 'notes' }] } })
+  const reference = retry.operation({
+    ...draft,
+    context: { selections: [{ kind: 'connection', connectionId: 'notes' }] },
+  })
   expect(retry.operation(draft)).not.toBe(reference)
   expect(retry.operation({ ...draft, thread: '2' })).not.toBe(retry.operation(draft))
 })

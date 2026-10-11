@@ -23,19 +23,19 @@ const readDiscovery = (json: string): OAuthDiscoveryState =>
 
 /** Outbound OAuth credential records per server (the OAuth provider and host depend on this, not on SQLite). */
 export interface Credentials {
-  status(serverId: string): ConnectionStatus
-  tokenExpiresAt(serverId: string): number | undefined
-  clientInformation(serverId: string): Promise<StoredOAuthClientInformation | undefined>
-  saveClientInformation(serverId: string, info: StoredOAuthClientInformation, now: number): Promise<void>
-  tokens(serverId: string): Promise<StoredOAuthTokens | undefined>
-  saveTokens(serverId: string, tokens: StoredOAuthTokens, now: number): Promise<void>
-  discoveryState(serverId: string): OAuthDiscoveryState | undefined
-  saveDiscoveryState(serverId: string, state: OAuthDiscoveryState, now: number): void
-  markNeedsAuth(serverId: string, now: number): void
-  invalidate(serverId: string, scope: InvalidationScope, now: number): void
-  remove(serverId: string): void
-  savePending(state: string, serverId: string, codeVerifier: string, now: number): Promise<void>
-  takePending(state: string, now: number): Promise<{ serverId: string; codeVerifier: string } | undefined>
+  status(connectionId: string): ConnectionStatus
+  tokenExpiresAt(connectionId: string): number | undefined
+  clientInformation(connectionId: string): Promise<StoredOAuthClientInformation | undefined>
+  saveClientInformation(connectionId: string, info: StoredOAuthClientInformation, now: number): Promise<void>
+  tokens(connectionId: string): Promise<StoredOAuthTokens | undefined>
+  saveTokens(connectionId: string, tokens: StoredOAuthTokens, now: number): Promise<void>
+  discoveryState(connectionId: string): OAuthDiscoveryState | undefined
+  saveDiscoveryState(connectionId: string, state: OAuthDiscoveryState, now: number): void
+  markNeedsAuth(connectionId: string, now: number): void
+  invalidate(connectionId: string, scope: InvalidationScope, now: number): void
+  remove(connectionId: string): void
+  savePending(state: string, connectionId: string, codeVerifier: string, now: number): Promise<void>
+  takePending(state: string, now: number): Promise<{ connectionId: string; codeVerifier: string } | undefined>
 }
 
 /** Outbound OAuth credentials, one row per configured server. Secrets are encrypted; nothing here is logged. */
@@ -47,67 +47,67 @@ export class CredentialStore implements Credentials {
     this.#cipher = cipher
   }
 
-  #row(serverId: string) {
-    return this.#db.select().from(appMcpCredentials).where(eq(appMcpCredentials.serverId, serverId)).get()
+  #row(connectionId: string) {
+    return this.#db.select().from(appMcpCredentials).where(eq(appMcpCredentials.connectionId, connectionId)).get()
   }
 
-  #upsert(serverId: string, now: number, values: Partial<typeof appMcpCredentials.$inferInsert>): void {
+  #upsert(connectionId: string, now: number, values: Partial<typeof appMcpCredentials.$inferInsert>): void {
     this.#db
       .insert(appMcpCredentials)
-      .values({ serverId, status: 'needs_auth', updatedAt: now, ...values })
-      .onConflictDoUpdate({ target: appMcpCredentials.serverId, set: { ...values, updatedAt: now } })
+      .values({ connectionId, status: 'needs_auth', updatedAt: now, ...values })
+      .onConflictDoUpdate({ target: appMcpCredentials.connectionId, set: { ...values, updatedAt: now } })
       .run()
   }
 
-  status(serverId: string): ConnectionStatus {
-    const row = this.#row(serverId)
+  status(connectionId: string): ConnectionStatus {
+    const row = this.#row(connectionId)
     if (row === undefined) return 'disconnected'
     return row.status === 'connected' && row.tokens !== null ? 'connected' : 'needs_auth'
   }
 
-  tokenExpiresAt(serverId: string): number | undefined {
-    return this.#row(serverId)?.tokenExpiresAt ?? undefined
+  tokenExpiresAt(connectionId: string): number | undefined {
+    return this.#row(connectionId)?.tokenExpiresAt ?? undefined
   }
 
-  async clientInformation(serverId: string): Promise<StoredOAuthClientInformation | undefined> {
-    const sealed = this.#row(serverId)?.clientInfo
+  async clientInformation(connectionId: string): Promise<StoredOAuthClientInformation | undefined> {
+    const sealed = this.#row(connectionId)?.clientInfo
     if (sealed === null || sealed === undefined) return undefined
-    return readClient(await this.#cipher.decrypt(sealed, `${serverId}:client`))
+    return readClient(await this.#cipher.decrypt(sealed, `${connectionId}:client`))
   }
 
-  async saveClientInformation(serverId: string, info: StoredOAuthClientInformation, now: number): Promise<void> {
-    const clientInfo = await this.#cipher.encrypt(JSON.stringify(info), `${serverId}:client`)
-    this.#upsert(serverId, now, { clientInfo })
+  async saveClientInformation(connectionId: string, info: StoredOAuthClientInformation, now: number): Promise<void> {
+    const clientInfo = await this.#cipher.encrypt(JSON.stringify(info), `${connectionId}:client`)
+    this.#upsert(connectionId, now, { clientInfo })
   }
 
-  async tokens(serverId: string): Promise<StoredOAuthTokens | undefined> {
-    const sealed = this.#row(serverId)?.tokens
+  async tokens(connectionId: string): Promise<StoredOAuthTokens | undefined> {
+    const sealed = this.#row(connectionId)?.tokens
     if (sealed === null || sealed === undefined) return undefined
-    return readTokens(await this.#cipher.decrypt(sealed, `${serverId}:tokens`))
+    return readTokens(await this.#cipher.decrypt(sealed, `${connectionId}:tokens`))
   }
 
-  async saveTokens(serverId: string, tokens: StoredOAuthTokens, now: number): Promise<void> {
-    const sealed = await this.#cipher.encrypt(JSON.stringify(tokens), `${serverId}:tokens`)
+  async saveTokens(connectionId: string, tokens: StoredOAuthTokens, now: number): Promise<void> {
+    const sealed = await this.#cipher.encrypt(JSON.stringify(tokens), `${connectionId}:tokens`)
     const tokenExpiresAt = tokens.expires_in === undefined ? null : now + tokens.expires_in
-    this.#upsert(serverId, now, { tokens: sealed, tokenExpiresAt, status: 'connected' })
+    this.#upsert(connectionId, now, { tokens: sealed, tokenExpiresAt, status: 'connected' })
   }
 
-  discoveryState(serverId: string): OAuthDiscoveryState | undefined {
-    const json = this.#row(serverId)?.discovery
+  discoveryState(connectionId: string): OAuthDiscoveryState | undefined {
+    const json = this.#row(connectionId)?.discovery
     return json === null || json === undefined ? undefined : readDiscovery(json)
   }
 
-  saveDiscoveryState(serverId: string, state: OAuthDiscoveryState, now: number): void {
-    this.#upsert(serverId, now, { discovery: JSON.stringify(state) })
+  saveDiscoveryState(connectionId: string, state: OAuthDiscoveryState, now: number): void {
+    this.#upsert(connectionId, now, { discovery: JSON.stringify(state) })
   }
 
-  markNeedsAuth(serverId: string, now: number): void {
-    this.#upsert(serverId, now, { status: 'needs_auth' })
+  markNeedsAuth(connectionId: string, now: number): void {
+    this.#upsert(connectionId, now, { status: 'needs_auth' })
   }
 
-  invalidate(serverId: string, scope: InvalidationScope, now: number): void {
+  invalidate(connectionId: string, scope: InvalidationScope, now: number): void {
     if (scope === 'verifier') {
-      this.#db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.serverId, serverId)).run()
+      this.#db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.connectionId, connectionId)).run()
       return
     }
     const cleared: Partial<typeof appMcpCredentials.$inferInsert> = {
@@ -115,33 +115,36 @@ export class CredentialStore implements Credentials {
       ...(scope === 'all' || scope === 'client' ? { clientInfo: null } : {}),
       ...(scope === 'all' || scope === 'discovery' ? { discovery: null } : {}),
     }
-    this.#upsert(serverId, now, cleared)
+    this.#upsert(connectionId, now, cleared)
   }
 
   /** Forget the server entirely: credentials, client registration and pending authorizations. */
-  remove(serverId: string): void {
-    this.#db.delete(appMcpCredentials).where(eq(appMcpCredentials.serverId, serverId)).run()
-    this.#db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.serverId, serverId)).run()
+  remove(connectionId: string): void {
+    this.#db.delete(appMcpCredentials).where(eq(appMcpCredentials.connectionId, connectionId)).run()
+    this.#db.delete(appMcpOauthPending).where(eq(appMcpOauthPending.connectionId, connectionId)).run()
   }
 
-  async savePending(state: string, serverId: string, codeVerifier: string, now: number): Promise<void> {
+  async savePending(state: string, connectionId: string, codeVerifier: string, now: number): Promise<void> {
     this.#db
       .delete(appMcpOauthPending)
       .where(lt(appMcpOauthPending.createdAt, now - PENDING_TTL_SECONDS))
       .run()
     const sealed = await this.#cipher.encrypt(codeVerifier, `${state}:verifier`)
-    this.#db.insert(appMcpOauthPending).values({ state, serverId, codeVerifier: sealed, createdAt: now }).run()
+    this.#db.insert(appMcpOauthPending).values({ state, connectionId, codeVerifier: sealed, createdAt: now }).run()
   }
 
   /** One-time use: the row is deleted whether or not it is still fresh. */
-  async takePending(state: string, now: number): Promise<{ serverId: string; codeVerifier: string } | undefined> {
+  async takePending(state: string, now: number): Promise<{ connectionId: string; codeVerifier: string } | undefined> {
     const row = this.#db.select().from(appMcpOauthPending).where(eq(appMcpOauthPending.state, state)).get()
     if (row === undefined) return undefined
     this.#db
       .delete(appMcpOauthPending)
-      .where(and(eq(appMcpOauthPending.state, state), eq(appMcpOauthPending.serverId, row.serverId)))
+      .where(and(eq(appMcpOauthPending.state, state), eq(appMcpOauthPending.connectionId, row.connectionId)))
       .run()
     if (row.createdAt < now - PENDING_TTL_SECONDS) return undefined
-    return { serverId: row.serverId, codeVerifier: await this.#cipher.decrypt(row.codeVerifier, `${state}:verifier`) }
+    return {
+      connectionId: row.connectionId,
+      codeVerifier: await this.#cipher.decrypt(row.codeVerifier, `${state}:verifier`),
+    }
   }
 }

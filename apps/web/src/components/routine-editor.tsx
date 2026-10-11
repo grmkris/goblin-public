@@ -25,7 +25,7 @@ import { saveRoutineMutation } from '../routines/queries.ts'
 import { EditorPart } from './editor-part.tsx'
 import { type Kind, WhenFields, triggerFrom } from './routine-when.tsx'
 
-type Tool = { readonly serverId: string; readonly name: string }
+type Tool = { readonly connectionId: string; readonly name: string }
 
 const defaults = (timezone: string): RoutineDefinition => ({
   title: '',
@@ -57,7 +57,7 @@ function useAvailableTools(selected: readonly Tool[]) {
   }
 }
 
-const same = (a: Tool, b: Tool): boolean => a.serverId === b.serverId && a.name === b.name
+const same = (a: Tool, b: Tool): boolean => a.connectionId === b.connectionId && a.name === b.name
 
 function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
   const id = useId()
@@ -148,12 +148,12 @@ function ToolRows({ kit }: { readonly kit: Kit }) {
         </li>
       )}
       {available.map((tool) => {
-        const label = `${id}-${tool.serverId}-${tool.name}`
+        const label = `${id}-${tool.connectionId}-${tool.name}`
         return (
-          <li key={`${tool.serverId}:${tool.name}`} className="setting-row">
+          <li key={`${tool.connectionId}:${tool.name}`} className="setting-row">
             <span className="grant-text">
               <span id={label} className="grant-name">
-                {tool.name} <code>{tool.serverId}</code>
+                {tool.name} <code>{tool.connectionId}</code>
               </span>
             </span>
             <Switch

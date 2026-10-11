@@ -22,7 +22,7 @@ export type MemoryStatus = typeof MemoryStatus.Type
 /** The Telegram channel: the connection that carries it, or null when it is off. */
 export const ChannelStatus = Schema.NullOr(
   Schema.Struct({
-    serverId: Schema.String,
+    connectionId: Schema.String,
     enabledAt: Schema.Number,
     transport: Schema.optional(Schema.Literals(['events', 'doorbell'])),
   }),

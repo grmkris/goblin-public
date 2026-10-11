@@ -16,7 +16,7 @@ async function host() {
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
   return hostOf({
-    servers: [{ serverId: 'notes', endpoint: 'https://notes.test/mcp' }],
+    servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp' }],
     credentials,
     grants: new MemoryGrants(),
     fetch: async (input, init) => notes.fetch(new Request(input, init)),

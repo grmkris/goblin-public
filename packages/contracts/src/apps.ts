@@ -6,7 +6,7 @@ import { ChatId, NonEmptyString } from './ids.ts'
 export const McpAppSource = Schema.Struct({
   kind: Schema.Literal('mcp'),
   callId: Schema.String,
-  serverId: Schema.String,
+  connectionId: Schema.String,
   tool: Schema.String,
   uri: Schema.String,
 })
@@ -49,7 +49,7 @@ export type UpdateApp = typeof UpdateApp.Type
 /** What the browser needs to load an App. An MCP App: its server and resource, and the call it shows with its result. */
 export const McpAppLaunch = Schema.Struct({
   kind: Schema.Literal('mcp'),
-  serverId: Schema.String,
+  connectionId: Schema.String,
   uri: Schema.String,
   arguments: Schema.Record(Schema.String, Schema.Unknown),
   result: Schema.Unknown,

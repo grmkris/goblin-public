@@ -12,14 +12,14 @@ export const appMetadata = sqliteTable('app_metadata', {
 export const appMcpGrants = sqliteTable(
   'app_mcp_grants',
   {
-    serverId: text('server_id').notNull(),
+    connectionId: text('connection_id').notNull(),
     capability: text('capability', { enum: ['tool', 'resource', 'prompt'] }).notNull(),
     name: text('name').notNull(),
     askFirst: integer('ask_first', { mode: 'boolean' }).notNull().default(false),
     version: text('version').notNull().default(''),
     createdAt: integer('created_at').notNull(),
   },
-  (table) => [primaryKey({ columns: [table.serverId, table.capability, table.name] })],
+  (table) => [primaryKey({ columns: [table.connectionId, table.capability, table.name] })],
 )
 
 /**
@@ -27,7 +27,7 @@ export const appMcpGrants = sqliteTable(
  * credentials, which a disconnect deletes, so grants stay bound too.
  */
 export const appMcpEndpoints = sqliteTable('app_mcp_endpoints', {
-  serverId: text('server_id').primaryKey().notNull(),
+  connectionId: text('connection_id').primaryKey().notNull(),
   endpoint: text('endpoint').notNull(),
   boundAt: integer('bound_at').notNull(),
 })
@@ -36,8 +36,8 @@ export const appMcpEndpoints = sqliteTable('app_mcp_endpoints', {
  * Servers the owner added (mcp/servers.ts), beside the deployment's configured ones. Title, description and icon are
  * the server's own claims from its card or registry entry; `source` records where it was found.
  */
-export const appMcpServers = sqliteTable('app_mcp_servers', {
-  serverId: text('server_id').primaryKey().notNull(),
+export const appMcpServers = sqliteTable('app_mcp_connections', {
+  connectionId: text('connection_id').primaryKey().notNull(),
   endpoint: text('endpoint').notNull(),
   title: text('title'),
   description: text('description'),
@@ -55,7 +55,7 @@ export const appMcpRegistries = sqliteTable('app_mcp_registries', {
 
 /** Outbound OAuth state per server. `client_info` and `tokens` are AES-GCM ciphertext (mcp/credentials.ts). */
 export const appMcpCredentials = sqliteTable('app_mcp_credentials', {
-  serverId: text('server_id').primaryKey().notNull(),
+  connectionId: text('connection_id').primaryKey().notNull(),
   status: text('status', { enum: ['connected', 'needs_auth'] }).notNull(),
   clientInfo: text('client_info'),
   tokens: text('tokens'),
@@ -67,7 +67,7 @@ export const appMcpCredentials = sqliteTable('app_mcp_credentials', {
 /** In-flight authorization requests, keyed by OAuth `state`; the PKCE verifier is ciphertext. */
 export const appMcpOauthPending = sqliteTable('app_mcp_oauth_pending', {
   state: text('state').primaryKey().notNull(),
-  serverId: text('server_id').notNull(),
+  connectionId: text('connection_id').notNull(),
   codeVerifier: text('code_verifier').notNull(),
   createdAt: integer('created_at').notNull(),
 })
@@ -152,7 +152,7 @@ export const appChatMoves = sqliteTable('app_chat_moves', {
 
 /**
  * What a spawner switched off for its subagent (ADR 0018), in the table ADR 0010's per-conversation switches used: one
- * row per thing off. Only subagents have rows since ADR 0040. `server_id` is empty for `subagents`; `name` is set only
+ * row per thing off. Only subagents have rows since ADR 0040. `connection_id` is empty for `subagents`; `name` is set only
  * for a `tool`.
  */
 export const appHelperExclusions = sqliteTable(
@@ -160,11 +160,11 @@ export const appHelperExclusions = sqliteTable(
   {
     sessionId: text('session_id').notNull(),
     kind: text('kind', { enum: ['server', 'tool', 'skills', 'subagents'] }).notNull(),
-    serverId: text('server_id').notNull().default(''),
+    connectionId: text('connection_id').notNull().default(''),
     name: text('name').notNull().default(''),
     offAt: integer('off_at').notNull(),
   },
-  (table) => [primaryKey({ columns: [table.sessionId, table.kind, table.serverId, table.name] })],
+  (table) => [primaryKey({ columns: [table.sessionId, table.kind, table.connectionId, table.name] })],
 )
 
 /** App execution excluded from a helper and every helper below it. */
@@ -183,7 +183,7 @@ export const appModelChoice = sqliteTable('app_model_choice', {
 
 /** Servers the owner uses skills from (skills/store.ts). A skill is a procedure; only these servers' are followed. */
 export const appSkillSources = sqliteTable('app_skill_sources', {
-  serverId: text('server_id').primaryKey().notNull(),
+  connectionId: text('connection_id').primaryKey().notNull(),
   enabledAt: integer('enabled_at').notNull(),
 })
 
@@ -192,12 +192,12 @@ export const appSkillActivations = sqliteTable(
   'app_skill_activations',
   {
     sessionId: text('session_id').notNull(),
-    serverId: text('server_id').notNull(),
+    connectionId: text('connection_id').notNull(),
     uri: text('uri').notNull(),
     entry: text('entry').notNull(),
     activatedAt: integer('activated_at').notNull(),
   },
-  (table) => [primaryKey({ columns: [table.sessionId, table.serverId, table.uri] })],
+  (table) => [primaryKey({ columns: [table.sessionId, table.connectionId, table.uri] })],
 )
 
 /** Verified skill file bytes (base64) by digest; re-verified on every read, so a changed row is never used. */
@@ -210,7 +210,7 @@ export const appSkillFiles = sqliteTable('app_skill_files', {
 /** Skill drafts the agent proposed (skills/learner.ts), by content hash: one proposal per content, ever. */
 export const appSkillDrafts = sqliteTable('app_skill_drafts', {
   contentHash: text('content_hash').primaryKey().notNull(),
-  serverId: text('server_id').notNull(),
+  connectionId: text('connection_id').notNull(),
   name: text('name').notNull(),
   baseUri: text('base_uri'),
   draftId: text('draft_id'),
@@ -222,7 +222,7 @@ export const appSkillDrafts = sqliteTable('app_skill_drafts', {
 /** The Telegram channel (channel/channel.ts): at most one row, the connection that carries it. */
 export const appChannel = sqliteTable('app_channel', {
   id: integer('id').primaryKey(),
-  serverId: text('server_id').notNull(),
+  connectionId: text('connection_id').notNull(),
   cursor: text('cursor').notNull(),
   /** The doorbell secret, sealed with the credential key. */
   secret: text('secret').notNull(),
@@ -240,13 +240,13 @@ export const appChannelReplies = sqliteTable('app_channel_replies', {
 export const appMcpEventGrants = sqliteTable(
   'app_mcp_event_grants',
   {
-    serverId: text('server_id').notNull(),
+    connectionId: text('connection_id').notNull(),
     name: text('name').notNull(),
     argumentsJson: text('arguments_json').notNull(),
     grantedAt: integer('granted_at').notNull(),
     revokedAt: integer('revoked_at'),
   },
-  (t) => [primaryKey({ columns: [t.serverId, t.name, t.argumentsJson] })],
+  (t) => [primaryKey({ columns: [t.connectionId, t.name, t.argumentsJson] })],
 )
 
 /** Endpoint-bound finite leases. Secrets are ciphertext bound to server, subscription and purpose. */
@@ -254,7 +254,7 @@ export const appMcpEventSubscriptions = sqliteTable(
   'app_mcp_event_subscriptions',
   {
     id: text('id').primaryKey().notNull(),
-    serverId: text('server_id').notNull(),
+    connectionId: text('connection_id').notNull(),
     name: text('name').notNull(),
     argumentsJson: text('arguments_json').notNull(),
     endpoint: text('endpoint').notNull(),
@@ -274,7 +274,7 @@ export const appMcpEventSubscriptions = sqliteTable(
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
-  (t) => [uniqueIndex('app_event_selector').on(t.serverId, t.name, t.argumentsJson)],
+  (t) => [uniqueIndex('app_event_selector').on(t.connectionId, t.name, t.argumentsJson)],
 )
 
 /** Encrypted deliveries and their frozen consumer revisions; never prune unfinished work. */
@@ -328,14 +328,14 @@ export const appEventConsumerReceipts = sqliteTable(
 /** The Events checkpoint fences historical doorbell cursor writes. Reply operation ids do not change. */
 export const appTelegramChannel = sqliteTable('app_telegram_channel', {
   id: integer('id').primaryKey().notNull(),
-  serverId: text('server_id').notNull(),
+  connectionId: text('connection_id').notNull(),
   inboxCursor: text('inbox_cursor').notNull(),
   enabledAt: integer('enabled_at').notNull(),
 })
 
 /** A newer invalidation cannot be cleared by an older listing response. */
 export const appSkillCatalogState = sqliteTable('app_skill_catalog_state', {
-  serverId: text('server_id').primaryKey().notNull(),
+  connectionId: text('connection_id').primaryKey().notNull(),
   dirtyGeneration: integer('dirty_generation').notNull(),
   refreshedGeneration: integer('refreshed_generation').notNull(),
   nextRetryAt: integer('next_retry_at').notNull(),
@@ -509,7 +509,7 @@ export const appRegistry = sqliteTable(
     chatId: text('chat_id'),
     callId: text('call_id'),
     entryId: integer('entry_id'),
-    serverId: text('server_id'),
+    connectionId: text('connection_id'),
     tool: text('tool'),
     resourceUri: text('resource_uri'),
     name: text('name'),

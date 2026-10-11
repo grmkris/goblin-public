@@ -17,7 +17,7 @@ const projection = (extra: Partial<ConversationProjection> = {}): ConversationPr
   queueNotice: '',
   ...extra,
 })
-const running = (target?: { serverId: string; name: string }): ToolPart => ({
+const running = (target?: { connectionId: string; name: string }): ToolPart => ({
   kind: 'tool',
   id: 'tool:c1',
   call: { id: 'c1', name: target ? 'mcp_call' : 'web_fetch', arguments: {} },
@@ -48,7 +48,9 @@ describe('the agent’s presence', () => {
   it('follows the run: retrying, a tool by its server name, writing, thinking', () => {
     const live = projection({ running: true })
     expect(presenceOf({ ...base, projection: { ...live, progress: 'Waiting for model retry' } }).state).toBe('retrying')
-    expect(presenceOf({ ...base, projection: live, parts: [running({ serverId: 'myplan', name: 'open' })] })).toEqual({
+    expect(
+      presenceOf({ ...base, projection: live, parts: [running({ connectionId: 'myplan', name: 'open' })] }),
+    ).toEqual({
       state: 'tool',
       label: 'Using myplan · open',
     })

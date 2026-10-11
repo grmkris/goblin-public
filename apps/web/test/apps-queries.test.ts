@@ -56,7 +56,7 @@ const fakeApps = () => {
       ...unusedHandlers(OwnerApi.groups.mcp),
       grants: () => Effect.succeed([]),
       setToolGrant: ({ payload }) =>
-        Effect.succeed([{ serverId: payload.serverId, capability: 'tool' as const, name: payload.name }]),
+        Effect.succeed([{ connectionId: payload.connectionId, capability: 'tool' as const, name: payload.name }]),
       callTool: ({ headers, payload }) => {
         callers.push(headers['x-mcp-caller'])
         return Effect.succeed({ content: [{ type: 'text', text: payload.name }], extra: 'kept' })
@@ -120,17 +120,17 @@ describe("an App's frame calls", () => {
     const client = testQueryClient()
     await perform(client, appDiagnosticMutation, { id: '7', message: 'TypeError: boom' })
     expect(fake.reports).toEqual(['TypeError: boom'])
-    const result = await perform(client, appToolCallMutation, { serverId: 'myplan', call: { name: 'read' } })
+    const result = await perform(client, appToolCallMutation, { connectionId: 'myplan', call: { name: 'read' } })
     expect(result).toEqual({ content: [{ type: 'text', text: 'read' }], extra: 'kept' })
-    await perform(client, appResourceReadMutation, { serverId: 'myplan', read: { uri: 'ui://myplan/app' } })
+    await perform(client, appResourceReadMutation, { connectionId: 'myplan', read: { uri: 'ui://myplan/app' } })
     expect(fake.callers).toEqual(['app', 'app'])
   })
 
   it('allow the asked tool, and the grants show it', async () => {
     const client = testQueryClient()
     await client.query(grantsQuery)
-    const grants = await perform(client, toolGrantMutation, { serverId: 'myplan', name: 'read', allowed: true })
-    expect(grants).toEqual([{ serverId: 'myplan', capability: 'tool', name: 'read' }])
+    const grants = await perform(client, toolGrantMutation, { connectionId: 'myplan', name: 'read', allowed: true })
+    expect(grants).toEqual([{ connectionId: 'myplan', capability: 'tool', name: 'read' }])
     expect(client.getQueryData(grantsQuery.queryKey)).toEqual(grants)
   })
 

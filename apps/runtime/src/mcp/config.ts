@@ -3,7 +3,7 @@ import * as Schema from 'effect/Schema'
 import { Internal } from '../http/errors.ts'
 
 const ServerSchema = Schema.Struct({
-  serverId: Schema.NonEmptyString,
+  connectionId: Schema.NonEmptyString,
   endpoint: Schema.NonEmptyString,
   issuer: Schema.optional(Schema.NonEmptyString),
   resource: Schema.optional(Schema.NonEmptyString),
@@ -19,7 +19,7 @@ export const configuredServers = (json: string | undefined): readonly McpServerC
     throw new Internal({ reason: 'MCP_SERVERS is not a valid server list' })
   }
   return parsed.map((item) => ({
-    serverId: item.serverId,
+    connectionId: item.connectionId,
     endpoint: item.endpoint,
     ...(item.issuer === undefined ? {} : { issuer: item.issuer }),
     ...(item.resource === undefined ? {} : { resource: item.resource }),

@@ -208,9 +208,9 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
       catalog: () => Effect.succeed({ skills: [], unavailable: [] }),
       sources: () => Effect.succeed([]),
       // A skill on server `down` fails to load over the network; any other is not there.
-      activateSelection: (_session, serverId) =>
-        serverId === 'down'
-          ? Effect.fail(new UpstreamMcp({ serverId, reason: 'transport' }))
+      activateSelection: (_session, connectionId) =>
+        connectionId === 'down'
+          ? Effect.fail(new UpstreamMcp({ connectionId, reason: 'transport' }))
           : Effect.fail(new NotFound({ what: 'skill' })),
     }),
     stub(Retrieval, { uses: () => Effect.succeed([]) }),
@@ -270,11 +270,11 @@ const fixture = (options: { readonly personas?: readonly PersonaView[] } = {}) =
   return { fetch, calls, record, resident, operations, flows }
 }
 
-/** A message that tags a skill of `serverId`. */
-const skill = (serverId: string) => ({
+/** A message that tags a skill of `connectionId`. */
+const skill = (connectionId: string) => ({
   input: 'use it',
-  operationId: `op-${serverId}`,
-  selections: [{ kind: 'skill', serverId, uri: 'skill://plan' }],
+  operationId: `op-${connectionId}`,
+  selections: [{ kind: 'skill', connectionId, uri: 'skill://plan' }],
 })
 
 describe('the conversations API served by the agent', () => {
@@ -325,7 +325,9 @@ describe('the conversations API served by the agent', () => {
     expect(await gone.json()).toMatchObject({ error: { reason: 'composer:skill:gone:skill://plan' } })
     const down = await fetch(post('/api/conversations/2/messages', skill('down')))
     expect(down.status).toBeGreaterThanOrEqual(500)
-    expect(await down.json()).toMatchObject({ error: { code: 'upstream_mcp', serverId: 'down', reason: 'transport' } })
+    expect(await down.json()).toMatchObject({
+      error: { code: 'upstream_mcp', connectionId: 'down', reason: 'transport' },
+    })
     expect(record.submitted).toEqual([])
   })
 

@@ -161,8 +161,8 @@ describe('Personas (ADR 0033)', () => {
     const { persona } = personas.create({ ...bare, operationId: 'op-1' }, 'owner', 10)
     expect(persona.setup).toEqual(NOTHING)
     const setup = {
-      mcpServers: [{ serverId: 'myplan', tools: 'all' }],
-      skills: [{ serverId: 'lib' }],
+      mcpServers: [{ connectionId: 'myplan', tools: 'all' }],
+      skills: [{ connectionId: 'lib' }],
       apps: [],
     } as const
     const updated = personas.update(1, { setup, expectedRevision: 1 }, 'owner', 11)

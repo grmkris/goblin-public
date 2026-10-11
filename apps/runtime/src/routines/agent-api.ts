@@ -21,7 +21,7 @@ export const AgentHandlers = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) 
     .handle('channel', () => Channel.use((channel) => channel.status))
     .handle('enableChannel', ({ payload }) =>
       AgentInput.use(({ env, userId, schedulePull }) =>
-        enableTelegram(payload.serverId, env.APP_URL, env.CREDENTIAL_KEY, userId, schedulePull),
+        enableTelegram(payload.connectionId, env.APP_URL, env.CREDENTIAL_KEY, userId, schedulePull),
       ),
     )
     .handle('disableChannel', () => disableTelegram),

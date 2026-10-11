@@ -16,15 +16,15 @@ export class Skills extends Context.Service<
   {
     /** The servers the owner uses skills from and still has configured. */
     readonly sources: () => Effect.Effect<readonly string[]>
-    readonly enabled: (serverId: string) => Effect.Effect<boolean>
+    readonly enabled: (connectionId: string) => Effect.Effect<boolean>
     /** Turns skills from a server on or off; `NotFound` for a server the agent does not have. */
-    readonly setEnabled: (serverId: string, enabled: boolean) => Effect.Effect<void, AppError>
+    readonly setEnabled: (connectionId: string, enabled: boolean) => Effect.Effect<void, AppError>
     /** Forgets a server's listing, durably, after it said its skills changed (or that it stopped serving them). */
-    readonly invalidate: (serverId: string, unavailable?: boolean) => Effect.Effect<void>
+    readonly invalidate: (connectionId: string, unavailable?: boolean) => Effect.Effect<void>
     /** Every listed skill of the enabled servers `include` keeps; a server that cannot be read is named unavailable. */
     readonly catalog: (
       options?: SkillRequestOptions,
-      include?: (serverId: string) => boolean,
+      include?: (connectionId: string) => boolean,
     ) => Effect.Effect<Catalog, AppError>
     /** Loads a skill by its handle into the conversation of `session`: its verified `SKILL.md` and its files. */
     readonly activate: (
@@ -35,7 +35,7 @@ export class Skills extends Context.Service<
     /** Loads the skill the owner selected by its server and URI, whatever its handle is now. */
     readonly activateSelection: (
       session: string,
-      serverId: string,
+      connectionId: string,
       uri: string,
       options: SkillRequestOptions,
     ) => Effect.Effect<Activated, AppError>

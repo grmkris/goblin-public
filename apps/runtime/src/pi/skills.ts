@@ -74,14 +74,15 @@ const skillsNow = async (run: RunProgram, session: string): Promise<string | und
           yield* requireResident
           const skills = yield* Skills
           const scope = yield* scopeFor(session)
-          const sources = (yield* skills.sources()).filter((serverId) => scope.skills(serverId))
+          const sources = (yield* skills.sources()).filter((connectionId) => scope.skills(connectionId))
           if (sources.length === 0) return { skills: [], unavailable: [] }
-          const catalog = yield* skills.catalog({ timeout: 5000, authorize: yield* skillScope(session) }, (serverId) =>
-            scope.skills(serverId),
+          const catalog = yield* skills.catalog(
+            { timeout: 5000, authorize: yield* skillScope(session) },
+            (connectionId) => scope.skills(connectionId),
           )
           const current = yield* scopeFor(session)
           return {
-            skills: catalog.skills.filter((skill) => current.skill(skill.serverId, skill.name, skill.entry.uri)),
+            skills: catalog.skills.filter((skill) => current.skill(skill.connectionId, skill.name, skill.entry.uri)),
             unavailable: catalog.unavailable.filter((id) => current.skills(id)),
           }
         }),
@@ -107,12 +108,12 @@ const skillsOff = (session: string, handle: string) =>
     const skills = yield* Skills
     const scope = yield* scopeFor(session)
     const colon = handle.indexOf(':')
-    const serverId = colon < 0 ? handle : handle.slice(0, colon)
+    const connectionId = colon < 0 ? handle : handle.slice(0, colon)
     const name = colon < 0 ? '' : handle.slice(colon + 1).replace(/~\d+$/u, '')
-    if (!(yield* skills.sources()).includes(serverId)) return undefined
-    if (!scope.skills(serverId)) return outsideScopeResult({ kind: 'skills', serverId }, scope)
-    if (name === '' || scope.skill(serverId, name)) return undefined
-    return skillOutsideResult({ serverId, name }, scope)
+    if (!(yield* skills.sources()).includes(connectionId)) return undefined
+    if (!scope.skills(connectionId)) return outsideScopeResult({ kind: 'skills', connectionId }, scope)
+    if (name === '' || scope.skill(connectionId, name)) return undefined
+    return skillOutsideResult({ connectionId, name }, scope)
   })
 
 /** `skill_activate`: load one verified `SKILL.md` into the conversation. */
@@ -139,7 +140,7 @@ const activateTool = (run: RunProgram) =>
           )
           return {
             handle: loaded.skill.handle,
-            origin: loaded.skill.serverId,
+            origin: loaded.skill.connectionId,
             body: loaded.body,
             files: loaded.files.map(({ path, size }) => ({ path, size })),
           }

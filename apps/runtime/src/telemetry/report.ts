@@ -40,7 +40,7 @@ function recordAux(telemetry: RunTelemetry, purpose: AuxPurpose, call: AuxCall):
 /** One remote MCP step (mcp/log.ts): which, on which server, how it ended and when. */
 export type McpStep = {
   readonly step: 'connect' | 'call' | 'skills' | 'events'
-  readonly serverId: string
+  readonly connectionId: string
   readonly tool?: string
   readonly method?: string
   readonly scope?: { readonly conversationId: string; readonly taskId: string }
@@ -61,7 +61,7 @@ export const mcpReporter =
       endedAt,
       attributes: {
         [RunAttribute.mcpStep]: step.step,
-        [RunAttribute.mcpServer]: step.serverId,
+        [RunAttribute.mcpServer]: step.connectionId,
         ...(step.sharedConnection === true ? { [RunAttribute.sharedConnection]: true } : {}),
         ...(step.tool === undefined ? {} : { [RunAttribute.mcpTool]: step.tool }),
         ...(step.method === undefined ? {} : { [RunAttribute.mcpMethod]: step.method }),

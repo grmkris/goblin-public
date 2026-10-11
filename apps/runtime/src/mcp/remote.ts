@@ -35,10 +35,10 @@ export function encodedSize(value: unknown): number | undefined {
 }
 
 /** `value` when its JSON fits `max` bytes; otherwise the `UpstreamMcp` the host answers for it. */
-export function bounded<T>(serverId: string, value: T, max: number): T {
+export function bounded<T>(connectionId: string, value: T, max: number): T {
   const size = encodedSize(value)
-  if (size === undefined) throw new UpstreamMcp({ serverId, reason: 'unsupported' })
-  if (size > max) throw new UpstreamMcp({ serverId, reason: 'content-limit' })
+  if (size === undefined) throw new UpstreamMcp({ connectionId, reason: 'unsupported' })
+  if (size > max) throw new UpstreamMcp({ connectionId, reason: 'content-limit' })
   return value
 }
 
@@ -130,7 +130,7 @@ async function discover(
       : client.listPrompts(undefined, { cacheMode: 'refresh', ...options }).then((r) => r.prompts),
   ])
   return bounded(
-    snapshot.config.serverId,
+    snapshot.config.connectionId,
     { ...snapshot, tools, resources, resourceTemplates, prompts },
     maxResultBytes,
   )
@@ -151,7 +151,7 @@ export async function openRemote(
       capabilities: { extensions: { [SKILLS_EXTENSION]: {} } },
       versionNegotiation: { mode: 'auto', probe: { timeoutMs: options.timeoutMs, maxRetries: 0 } },
       listMaxPages: options.maxPages,
-      cachePartition: server.serverId,
+      cachePartition: server.connectionId,
       jsonSchemaValidator: new CfWorkerJsonSchemaValidator(),
     },
   )
@@ -184,7 +184,7 @@ export async function openRemote(
     const protocolVersion = client.getNegotiatedProtocolVersion()
     const protocolEra = client.getProtocolEra()
     if (protocolVersion === undefined || protocolEra === undefined)
-      throw new UpstreamMcp({ serverId: server.serverId, reason: 'unsupported' })
+      throw new UpstreamMcp({ connectionId: server.connectionId, reason: 'unsupported' })
     const serverInfo = client.getServerVersion()
     const instructions = client.getInstructions()
     const opened: McpConnectionSnapshot = {

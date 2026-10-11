@@ -11,11 +11,11 @@ import { useConversation } from '../../lib/workspace/hooks.ts'
 
 export function LinkOffer({
   link,
-  serverId,
+  connectionId,
   onDone,
 }: {
   readonly link: URL
-  readonly serverId: string
+  readonly connectionId: string
   readonly onDone: () => void
 }) {
   const path = `${link.pathname === '/' ? '' : link.pathname}${link.search}`
@@ -23,7 +23,7 @@ export function LinkOffer({
     <div className="app-offer" role="status">
       <ExternalLinkIcon aria-hidden />
       <span className="truncate" title={link.href}>
-        {serverId} wants to open <strong className="font-medium text-foreground">{link.host}</strong>
+        {connectionId} wants to open <strong className="font-medium text-foreground">{link.host}</strong>
         {path}
       </span>
       <Button

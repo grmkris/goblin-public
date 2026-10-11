@@ -12,7 +12,7 @@ export async function approvalsProbe(storage: DurableObjectStorage, key: string)
   const cipher = await CredentialCipher.fromBase64(key)
   const store = new McpApprovalStore(db, cipher)
   const grants = new GrantStore(db)
-  const grant = { serverId: 'probe', name: 'write', capability: 'tool' as const }
+  const grant = { connectionId: 'probe', name: 'write', capability: 'tool' as const }
   grants.set(grant, true, 1)
   grants.setAskFirst(grant, true)
   const version = () => grants.policy(grant)?.version

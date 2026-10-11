@@ -19,8 +19,8 @@ export function useTelegramChannel(onMessage: (message: string) => void) {
   useEffect(() => {
     if (read.error !== null) onMessage(messageOf(read.error, 'read the Telegram channel'))
   }, [read.error, onMessage])
-  const change = (serverId: string | null): void =>
-    move.mutate(serverId, { onError: (error) => onMessage(messageOf(error, 'change the Telegram channel')) })
+  const change = (connectionId: string | null): void =>
+    move.mutate(connectionId, { onError: (error) => onMessage(messageOf(error, 'change the Telegram channel')) })
   return { status: read.data, pending: move.isPending, change }
 }
 
@@ -28,16 +28,16 @@ export type TelegramChannel = ReturnType<typeof useTelegramChannel>
 
 /** Whether this server carries the Telegram channel; turning it on here moves it from any other. */
 export function TelegramControl({
-  serverId,
+  connectionId,
   channel,
 }: {
-  readonly serverId: string
+  readonly connectionId: string
   readonly channel: TelegramChannel
 }) {
   const id = useId()
   const { status, pending, change } = channel
   if (status === undefined) return null
-  const here = status !== null && status.serverId === serverId
+  const here = status !== null && status.connectionId === connectionId
   return (
     <div className="setting-row" aria-busy={pending}>
       <span className="grant-text">
@@ -62,7 +62,7 @@ export function TelegramControl({
         checked={here}
         disabled={pending}
         aria-labelledby={id}
-        onCheckedChange={(checked) => change(checked ? serverId : null)}
+        onCheckedChange={(checked) => change(checked ? connectionId : null)}
       />
     </div>
   )

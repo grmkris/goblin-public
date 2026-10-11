@@ -19,18 +19,18 @@ export const composerOptions = (chat: string) =>
       scope.skills(id),
     )
     const connections: ComposerOption[] = (yield* (yield* McpServers).list())
-      .filter((server) => server.status === 'connected' && scope.server(server.serverId))
+      .filter((server) => server.status === 'connected' && scope.server(server.connectionId))
       .map((server) => ({
-        selection: { kind: 'connection', serverId: server.serverId },
-        label: server.title ?? server.serverName ?? server.serverId,
+        selection: { kind: 'connection', connectionId: server.connectionId },
+        label: server.title ?? server.serverName ?? server.connectionId,
         description: `${server.status} · Connection hint; permissions stay unchanged`,
       }))
     const procedures: ComposerOption[] = catalog.skills
-      .filter((skill) => scope.skill(skill.serverId, skill.name, skill.entry.uri))
+      .filter((skill) => scope.skill(skill.connectionId, skill.name, skill.entry.uri))
       .map((skill) => ({
-        selection: { kind: 'skill', serverId: skill.serverId, uri: skill.entry.uri },
+        selection: { kind: 'skill', connectionId: skill.connectionId, uri: skill.entry.uri },
         label: skill.name,
-        description: `${skill.serverId} · ${skill.description.slice(0, 300)}`,
+        description: `${skill.connectionId} · ${skill.description.slice(0, 300)}`,
       }))
     const helpers: ComposerOption[] = (yield* conversations.list)
       .filter((view) => view.kind === 'subagent')
@@ -63,33 +63,33 @@ const resolveOne = (session: string, selection: ComposerSelection) =>
   Effect.gen(function* () {
     const scope = yield* (yield* Setups).scope(session)
     if (selection.kind === 'connection') {
-      const server = (yield* (yield* McpServers).list()).find((item) => item.serverId === selection.serverId)
-      if (server === undefined || server.status !== 'connected' || !scope.server(server.serverId))
+      const server = (yield* (yield* McpServers).list()).find((item) => item.connectionId === selection.connectionId)
+      if (server === undefined || server.status !== 'connected' || !scope.server(server.connectionId))
         return yield* new NotFound({ what: 'connection' })
       return {
         option: {
           selection,
-          label: server.title ?? server.serverName ?? server.serverId,
+          label: server.title ?? server.serverName ?? server.connectionId,
           description: 'Connection hint',
         },
         context: {
           kind: 'connection',
-          serverId: server.serverId,
+          connectionId: server.connectionId,
           intent: 'Prefer this connection when relevant. This hint grants nothing and does not limit other tools.',
         },
       }
     }
     if (selection.kind === 'skill') {
-      const loaded = yield* (yield* Skills).activateSelection(session, selection.serverId, selection.uri, {
+      const loaded = yield* (yield* Skills).activateSelection(session, selection.connectionId, selection.uri, {
         timeout: 10_000,
         authorize: yield* skillScope(session),
       })
       return {
-        option: { selection, label: loaded.skill.name, description: loaded.skill.serverId },
+        option: { selection, label: loaded.skill.name, description: loaded.skill.connectionId },
         context: {
           kind: 'skill',
           handle: loaded.skill.handle,
-          origin: loaded.skill.serverId,
+          origin: loaded.skill.connectionId,
           guidance: 'The owner selected this verified skill. Follow its steps within existing permissions.',
           instructions: loaded.body,
           files: loaded.files,

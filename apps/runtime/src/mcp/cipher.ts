@@ -7,7 +7,7 @@ const decode = (text: string): Uint8Array<ArrayBuffer> => Uint8Array.from(atob(t
 
 /**
  * AES-256-GCM for credentials at rest. The additional data binds each ciphertext to its row and purpose
- * (`<serverId>:<kind>`), so a value copied to another server or column fails to decrypt.
+ * (`<connectionId>:<kind>`), so a value copied to another server or column fails to decrypt.
  */
 export class CredentialCipher {
   readonly #key: CryptoKey

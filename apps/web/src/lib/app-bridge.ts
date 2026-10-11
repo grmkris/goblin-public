@@ -13,19 +13,19 @@ export type AppCalls = {
   /** An agent app's routes; an MCP App uses `tool` and `resource`. */
   readonly agent: AgentAppCalls
   readonly tool: (
-    serverId: string,
+    connectionId: string,
     params: { name: string; arguments: Record<string, unknown> },
   ) => Promise<CallToolResult>
-  readonly resource: (serverId: string, params: { uri: string }) => Promise<ReadResourceResult>
+  readonly resource: (connectionId: string, params: { uri: string }) => Promise<ReadResourceResult>
 }
 
 const refusal = (cause: unknown, action: string): AppCallFailure => new AppCallFailure(messageOf(cause, action))
 
 /** An MCP App's handlers: its calls and reads go to its own server under the owner's grants, live. */
 function mcpBridge(bridge: AppBridge, selection: McpSelection, calls: AppCalls, events: FrameEvents): void {
-  const { serverId } = selection
+  const { connectionId } = selection
   bridge.oncalltool = async (params) => {
-    const call = () => calls.tool(serverId, { name: params.name, arguments: params.arguments ?? {} })
+    const call = () => calls.tool(connectionId, { name: params.name, arguments: params.arguments ?? {} })
     try {
       return await call()
     } catch (cause) {
@@ -38,7 +38,7 @@ function mcpBridge(bridge: AppBridge, selection: McpSelection, calls: AppCalls, 
     }
   }
   bridge.onreadresource = (params) =>
-    calls.resource(serverId, { uri: params.uri }).catch((cause: unknown) => {
+    calls.resource(connectionId, { uri: params.uri }).catch((cause: unknown) => {
       throw refusal(cause, 'read its resource')
     })
   if (events.message !== undefined)

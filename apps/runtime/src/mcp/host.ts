@@ -32,7 +32,7 @@ export type McpHostOptions = {
   /** Random characters for added server ids. */
   readonly random?: () => string
   /** Whether the owner uses skills from a server; without it, no server's skills are read. */
-  readonly skillsEnabled?: (serverId: string) => boolean
+  readonly skillsEnabled?: (connectionId: string) => boolean
   /** Where each remote step is reported (the run ledger, ADR 0024). */
   readonly report?: StepReport
   /** The owner's decision on a call (held calls); without it, an ask-first tool is refused to all but the owner. */
@@ -40,22 +40,23 @@ export type McpHostOptions = {
 }
 
 /** Grants or revokes one discovered tool; its `ui://` App resource follows the tools that use it. */
-const setTool = (grants: Grants, manager: McpManager, tool: { readonly serverId: string; readonly name: string }) =>
+const setTool = (grants: Grants, manager: McpManager, tool: { readonly connectionId: string; readonly name: string }) =>
   Effect.fnUntraced(function* (allowed: boolean) {
-    const { serverId, name } = tool
-    const snapshot = yield* manager.connect(serverId)
+    const { connectionId, name } = tool
+    const snapshot = yield* manager.connect(connectionId)
     const found = snapshot.tools.find((item) => item.name === name)
     if (found === undefined) return yield* new NotFound({ what: `tool ${name}` })
     const now = yield* epochSeconds
     return yield* Effect.sync(() => {
-      grants.set({ serverId, capability: 'tool', name }, allowed, now)
+      grants.set({ connectionId, capability: 'tool', name }, allowed, now)
       const appResource = toolAppResource(found)
       if (appResource === undefined) return grants.list()
       const stillUsed = snapshot.tools.some(
         (other) =>
-          toolAppResource(other) === appResource && grants.allows({ serverId, capability: 'tool', name: other.name }),
+          toolAppResource(other) === appResource &&
+          grants.allows({ connectionId, capability: 'tool', name: other.name }),
       )
-      grants.set({ serverId, capability: 'resource', name: appResource }, stillUsed, now)
+      grants.set({ connectionId, capability: 'resource', name: appResource }, stillUsed, now)
       return grants.list()
     })
   })
@@ -64,16 +65,16 @@ const setTool = (grants: Grants, manager: McpManager, tool: { readonly serverId:
  * Grants or revokes an App as a whole: exactly the discovered tools that declare `uri` as their App (including the
  * ones only the App may call), and the App resource itself. Nothing else on the server changes.
  */
-const setApp = (grants: Grants, manager: McpManager, app: { readonly serverId: string; readonly uri: string }) =>
+const setApp = (grants: Grants, manager: McpManager, app: { readonly connectionId: string; readonly uri: string }) =>
   Effect.fnUntraced(function* (allowed: boolean) {
-    const { serverId, uri } = app
-    const snapshot = yield* manager.connect(serverId)
+    const { connectionId, uri } = app
+    const snapshot = yield* manager.connect(connectionId)
     const tools = snapshot.tools.filter((tool) => toolAppResource(tool) === uri)
     if (tools.length === 0) return yield* new NotFound({ what: `app ${uri}` })
     const now = yield* epochSeconds
     return yield* Effect.sync(() => {
-      for (const tool of tools) grants.set({ serverId, capability: 'tool', name: tool.name }, allowed, now)
-      grants.set({ serverId, capability: 'resource', name: uri }, allowed, now)
+      for (const tool of tools) grants.set({ connectionId, capability: 'tool', name: tool.name }, allowed, now)
+      grants.set({ connectionId, capability: 'resource', name: uri }, allowed, now)
       return grants.list()
     })
   })
@@ -84,20 +85,20 @@ const hostGrants = (grants: Grants, manager: McpManager): McpGrants['Service'] =
     list: Effect.fn('McpGrants.list')(function* () {
       return yield* Effect.sync(() => grants.list())
     }),
-    policy: Effect.fn('McpGrants.policy')(function* (serverId: string, name: string) {
-      return yield* Effect.sync(() => Option.fromNullishOr(grants.policy({ serverId, capability: 'tool', name })))
+    policy: Effect.fn('McpGrants.policy')(function* (connectionId: string, name: string) {
+      return yield* Effect.sync(() => Option.fromNullishOr(grants.policy({ connectionId, capability: 'tool', name })))
     }),
-    setTool: Effect.fn('McpGrants.setTool')(function* (serverId: string, name: string, allowed: boolean) {
-      return yield* setTool(grants, manager, { serverId, name })(allowed)
+    setTool: Effect.fn('McpGrants.setTool')(function* (connectionId: string, name: string, allowed: boolean) {
+      return yield* setTool(grants, manager, { connectionId, name })(allowed)
     }),
-    setAskFirst: Effect.fn('McpGrants.setAskFirst')(function* (serverId: string, name: string, enabled: boolean) {
+    setAskFirst: Effect.fn('McpGrants.setAskFirst')(function* (connectionId: string, name: string, enabled: boolean) {
       return yield* attemptSync(() => {
-        grants.setAskFirst({ serverId, capability: 'tool', name }, enabled)
+        grants.setAskFirst({ connectionId, capability: 'tool', name }, enabled)
         return grants.list()
       })
     }),
-    setApp: Effect.fn('McpGrants.setApp')(function* (serverId: string, uri: string, allowed: boolean) {
-      return yield* setApp(grants, manager, { serverId, uri })(allowed)
+    setApp: Effect.fn('McpGrants.setApp')(function* (connectionId: string, uri: string, allowed: boolean) {
+      return yield* setApp(grants, manager, { connectionId, uri })(allowed)
     }),
   })
 
@@ -106,7 +107,7 @@ const askFirstRefused =
   (grants: Grants): NonNullable<McpManagerOptions['authorizeTool']> =>
   (call) =>
     call.caller !== 'human' &&
-    grants.policy({ serverId: call.serverId, capability: 'tool', name: call.name })?.askFirst === true
+    grants.policy({ connectionId: call.connectionId, capability: 'tool', name: call.name })?.askFirst === true
       ? Effect.fail(new Forbidden({ reason: 'Owner approval required for this exact call' }))
       : Effect.void
 
@@ -121,11 +122,11 @@ export const mcpHost = (
   Layer.effectContext(
     Effect.gen(function* () {
       const { credentials, grants } = options
-      const skillsEnabled = (serverId: string) => options.skillsEnabled?.(serverId) === true
-      const configured: ReadonlySet<string> = new Set(options.servers.map((server) => server.serverId))
-      const added = (options.added?.list() ?? []).filter((server) => !configured.has(server.serverId))
+      const skillsEnabled = (connectionId: string) => options.skillsEnabled?.(connectionId) === true
+      const configured: ReadonlySet<string> = new Set(options.servers.map((server) => server.connectionId))
+      const added = (options.added?.list() ?? []).filter((server) => !configured.has(server.connectionId))
       const manager = yield* makeManager({
-        servers: [...options.servers, ...added.map(({ serverId, endpoint }) => ({ serverId, endpoint }))],
+        servers: [...options.servers, ...added.map(({ connectionId, endpoint }) => ({ connectionId, endpoint }))],
         allows: (grant) => grants.allows(grant),
         authorizeTool: options.authorizeTool ?? askFirstRefused(grants),
         skillsEnabled,

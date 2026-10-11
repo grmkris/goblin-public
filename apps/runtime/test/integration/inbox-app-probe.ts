@@ -23,8 +23,8 @@ async function inboxAppProbe(storage: DurableObjectStorage, env: RuntimeEnv, own
     schedules: memorySchedules(),
     ...probePorts(
       {
-        tool: async ({ serverId, name, args }) => {
-          if (serverId !== 'myinbox') throw new Error('unexpected inbox server')
+        tool: async ({ connectionId, name, args }) => {
+          if (connectionId !== 'myinbox') throw new Error('unexpected inbox server')
           return client.callTool({ name, arguments: args })
         },
       },

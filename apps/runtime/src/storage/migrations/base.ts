@@ -11,9 +11,9 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261005000000_resident_mcp_host',
     tables: ['app_mcp_grants', 'app_mcp_credentials', 'app_mcp_oauth_pending', 'app_resident', 'app_client_sessions'],
     sql: [
-      `CREATE TABLE app_mcp_grants (server_id TEXT NOT NULL, capability TEXT NOT NULL CHECK (capability IN ('tool', 'resource', 'prompt')), name TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (server_id, capability, name))`,
-      `CREATE TABLE app_mcp_credentials (server_id TEXT PRIMARY KEY NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'needs_auth')), client_info TEXT, tokens TEXT, discovery TEXT, token_expires_at INTEGER, updated_at INTEGER NOT NULL)`,
-      `CREATE TABLE app_mcp_oauth_pending (state TEXT PRIMARY KEY NOT NULL, server_id TEXT NOT NULL, code_verifier TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+      `CREATE TABLE app_mcp_grants (connection_id TEXT NOT NULL, capability TEXT NOT NULL CHECK (capability IN ('tool', 'resource', 'prompt')), name TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (connection_id, capability, name))`,
+      `CREATE TABLE app_mcp_credentials (connection_id TEXT PRIMARY KEY NOT NULL, status TEXT NOT NULL CHECK (status IN ('connected', 'needs_auth')), client_info TEXT, tokens TEXT, discovery TEXT, token_expires_at INTEGER, updated_at INTEGER NOT NULL)`,
+      `CREATE TABLE app_mcp_oauth_pending (state TEXT PRIMARY KEY NOT NULL, connection_id TEXT NOT NULL, code_verifier TEXT NOT NULL, created_at INTEGER NOT NULL)`,
       `CREATE TABLE app_resident (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), renewed_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)`,
       `CREATE TABLE app_client_sessions (client_id TEXT PRIMARY KEY NOT NULL, session_id TEXT NOT NULL, client_name TEXT, created_at INTEGER NOT NULL)`,
     ].join(BREAK),
@@ -31,12 +31,12 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
   {
     key: '20261008000000_mcp_endpoints',
     tables: ['app_mcp_endpoints'],
-    sql: 'CREATE TABLE app_mcp_endpoints (server_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, bound_at INTEGER NOT NULL)',
+    sql: 'CREATE TABLE app_mcp_endpoints (connection_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, bound_at INTEGER NOT NULL)',
   },
   {
     key: '20261009000000_mcp_added_servers',
-    tables: ['app_mcp_servers'],
-    sql: 'CREATE TABLE app_mcp_servers (server_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, title TEXT, description TEXT, icon TEXT, source TEXT, created_at INTEGER NOT NULL)',
+    tables: ['app_mcp_connections'],
+    sql: 'CREATE TABLE app_mcp_connections (connection_id TEXT PRIMARY KEY NOT NULL, endpoint TEXT NOT NULL, title TEXT, description TEXT, icon TEXT, source TEXT, created_at INTEGER NOT NULL)',
   },
   {
     key: '20261010000000_mcp_registries',
@@ -67,8 +67,8 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261013000000_skills',
     tables: ['app_skill_sources', 'app_skill_activations', 'app_skill_files'],
     sql: [
-      'CREATE TABLE app_skill_sources (server_id TEXT PRIMARY KEY NOT NULL, enabled_at INTEGER NOT NULL)',
-      'CREATE TABLE app_skill_activations (session_id TEXT NOT NULL, server_id TEXT NOT NULL, uri TEXT NOT NULL, entry TEXT NOT NULL, activated_at INTEGER NOT NULL, PRIMARY KEY (session_id, server_id, uri))',
+      'CREATE TABLE app_skill_sources (connection_id TEXT PRIMARY KEY NOT NULL, enabled_at INTEGER NOT NULL)',
+      'CREATE TABLE app_skill_activations (session_id TEXT NOT NULL, connection_id TEXT NOT NULL, uri TEXT NOT NULL, entry TEXT NOT NULL, activated_at INTEGER NOT NULL, PRIMARY KEY (session_id, connection_id, uri))',
       'CREATE TABLE app_skill_files (digest TEXT PRIMARY KEY NOT NULL, content TEXT NOT NULL, stored_at INTEGER NOT NULL)',
     ].join(BREAK),
   },
@@ -76,7 +76,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     // Drafts the agent proposed to a skills library (skills/learner.ts): never the same twice, never a rejected one again.
     key: '20261014000000_skill_drafts',
     tables: ['app_skill_drafts'],
-    sql: "CREATE TABLE app_skill_drafts (content_hash TEXT PRIMARY KEY NOT NULL, server_id TEXT NOT NULL, name TEXT NOT NULL, base_uri TEXT, draft_id TEXT, status TEXT NOT NULL CHECK (status IN ('open', 'accepted', 'rejected')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
+    sql: "CREATE TABLE app_skill_drafts (content_hash TEXT PRIMARY KEY NOT NULL, connection_id TEXT NOT NULL, name TEXT NOT NULL, base_uri TEXT, draft_id TEXT, status TEXT NOT NULL CHECK (status IN ('open', 'accepted', 'rejected')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
   },
   {
     // The Telegram channel (channel/channel.ts): the one connection that carries it, its inbox cursor and doorbell
@@ -84,7 +84,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261015000000_channel',
     tables: ['app_channel', 'app_channel_replies'],
     sql: [
-      'CREATE TABLE app_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), server_id TEXT NOT NULL, cursor TEXT NOT NULL, secret TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
+      'CREATE TABLE app_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), connection_id TEXT NOT NULL, cursor TEXT NOT NULL, secret TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
       'CREATE TABLE app_channel_replies (operation_id TEXT PRIMARY KEY NOT NULL, created_at INTEGER NOT NULL, delivered_at INTEGER)',
     ].join(BREAK),
   },
@@ -98,7 +98,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     // What each conversation switched off for its agent (setup/scope.ts): a row is one thing off there.
     key: '20261016000100_conversation_capabilities',
     tables: ['app_conversation_capabilities'],
-    sql: `CREATE TABLE app_conversation_capabilities (session_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('server', 'tool', 'skills', 'subagents')), server_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', off_at INTEGER NOT NULL, PRIMARY KEY (session_id, kind, server_id, name), CHECK ((kind = 'subagents') = (server_id = '')), CHECK ((kind = 'tool') = (name <> '')))`,
+    sql: `CREATE TABLE app_conversation_capabilities (session_id TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('server', 'tool', 'skills', 'subagents')), connection_id TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', off_at INTEGER NOT NULL, PRIMARY KEY (session_id, kind, connection_id, name), CHECK ((kind = 'subagents') = (connection_id = '')), CHECK ((kind = 'tool') = (name <> '')))`,
   },
   {
     key: '20261016000200_mcp_events',
@@ -112,16 +112,16 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
       'app_skill_catalog_state',
     ],
     sql: [
-      'CREATE TABLE app_mcp_event_grants (server_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, granted_at INTEGER NOT NULL, revoked_at INTEGER, PRIMARY KEY (server_id, name, arguments_json))',
-      'CREATE TABLE app_mcp_event_subscriptions (id TEXT PRIMARY KEY NOT NULL, server_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, endpoint TEXT NOT NULL, principal TEXT NOT NULL, callback_url TEXT NOT NULL, remote_id TEXT, secret TEXT NOT NULL, previous_secret TEXT, grace_until INTEGER, cursor TEXT, refresh_before INTEGER, next_refresh_at INTEGER NOT NULL, next_poll_at INTEGER NOT NULL, status TEXT NOT NULL, last_error TEXT, last_receipt_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
-      'CREATE UNIQUE INDEX app_event_selector ON app_mcp_event_subscriptions (server_id, name, arguments_json)',
+      'CREATE TABLE app_mcp_event_grants (connection_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, granted_at INTEGER NOT NULL, revoked_at INTEGER, PRIMARY KEY (connection_id, name, arguments_json))',
+      'CREATE TABLE app_mcp_event_subscriptions (id TEXT PRIMARY KEY NOT NULL, connection_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, endpoint TEXT NOT NULL, principal TEXT NOT NULL, callback_url TEXT NOT NULL, remote_id TEXT, secret TEXT NOT NULL, previous_secret TEXT, grace_until INTEGER, cursor TEXT, refresh_before INTEGER, next_refresh_at INTEGER NOT NULL, next_poll_at INTEGER NOT NULL, status TEXT NOT NULL, last_error TEXT, last_receipt_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+      'CREATE UNIQUE INDEX app_event_selector ON app_mcp_event_subscriptions (connection_id, name, arguments_json)',
       'CREATE TABLE app_event_deliveries (subscription_id TEXT NOT NULL, webhook_id TEXT NOT NULL, kind TEXT NOT NULL, envelope TEXT NOT NULL, bytes INTEGER NOT NULL, received_at INTEGER NOT NULL, processed_at INTEGER, next_attempt_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, challenge_response TEXT, challenge_until INTEGER, PRIMARY KEY (subscription_id, webhook_id))',
       'CREATE INDEX app_event_pending ON app_event_deliveries (processed_at, next_attempt_at)',
       'CREATE TABLE app_mcp_event_consumers (consumer_id TEXT NOT NULL, revision INTEGER NOT NULL, subscription_id TEXT NOT NULL, handler_key TEXT NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, retired_at INTEGER, PRIMARY KEY (consumer_id, revision))',
       "CREATE UNIQUE INDEX app_event_active_consumer ON app_mcp_event_consumers (consumer_id) WHERE state = 'active'",
       'CREATE TABLE app_event_consumer_receipts (subscription_id TEXT NOT NULL, webhook_id TEXT NOT NULL, consumer_id TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT NOT NULL, state TEXT NOT NULL, accepted_at INTEGER, PRIMARY KEY (subscription_id, webhook_id, consumer_id, revision))',
-      'CREATE TABLE app_telegram_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), server_id TEXT NOT NULL, inbox_cursor TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
-      'CREATE TABLE app_skill_catalog_state (server_id TEXT PRIMARY KEY NOT NULL, dirty_generation INTEGER NOT NULL, refreshed_generation INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, last_error TEXT)',
+      'CREATE TABLE app_telegram_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), connection_id TEXT NOT NULL, inbox_cursor TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
+      'CREATE TABLE app_skill_catalog_state (connection_id TEXT PRIMARY KEY NOT NULL, dirty_generation INTEGER NOT NULL, refreshed_generation INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, last_error TEXT)',
     ].join(BREAK),
   },
   {
@@ -156,7 +156,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     sql: [
       'CREATE TABLE app_routine_usage_projection (run_id TEXT NOT NULL, model TEXT NOT NULL, tokens INTEGER NOT NULL, PRIMARY KEY (run_id, model))',
       'CREATE TABLE app_routine_answers (run_id TEXT NOT NULL, operation_id TEXT NOT NULL, request_json TEXT NOT NULL, interaction_id TEXT NOT NULL, PRIMARY KEY (run_id, operation_id))',
-      'ALTER TABLE app_routine_runs ADD COLUMN notification_server_id TEXT',
+      'ALTER TABLE app_routine_runs ADD COLUMN notification_connection_id TEXT',
       'ALTER TABLE app_routine_runs ADD COLUMN notification_attempts INTEGER NOT NULL DEFAULT 0',
       'ALTER TABLE app_routine_runs ADD COLUMN notification_next_at INTEGER NOT NULL DEFAULT 0',
     ].join(BREAK),
@@ -229,7 +229,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261017000300_apps',
     tables: ['app_apps'],
     sql: [
-      'CREATE TABLE app_apps (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, call_id TEXT NOT NULL, entry_id INTEGER, server_id TEXT NOT NULL, tool TEXT NOT NULL, resource_uri TEXT NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER)',
+      'CREATE TABLE app_apps (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, call_id TEXT NOT NULL, entry_id INTEGER, connection_id TEXT NOT NULL, tool TEXT NOT NULL, resource_uri TEXT NOT NULL, title TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER)',
       'CREATE UNIQUE INDEX app_apps_call ON app_apps (session_id, call_id)',
     ].join(BREAK),
   },
@@ -264,10 +264,10 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261018000100_app_registry',
     tables: ['app_registry'],
     sql: [
-      `CREATE TABLE app_registry (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL CHECK (source IN ('mcp', 'agent')), session_id TEXT NOT NULL, call_id TEXT, entry_id INTEGER, server_id TEXT, tool TEXT, resource_uri TEXT, name TEXT, title TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER, CHECK ((source = 'mcp' AND call_id IS NOT NULL AND server_id IS NOT NULL AND tool IS NOT NULL AND resource_uri IS NOT NULL AND name IS NULL) OR (source = 'agent' AND name IS NOT NULL AND call_id IS NULL AND server_id IS NULL AND tool IS NULL AND resource_uri IS NULL)))`,
+      `CREATE TABLE app_registry (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL CHECK (source IN ('mcp', 'agent')), session_id TEXT NOT NULL, call_id TEXT, entry_id INTEGER, connection_id TEXT, tool TEXT, resource_uri TEXT, name TEXT, title TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER, CHECK ((source = 'mcp' AND call_id IS NOT NULL AND connection_id IS NOT NULL AND tool IS NOT NULL AND resource_uri IS NOT NULL AND name IS NULL) OR (source = 'agent' AND name IS NOT NULL AND call_id IS NULL AND connection_id IS NULL AND tool IS NULL AND resource_uri IS NULL)))`,
       'CREATE UNIQUE INDEX app_registry_call ON app_registry (session_id, call_id)',
       'CREATE UNIQUE INDEX app_registry_name ON app_registry (name)',
-      `INSERT INTO app_registry (id, source, session_id, call_id, entry_id, server_id, tool, resource_uri, title, created_at, closed_at) SELECT id, 'mcp', session_id, call_id, entry_id, server_id, tool, resource_uri, title, created_at, closed_at FROM app_apps ORDER BY id`,
+      `INSERT INTO app_registry (id, source, session_id, call_id, entry_id, connection_id, tool, resource_uri, title, created_at, closed_at) SELECT id, 'mcp', session_id, call_id, entry_id, connection_id, tool, resource_uri, title, created_at, closed_at FROM app_apps ORDER BY id`,
     ].join(BREAK),
   },
   {
@@ -337,7 +337,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     sql: [
       'ALTER TABLE app_mcp_grants ADD COLUMN ask_first INTEGER NOT NULL DEFAULT 0',
       "ALTER TABLE app_mcp_grants ADD COLUMN version TEXT NOT NULL DEFAULT ''",
-      `CREATE TABLE app_mcp_approvals (id TEXT PRIMARY KEY NOT NULL, caller TEXT NOT NULL CHECK (caller IN ('model', 'app', 'human')), session_id TEXT, source_call_id TEXT, task_id TEXT, server_id TEXT NOT NULL, name TEXT NOT NULL, endpoint TEXT NOT NULL, grant_version TEXT NOT NULL, arguments_sealed TEXT NOT NULL, arguments_hash TEXT NOT NULL, result_sealed TEXT, state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'dispatching', 'completed', 'refused', 'failed', 'uncertain', 'expired')), expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+      `CREATE TABLE app_mcp_approvals (id TEXT PRIMARY KEY NOT NULL, caller TEXT NOT NULL CHECK (caller IN ('model', 'app', 'human')), session_id TEXT, source_call_id TEXT, task_id TEXT, connection_id TEXT NOT NULL, name TEXT NOT NULL, endpoint TEXT NOT NULL, grant_version TEXT NOT NULL, arguments_sealed TEXT NOT NULL, arguments_hash TEXT NOT NULL, result_sealed TEXT, state TEXT NOT NULL CHECK (state IN ('pending', 'approved', 'dispatching', 'completed', 'refused', 'failed', 'uncertain', 'expired')), expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
       'CREATE INDEX app_mcp_approval_call ON app_mcp_approvals (session_id, source_call_id)',
     ].join(BREAK),
   },

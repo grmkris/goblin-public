@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addedServerId, serverClaims, userEndpoint } from '../../src/mcp/endpoint.ts'
+import { addedConnectionId, serverClaims, userEndpoint } from '../../src/mcp/endpoint.ts'
 
 const reason = (raw: string): string => {
   try {
@@ -28,8 +28,8 @@ describe('endpoints the owner may add', () => {
       return () => values.shift() ?? 'zzzzzz'
     })()
     const url = new URL('https://www.Mcp.Example.com/mcp')
-    expect(addedServerId(url, new Set(['mcp-example-com-aaaaaa']), random)).toBe('mcp-example-com-bbbbbb')
-    expect(addedServerId(url, new Set(), () => '123456')).toMatch(/^[\w-]{1,64}$/u)
+    expect(addedConnectionId(url, new Set(['mcp-example-com-aaaaaa']), random)).toBe('mcp-example-com-bbbbbb')
+    expect(addedConnectionId(url, new Set(), () => '123456')).toMatch(/^[\w-]{1,64}$/u)
   })
 })
 

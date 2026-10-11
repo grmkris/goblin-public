@@ -23,7 +23,7 @@ export const mcpKeys = {
   grants: ['mcp', 'grants'] as const,
   catalogs: ['mcp', 'catalog'] as const,
   catalog: (q: string | undefined): readonly ['mcp', 'catalog', string | undefined] => ['mcp', 'catalog', q],
-  tools: (serverId: string) => ['mcp', 'tools', serverId] as const,
+  tools: (connectionId: string) => ['mcp', 'tools', connectionId] as const,
 }
 
 /** The owner's servers, with where each stands. */
@@ -46,16 +46,16 @@ export const optionalCatalogQuery = (q: string | undefined) =>
   queryOptions({ queryKey: mcpKeys.catalog(q), queryFn: q === undefined ? skipToken : catalogQuery(q).queryFn })
 
 /** A connected server's discovered tools, each with its grant. */
-export const toolsQuery = (serverId: string) =>
+export const toolsQuery = (connectionId: string) =>
   owner.apiQuery({
-    queryKey: mcpKeys.tools(serverId),
-    queryFn: (api) => api.mcp.tools({ params: { id: serverId }, query: {} }),
+    queryKey: mcpKeys.tools(connectionId),
+    queryFn: (api) => api.mcp.tools({ params: { id: connectionId }, query: {} }),
   })
 /** A server's tools once it is connected; before then the key holds nothing. */
-export const connectedToolsQuery = (serverId: string, connected: boolean) =>
+export const connectedToolsQuery = (connectionId: string, connected: boolean) =>
   queryOptions({
-    queryKey: mcpKeys.tools(serverId),
-    queryFn: connected ? toolsQuery(serverId).queryFn : skipToken,
+    queryKey: mcpKeys.tools(connectionId),
+    queryFn: connected ? toolsQuery(connectionId).queryFn : skipToken,
   })
 
 /** Reads the server list again, and the suggestions and search results, which say what is already added. */
@@ -84,7 +84,7 @@ export const addAndConnectMutation = mutationOptions({
   ...owner.apiMutation({
     mutationFn: (api, server: AddServer) =>
       Effect.flatMap(api.mcp.addServer({ payload: server }), (added) =>
-        api.mcp.connect({ params: { id: added.serverId } }),
+        api.mcp.connect({ params: { id: added.connectionId } }),
       ),
   }),
   onSuccess: (started, _server, _result, { client }) =>
@@ -93,31 +93,37 @@ export const addAndConnectMutation = mutationOptions({
 
 /** Starts connecting: an authorization URL to send the owner to, or none when the server is connected at once. */
 export const connectMutation = mutationOptions({
-  ...owner.apiMutation({ mutationFn: (api, serverId: string) => api.mcp.connect({ params: { id: serverId } }) }),
-  onSuccess: (started, _serverId, _result, { client }) =>
+  ...owner.apiMutation({
+    mutationFn: (api, connectionId: string) => api.mcp.connect({ params: { id: connectionId } }),
+  }),
+  onSuccess: (started, _connectionId, _result, { client }) =>
     started.authorizationUrl === undefined ? serversChanged(client) : undefined,
 })
 
 /** Closes a server's connection; its grants stay. */
 export const disconnectMutation = mutationOptions({
-  ...owner.apiMutation({ mutationFn: (api, serverId: string) => api.mcp.disconnect({ params: { id: serverId } }) }),
-  onSuccess: (_closed, _serverId, _result, { client }) => serversChanged(client),
+  ...owner.apiMutation({
+    mutationFn: (api, connectionId: string) => api.mcp.disconnect({ params: { id: connectionId } }),
+  }),
+  onSuccess: (_closed, _connectionId, _result, { client }) => serversChanged(client),
 })
 
 /** Removes an added server, with its sign-in and every grant. */
 export const removeServerMutation = mutationOptions({
-  ...owner.apiMutation({ mutationFn: (api, serverId: string) => api.mcp.removeServer({ params: { id: serverId } }) }),
-  onSuccess: (_removed, _serverId, _result, { client }) =>
+  ...owner.apiMutation({
+    mutationFn: (api, connectionId: string) => api.mcp.removeServer({ params: { id: connectionId } }),
+  }),
+  onSuccess: (_removed, _connectionId, _result, { client }) =>
     Promise.all([serversChanged(client), client.invalidateQueries({ queryKey: mcpKeys.grants })]),
 })
 
 /** Asks the server for its tools again and keeps what it answers. */
 export const refreshToolsMutation = mutationOptions({
   ...owner.apiMutation({
-    mutationFn: (api, serverId: string) => api.mcp.tools({ params: { id: serverId }, query: { refresh: '1' } }),
+    mutationFn: (api, connectionId: string) => api.mcp.tools({ params: { id: connectionId }, query: { refresh: '1' } }),
   }),
-  onSuccess: (tools, serverId, _result, { client }) => {
-    client.setQueryData(toolsQuery(serverId).queryKey, tools)
+  onSuccess: (tools, connectionId, _result, { client }) => {
+    client.setQueryData(toolsQuery(connectionId).queryKey, tools)
     return serversChanged(client)
   },
 })
@@ -125,7 +131,7 @@ export const refreshToolsMutation = mutationOptions({
 /** Whether the agent follows a server's skills. */
 export const setSkillsMutation = mutationOptions({
   ...owner.apiMutation({
-    mutationFn: (api, change: { readonly serverId: string; readonly enabled: boolean }) =>
+    mutationFn: (api, change: { readonly connectionId: string; readonly enabled: boolean }) =>
       api.mcp.setSkills({ payload: change }),
   }),
   onSuccess: (_servers, _change, _result, { client }) => serversChanged(client),
@@ -142,32 +148,32 @@ const granted = (tool: ToolView, allowed: boolean): ToolView => ({
 const grantsChanged = (
   client: QueryClient,
   grants: readonly Grant[],
-  serverId: string,
+  connectionId: string,
   change: (tool: ToolView) => ToolView,
 ): void => {
   client.setQueryData(grantsQuery.queryKey, grants)
-  client.setQueryData(toolsQuery(serverId).queryKey, (tools) => tools?.map(change))
+  client.setQueryData(toolsQuery(connectionId).queryKey, (tools) => tools?.map(change))
 }
 
 /** Grants or revokes one discovered tool, from its switch or from an App that asked for it. */
 export const toolGrantMutation = mutationOptions({
   ...owner.apiMutation({ mutationFn: (api, change: GrantChange) => api.mcp.setToolGrant({ payload: change }) }),
-  onSuccess: (grants, { serverId, name, allowed }, _result, { client }) =>
-    grantsChanged(client, grants, serverId, (tool) => (tool.name === name ? granted(tool, allowed) : tool)),
+  onSuccess: (grants, { connectionId, name, allowed }, _result, { client }) =>
+    grantsChanged(client, grants, connectionId, (tool) => (tool.name === name ? granted(tool, allowed) : tool)),
 })
 
 /** Grants or revokes an MCP App as a whole, with its tools. */
 export const appGrantMutation = mutationOptions({
   ...owner.apiMutation({ mutationFn: (api, change: AppGrantChange) => api.mcp.setAppGrant({ payload: change }) }),
-  onSuccess: (grants, { serverId, uri, allowed }, _result, { client }) =>
-    grantsChanged(client, grants, serverId, (tool) => (tool.appResource === uri ? granted(tool, allowed) : tool)),
+  onSuccess: (grants, { connectionId, uri, allowed }, _result, { client }) =>
+    grantsChanged(client, grants, connectionId, (tool) => (tool.appResource === uri ? granted(tool, allowed) : tool)),
 })
 
 /** A granted tool's calls wait for the owner's decision, or no longer do. */
 export const askFirstMutation = mutationOptions({
   ...owner.apiMutation({ mutationFn: (api, change: AskFirstChange) => api.mcp.setAskFirst({ payload: change }) }),
-  onSuccess: (grants, { serverId, name, enabled }, _result, { client }) =>
-    grantsChanged(client, grants, serverId, (tool) => (tool.name === name ? { ...tool, askFirst: enabled } : tool)),
+  onSuccess: (grants, { connectionId, name, enabled }, _result, { client }) =>
+    grantsChanged(client, grants, connectionId, (tool) => (tool.name === name ? { ...tool, askFirst: enabled } : tool)),
 })
 
 /** Adds a registry to search, or removes one of the owner's; the answer is the list as it is now. */
@@ -188,10 +194,10 @@ export const registryMutation = mutationOptions({
 export const callToolMutation = owner.apiMutation({
   mutationFn: (
     api,
-    call: { readonly serverId: string; readonly name: string; readonly arguments: Record<string, unknown> },
+    call: { readonly connectionId: string; readonly name: string; readonly arguments: Record<string, unknown> },
   ) =>
     api.mcp.callTool({
-      params: { id: call.serverId },
+      params: { id: call.connectionId },
       headers: {},
       payload: { name: call.name, arguments: call.arguments },
     }),

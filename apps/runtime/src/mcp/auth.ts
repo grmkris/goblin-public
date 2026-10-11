@@ -35,12 +35,12 @@ export const mcpAuth = Effect.fnUntraced(function* ({ credentials, appUrl, fetch
   const flights = yield* SingleFlight
   /** When each server's last refresh completed, in Clock milliseconds. */
   const refreshedAt = new Map<string, number>()
-  const tokens = (serverId: string) => attempt(() => credentials.tokens(serverId))
+  const tokens = (connectionId: string) => attempt(() => credentials.tokens(connectionId))
 
   /** The OAuth refresh itself: the SDK's `auth` over the stored credentials, its network failures kept apart. */
   const exchange = (server: McpServerConfig) =>
     Effect.gen(function* () {
-      const serverId = server.serverId
+      const connectionId = server.connectionId
       // Whether every request of this refresh got an answer the server meant (no network failure, no 5xx).
       let reached = true
       const fetchFn: FetchLike = async (input, init) => {
@@ -53,7 +53,7 @@ export const mcpAuth = Effect.fnUntraced(function* ({ credentials, appUrl, fetch
           throw error
         }
       }
-      const provider = new StoredOAuthProvider(credentials, serverId, appUrl, {
+      const provider = new StoredOAuthProvider(credentials, connectionId, appUrl, {
         kind: 'background',
         reached: () => reached,
       })
@@ -62,14 +62,14 @@ export const mcpAuth = Effect.fnUntraced(function* ({ credentials, appUrl, fetch
       const result = yield* Effect.tryPromise({
         try: () => auth(provider, { serverUrl: server.endpoint, fetchFn }),
         catch: (error) =>
-          isOAuthRejection(error) ? new NeedsAuthorization({ serverId }) : mapMcpError(error, serverId),
+          isOAuthRejection(error) ? new NeedsAuthorization({ connectionId }) : mapMcpError(error, connectionId),
       }).pipe(
         Effect.tapErrorTag('NeedsAuthorization', () =>
-          Effect.flatMap(epochSeconds, (now) => Effect.sync(() => credentials.markNeedsAuth(serverId, now))),
+          Effect.flatMap(epochSeconds, (now) => Effect.sync(() => credentials.markNeedsAuth(connectionId, now))),
         ),
       )
-      if (result !== 'AUTHORIZED') return yield* new NeedsAuthorization({ serverId })
-      refreshedAt.set(serverId, yield* Clock.currentTimeMillis)
+      if (result !== 'AUTHORIZED') return yield* new NeedsAuthorization({ connectionId })
+      refreshedAt.set(connectionId, yield* Clock.currentTimeMillis)
     })
 
   /**
@@ -78,11 +78,11 @@ export const mcpAuth = Effect.fnUntraced(function* ({ credentials, appUrl, fetch
    */
   const refresh = (server: McpServerConfig, stale: string | undefined) =>
     flights.run(
-      `mcp.refresh:${server.serverId}`,
+      `mcp.refresh:${server.connectionId}`,
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis
-        if (now - (refreshedAt.get(server.serverId) ?? Number.NEGATIVE_INFINITY) < RECENT_REFRESH_MS) return
-        const current = yield* tokens(server.serverId)
+        if (now - (refreshedAt.get(server.connectionId) ?? Number.NEGATIVE_INFINITY) < RECENT_REFRESH_MS) return
+        const current = yield* tokens(server.connectionId)
         if (current !== undefined && current.access_token !== stale) return
         yield* exchange(server)
       }),
@@ -90,27 +90,27 @@ export const mcpAuth = Effect.fnUntraced(function* ({ credentials, appUrl, fetch
 
   const accessToken = (server: McpServerConfig): Effect.Effect<string, AppError> =>
     Effect.gen(function* () {
-      const serverId = server.serverId
-      const current = yield* tokens(serverId)
-      if (current === undefined) return yield* new NeedsAuthorization({ serverId })
-      const expiresAt = credentials.tokenExpiresAt(serverId)
+      const connectionId = server.connectionId
+      const current = yield* tokens(connectionId)
+      if (current === undefined) return yield* new NeedsAuthorization({ connectionId })
+      const expiresAt = credentials.tokenExpiresAt(connectionId)
       if (expiresAt === undefined || expiresAt - REFRESH_SKEW_SECONDS > (yield* epochSeconds) || !current.refresh_token)
         return current.access_token
       yield* refresh(server, current.access_token)
-      const fresh = yield* tokens(serverId)
-      if (fresh === undefined) return yield* new NeedsAuthorization({ serverId })
+      const fresh = yield* tokens(connectionId)
+      if (fresh === undefined) return yield* new NeedsAuthorization({ connectionId })
       return fresh.access_token
     })
 
   const unauthorized = (server: McpServerConfig): Effect.Effect<void, AppError> =>
     Effect.gen(function* () {
-      const serverId = server.serverId
-      const stale = (yield* tokens(serverId))?.access_token
+      const connectionId = server.connectionId
+      const stale = (yield* tokens(connectionId))?.access_token
       // Connected without sign-in and now refused: it wants sign-in. Nothing to refresh; the owner connects.
       if (stale === OPEN_ACCESS.access_token) {
         const now = yield* epochSeconds
-        yield* Effect.sync(() => credentials.markNeedsAuth(serverId, now))
-        return yield* new NeedsAuthorization({ serverId })
+        yield* Effect.sync(() => credentials.markNeedsAuth(connectionId, now))
+        return yield* new NeedsAuthorization({ connectionId })
       }
       yield* refresh(server, stale)
     })

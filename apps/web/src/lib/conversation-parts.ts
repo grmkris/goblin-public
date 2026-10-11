@@ -23,9 +23,9 @@ function objectArgument(value: unknown): Record<string, unknown> | undefined {
 /** The MCP server, tool and arguments of an `mcp_call`, when the call has that shape. */
 function mcpTarget(call: ToolCallView): McpTarget | undefined {
   if (call.name !== 'mcp_call') return undefined
-  const { serverId, name } = call.arguments
-  if (!isString(serverId) || !isString(name)) return undefined
-  return { serverId, name, arguments: objectArgument(call.arguments.arguments) ?? {} }
+  const { connectionId, name } = call.arguments
+  if (!isString(connectionId) || !isString(name)) return undefined
+  return { connectionId, name, arguments: objectArgument(call.arguments.arguments) ?? {} }
 }
 
 function toolState(result: ToolResultMessage | undefined, live: LiveTool | undefined, running: boolean): ToolState {

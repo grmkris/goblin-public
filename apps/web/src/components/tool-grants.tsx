@@ -83,7 +83,7 @@ function ToolRow({
 
 /** An App and the exact tools it uses: one switch allows them all, and each stays listed and adjustable. */
 function AppGroup({
-  serverId,
+  connectionId,
   uri,
   tools,
   pending,
@@ -91,7 +91,7 @@ function AppGroup({
   onToggle,
   onAskFirst,
 }: {
-  readonly serverId: string
+  readonly connectionId: string
   readonly uri: string
   readonly tools: Tools
   readonly pending: ReadonlySet<string>
@@ -103,7 +103,7 @@ function AppGroup({
   return (
     <li className="grant-app">
       <div className="grant-row">
-        <AppTile origin={serverId} />
+        <AppTile origin={connectionId} />
         <span className="grant-text">
           <span id={id} className="grant-name">
             Its App
@@ -169,13 +169,13 @@ const appsOf = (tools: Tools): readonly string[] => [
 ]
 
 /** The grant calls behind the switches; each updates the list in the cache once the runtime has it. */
-function useGrants(serverId: string, tools: Tools, onMessage: (message: string) => void) {
+function useGrants(connectionId: string, tools: Tools, onMessage: (message: string) => void) {
   const { pending, during } = usePending()
   const toolGrant = useMutation(toolGrantMutation)
   const appGrant = useMutation(appGrantMutation)
   const askFirst = useMutation(askFirstMutation)
-  const tool = (name: string, allowed: boolean) => toolGrant.mutateAsync({ serverId, name, allowed })
-  const app = (uri: string, allowed: boolean) => appGrant.mutateAsync({ serverId, uri, allowed })
+  const tool = (name: string, allowed: boolean) => toolGrant.mutateAsync({ connectionId, name, allowed })
+  const app = (uri: string, allowed: boolean) => appGrant.mutateAsync({ connectionId, uri, allowed })
   const attempt = (busy: readonly string[], action: string, work: () => Promise<unknown>) =>
     void during(busy, () =>
       work().then(
@@ -187,7 +187,7 @@ function useGrants(serverId: string, tools: Tools, onMessage: (message: string) 
     pending,
     askFirst: (target: ToolView, enabled: boolean) =>
       attempt([target.name], `change whether ${target.name} asks first`, () =>
-        askFirst.mutateAsync({ serverId, name: target.name, enabled }),
+        askFirst.mutateAsync({ connectionId, name: target.name, enabled }),
       ),
     toggle: (target: ToolView, allowed: boolean) =>
       attempt([target.name], `change ${target.name}`, () => tool(target.name, allowed)),
@@ -209,15 +209,15 @@ function useGrants(serverId: string, tools: Tools, onMessage: (message: string) 
 
 /** The server's tools, an App's tools grouped under it; grants change here and the list follows. */
 export function ToolGrants({
-  serverId,
+  connectionId,
   tools,
   onMessage,
 }: {
-  readonly serverId: string
+  readonly connectionId: string
   readonly tools: Tools
   readonly onMessage: (message: string) => void
 }) {
-  const grants = useGrants(serverId, tools, onMessage)
+  const grants = useGrants(connectionId, tools, onMessage)
   if (tools.length === 0) return <p className="server-note">This server offers no tools.</p>
   return (
     <section className="server-part" aria-label="Tools">
@@ -226,7 +226,7 @@ export function ToolGrants({
         {appsOf(tools).map((uri) => (
           <AppGroup
             key={uri}
-            serverId={serverId}
+            connectionId={connectionId}
             uri={uri}
             tools={tools.filter((tool) => tool.appResource === uri)}
             pending={grants.pending}

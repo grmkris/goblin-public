@@ -13,13 +13,13 @@ export class Channel extends Context.Service<
   {
     /** The connection that carries the channel, or null when it is off. */
     readonly status: Effect.Effect<ChannelStatus>
-    /** Where to start reading `serverId`'s inbox: the stored cursor when it already carries the channel, else its end. */
-    readonly startCursor: (serverId: string, call: ChannelCall) => Effect.Effect<string, AppError>
-    /** Carries the channel through `serverId`'s Events, from `inboxCursor`. Only after both leases are confirmed. */
-    readonly enableEvents: (serverId: string, inboxCursor: string, now: number) => Effect.Effect<ChannelStatus>
-    /** Carries the channel through `serverId`'s doorbell at `url`, subscribed with a fresh secret. */
+    /** Where to start reading `connectionId`'s inbox: the stored cursor when it already carries the channel, else its end. */
+    readonly startCursor: (connectionId: string, call: ChannelCall) => Effect.Effect<string, AppError>
+    /** Carries the channel through `connectionId`'s Events, from `inboxCursor`. Only after both leases are confirmed. */
+    readonly enableEvents: (connectionId: string, inboxCursor: string, now: number) => Effect.Effect<ChannelStatus>
+    /** Carries the channel through `connectionId`'s doorbell at `url`, subscribed with a fresh secret. */
     readonly enable: (
-      serverId: string,
+      connectionId: string,
       url: string,
       call: ChannelCall,
       now: number,

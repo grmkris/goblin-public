@@ -136,7 +136,7 @@ describe('Pi committed state projected for the chat', () => {
           {
             role: 'assistant',
             content: [
-              { type: 'toolCall', id: 'c1', name: 'mcp_call', arguments: { serverId: 'myplan', name: 'open' } },
+              { type: 'toolCall', id: 'c1', name: 'mcp_call', arguments: { connectionId: 'myplan', name: 'open' } },
             ],
           },
         ],
@@ -161,7 +161,7 @@ describe('Pi committed state projected for the chat', () => {
         id: '3:0',
         role: 'assistant',
         text: '',
-        toolCalls: [{ id: 'c1', name: 'mcp_call', arguments: { serverId: 'myplan', name: 'open' } }],
+        toolCalls: [{ id: 'c1', name: 'mcp_call', arguments: { connectionId: 'myplan', name: 'open' } }],
       },
       {
         id: '4:0',
@@ -260,7 +260,7 @@ describe('Pi committed state projected for the chat', () => {
     expect(initial.tools[0]).toEqual({ callId: 'old', name: 'x', status: 'running', output: '', args: {} })
     const next = projectBatch(
       initial,
-      [{ type: 'tool_execution_start', toolCallId: 'c2', toolName: 'mcp_call', args: { serverId: 'myplan' } }],
+      [{ type: 'tool_execution_start', toolCallId: 'c2', toolName: 'mcp_call', args: { connectionId: 'myplan' } }],
       42_000,
     )
     expect(next.tools[1]).toEqual({
@@ -268,7 +268,7 @@ describe('Pi committed state projected for the chat', () => {
       name: 'mcp_call',
       status: 'running',
       output: '',
-      args: { serverId: 'myplan' },
+      args: { connectionId: 'myplan' },
       startedAt: 42_000,
     })
   })

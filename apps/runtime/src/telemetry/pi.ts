@@ -96,7 +96,7 @@ function callsOf(entry: string, message: Assistant) {
     if (block.type !== 'toolCall' || block.id === undefined || block.name === undefined) return []
     const mcp = block.name === 'mcp_call' ? decodeMcpCall(block.arguments) : undefined
     const servers =
-      mcp === undefined ? {} : { [RunAttribute.mcpServer]: mcp.serverId, [RunAttribute.mcpTool]: mcp.name }
+      mcp === undefined ? {} : { [RunAttribute.mcpServer]: mcp.connectionId, [RunAttribute.mcpTool]: mcp.name }
     const attributes = { [RunAttribute.argumentBytes]: sizeOf(block.arguments), ...servers }
     return [[`${entry}:${block.id}`, { name: block.name, attributes }] as const]
   })

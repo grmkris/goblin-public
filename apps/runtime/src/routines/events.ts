@@ -55,7 +55,7 @@ const inactive = conflict(['routine is not active at this revision'])
 const subscription = (row: Pick<RoutineRow, 'id' | 'revision'>, trigger: EventTrigger) => ({
   consumerId: consumerId(row.id),
   revision: row.revision,
-  serverId: trigger.serverId,
+  connectionId: trigger.connectionId,
   name: trigger.name,
   arguments: trigger.arguments,
   handlerKey: 'routine-trigger',
@@ -69,7 +69,7 @@ export const confirmEvents = Effect.fn('routines.confirmEvents')(function* (id: 
   const trigger = definitionOf(row).trigger
   if (trigger.kind !== 'event') return
   const events = yield* Events
-  yield* events.grant(trigger.serverId, trigger.name, trigger.arguments, true)
+  yield* events.grant(trigger.connectionId, trigger.name, trigger.arguments, true)
   yield* events.subscribe(subscription(row, trigger))
   yield* routines.markActive(id, revision, null, yield* Clock.currentTimeMillis)
 })
@@ -153,7 +153,7 @@ const current = (row: RoutineRow, trigger: Trigger, context: EventContext) =>
   row.state === 'active' &&
   row.revision === context.consumer.revision &&
   trigger.kind === 'event' &&
-  trigger.serverId === context.subscription.serverId &&
+  trigger.connectionId === context.subscription.connectionId &&
   trigger.name === context.subscription.name &&
   canonicalArguments(trigger.arguments) === context.subscription.argumentsJson
 

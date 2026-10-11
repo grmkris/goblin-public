@@ -89,7 +89,7 @@ const tools = defineExtension({
     defineTool({
       name: 'mcp_call',
       description: 'stand-in for the resident MCP tool',
-      parameters: Type.Object({ serverId: Type.String(), name: Type.String(), arguments: Type.Object({}) }),
+      parameters: Type.Object({ connectionId: Type.String(), name: Type.String(), arguments: Type.Object({}) }),
       replay: 'unsafe',
       execute: async () => ({ content: [{ type: 'text', text: 'remote said no' }], isError: true }),
     }),
@@ -226,7 +226,7 @@ describe('run telemetry from Pi commits (unit, in-memory Pi)', () => {
   })
 
   it('names the MCP server and tool of an mcp_call, and records its failure', async () => {
-    const { events } = await turn([call('mcp_call', { serverId: 'myplan', name: 'notes_search', arguments: {} })])
+    const { events } = await turn([call('mcp_call', { connectionId: 'myplan', name: 'notes_search', arguments: {} })])
     const [tool] = ofKind(events, 'tool.call')
     expect(tool?.status).toBe('error')
     expect(tool?.attributes).toMatchObject({
@@ -255,7 +255,7 @@ describe('run telemetry from Pi commits (unit, in-memory Pi)', () => {
         attributes: { [RunAttribute.errorType]: 'GrantDenied', [RunAttribute.blockedReason]: 'Owner grant required.' },
       },
     ])
-    const failed = await turn([call('mcp_call', { serverId: 'myplan', name: 'notes_search', arguments: {} })])
+    const failed = await turn([call('mcp_call', { connectionId: 'myplan', name: 'notes_search', arguments: {} })])
     expect(ofKind(failed.events, 'tool.call')).toMatchObject([
       { status: 'error', attributes: { [RunAttribute.errorType]: 'tool_error', [RunAttribute.error]: 'Tool failed.' } },
     ])
@@ -438,8 +438,8 @@ describe('run telemetry outside Pi (unit)', () => {
     const report = mcpReporter(new RunTelemetry([collected]))
     await expect(
       step(
-        { step: 'connect', serverId: 'myplan' },
-        () => Promise.reject(new NeedsAuthorization({ serverId: 'myplan' })),
+        { step: 'connect', connectionId: 'myplan' },
+        () => Promise.reject(new NeedsAuthorization({ connectionId: 'myplan' })),
         report,
       ),
     ).rejects.toBeInstanceOf(NeedsAuthorization)
@@ -447,10 +447,10 @@ describe('run telemetry outside Pi (unit)', () => {
       { status: 'blocked', attributes: { [RunAttribute.errorType]: 'NeedsAuthorization' } },
     ])
     let calls = 0
-    await expect(step({ step: 'call', serverId: 'myplan' }, async () => ++calls, throwingReport)).resolves.toBe(1)
+    await expect(step({ step: 'call', connectionId: 'myplan' }, async () => ++calls, throwingReport)).resolves.toBe(1)
     const original = new NotFound({ what: 'fixture' })
     await expect(
-      step({ step: 'call', serverId: 'myplan' }, () => Promise.reject(original), throwingReport),
+      step({ step: 'call', connectionId: 'myplan' }, () => Promise.reject(original), throwingReport),
     ).rejects.toBe(original)
     expect(calls).toBe(1)
   })
@@ -477,9 +477,9 @@ describe('run telemetry outside Pi (unit)', () => {
       startedAt: 1,
       attributes: {},
     })
-    report({ step: 'call', serverId: 'myplan', scope: { conversationId: '2', taskId: 'two' } }, 'ok', 2, 3)
-    report({ step: 'call', serverId: 'myplan', scope: { conversationId: '1', taskId: 'one' } }, 'ok', 2, 3)
-    report({ step: 'connect', serverId: 'myplan', sharedConnection: true }, 'ok', 2, 3)
+    report({ step: 'call', connectionId: 'myplan', scope: { conversationId: '2', taskId: 'two' } }, 'ok', 2, 3)
+    report({ step: 'call', connectionId: 'myplan', scope: { conversationId: '1', taskId: 'one' } }, 'ok', 2, 3)
+    report({ step: 'connect', connectionId: 'myplan', sharedConnection: true }, 'ok', 2, 3)
     expect(ofKind(collected.events(), 'mcp.request')).toMatchObject([
       { operationId: 'two-op', conversationId: '2' },
       { operationId: 'one-op', conversationId: '1' },
@@ -491,11 +491,11 @@ describe('run telemetry outside Pi (unit)', () => {
   it('records each remote MCP step, and a failed one by its tag', async () => {
     const collected = new CollectedRuns()
     const report = mcpReporter(new RunTelemetry([collected]))
-    await step({ step: 'call', serverId: 'myplan', tool: 'notes_search' }, async () => 'ok', report)
+    await step({ step: 'call', connectionId: 'myplan', tool: 'notes_search' }, async () => 'ok', report)
     await expect(
       step(
-        { step: 'connect', serverId: 'myplan' },
-        () => Promise.reject(new UpstreamMcp({ serverId: 'myplan', reason: 'timeout' })),
+        { step: 'connect', connectionId: 'myplan' },
+        () => Promise.reject(new UpstreamMcp({ connectionId: 'myplan', reason: 'timeout' })),
         report,
       ),
     ).rejects.toThrow()

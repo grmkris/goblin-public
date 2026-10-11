@@ -12,7 +12,7 @@ import { objectOrJson } from '../pi/typed-tool.ts'
 import { Approvals, McpConnections, McpGrants, requireResident } from './service.ts'
 
 export const McpCallInput = Schema.Struct({
-  serverId: Schema.String,
+  connectionId: Schema.String,
   name: Schema.String,
   arguments: objectOrJson(Schema.Record(Schema.String, Schema.Json)),
 })
@@ -22,7 +22,7 @@ export const modelApprovalId = (session: string, callId: string): string => `mcp
 /** Prepare an exact call in beforeTool; execution repeats this gate because hook failures cannot grant authority. */
 export const holdModelCall = (session: string, callId: string, taskId: string, input: McpCallInput) =>
   Effect.gen(function* () {
-    const policy = yield* (yield* McpGrants).policy(input.serverId, input.name)
+    const policy = yield* (yield* McpGrants).policy(input.connectionId, input.name)
     if (Option.isNone(policy) || !policy.value.askFirst) return undefined
     yield* requireResident
     yield* requireRoutineSession(session)
@@ -30,15 +30,15 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
     if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
     yield* (yield* Conversations).requireOpen(chat.value)
     const scope = yield* (yield* Setups).scope(session)
-    if (!scope.tool(input.serverId, input.name)) return undefined
-    const server = yield* (yield* McpConnections).server(input.serverId)
+    if (!scope.tool(input.connectionId, input.name)) return undefined
+    const server = yield* (yield* McpConnections).server(input.connectionId)
     const row = yield* (yield* Approvals).hold({
       id: modelApprovalId(session, callId),
       caller: 'model',
       sessionId: session,
       sourceCallId: callId,
       taskId,
-      serverId: input.serverId,
+      connectionId: input.connectionId,
       name: input.name,
       arguments: input.arguments,
       endpoint: server.endpoint,
@@ -59,7 +59,7 @@ export const approvalResult = (session: string, callId: string, id: string, inpu
       yield* runs.ask(
         session,
         callId,
-        [{ id: 'mcp-approval', prompt: `Approve ${input.serverId} · ${input.name}?`, kind: 'text' }],
+        [{ id: 'mcp-approval', prompt: `Approve ${input.connectionId} · ${input.name}?`, kind: 'text' }],
         cipher,
         now,
       )
@@ -73,12 +73,12 @@ export const approvalResult = (session: string, callId: string, id: string, inpu
       content: [
         {
           type: 'text',
-          text: `Ask first: ${input.serverId} · ${input.name}. Nothing ran. The owner must approve or refuse the exact held arguments in the chat card. Stop and wait. Do not call the tool again; approval dispatches this held call.`,
+          text: `Ask first: ${input.connectionId} · ${input.name}. Nothing ran. The owner must approve or refuse the exact held arguments in the chat card. Stop and wait. Do not call the tool again; approval dispatches this held call.`,
         },
       ],
       isError: true,
       control: { terminate: true },
       diagnostics: [{ severity: 'info', code: 'approval_required', message: 'Owner approval required for this call.' }],
-      details: { kind: 'approval-required', approvalId: id, serverId: input.serverId, name: input.name },
+      details: { kind: 'approval-required', approvalId: id, connectionId: input.connectionId, name: input.name },
     } satisfies ToolExecutionResult
   })

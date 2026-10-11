@@ -53,7 +53,7 @@ export const appRoutineRuns = sqliteTable(
     notificationText: text('notification_text'),
     notificationState: text('notification_state').notNull().default('none'),
     notificationReceipt: text('notification_receipt'),
-    notificationServerId: text('notification_server_id'),
+    notificationConnectionId: text('notification_connection_id'),
     notificationAttempts: integer('notification_attempts').notNull().default(0),
     notificationNextAt: integer('notification_next_at').notNull().default(0),
     createdAt: integer('created_at').notNull(),

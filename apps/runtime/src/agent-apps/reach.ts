@@ -66,8 +66,8 @@ export function reachOf(deps: ReachDeps, { app, op, depth = 0, session }: CallRe
     },
     tool: async (tool, args) => {
       allowed('tool', tool)
-      const [serverId = '', name = ''] = tool.split('/', 2)
-      return services.tool({ serverId, name, args, session })
+      const [connectionId = '', name = ''] = tool.split('/', 2)
+      return services.tool({ connectionId, name, args, session })
     },
     llm: async (prompt, options) => {
       allowed('llm', '*')

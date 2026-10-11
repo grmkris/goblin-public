@@ -112,10 +112,10 @@ export function reportChannelFailure(step: 'pull' | 'replies', error: unknown): 
  * A tool of the channel server through the MCP connections, called for the agent itself: the owner's exact grant
  * applies as for any call of the model. Its structured result; an error result fails.
  */
-export const channelTool = (connections: typeof McpConnections.Service, serverId: string): ChannelCall =>
+export const channelTool = (connections: typeof McpConnections.Service, connectionId: string): ChannelCall =>
   Effect.fn('Channel.tool')(function* (name: string, args: Record<string, unknown>) {
-    const result = yield* connections.callTool(serverId, name, args, { caller: 'model' })
-    if (result.isError === true) return yield* new UpstreamMcp({ serverId, reason: 'remote-rpc' })
+    const result = yield* connections.callTool(connectionId, name, args, { caller: 'model' })
+    if (result.isError === true) return yield* new UpstreamMcp({ connectionId, reason: 'remote-rpc' })
     return result.structuredContent
   })
 
@@ -163,25 +163,25 @@ const recorder =
     )
 type Recorder = ReturnType<typeof recorder>
 
-/** Where to start reading `serverId`'s inbox: the stored cursor when it already carries the channel, else its end. */
-const startCursor = (db: DrizzleSqliteDODatabase, serverId: string, call: ChannelCall) =>
+/** Where to start reading `connectionId`'s inbox: the stored cursor when it already carries the channel, else its end. */
+const startCursor = (db: DrizzleSqliteDODatabase, connectionId: string, call: ChannelCall) =>
   Effect.suspend(() =>
-    channelStatus(db)?.serverId === serverId ? Effect.sync(() => storedCursor(db)) : readToEnd(call),
+    channelStatus(db)?.connectionId === connectionId ? Effect.sync(() => storedCursor(db)) : readToEnd(call),
   )
 
 /**
- * Turns the channel on for `serverId`'s doorbell at `url`: reads to the end of its inbox (older messages are history,
+ * Turns the channel on for `connectionId`'s doorbell at `url`: reads to the end of its inbox (older messages are history,
  * not new turns), subscribes the doorbell with a fresh secret, then stores all three.
  */
-const enable = ({ db, cipher }: ChannelInput, serverId: string, url: string, call: ChannelCall, now: number) =>
+const enable = ({ db, cipher }: ChannelInput, connectionId: string, url: string, call: ChannelCall, now: number) =>
   Effect.gen(function* () {
-    const cursor = yield* startCursor(db, serverId, call)
+    const cursor = yield* startCursor(db, connectionId, call)
     const secret = btoa(String.fromCodePoint(...crypto.getRandomValues(new Uint8Array(32))))
     const subscribed = yield* decodeSubscribed(yield* call('subscribe', { url, secret }))
     if (subscribed.status !== 'subscribed')
       return yield* new InvalidInput({ reason: `the doorbell was refused: ${subscribed.reason ?? subscribed.status}` })
     const sealed = yield* attempt(() => cipher.encrypt(secret, AAD))
-    return yield* Effect.sync(() => enableDoorbell(db, { serverId, cursor, secret: sealed, enabledAt: now }))
+    return yield* Effect.sync(() => enableDoorbell(db, { connectionId, cursor, secret: sealed, enabledAt: now }))
   })
 
 /** One message from the owner into main as a turn, tracked for its answer and recorded (ADR 0024). */
@@ -290,10 +290,11 @@ export const telegramChannel = (input: ChannelInput): Effect.Effect<Channel['Ser
     const record = recorder(input)
     return Channel.of({
       status: Effect.sync(() => channelStatus(db)),
-      startCursor: (serverId, call) => startCursor(db, serverId, call).pipe(Effect.withSpan('Channel.startCursor')),
-      enableEvents: (serverId, cursor, now) => Effect.sync(() => enableEvents(db, serverId, cursor, now)),
-      enable: (serverId, url, call, now) =>
-        enable(input, serverId, url, call, now).pipe(Effect.withSpan('Channel.enable')),
+      startCursor: (connectionId, call) =>
+        startCursor(db, connectionId, call).pipe(Effect.withSpan('Channel.startCursor')),
+      enableEvents: (connectionId, cursor, now) => Effect.sync(() => enableEvents(db, connectionId, cursor, now)),
+      enable: (connectionId, url, call, now) =>
+        enable(input, connectionId, url, call, now).pipe(Effect.withSpan('Channel.enable')),
       disable: Effect.sync(() => disableChannel(db)),
       secret: Effect.suspend(() => {
         const sealed = sealedSecret(db)

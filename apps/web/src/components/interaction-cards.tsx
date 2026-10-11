@@ -37,8 +37,8 @@ type Grant = Extract<Interaction, { kind: 'grant' }>
 type Setup = Extract<Interaction, { kind: 'setup' }>
 
 /** The server's own description and hints for a tool, shown as its claims; nothing while they cannot be read. */
-function useToolClaims(serverId: string, name: string): ToolView | undefined {
-  return useQuery(toolsQuery(serverId)).data?.find((item) => item.name === name)
+function useToolClaims(connectionId: string, name: string): ToolView | undefined {
+  return useQuery(toolsQuery(connectionId)).data?.find((item) => item.name === name)
 }
 
 /** A card's reply in flight: its buttons wait while it is sent, and a failure is shown on the card. */
@@ -127,15 +127,15 @@ function ServerRequestCard({
 
 /** Permission for one exact tool. Allowing it stays allowed until the owner turns it off under Connections. */
 function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; readonly onAnswer: Answer }) {
-  const { serverId, name } = interaction
-  const tool = useToolClaims(serverId, name)
+  const { connectionId, name } = interaction
+  const tool = useToolClaims(connectionId, name)
   const { busy, error, replying } = useReplying()
   const grant = useMutation(toolGrantMutation).mutateAsync
   const reply = (allowed: boolean) =>
     void replying(async () => {
-      if (allowed) await grant({ serverId, name, allowed })
+      if (allowed) await grant({ connectionId, name, allowed })
       await onAnswer(
-        allowed ? `Allowed ${serverId} · ${name}. Continue.` : 'Not allowed.',
+        allowed ? `Allowed ${connectionId} · ${name}. Continue.` : 'Not allowed.',
         interactionOperation(interaction),
       )
     })
@@ -146,13 +146,13 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
         <p>
           Your agent wants to use{' '}
           <strong className="font-medium">
-            {serverId} · {name}
+            {connectionId} · {name}
           </strong>
         </p>
       </AskCardHeader>
       {tool?.description && (
         <AskCardDescription>
-          {serverId} describes it as: {tool.description}
+          {connectionId} describes it as: {tool.description}
         </AskCardDescription>
       )}
       {(tool?.readOnlyHint === true || tool?.destructiveHint === true) && (

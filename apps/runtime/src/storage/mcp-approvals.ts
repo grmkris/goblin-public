@@ -7,7 +7,7 @@ export const appMcpApprovals = sqliteTable('app_mcp_approvals', {
   sessionId: text('session_id'),
   sourceCallId: text('source_call_id'),
   taskId: text('task_id'),
-  serverId: text('server_id').notNull(),
+  connectionId: text('connection_id').notNull(),
   name: text('name').notNull(),
   endpoint: text('endpoint').notNull(),
   grantVersion: text('grant_version').notNull(),

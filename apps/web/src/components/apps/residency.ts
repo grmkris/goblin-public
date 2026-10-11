@@ -29,7 +29,7 @@ async function launch(queryClient: QueryClient, app: AppView): Promise<AppSelect
   if (loaded.kind === 'agent') return { kind: 'agent', id: app.id, launch: loaded }
   return {
     kind: 'mcp',
-    serverId: loaded.serverId,
+    connectionId: loaded.connectionId,
     uri: loaded.uri,
     arguments: loaded.arguments,
     result: resultOf(loaded.result),

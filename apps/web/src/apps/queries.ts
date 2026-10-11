@@ -54,14 +54,14 @@ export const appDiagnosticMutation = owner.apiMutation({
 
 /** An MCP App's tool call to its own server: `x-mcp-caller: app` narrows it to what the App may use. */
 export const appToolCallMutation = owner.apiMutation({
-  mutationFn: (api, { serverId, call }: { readonly serverId: string; readonly call: ToolCall }) =>
-    api.mcp.callTool({ params: { id: serverId }, headers: { 'x-mcp-caller': 'app' }, payload: call }),
+  mutationFn: (api, { connectionId, call }: { readonly connectionId: string; readonly call: ToolCall }) =>
+    api.mcp.callTool({ params: { id: connectionId }, headers: { 'x-mcp-caller': 'app' }, payload: call }),
 })
 
 /** An MCP App's resource read from its own server, as the App. */
 export const appResourceReadMutation = owner.apiMutation({
-  mutationFn: (api, { serverId, read }: { readonly serverId: string; readonly read: ResourceRead }) =>
-    api.mcp.readResource({ params: { id: serverId }, headers: { 'x-mcp-caller': 'app' }, payload: read }),
+  mutationFn: (api, { connectionId, read }: { readonly connectionId: string; readonly read: ResourceRead }) =>
+    api.mcp.readResource({ params: { id: connectionId }, headers: { 'x-mcp-caller': 'app' }, payload: read }),
 })
 
 /**

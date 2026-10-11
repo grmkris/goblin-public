@@ -58,7 +58,7 @@ function sharedBlock(
   const shared = record(value)
   const origin = record(shared?.origin)
   // An MCP App names its server; an agent app is its own name.
-  const from = isString(origin?.serverId) ? origin.serverId : isString(origin?.app) ? origin.app : undefined
+  const from = isString(origin?.connectionId) ? origin.connectionId : isString(origin?.app) ? origin.app : undefined
   return from !== undefined && origin?.trust === 'untrusted' && isString(shared?.appContext)
     ? { app: { from, text: shared.appContext } }
     : undefined

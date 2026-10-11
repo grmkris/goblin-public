@@ -30,7 +30,7 @@ const world = (offered: readonly string[], refused?: UpstreamMcp['reason']) => {
           Effect.sync(() => void seen.grants.push(`${name}:${String(allowed)}`)),
         subscribe: (input) =>
           refused !== undefined
-            ? Effect.fail(new UpstreamMcp({ serverId: input.serverId, reason: refused, code: -32003 }))
+            ? Effect.fail(new UpstreamMcp({ connectionId: input.connectionId, reason: refused, code: -32003 }))
             : offered.includes(input.name)
               ? Effect.sync(() => {
                   seen.subscribed.push(input.name)
@@ -42,7 +42,8 @@ const world = (offered: readonly string[], refused?: UpstreamMcp['reason']) => {
     Layer.succeed(
       Skills,
       fake<Skills['Service']>({
-        setEnabled: (serverId, enabled) => Effect.sync(() => void seen.enabled.push(`${serverId}:${String(enabled)}`)),
+        setEnabled: (connectionId, enabled) =>
+          Effect.sync(() => void seen.enabled.push(`${connectionId}:${String(enabled)}`)),
       }),
     ),
   )
@@ -56,14 +57,14 @@ const world = (offered: readonly string[], refused?: UpstreamMcp['reason']) => {
 describe("turning a server's skills on (ADR 0008)", () => {
   it('subscribes to the skills events a server offers', async () => {
     const { seen, run } = world(['skills.updated', 'skills.list_changed'])
-    expect(await run(setSkillEvents('lib', true))).toEqual({ serverId: 'lib', enabled: true })
+    expect(await run(setSkillEvents('lib', true))).toEqual({ connectionId: 'lib', enabled: true })
     expect(seen.subscribed).toEqual(['skills.updated', 'skills.list_changed'])
     expect(seen.enabled).toEqual(['lib:true'])
   })
 
   it('still turns them on for a server whose Events are its own, and takes back the grants it could not use', async () => {
     const { seen, run } = world(['sidequest.jobs'])
-    expect(await run(setSkillEvents('sidequest', true))).toEqual({ serverId: 'sidequest', enabled: true })
+    expect(await run(setSkillEvents('sidequest', true))).toEqual({ connectionId: 'sidequest', enabled: true })
     expect(seen.subscribed).toEqual([])
     expect(seen.grants).toEqual([
       'skills.updated:true',
@@ -76,7 +77,7 @@ describe("turning a server's skills on (ADR 0008)", () => {
 
   it('still turns them on when the server refuses its Events to this connection', async () => {
     const { seen, run } = world([], 'remote-rpc')
-    expect(await run(setSkillEvents('sidequest', true))).toEqual({ serverId: 'sidequest', enabled: true })
+    expect(await run(setSkillEvents('sidequest', true))).toEqual({ connectionId: 'sidequest', enabled: true })
     expect(seen.grants).toEqual([
       'skills.updated:true',
       'skills.updated:false',

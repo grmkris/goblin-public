@@ -95,14 +95,14 @@ const heldCalls =
   (call, approvalId, dispatch, authorize) =>
     Effect.gen(function* () {
       if (call.caller === 'human') return
-      const grant = { serverId: call.serverId, capability: 'tool' as const, name: call.name }
+      const grant = { connectionId: call.connectionId, capability: 'tool' as const, name: call.name }
       const policy = grants.policy(grant)
       if (approvalId === undefined) {
         if (policy?.askFirst === true)
           return yield* new Forbidden({ reason: 'Owner approval required for this exact call' })
         return
       }
-      if (policy === undefined) return yield* new GrantDenied({ serverId: call.serverId, name: call.name })
+      if (policy === undefined) return yield* new GrantDenied({ connectionId: call.connectionId, name: call.name })
       const hash = yield* attempt(() => argumentsHash(call.arguments))
       if (authorize !== undefined) yield* authorize
       const now = yield* Clock.currentTimeMillis
@@ -140,7 +140,7 @@ export const McpHostLive: Layer.Layer<
       credentials: new CredentialStore(db, cipher),
       grants,
       registries: new RegistryStore(db),
-      skillsEnabled: (serverId) => skillState.enabled(serverId),
+      skillsEnabled: (connectionId) => skillState.enabled(connectionId),
       authorizeTool: heldCalls(approvals, grants),
       appUrl: env.APP_URL,
       fetch: input.mcpFetch,
@@ -161,9 +161,10 @@ const consumerPorts = (
   channel: Channel.use((channel) => channel.status).pipe(Effect.provideContext(context)),
   pull: Effect.asVoid(attempt(schedulePull)),
   skills: {
-    enabled: (serverId) => Skills.use((skills) => skills.enabled(serverId)).pipe(Effect.provideContext(context)),
-    invalidate: (serverId, unavailable) =>
-      Skills.use((skills) => skills.invalidate(serverId, unavailable)).pipe(Effect.provideContext(context)),
+    enabled: (connectionId) =>
+      Skills.use((skills) => skills.enabled(connectionId)).pipe(Effect.provideContext(context)),
+    invalidate: (connectionId, unavailable) =>
+      Skills.use((skills) => skills.invalidate(connectionId, unavailable)).pipe(Effect.provideContext(context)),
   },
 })
 
@@ -194,12 +195,12 @@ export const McpEventsLive: Layer.Layer<
       callback: eventsHookUrl(env.APP_URL, userId, token),
       wake: (at) => attempt(() => input.scheduleEvents(at)),
       authority,
-      authorize: (serverId, name, argumentsJson) =>
+      authorize: (connectionId, name, argumentsJson) =>
         Effect.gen(function* () {
           yield* authority
-          if ((yield* servers.status(serverId)) !== 'connected')
+          if ((yield* servers.status(connectionId)) !== 'connected')
             return yield* new Forbidden({ reason: 'event connection requires authorization' })
-          if (!store.allows(serverId, name, argumentsJson)) return yield* new GrantDenied({ serverId, name })
+          if (!store.allows(connectionId, name, argumentsJson)) return yield* new GrantDenied({ connectionId, name })
         }),
     })
     yield* installEventConsumers(events, consumerPorts(input, context))

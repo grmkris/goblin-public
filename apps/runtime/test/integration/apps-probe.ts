@@ -282,8 +282,8 @@ async function appsPowersProbe(storage: DurableObjectStorage, env: RuntimeEnv, o
   const apps = agentApps(storage, env, () => owner, {
     schedules: memorySchedules(),
     ...probePorts({
-      tool: async ({ serverId, name, args }) => {
-        seen.push(['tool', serverId, name, args])
+      tool: async ({ connectionId, name, args }) => {
+        seen.push(['tool', connectionId, name, args])
         return { content: [{ type: 'text', text: 'one note' }] }
       },
       complete: async (_system, prompt, maxTokens) => {

@@ -9,7 +9,7 @@ import '../../src/styles.css'
 /** The App the page shows, one value for the page's life as the stage keeps it: a new one would reload the frame. */
 const SELECTION: AppSelection = {
   kind: 'mcp',
-  serverId: 'myplan',
+  connectionId: 'myplan',
   uri: 'ui://myplan/question.html',
   arguments: {},
   result: { content: [] },
@@ -25,7 +25,7 @@ function MessageHost() {
         <MessageOffer
           app="42"
           conversation="7"
-          serverId="myplan"
+          connectionId="myplan"
           resourceUri="ui://myplan/question.html"
           receipt={receipt}
           onDone={() => setReceipt(undefined)}

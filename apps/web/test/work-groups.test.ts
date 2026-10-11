@@ -19,7 +19,7 @@ const call = (id: string, state: ToolState = 'done', server?: string, extra: Par
   kind: 'tool',
   id: `tool:${id}`,
   call: { id, name: server === undefined ? 'web_fetch' : 'mcp_call', arguments: {} },
-  ...(server !== undefined && { target: { serverId: server, name: `t_${id}`, arguments: {} } }),
+  ...(server !== undefined && { target: { connectionId: server, name: `t_${id}`, arguments: {} } }),
   state,
   ...extra,
 })

@@ -96,7 +96,13 @@ function Servers({ onAdd, onMessage }: { readonly onAdd: () => void; readonly on
     >
       {servers.length === 0 && <NoServers onAdd={onAdd} />}
       {servers.map((server) => (
-        <ServerCard key={server.serverId} server={server} onReload={reload} onMessage={onMessage} channel={channel} />
+        <ServerCard
+          key={server.connectionId}
+          server={server}
+          onReload={reload}
+          onMessage={onMessage}
+          channel={channel}
+        />
       ))}
     </PageSection>
   )

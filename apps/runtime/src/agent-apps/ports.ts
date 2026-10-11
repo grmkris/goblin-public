@@ -19,7 +19,7 @@ export type AppServices = {
   readonly authorizeCall: (session: string | undefined, app: string) => Promise<void>
   /** One of the owner's MCP tools, called as the agent: the owner's exact grant is checked by the host, live. */
   readonly tool: (request: {
-    readonly serverId: string
+    readonly connectionId: string
     readonly name: string
     readonly args: Record<string, unknown>
     readonly session?: string | undefined
@@ -63,12 +63,12 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
             return yield* new Forbidden({ reason: 'app execution excluded here' })
         }),
       ),
-    tool: ({ serverId, name, args, session }) => {
+    tool: ({ connectionId, name, args, session }) => {
       const authorize = Effect.gen(function* () {
         yield* requireResident
         if (session === undefined) return
         const scope = yield* Setups.use((setups) => setups.scope(session))
-        if (!scope.tool(serverId, name)) return yield* new Forbidden({ reason: 'app MCP tool excluded here' })
+        if (!scope.tool(connectionId, name)) return yield* new Forbidden({ reason: 'app MCP tool excluded here' })
       })
       return settled(
         Effect.gen(function* () {
@@ -76,7 +76,7 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
           // The host checks again right before the call leaves, after the plan as `run` checks it.
           const recheck = yield* bound(Effect.andThen(requirePlan(), authorize))
           return yield* McpConnections.use((connections) =>
-            connections.callTool(serverId, name, args, { caller: 'model', timeout: 15_000, authorize: recheck }),
+            connections.callTool(connectionId, name, args, { caller: 'model', timeout: 15_000, authorize: recheck }),
           )
         }),
       )
@@ -87,13 +87,13 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
       settled(
         Effect.gen(function* () {
           yield* requireResident
-          const serverId = (yield* Channel.use((channel) => channel.status))?.serverId
-          if (serverId === undefined)
+          const connectionId = (yield* Channel.use((channel) => channel.status))?.connectionId
+          if (connectionId === undefined)
             return yield* Effect.fail(new AppCodeError('notify: the owner has no Telegram channel connected'))
           const recheck = yield* bound(Effect.andThen(requirePlan(), requireResident))
           const result = yield* McpConnections.use((connections) =>
             connections.callTool(
-              serverId,
+              connectionId,
               'send_message',
               { operationId: op, text: escaped(text) },
               { caller: 'model', timeout: 5000, authorize: recheck },
