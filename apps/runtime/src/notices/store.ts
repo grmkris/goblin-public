@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
+import type { NotificationView } from '@goblin/contracts'
 import { appNotices, appNoticeWindows } from '../storage/notices.ts'
 
 /** A notice as the store keeps it. */
@@ -28,6 +29,20 @@ export type TelegramOutcome = {
 /** How many notices a routine posts in an hour; the rest wait for one digest line (ADR 0041). */
 export const NOTICE_CAP = 20
 export const NOTICE_WINDOW = 3_600_000
+/** How long Activity keeps a notification (ms). */
+export const KEPT_NOTICES = 30 * 86_400_000
+
+/** A notice as Activity lists it, a notification: times in seconds. */
+export const notificationOf = (row: NoticeRow): NotificationView => ({
+  id: row.id,
+  source: row.source,
+  chat: row.chatId,
+  label: row.label,
+  title: row.title,
+  ...(row.url === null ? {} : { url: row.url }),
+  at: Math.floor(row.at / 1000),
+  readAt: row.readAt === null ? null : Math.floor(row.readAt / 1000),
+})
 
 /** A window that ended with notices past its cap: the digest it owes. */
 export type DigestDue = { readonly routineId: string; readonly startedAt: number; readonly folded: number }

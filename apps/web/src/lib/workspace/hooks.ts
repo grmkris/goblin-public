@@ -9,6 +9,7 @@ import type {
   ConversationActivity,
   ConversationView,
   DecisionProposal,
+  NotificationView,
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
@@ -87,6 +88,10 @@ export function useProposals<T>(select?: (proposals: readonly DecisionProposal[]
   const pick: (proposals: readonly DecisionProposal[]) => T | readonly DecisionProposal[] = select ?? whole
   return useSlice(workspaceQueries.proposals, EMPTY_WORKSPACE.proposals, pick)
 }
+
+/** The newest notifications (ADR 0041), newest first: Tell me's notices, digests and answers. */
+export const useNotifications = (): readonly NotificationView[] =>
+  useSlice(workspaceQueries.notifications, EMPTY_WORKSPACE.notifications, whole)
 
 /** What is wrong with the feed, or with the owner's last change to it, in words; empty when nothing is. */
 export function useFeedStatus(): string {

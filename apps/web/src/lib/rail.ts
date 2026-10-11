@@ -1,4 +1,4 @@
-import type { AppView, Attention, ConversationView, PersonaInvocationView } from '@goblin/contracts'
+import type { AppView, Attention, ConversationView, NotificationView, PersonaInvocationView } from '@goblin/contracts'
 import { jobTrouble } from './app-jobs.ts'
 import { isClosed, isUnread } from './threads.ts'
 import { isChannel } from './topics.ts'
@@ -42,6 +42,20 @@ export function needsYou(views: readonly ConversationView[], apps: readonly AppV
   return [...asks, ...troubled]
 }
 
+/**
+ * The notifications the owner has not read (ADR 0041), newest first: neither read in Activity nor older than their
+ * chat's read mark, so opening the chat reads them too.
+ */
+export function unreadNotifications(
+  notifications: readonly NotificationView[],
+  views: readonly ConversationView[],
+): readonly NotificationView[] {
+  const readAt = new Map(views.map((view) => [view.id, view.readAt ?? 0]))
+  return notifications.filter(
+    (notification) => notification.readAt === null && notification.at > (readAt.get(notification.chat) ?? 0),
+  )
+}
+
 /** The chats with replies the owner has not read, newest first: channels and threads alike. */
 export const unreadChats = (views: readonly ConversationView[]): readonly ConversationView[] =>
   views.filter((view) => !isClosed(view) && view.kind !== 'subagent' && isUnread(view)).toSorted(newest)
@@ -70,17 +84,28 @@ export const personaTasks = (invocations: readonly PersonaInvocationView[]): rea
   ...invocations.filter((each) => !answering(each)).toSorted((a, b) => b.createdAt - a.createdAt),
 ]
 
-/** The rail's counts: unread threads, what needs the owner, and the work going on (Delegates and Personas). */
-export function railCounts(
-  views: readonly ConversationView[],
-  apps: readonly AppView[],
-  activity: Activity,
-  invocations: readonly PersonaInvocationView[],
-): { readonly threads: number; readonly activity: number; readonly tasks: number } {
+/** What the rail counts from: the workspace feed's slices. */
+export type RailSlices = {
+  readonly views: readonly ConversationView[]
+  readonly apps: readonly AppView[]
+  readonly activity: Activity
+  readonly invocations: readonly PersonaInvocationView[]
+  readonly notifications: readonly NotificationView[]
+}
+
+/**
+ * The rail's counts: unread threads; what needs the owner and the notifications they have not read; and the work going
+ * on (Delegates and Personas).
+ */
+export function railCounts({ views, apps, activity, invocations, notifications }: RailSlices): {
+  readonly threads: number
+  readonly activity: number
+  readonly tasks: number
+} {
   const working = views.filter((view) => view.kind === 'subagent' && activityOf(activity, view.id) !== undefined).length
   return {
     threads: threadList(views).unread.length,
-    activity: needsYou(views, apps).length,
+    activity: needsYou(views, apps).length + unreadNotifications(notifications, views).length,
     tasks: working + invocations.filter(answering).length,
   }
 }

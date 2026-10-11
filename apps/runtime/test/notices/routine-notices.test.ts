@@ -7,6 +7,7 @@ import { type NoticePost, Conversations } from '../../src/chats/service.ts'
 import { noticesOf, routinesOf } from '../../src/layers/routines.ts'
 import { McpServers } from '../../src/mcp/service.ts'
 import { Notices } from '../../src/notices/service.ts'
+import { Changes, makeChanges } from '../../src/runtime/changes.ts'
 import { NoticeStore } from '../../src/notices/store.ts'
 import { notifyReport, postEventNotice, postReminder } from '../../src/routines/notices.ts'
 import { Routines } from '../../src/routines/service.ts'
@@ -40,6 +41,7 @@ const world = (telegram?: string) => {
   const posted: NoticePost[] = []
   const layer = Layer.mergeAll(
     Layer.succeed(Notices, noticesOf(notices)),
+    Layer.succeed(Changes, makeChanges()),
     Layer.succeed(Routines, routinesOf(routines)),
     stub(Conversations, {
       routineHome: (topic) => Effect.succeed({ chat: '5', topic }),
@@ -56,7 +58,7 @@ const world = (telegram?: string) => {
     notices,
     posted,
     stored,
-    run: <A, E>(program: Effect.Effect<A, E, Notices | Routines | Conversations | McpServers | Channel>) =>
+    run: <A, E>(program: Effect.Effect<A, E, Notices | Routines | Conversations | McpServers | Channel | Changes>) =>
       Effect.runPromise(Effect.provide(program, layer)),
   }
 }

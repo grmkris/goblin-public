@@ -14,7 +14,13 @@ import {
 } from 'lucide-react'
 import { railCounts } from '../../lib/rail.ts'
 import { signOutMutation } from '../../auth/queries.ts'
-import { useActivities, useApps, useConversations, useInvocations } from '../../lib/workspace/hooks.ts'
+import {
+  useActivities,
+  useApps,
+  useConversations,
+  useInvocations,
+  useNotifications,
+} from '../../lib/workspace/hooks.ts'
 
 /** Whether a path is one of the channel's places: a channel and its threads, an App's page, a Persona's profile. */
 export const atHome = (path: string): boolean =>
@@ -47,7 +53,13 @@ const current = (active: boolean) => (active ? ('page' as const) : undefined)
 export function Rail() {
   const path = useRouterState({ select: (router) => router.location.pathname })
   const at = (prefix: string) => path === prefix || path.startsWith(`${prefix}/`)
-  const counts = railCounts(useConversations(), useApps(), useActivities(), useInvocations())
+  const counts = railCounts({
+    views: useConversations(),
+    apps: useApps(),
+    activity: useActivities(),
+    invocations: useInvocations(),
+    notifications: useNotifications(),
+  })
   const signingOut = useMutation(signOutMutation)
   return (
     <nav className="shell-rail" aria-label="Places">

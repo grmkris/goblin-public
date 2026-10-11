@@ -1,3 +1,4 @@
+import * as Clock from 'effect/Clock'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -13,7 +14,7 @@ import { RoutineControl, RoutineRuns, RoutineUsage, Routines } from '../routines
 import { RoutineStore } from '../routines/store.ts'
 import { RoutineUsage as UsageProjection, installRoutineUsage } from '../routines/usage.ts'
 import { Notices } from '../notices/service.ts'
-import { NoticeStore } from '../notices/store.ts'
+import { KEPT_NOTICES, NoticeStore, notificationOf } from '../notices/store.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
@@ -72,6 +73,15 @@ export const noticesOf = (store: NoticeStore) =>
     telegramDue: sync('Notices.telegramDue', store.telegramDue.bind(store)),
     claimTelegram: sync('Notices.claimTelegram', store.claimTelegram.bind(store)),
     telegramDone: sync('Notices.telegramDone', store.telegramDone.bind(store)),
+    views: Effect.flatMap(Clock.currentTimeMillis, (now) =>
+      Effect.sync(() => store.recent(now - KEPT_NOTICES, 100).map(notificationOf)),
+    ),
+    view: (id) =>
+      Effect.sync(() => {
+        const row = store.get(id)
+        return row === undefined ? undefined : notificationOf(row)
+      }),
+    read: trySync('Notices.read', store.read.bind(store)),
   })
 
 /** Routine runs over `store`, wrapped once here. */

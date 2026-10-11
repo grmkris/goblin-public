@@ -509,8 +509,9 @@ Sign out) and the sidebar of channels, both always shown on a desktop; on a
 phone they share a drawer from the left edge (`DrawerSide` in `@goblin/ui`, `tone="shell"`) that the page's top bar
 opens and a swipe left closes. The rail's pages (`components/shell/pages`, over the pure `lib/rail.ts`): Threads lists every thread, unread first, the
 closed folded; Activity collects what needs the owner across Topics (each chat's `attention` from a server that
-reports it, and agent apps whose schedules need the owner), the unread chats, and organizing receipts with Undo
-(`POST /api/organize/:id/undo`, offered while the receipt is undoable); Tasks lists the Delegates (subagents) at work
+reports it, and agent apps whose schedules need the owner), Tell me's notifications (unread first, with Mark all
+read), the unread chats, and organizing receipts with Undo (`POST /api/organize/:id/undo`, offered while the receipt is
+undoable), and its count is what needs the owner plus the unread notifications; Tasks lists the Delegates (subagents) at work
 and finished, the Personas answering and answered, and the routines on a schedule. On a server with Personas the
 sidebar lists them after the Topics; a click opens the profile (`/p/<id>`), never a chat: its definition (a glyph on
 a hue, name, role, instructions, a model from the offered ones, and what it may use, which only narrows the owner's
@@ -1548,6 +1549,12 @@ events never go back to Telegram. Runs no longer carry a notification of their o
 occurrence more than five minutes older than the routine's confirmation, or a day old, is acknowledged and dropped,
 so a producer that replays its backlog on a fresh subscription neither notifies nor runs. `app.notice`, `app.routine`
 and `app.persona` entries count as replies, so a routine's posts leave its chat unread.
+
+Activity lists the notifications from the workspace feed: its snapshot carries the newest hundred written in the last
+thirty days (`Notices.views`), and every write or read publishes `notices.changed`, which the feed sends on as a
+`notification` change. A notification is unread while the owner has neither read it in Activity
+(`POST /api/notices/read`, `notices/api.ts`, at most two hundred ids) nor read its chat past it: opening the Topic reads
+its notices too. The rail's Activity count adds the unread notifications to what needs the owner.
 
 ## Deferred Home dashboard
 

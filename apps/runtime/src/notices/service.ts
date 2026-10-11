@@ -1,7 +1,15 @@
+import type { NotificationView } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import type { Claim, DigestDue, NewNotice, NoticeRow, TelegramOutcome } from './store.ts'
+
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** Notifications written or read (ADR 0041), by id. */
+    readonly 'notices.changed': { readonly ids: readonly string[] }
+  }
+}
 
 /**
  * The routines' notices and notifications (ADR 0041) over the agent's SQLite (`NoticeStore`, wrapped once by the
@@ -31,5 +39,10 @@ export class Notices extends Context.Service<
       at: number,
     ) => Effect.Effect<boolean>
     readonly telegramDone: (id: string, outcome: TelegramOutcome) => Effect.Effect<void>
+    /** The newest written notifications of the last thirty days, for Activity. */
+    readonly views: Effect.Effect<readonly NotificationView[]>
+    readonly view: (id: string) => Effect.Effect<NotificationView | undefined>
+    /** The owner read these at `at` (ms). */
+    readonly read: (ids: readonly string[], at: number) => Effect.Effect<void, AppError>
   }
 >()('goblin/notices/Notices') {}

@@ -6,7 +6,13 @@ import {
   type QueryObserverOptions,
 } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { type AppView, type ConversationView, EVERYTHING, type WorkspaceSnapshot } from '@goblin/contracts'
+import {
+  type AppView,
+  type ConversationView,
+  EVERYTHING,
+  type NotificationView,
+  type WorkspaceSnapshot,
+} from '@goblin/contracts'
 import { usageQuery } from '../src/agent/queries.ts'
 import { agentAppQuery, agentAppsQuery } from '../src/agent-apps/queries.ts'
 import { conversationKeys } from '../src/conversations/queries.ts'
@@ -22,6 +28,7 @@ import {
 } from '../src/lib/workspace/mutations.ts'
 import { EMPTY_WORKSPACE, activityOf, applyChanges, fromSnapshot } from '../src/lib/workspace/slices.ts'
 import { workspaceQueries, workspaceSync } from '../src/lib/workspace/sync.ts'
+import { readNotificationsMutation } from '../src/notices/queries.ts'
 import { personaKeys } from '../src/personas/queries.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
@@ -104,6 +111,16 @@ const receipt = (id: string, at: number) => ({
   actor: 'agent' as const,
   at,
   undoable: true,
+})
+const notice = (id: string, at: number, readAt: number | null = null): NotificationView => ({
+  id,
+  source: 'event',
+  chat: '1',
+  label: 'Sidequest · Worker',
+  title: `Picked for job ${id}`,
+  url: `https://sidequest.example/jobs/${id}`,
+  at,
+  readAt,
 })
 const working = (id: string, since = 1) => ({ id, state: 'working' as const, since })
 const snapshot = (extra: Partial<WorkspaceSnapshot> = {}): WorkspaceSnapshot => ({
@@ -193,6 +210,22 @@ describe('the workspace slices', () => {
     expect(decoded.topics).toEqual([TOPIC])
     expect(fromSnapshot(decoded).topics).toEqual([TOPIC])
     expect(decodeSnapshot({ conversations: [], activity: [], apps: [] })).not.toHaveProperty('topics')
+  })
+
+  it('keep the newest notifications first, and replace one the owner read', () => {
+    const start = fromSnapshot(snapshot({ notifications: [notice('a', 5), notice('c', 9)] }))
+    const next = applyChanges(start, [
+      { type: 'notification', notification: notice('b', 7) },
+      { type: 'notification', notification: notice('c', 9, 12) },
+    ])
+    expect(next.notifications.map(({ id, readAt }) => [id, readAt])).toEqual([
+      ['c', 12],
+      ['b', null],
+      ['a', null],
+    ])
+    expect(next.conversations).toBe(start.conversations)
+    const decoded = decodeSnapshot({ conversations: [], activity: [], apps: [], notifications: [notice('a', 5), {}] })
+    expect(decoded.notifications).toEqual([notice('a', 5)])
   })
 
   it('drop an App the owner deleted', () => {
@@ -505,6 +538,27 @@ describe('Apps the owner just changed', () => {
   })
 })
 
+describe('notifications read in Activity', () => {
+  it('show read at once, and unread again with the reason when the server refuses', async () => {
+    const client = testQueryClient()
+    workspaceSync(client).snapshot(snapshot({ notifications: [notice('a', 5), notice('b', 6, 7)] }))
+    const shown = () =>
+      client.getQueryData(workspaceQueries.notifications.queryKey)?.map(({ id, readAt }) => [id, readAt])
+    const answer = Promise.withResolvers<null>()
+    const reading = new MutationObserver(client, { ...readNotificationsMutation, mutationFn: () => answer.promise })
+    const done = reading.mutate(['a', 'b'])
+    await vi.waitFor(() => expect(shown()?.[1]?.[1]).toBeTypeOf('number'))
+    expect(shown()?.[0]).toEqual(['b', 7])
+    answer.reject(new Error('offline'))
+    await expect(done).rejects.toThrow('offline')
+    expect(shown()).toEqual([
+      ['b', 7],
+      ['a', null],
+    ])
+    expect(client.getQueryData(workspaceQueries.status.queryKey)).toMatch(/^Could not mark them read/u)
+  })
+})
+
 const present = (snapshotted: ReturnType<typeof fromSnapshot>): Cached => snapshotted
 
 describe('what goes stale with a feed change', () => {
@@ -522,6 +576,7 @@ describe('what goes stale with a feed change', () => {
       invocations: undefined,
       receipts: undefined,
       proposals: undefined,
+      notifications: undefined,
     }
     expect(staleAfter(none, before)).toEqual([])
   })

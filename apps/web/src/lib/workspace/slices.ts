@@ -3,6 +3,7 @@ import type {
   ConversationActivity,
   ConversationView,
   DecisionProposal,
+  NotificationView,
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
@@ -21,7 +22,8 @@ export type Activity = Readonly<Record<string, ConversationActivity>>
  * The workspace as the feed tells it, one slice each, each kept in the Query cache under `['workspace', slice]`: the
  * owner's conversations, oldest first; what each one that is not idle is doing; their kept Apps, oldest first; the
  * Topics and Personas; the Persona answers still on their way (and the newest settled ones); the latest organizing
- * receipts, newest first; and the decision proposals still open or confirmed, oldest first.
+ * receipts, newest first; the decision proposals still open or confirmed, oldest first; and the newest
+ * notifications, newest first.
  */
 export type Slices = {
   readonly conversations: readonly ConversationView[]
@@ -32,6 +34,7 @@ export type Slices = {
   readonly invocations: readonly PersonaInvocationView[]
   readonly receipts: readonly OrganizeReceipt[]
   readonly proposals: readonly DecisionProposal[]
+  readonly notifications: readonly NotificationView[]
 }
 export type Slice = keyof Slices
 
@@ -44,6 +47,7 @@ export const SLICE_NAMES: readonly Slice[] = [
   'invocations',
   'receipts',
   'proposals',
+  'notifications',
 ]
 
 export const EMPTY_WORKSPACE: Slices = {
@@ -55,16 +59,20 @@ export const EMPTY_WORKSPACE: Slices = {
   invocations: [],
   receipts: [],
   proposals: [],
+  notifications: [],
 }
 
 /** How many settled Persona answers and organizing receipts the slices keep: enough for Activity and Tasks. */
 const KEPT = 50
+/** How many notifications the slice keeps: as many as the server's snapshot sends. */
+const KEPT_NOTIFICATIONS = 100
 
 const oldestFirst = (a: ConversationView, b: ConversationView) =>
   a.createdAt - b.createdAt || Number(a.id) - Number(b.id)
 const byId = (a: AppView, b: AppView) => Number(a.id) - Number(b.id)
 const byNumber = (a: { readonly id: number }, b: { readonly id: number }) => a.id - b.id
 const newestReceipt = (a: OrganizeReceipt, b: OrganizeReceipt) => b.at - a.at
+const newestNotification = (a: NotificationView, b: NotificationView) => b.at - a.at || b.id.localeCompare(a.id)
 const byOrder = (a: PersonaInvocationView, b: PersonaInvocationView) => a.order - b.order
 const same = <T extends { readonly id: unknown }>(a: T, b: T) => a.id === b.id
 const sameInvocation = (a: PersonaInvocationView, b: PersonaInvocationView) =>
@@ -159,6 +167,13 @@ const SLICES: { readonly [K in Slice]: SliceOf<Slices[K]> } = {
     read: (snapshot) => (snapshot.proposals ?? []).filter(kept).toSorted(oldestProposal),
     apply: (value, change) => (change.type === 'proposal' ? withProposal(value, change.proposal) : value),
   },
+  notifications: {
+    read: (snapshot) => (snapshot.notifications ?? []).toSorted(newestNotification).slice(0, KEPT_NOTIFICATIONS),
+    apply: (value, change) =>
+      change.type === 'notification'
+        ? upsertBy(value, change.notification, same, newestNotification).slice(0, KEPT_NOTIFICATIONS)
+        : value,
+  },
 }
 
 /** Slice `slice` as the snapshot describes it. */
@@ -178,11 +193,12 @@ export const fromSnapshot = (snapshot: WorkspaceSnapshot): Slices => ({
   invocations: sliceOf('invocations', snapshot),
   receipts: sliceOf('receipts', snapshot),
   proposals: sliceOf('proposals', snapshot),
+  notifications: sliceOf('notifications', snapshot),
 })
 
 /**
- * The workspace after `changes`, in order: a conversation, App, Topic, Persona, invocation, receipt or proposal
- * replaces the one with its id (a new one joins in its slice's order; a dismissed or stale proposal goes), a removed
+ * The workspace after `changes`, in order: a conversation, App, Topic, Persona, invocation, receipt, proposal or
+ * notification replaces the one with its id (a new one joins in its slice's order; a dismissed or stale proposal goes), a removed
  * App goes, and an activity replaces what its conversation was doing (idle drops it). A slice no change touched is the
  * same value.
  */
@@ -195,6 +211,7 @@ export const applyChanges = (slices: Slices, changes: readonly WorkspaceChange[]
   invocations: sliceAfter('invocations', slices.invocations, changes),
   receipts: sliceAfter('receipts', slices.receipts, changes),
   proposals: sliceAfter('proposals', slices.proposals, changes),
+  notifications: sliceAfter('notifications', slices.notifications, changes),
 })
 
 /** `apps` with each App the owner just changed shown as that call will leave it, the latest last. */

@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { type AppView, type ConversationView, PersonaInvocationView } from '@goblin/contracts'
+import { type AppView, type ConversationView, type NotificationView, PersonaInvocationView } from '@goblin/contracts'
 import { Schema } from 'effect'
-import { delegates, needsYou, personaTasks, railCounts, threadList, unreadChats } from '../src/lib/rail.ts'
+import {
+  delegates,
+  needsYou,
+  personaTasks,
+  railCounts,
+  threadList,
+  unreadChats,
+  unreadNotifications,
+} from '../src/lib/rail.ts'
 
 const view = (id: string, extra: Partial<ConversationView> = {}): ConversationView => ({
   id,
@@ -21,6 +29,15 @@ const VIEWS = [
   view('9', { kind: 'subagent', closedAt: 9, closedBy: 'done', attention: [{ kind: 'grant', since: 1 }] }),
   view('10', { kind: 'subagent', lastReplyAt: 95, attention: [{ kind: 'approval', since: 20 }] }),
 ]
+const notification = (id: string, chat: string, at: number, readAt: number | null = null): NotificationView => ({
+  id,
+  source: 'event',
+  chat,
+  label: 'Sidequest · Hirer',
+  title: `Notice ${id}`,
+  at,
+  readAt,
+})
 const app = (id: string, trouble: boolean): AppView => ({
   id,
   conversation: '1',
@@ -95,11 +112,24 @@ describe('the rail pages', () => {
     expect(tasks.map(({ persona }) => persona)).toEqual([2, 3, 4, 1])
   })
 
-  it('counts unread threads, what needs the owner and the work going on, for the rail', () => {
-    const counts = railCounts(VIEWS, [app('2', true)], { '8': { id: '8', state: 'working', since: 1 } }, [
-      invocation(1, 'running', 1),
-      invocation(2, 'answered', 1),
-    ])
-    expect(counts).toEqual({ threads: 1, activity: 3, tasks: 2 })
+  it('reads a notification in Activity or by reading its chat', () => {
+    const notifications = [
+      notification('in-activity', '6', 80, 85),
+      notification('before-the-mark', '1', 10),
+      notification('after-the-mark', '1', 11),
+      notification('unknown-chat', '404', 1),
+    ]
+    expect(unreadNotifications(notifications, VIEWS).map(({ id }) => id)).toEqual(['after-the-mark', 'unknown-chat'])
+  })
+
+  it('counts unread threads, what needs the owner, unread notifications and the work going on, for the rail', () => {
+    const counts = railCounts({
+      views: VIEWS,
+      apps: [app('2', true)],
+      activity: { '8': { id: '8', state: 'working', since: 1 } },
+      invocations: [invocation(1, 'running', 1), invocation(2, 'answered', 1)],
+      notifications: [notification('unread', '1', 95), notification('read', '1', 5)],
+    })
+    expect(counts).toEqual({ threads: 1, activity: 4, tasks: 2 })
   })
 })

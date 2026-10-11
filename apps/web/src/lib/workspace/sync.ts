@@ -138,6 +138,7 @@ class WorkspaceSync {
       invocations: this.#cached('invocations'),
       receipts: this.#cached('receipts'),
       proposals: this.#cached('proposals'),
+      notifications: this.#cached('notifications'),
     }
   }
 
@@ -153,6 +154,7 @@ class WorkspaceSync {
       invocations: cached.invocations ?? EMPTY_WORKSPACE.invocations,
       receipts: cached.receipts ?? EMPTY_WORKSPACE.receipts,
       proposals: cached.proposals ?? EMPTY_WORKSPACE.proposals,
+      notifications: cached.notifications ?? EMPTY_WORKSPACE.notifications,
     }
   }
 
@@ -210,6 +212,7 @@ export const workspaceQueries = {
   invocations: sliceQuery('invocations'),
   receipts: sliceQuery('receipts'),
   proposals: sliceQuery('proposals'),
+  notifications: sliceQuery('notifications'),
   /** Empty until the feed or one of the owner's changes to it goes wrong. */
   status: queryOptions({
     queryKey: workspaceKeys.status,

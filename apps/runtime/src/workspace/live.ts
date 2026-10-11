@@ -16,6 +16,7 @@ import { Home } from '../home/service.ts'
 import { type AppError, attempt, toAppError } from '../http/errors.ts'
 import { reportAndRecover, reportFailure } from '../observability/report.ts'
 import { Receipts } from '../organize/service.ts'
+import { Notices } from '../notices/service.ts'
 import { Invocations, Personas } from '../personas/service.ts'
 import { BACKGROUND } from '../pi/context.ts'
 import { PiSessions } from '../pi/sessions.ts'
@@ -36,6 +37,7 @@ type Sources = {
   readonly invocations: Invocations['Service']
   readonly receipts: Receipts['Service']
   readonly decisions: Decisions['Service']
+  readonly notices: Notices['Service']
 }
 
 const sources = Effect.gen(function* () {
@@ -49,6 +51,7 @@ const sources = Effect.gen(function* () {
     invocations: yield* Invocations,
     receipts: yield* Receipts,
     decisions: yield* Decisions,
+    notices: yield* Notices,
   } satisfies Sources
 })
 
@@ -126,6 +129,18 @@ const followTopics = (
         ),
       ),
     ),
+    changes.on('notices.changed', ({ ids }) =>
+      follow(
+        'workspace.notices',
+        Effect.map(
+          each(ids, (id) => read.notices.view(id)),
+          (found): WorkspaceChange[] =>
+            found.flatMap((notification) =>
+              notification === undefined ? [] : [{ type: 'notification', notification }],
+            ),
+        ),
+      ),
+    ),
     changes.on('decisions.changed', ({ ids }) =>
       follow(
         'workspace.decisions',
@@ -190,7 +205,18 @@ const taskGraph = (
 export const WorkspaceLive: Layer.Layer<
   Workspace,
   never,
-  Changes | PiSessions | Chats | Conversations | Apps | Home | Topics | Personas | Invocations | Receipts | Decisions
+  | Changes
+  | PiSessions
+  | Chats
+  | Conversations
+  | Apps
+  | Home
+  | Topics
+  | Personas
+  | Invocations
+  | Receipts
+  | Decisions
+  | Notices
 > = Layer.effect(
   Workspace,
   Effect.gen(function* () {
@@ -224,6 +250,7 @@ export const WorkspaceLive: Layer.Layer<
         invocations: yield* read.invocations.live,
         receipts: yield* read.receipts.list(),
         proposals: yield* read.decisions.list,
+        notifications: yield* read.notices.views,
       }
     })
     const stream: Stream.Stream<WorkspaceEvent, AppError> = Stream.unwrap(

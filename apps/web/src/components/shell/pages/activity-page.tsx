@@ -1,19 +1,24 @@
 import { useMutation } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import type { Attention, OrganizeReceipt } from '@goblin/contracts'
+import type { Attention, NotificationView, OrganizeReceipt } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import {
+  AlarmClockIcon,
   AppWindowIcon,
+  BellIcon,
   CircleDotIcon,
   KeyRoundIcon,
+  LayersIcon,
   MessageCircleQuestionIcon,
+  MessageSquareTextIcon,
   Settings2Icon,
   WandSparklesIcon,
 } from 'lucide-react'
-import { type NeedsYou, needsYou, unreadChats } from '../../../lib/rail.ts'
+import { type NeedsYou, needsYou, unreadChats, unreadNotifications } from '../../../lib/rail.ts'
 import { threadTitle } from '../../../lib/threads.ts'
-import { useApps, useConversations, useReceipts } from '../../../lib/workspace/hooks.ts'
+import { useApps, useConversations, useNotifications, useReceipts } from '../../../lib/workspace/hooks.ts'
 import { undoWorkspaceReceiptMutation } from '../../../lib/workspace/mutations.ts'
+import { readNotificationsMutation } from '../../../notices/queries.ts'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
 import { undoRefusal } from '../organize.ts'
@@ -57,6 +62,85 @@ function NeedRow({ need, now }: { readonly need: NeedsYou; readonly now: number 
   )
 }
 
+const SOURCES: Readonly<Record<NotificationView['source'], typeof BellIcon>> = {
+  event: BellIcon,
+  reminder: AlarmClockIcon,
+  report: MessageSquareTextIcon,
+  digest: LayersIcon,
+}
+
+/** How many read notifications Activity shows under the unread ones. */
+const READ_SHOWN = 10
+
+/** A notification (ADR 0041), linked to the chat it was posted in: opening the chat reads it. */
+function NotificationRow({
+  notification,
+  unread,
+  now,
+}: {
+  readonly notification: NotificationView
+  readonly unread: boolean
+  readonly now: number
+}) {
+  const Icon = SOURCES[notification.source]
+  return (
+    <li>
+      <ChatRow chat={notification.chat} unread={unread}>
+        <RowContents
+          mark={<Icon aria-hidden />}
+          title={notification.title}
+          meta={`${notification.label} · ${relativeTime(notification.at, now)}`}
+        />
+      </ChatRow>
+    </li>
+  )
+}
+
+/** Tell me's notifications: the unread ones, then the newest read, with Mark all read while any is unread. */
+function Notifications({
+  notifications,
+  unread,
+  now,
+}: {
+  readonly notifications: readonly NotificationView[]
+  readonly unread: readonly NotificationView[]
+  readonly now: number
+}) {
+  const reading = useMutation(readNotificationsMutation)
+  const fresh = new Set(unread)
+  const read = notifications.filter((notification) => !fresh.has(notification)).slice(0, READ_SHOWN)
+  return (
+    <PageSection
+      id="notifications"
+      title="Notifications"
+      {...(unread.length > 0 && { count: unread.length })}
+      action={
+        unread.length > 0 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            pending={reading.isPending}
+            onClick={() => reading.mutate(unread.map(({ id }) => id))}
+          >
+            Mark all read
+          </Button>
+        ) : undefined
+      }
+    >
+      <ul className="list-rows">
+        {[...unread, ...read].map((notification) => (
+          <NotificationRow
+            key={notification.id}
+            notification={notification}
+            unread={fresh.has(notification)}
+            now={now}
+          />
+        ))}
+      </ul>
+    </PageSection>
+  )
+}
+
 /** What organizing did (a Topic made, renamed, archived; a Persona changed), with Undo while nothing else touched it. */
 function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; readonly now: number }) {
   const undo = useMutation(undoWorkspaceReceiptMutation)
@@ -87,15 +171,17 @@ function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; reado
 
 /**
  * `/activity`: what needs the owner across every Topic (questions, approvals, grants, App schedules), linked to where
- * it waits; what organizing did, with Undo; and the chats with unread replies.
+ * it waits; Tell me's notifications; the chats with unread replies; and what organizing did, with Undo.
  */
 export function ActivityPage() {
   const conversations = useConversations()
   const receipts = useReceipts()
+  const notifications = useNotifications()
   const now = useMinute()
   const needs = needsYou(conversations, useApps())
   const unread = unreadChats(conversations)
-  if (needs.length + receipts.length + unread.length === 0) return <p className="page-empty">Nothing needs you.</p>
+  if (needs.length + notifications.length + receipts.length + unread.length === 0)
+    return <p className="page-empty">Nothing needs you.</p>
   return (
     <div className="page-stack">
       {needs.length > 0 && (
@@ -114,6 +200,13 @@ export function ActivityPage() {
             ))}
           </ul>
         </PageSection>
+      )}
+      {notifications.length > 0 && (
+        <Notifications
+          notifications={notifications}
+          unread={unreadNotifications(notifications, conversations)}
+          now={now}
+        />
       )}
       {unread.length > 0 && (
         <PageSection id="unread" title="Unread" count={unread.length}>

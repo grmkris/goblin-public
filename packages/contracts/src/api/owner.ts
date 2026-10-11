@@ -11,6 +11,7 @@ import { API_ERRORS } from './errors.ts'
 import { FilesGroup } from './files.ts'
 import { InspectGroup } from './inspect.ts'
 import { McpGroup } from './mcp.ts'
+import { NoticesGroup } from './notices.ts'
 import { MemoryGroup } from './memory.ts'
 import { OrganizeGroup } from './organize.ts'
 import { PersonasGroup } from './personas.ts'
@@ -51,6 +52,7 @@ export class OwnerApi extends HttpApi.make('goblin-owner')
     WorkspaceGroup,
     FilesGroup,
     DecisionsGroup,
+    NoticesGroup,
   )
   .prefix('/api')
   .middleware(OwnerAdmission) {}

@@ -19,6 +19,7 @@ import { AgentHandlers } from '../../routines/agent-api.ts'
 import { RoutinesHandlers } from '../../routines/api.ts'
 import { SetupHandlers } from '../../setup/api.ts'
 import { TopicsHandlers } from '../../topics/api.ts'
+import { NoticesHandlers } from '../../notices/api.ts'
 import { WorkspaceHandlers } from '../../workspace/api.ts'
 import { InternalGateLive, OwnerAdmissionLive } from './middleware.ts'
 
@@ -41,6 +42,7 @@ const OwnerApiLayer = HttpApiBuilder.layer(OwnerApi).pipe(
     WorkspaceHandlers,
     FilesHandlers,
     DecisionsHandlers,
+    NoticesHandlers,
   ]),
   Layer.provide(OwnerAdmissionLive),
 )

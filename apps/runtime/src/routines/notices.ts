@@ -4,15 +4,13 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Channel } from '../channel/service.ts'
 import { Conversations } from '../chats/service.ts'
+import { Changes } from '../runtime/changes.ts'
 import { McpServers } from '../mcp/service.ts'
 import { Notices } from '../notices/service.ts'
-import { type DigestDue, NOTICE_WINDOW, type NewNotice, type NoticeRow } from '../notices/store.ts'
+import { type DigestDue, KEPT_NOTICES, NOTICE_WINDOW, type NewNotice, type NoticeRow } from '../notices/store.ts'
 import { type NoticeText, noticeForModel, noticeOfEvent } from '../notices/text.ts'
 import { Routines } from './service.ts'
 import { type RoutineRow, definitionOf } from './store.ts'
-
-/** How long Activity keeps a notification (ms). */
-const KEPT = 30 * 86_400_000
 
 /** A notice's data as its entry keeps it, from its row (ADR 0041). */
 const noticeData = (row: NoticeRow, source: NoticeData['source']): NoticeData => ({
@@ -36,7 +34,10 @@ export const writeNotice = Effect.fn('routines.writeNotice')(function* (id: stri
   if (row === undefined || row.writtenAt !== null) return
   const now = yield* Clock.currentTimeMillis
   // An answer's notification points at its report, which is already written.
-  if (row.source === 'report') return yield* notices.written(id, now)
+  if (row.source === 'report') {
+    yield* notices.written(id, now)
+    return yield* (yield* Changes).publish('notices.changed', { ids: [id] })
+  }
   const data = noticeData(row, row.source)
   const said = {
     title: row.title,
@@ -46,6 +47,7 @@ export const writeNotice = Effect.fn('routines.writeNotice')(function* (id: stri
   const text = noticeForModel(row.label, said, row.source === 'reminder')
   yield* (yield* Conversations).postNotice({ chat: row.chatId, requestId: row.entryRequestId, data, text, at: row.at })
   yield* notices.written(id, yield* Clock.currentTimeMillis)
+  yield* (yield* Changes).publish('notices.changed', { ids: [id] })
 })
 
 /** Claims `notice` (counted into its routine's hour when `capped`), then writes it and the digest an hour ended with. */
@@ -149,7 +151,9 @@ export const notifyReport = Effect.fn('routines.notifyReport')(function* (
   }
   const notices = yield* Notices
   const claim = yield* notices.claim(notice, false)
-  if (claim.posted) yield* notices.written(id, notice.createdAt)
+  if (!claim.posted) return
+  yield* notices.written(id, notice.createdAt)
+  yield* (yield* Changes).publish('notices.changed', { ids: [id] })
 })
 
 /** Routine `id` with its definition; none for a routine the agent no longer has. */
@@ -192,5 +196,5 @@ export const sweepNotices = Effect.gen(function* () {
   const now = yield* Clock.currentTimeMillis
   for (const due of yield* notices.digestsDue(now)) yield* postDigest(due)
   for (const row of yield* notices.unwritten()) yield* writeNotice(row.id)
-  yield* notices.prune(now - KEPT)
+  yield* notices.prune(now - KEPT_NOTICES)
 })

@@ -12,6 +12,7 @@ import { Chats, Conversations } from '../src/chats/service.ts'
 import { type AppError, BudgetExhausted, Internal } from '../src/http/errors.ts'
 import { noticesOf, routineRunsOf, routinesOf } from '../src/layers/routines.ts'
 import { Notices } from '../src/notices/service.ts'
+import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { NoticeStore } from '../src/notices/store.ts'
 import { Cipher } from '../src/mcp/cipher.ts'
 import { Resident } from '../src/mcp/service.ts'
@@ -98,6 +99,7 @@ const fixture = (
     stub(Conversations, { reportRoutine: () => Effect.void }),
     stub(RoutineUsage, { snapshot: () => Effect.void }),
     Layer.succeed(Notices, noticesOf(new NoticeStore(sqlite))),
+    Layer.succeed(Changes, makeChanges()),
     stub(AgentInput, { routineSchedules: schedules, startRoutine: async () => 'session-1' }),
   )
   const run = <A>(program: Effect.Effect<A, AppError, Layer.Success<typeof layer>>) =>
