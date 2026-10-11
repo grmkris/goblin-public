@@ -31,7 +31,7 @@ import { setWorkspaceTopicSetupMutation } from '../lib/workspace/mutations.ts'
 import { ApprovalCard } from './approval-card.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
-type Answer = (input: string, operationId: string) => Promise<boolean>
+export type Answer = (input: string, operationId: string) => Promise<boolean>
 type Question = Extract<Interaction, { kind: 'question' }>
 type Grant = Extract<Interaction, { kind: 'grant' }>
 type Setup = Extract<Interaction, { kind: 'setup' }>
@@ -165,8 +165,19 @@ function ServerRequestCard({
   )
 }
 
-/** Permission for one exact tool. Allowing it stays allowed until the owner turns it off under Connections. */
-function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; readonly onAnswer: Answer }) {
+/**
+ * Permission for one exact tool. Allowing it stays allowed until the owner turns it off under Connections. `who` is
+ * the agent that asked: Goblin, or a Persona by name (ADR 0041).
+ */
+export function GrantCard({
+  interaction,
+  onAnswer,
+  who = 'Your agent',
+}: {
+  readonly interaction: Grant
+  readonly onAnswer: Answer
+  readonly who?: string
+}) {
   const { connectionId, name } = interaction
   const tool = useToolClaims(connectionId, name)
   const connection = useConnectionLabels()(connectionId)
@@ -185,7 +196,7 @@ function GrantCard({ interaction, onAnswer }: { readonly interaction: Grant; rea
       <AskCardHeader>
         <KeyRoundIcon aria-hidden />
         <p>
-          Your agent wants to use{' '}
+          {who} wants to use{' '}
           <strong className="font-medium">
             {connection} · {name}
           </strong>

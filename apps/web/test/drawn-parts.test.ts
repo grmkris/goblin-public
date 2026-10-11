@@ -81,6 +81,28 @@ describe('entries the app writes into a chat', () => {
     expect(parts[4]).toMatchObject({ delegate: '21', name: 'Researcher', status: 'done', text: 'Three options.' })
   })
 
+  it("keeps a Persona's hold on its newest answer only: its next answer settles it (ADR 0041)", () => {
+    const held = (id: number, persona: number, hold?: object) => ({
+      id,
+      kind: 'app.persona',
+      data: Schema.decodeUnknownSync(PersonaAnswerData)({
+        ...answer,
+        persona,
+        operationId: `op-${String(id)}`,
+        ...(hold === undefined ? {} : { hold }),
+      }),
+    })
+    const grant = { kind: 'grant', connectionId: 'sq', name: 'quote', fork: '40' }
+    const approval = { kind: 'approval', approvalId: 'mcp:41:c1', connectionId: 'sq', name: 'bid', fork: '41' }
+    const parts = conversationParts(snapshot([held(1, 1, grant), held(2, 2, approval), held(3, 1), held(4, 1, grant)]))
+    expect(parts.map((part) => (part.kind === 'persona-answer' ? [part.persona, part.hold?.kind] : []))).toEqual([
+      [1, undefined],
+      [2, 'approval'],
+      [1, undefined],
+      [1, 'grant'],
+    ])
+  })
+
   it("draws a routine's notice from its connection, never as the owner's turn (ADR 0041)", () => {
     const notice = {
       notice: 'notice:rt_1:evt-1',

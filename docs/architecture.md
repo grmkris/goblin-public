@@ -914,7 +914,10 @@ and its invocation settles `answered`. The owner's reply goes on in the fork: a 
 `POST /api/personas/reply` after the owner allowed the tool; it records a new invocation and creates a
 `goblin.persona-turn` task with `resume: { fork, text }`, which skips the fork and asks it again, then writes the next
 answer. Activity's **Needs you** lists the forks' pending held calls with the chat's own (`storedAsks`) and a
-Persona's tool to allow from its answer until its next one (`openAsks`), each with `persona`.
+Persona's tool to allow from its answer until its next one (`openAsks`), each with `persona`. The web draws the hold
+under the Persona's newest answer only (`settledHolds`, `components/parts/persona-hold.tsx`), from the `app.persona`
+entry and never from a tool result: an Approval card decides the held call, and a Grant card naming the Persona allows
+the tool and replies to its fork.
 
 | Route | Purpose |
 | --- | --- |

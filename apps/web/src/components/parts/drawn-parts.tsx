@@ -9,6 +9,7 @@ import { PersonaAvatar } from '../persona-avatar.tsx'
 import { usePanel } from '../shell/panel.tsx'
 import { ThreadSummary } from '../shell/thread-summary.tsx'
 import { useConversation } from '../../lib/workspace/hooks.ts'
+import { PersonaHoldCard } from './persona-hold.tsx'
 import { Cause, MessageText, OpenThread } from './text-part.tsx'
 
 type Of<K extends Part['kind']> = Extract<Part, { readonly kind: K }>
@@ -81,11 +82,12 @@ function Attributed({
   )
 }
 
-/** A Persona's answer: its mark, its name, its words. */
+/** A Persona's answer: its mark, its name, its words, and what it waits on the owner for (ADR 0041). */
 export function PersonaAnswerPart({ part }: { readonly part: Of<'persona-answer'> }) {
   return (
     <Attributed mark={<PersonaAvatar avatar={part.avatar} />} name={part.name} tag="Persona">
       <MessageText text={part.text} />
+      {part.hold !== undefined && <PersonaHoldCard hold={part.hold} answer={part.id} name={part.name} />}
     </Attributed>
   )
 }

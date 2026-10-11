@@ -1,4 +1,4 @@
-import type { CreatePersona, UpdatePersona } from '@goblin/contracts'
+import type { CreatePersona, PersonaReply, UpdatePersona } from '@goblin/contracts'
 import { mutationOptions } from '@tanstack/react-query'
 import { owner } from '../lib/api.ts'
 import { withOperation } from '../lib/query/api-query.ts'
@@ -32,3 +32,14 @@ export const updatePersonaMutation = (id: number) =>
     onSuccess: (_persona, _change, _result, { client }) =>
       client.invalidateQueries({ queryKey: personaKeys.detail(id) }),
   })
+
+/**
+ * The owner's reply to a Persona's hold (ADR 0041), after they allowed the tool it asked for: its fork goes on and the
+ * Persona answers again in the chat, which the feed shows. The same operation answers once.
+ */
+export const replyPersonaMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, reply: PersonaReply) =>
+      api.personas.reply({ payload: reply }).pipe(withOperation(reply.operationId)),
+  }),
+})

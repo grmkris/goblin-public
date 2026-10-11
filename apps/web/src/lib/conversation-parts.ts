@@ -228,7 +228,26 @@ export function conversationParts(projection: ConversationProjection, echo?: Ech
   const sending = echo !== undefined && landed === undefined
   if (sending) parts.push({ kind: 'user', id: echo.id, key: echo.id, text: echo.text })
   const shown = [...parts, ...liveParts(projection, context, seen)]
-  return uniqueKeys(placeApps([...shown, ...workingParts(projection, shown, sending)]))
+  return uniqueKeys(placeApps([...settledHolds(shown), ...workingParts(projection, shown, sending)]))
+}
+
+/**
+ * The Persona answers with their holds settled (ADR 0041): only a Persona's newest answer can still wait on the owner,
+ * so one it answered again after no longer shows its card.
+ */
+function settledHolds(parts: readonly Part[]): Part[] {
+  const later = new Set<number>()
+  return parts
+    .toReversed()
+    .map((part) => {
+      if (part.kind !== 'persona-answer') return part
+      const settled = later.has(part.persona)
+      later.add(part.persona)
+      if (!settled || part.hold === undefined) return part
+      const { hold: _settled, ...answer } = part
+      return answer
+    })
+    .toReversed()
 }
 
 type DrawnMessage = Exclude<ChatMessage, { readonly role: 'user' | 'assistant' | 'tool' }>
