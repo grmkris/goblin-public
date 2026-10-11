@@ -8,7 +8,8 @@ import { Skills } from './service.ts'
 /**
  * Enabling a trusted skills library grants its exact update selectors and subscribes to them where the server offers
  * them; disable cleans up before local off. A server may offer Events without the skills ones (Sidequest's are its
- * own): its subscribe is refused, the grant goes again, and its listing refreshes on its own `ttlMs` instead.
+ * own), or refuse its Events to this connection (Sidequest's setup-only one): the grant goes again, and its listing
+ * refreshes on its own `ttlMs` instead. A connection that fails otherwise (transport, sign-in) fails the switch.
  */
 export const setSkillEvents = (serverId: string, enabled: boolean) =>
   Effect.gen(function* () {
@@ -23,11 +24,14 @@ export const setSkillEvents = (serverId: string, enabled: boolean) =>
       if (Option.isSome(old)) yield* events.unsubscribe(old.value)
       if (enabled && modern) {
         yield* events.grant(serverId, name, {}, true)
+        const withdraw = events.grant(serverId, name, {}, false)
         yield* events
           .subscribe({ consumerId, revision, serverId, name, arguments: {}, handlerKey: 'skills-refresh' })
           .pipe(
-            // expected: the server does not offer this event; skills still turn on and refresh on their ttl
-            Effect.catchTag('InvalidInput', () => events.grant(serverId, name, {}, false)),
+            // expected: the server does not offer this event, or refuses it to this connection; skills still turn on
+            // and refresh on their ttl
+            Effect.catchTag('InvalidInput', () => withdraw),
+            Effect.catchTag('UpstreamMcp', (error) => (error.reason === 'remote-rpc' ? withdraw : Effect.fail(error))),
           )
       }
     }

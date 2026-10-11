@@ -1154,9 +1154,11 @@ with `send_message`, escaped and chunked, using `app_channel_replies`. Submissio
 Telegram completion. Disabling cleans up Events while authority is available, then tombstones locally; finite remote
 leases expire if authorized cleanup cannot run.
 
-The dispatcher also binds MySkills `skills.updated` and `skills.list_changed`. Their payload is untrusted metadata;
-the handler persists a dirty catalog generation and invalidates the cache before acknowledgement. A listing can
-clear only the generation it observed, and retained activations stay pinned. Gap controls trigger reconciliation;
+The dispatcher also binds MySkills `skills.updated` and `skills.list_changed`. Turning a server's skills on subscribes
+to them only where its Events offer them to this connection; a server without them, or one that refuses its Events
+(Sidequest's setup-only connection), still turns on, and its listing refreshes on its `ttlMs`. Their payload is
+untrusted metadata; the handler persists a dirty catalog generation and invalidates the cache before acknowledgement.
+A listing can clear only the generation it observed, and retained activations stay pinned. Gap controls trigger reconciliation;
 termination stops lease refresh and surfaces health. Mail and workspace changes have no installed consumer yet.
 
 The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
