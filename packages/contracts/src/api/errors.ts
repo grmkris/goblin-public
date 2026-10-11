@@ -52,6 +52,15 @@ export class NeedsAuthorization extends Schema.TaggedError<NeedsAuthorization>()
   connectionId: Schema.String,
   ref,
 }) {}
+/**
+ * A call needs a permission the connection's sign-in was not granted (an MCP server's 403 `insufficient_scope`,
+ * ADR 0042): the owner signs it in again with more access. `scope` is what the server says is needed, as scope tokens.
+ */
+export class ScopeRequired extends Schema.TaggedError<ScopeRequired>()('ScopeRequired', {
+  connectionId: Schema.String,
+  scope: Schema.String,
+  ref,
+}) {}
 export const UpstreamReason = Schema.Literals([
   'unauthorized',
   'remote-rpc',
@@ -81,6 +90,7 @@ export const AppError = Schema.Union([
   BudgetExhausted,
   SubscriptionRequired,
   NeedsAuthorization,
+  ScopeRequired,
   UpstreamMcp,
   Internal,
 ])
@@ -103,6 +113,10 @@ export const ERROR_COPY = {
   BudgetExhausted: { message: "You have used today's model budget.", recovery: 'It resets at 00:00 UTC.' },
   SubscriptionRequired: { message: 'Subscribe to Pro to use your personal agent.' },
   NeedsAuthorization: { message: 'This server needs to be connected again.' },
+  ScopeRequired: {
+    message: 'This connection needs more access.',
+    recovery: 'Sign in to it again with more access.',
+  },
   UpstreamMcp: { message: 'The MCP server did not respond as expected.' },
   Internal: { message: 'Something went wrong on our side.', recovery: 'Try again.' },
 } as const satisfies Record<AppErrorTag, { readonly message: string; readonly recovery?: string }>
@@ -135,6 +149,7 @@ export const statusOf = (error: AppError | typeof AppError.Encoded): number =>
       BudgetExhausted: () => 429,
       SubscriptionRequired: () => 402,
       NeedsAuthorization: () => 409,
+      ScopeRequired: () => 403,
       UpstreamMcp: (upstream) => (upstream.reason === 'timeout' ? 504 : 502),
       Internal: () => 500,
     }),
@@ -155,6 +170,7 @@ const DETAIL_FIELDS = {
   limit: Schema.optionalKey(Schema.Number),
   resetsAt: Schema.optionalKey(Schema.Number),
   rpcCode: Schema.optionalKey(Schema.Number),
+  scope: Schema.optionalKey(Schema.String),
   ref,
 }
 
@@ -241,7 +257,7 @@ export const ApiErrors = {
   invalidInput: envelope(400, [InvalidInput]),
   unauthenticated: envelope(401, [Unauthenticated]),
   subscriptionRequired: envelope(402, [SubscriptionRequired]),
-  forbidden: envelope(403, [Forbidden, GrantDenied]),
+  forbidden: envelope(403, [Forbidden, GrantDenied, ScopeRequired]),
   notFound: envelope(404, [NotFound]),
   conflict: envelope(409, [Conflict, ResidentInactive, NeedsAuthorization]),
   payloadTooLarge: envelope(413, [PayloadTooLarge]),

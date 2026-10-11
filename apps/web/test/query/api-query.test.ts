@@ -170,6 +170,7 @@ describe('the error kinds of goblin codes', () => {
     budget_exhausted: 'plan_limit',
     subscription_required: 'plan_limit',
     needs_authorization: 'forbidden',
+    scope_required: 'forbidden',
     upstream_mcp: 'unavailable',
     internal: 'defect',
   } as const satisfies Record<ApiCode, ErrorKind>

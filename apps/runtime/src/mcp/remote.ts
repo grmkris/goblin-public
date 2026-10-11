@@ -163,6 +163,8 @@ export async function openRemote(
   let events: Record<string, unknown> | undefined
   const transport = new StreamableHTTPClientTransport(new URL(server.endpoint), {
     authProvider: options.auth,
+    // A call beyond the granted scope asks the owner to sign in again (ADR 0042); goblin never re-authorizes mid-call.
+    onInsufficientScope: 'throw',
     // The pinned SDK strips draft top-level capabilities. Decode the authenticated discovery response
     // at its supported fetch seam; never make a second unauthenticated discovery request.
     fetch: async (input, init) => {

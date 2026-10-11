@@ -79,6 +79,7 @@ export const EXPECTED_ERROR_TAGS: ReadonlySet<string> = new Set([
   'BudgetExhausted',
   'SubscriptionRequired',
   'NeedsAuthorization',
+  'ScopeRequired',
   'UpstreamMcp',
 ])
 

@@ -120,6 +120,7 @@ const eventsOf = (connectionId: string) =>
     Effect.catchTags({
       SubscriptionRequired: () => Effect.succeed(undefined),
       NeedsAuthorization: () => Effect.succeed(undefined),
+      ScopeRequired: () => Effect.succeed(undefined),
       UpstreamMcp: () => Effect.succeed(undefined),
     }),
   )

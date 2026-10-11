@@ -32,7 +32,7 @@ const REPLAY_GRACE = 300_000
 
 /**
  * Whether subscribing a confirmed event routine failed for a reason the owner has to act on: the server needs signing
- * in again, the selector is not granted or does not exist, or the server refused (anything but a transport failure).
+ * in again (or with more access), the selector is not granted or does not exist, or the server refused (anything but a transport failure).
  * Anything else is transient: the routine stays activating and the next sweep tries again.
  */
 export const activationRefused = (error: unknown): boolean =>
@@ -40,6 +40,7 @@ export const activationRefused = (error: unknown): boolean =>
   Match.value(error).pipe(
     Match.tags({
       NeedsAuthorization: () => true,
+      ScopeRequired: () => true,
       GrantDenied: () => true,
       NotFound: () => true,
       UpstreamMcp: (upstream) => upstream.reason !== 'transport',

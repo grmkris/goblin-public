@@ -53,6 +53,7 @@ export const ERROR_KINDS: ErrorKindTable<ApiCode> = {
   budget_exhausted: 'plan_limit',
   subscription_required: 'plan_limit',
   needs_authorization: 'forbidden',
+  scope_required: 'forbidden',
   upstream_mcp: 'unavailable',
   internal: 'defect',
 }

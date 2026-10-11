@@ -30,6 +30,7 @@ const FAILURES: Readonly<Record<string, string>> = {
   BudgetExhausted: 'Budget exhausted.',
   SubscriptionRequired: 'Subscription required.',
   NeedsAuthorization: 'Connection authorization required.',
+  ScopeRequired: 'Connection needs more access.',
   UpstreamMcp: 'Remote MCP request failed.',
   Internal: 'Internal failure.',
   provider_error: 'Model provider failed.',
@@ -72,6 +73,7 @@ export const failureSummary = (code: unknown): string => {
 export const expectedFailure = (code: unknown): boolean =>
   [
     'NeedsAuthorization',
+    'ScopeRequired',
     'GrantDenied',
     'ResidentInactive',
     'BudgetExhausted',

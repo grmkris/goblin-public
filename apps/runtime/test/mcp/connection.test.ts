@@ -215,6 +215,36 @@ describe('official MCP SDK host interoperability (unit)', () => {
       await manager.dispose()
     }
   })
+  it('answers a 403 insufficient_scope as ScopeRequired with the scope tokens, and keeps the connection open', async () => {
+    const official = handler()
+    const manager = managerOf({
+      servers: [serverConfig],
+      allows: (grant) => grants.allows(grant),
+      auth: () => ({ token: async () => 'fixture-token' }),
+      fetch: async (input, init) => {
+        const request = new Request(input, init)
+        if (request.method === 'POST' && (await request.clone().text()).includes('"method":"tools/call"'))
+          return new Response(null, {
+            status: 403,
+            headers: {
+              'www-authenticate': 'Bearer error="insufficient_scope", scope="fixture:read fixture:write \\bad\\"',
+            },
+          })
+        return official.fetch(request)
+      },
+    })
+    try {
+      const opened = await manager.connections.connect('fixture')
+      await expect(manager.connections.callTool('fixture', 'read', {})).rejects.toMatchObject({
+        _tag: 'ScopeRequired',
+        connectionId: 'fixture',
+        scope: 'fixture:read fixture:write',
+      })
+      expect(await manager.connections.snapshot('fixture')).toEqual(Option.some(opened))
+    } finally {
+      await manager.dispose()
+    }
+  })
   it('rejects oversized discovery without returning a partial snapshot', async () => {
     const manager = makeManager(32)
     try {

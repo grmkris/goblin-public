@@ -24,6 +24,7 @@ export {
   NotFound,
   PayloadTooLarge,
   ResidentInactive,
+  ScopeRequired,
   SubscriptionRequired,
   Unauthenticated,
   UpstreamMcp,
