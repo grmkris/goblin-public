@@ -10,6 +10,14 @@ history. [ADR 0012](adr/0012-routines.md) records native fixtures and the remain
 producer Events, Railway provider accounting and Telegram completion need separate receipts; local fixtures do
 not establish them.
 
+## Connections, Tell me and Hand to acceptance
+
+[ADR 0041](adr/0041-connections-tell-me-hand-to.md) is built and proven in local workerd: two connections to one
+producer with their own webhooks, notices and notifications, the replay guard, a routine handed to a Persona through
+an approval, and a Persona's holds resumed by the owner. Its done gate is a live two-bot run on Sidequest dev (a hirer
+and a worker connection, skills on, events as notices, hand-overs to @Hirer and @Worker, one ask-first approval),
+which waits on Sidequest's side of the Events and Skills alignment and on the owner's go for each testnet write.
+
 ## Write approvals acceptance
 
 Per-call **Ask first** is implemented for owner-marked MCP tools ([ADR 0028](adr/0028-mcp-call-approvals.md)).

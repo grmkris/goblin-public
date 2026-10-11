@@ -1553,10 +1553,8 @@ scrubbed summary and one `app.routine` parent write with a stable request ID. A 
 `routine_propose` drafted it, or the one the owner names when they propose or edit it (`RoutineProposal.topic`,
 `RoutineEdit.topic`; it must exist and be open). Its run conversation
 sits under that Topic's Conversation and its report is written there; while the Topic is archived (archive leaves
-schedules running in v1), runs and reports go to Personal instead. Telegram reporting is separate authorized
-plumbing with frozen bytes/server, stable operation ID, five bounded attempts over at most 15 minutes, and a separate
-remote acceptance receipt. Pi acceptance does not establish external delivery. Additive migrations …210/…211/…212 modify
-only application tables.
+schedules running in v1), runs and reports go to Personal instead. A Telegram copy of a routine's notice is separate
+authorized plumbing (see Notices). Pi acceptance does not establish external delivery.
 
 Event confirmation grants the exact connected server/name/canonical-arguments selector after authenticated review;
 its arguments must satisfy the producer descriptor schema. `routines/events.ts` binds `routine:<id>` and the current
