@@ -15,7 +15,7 @@ import {
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
 import { serverName, serverStatus } from '../lib/labels.ts'
-import { EventsHealth } from './event-health.tsx'
+import { ConnectionEvents } from './connection-events.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
@@ -76,7 +76,7 @@ function SkillsSwitch({
   )
 }
 
-/** What a connected server offers: its events, skills and Telegram channel, then its tools. */
+/** What a connected server offers: its events (and what goblin does with them), skills, Telegram, then its tools. */
 function ServerBody({
   server,
   tools,
@@ -92,7 +92,7 @@ function ServerBody({
   return (
     <CardContent>
       <div className="server-body">
-        <EventsHealth events={server.eventHealth ?? []} />
+        <ConnectionEvents server={server} />
         {settings && (
           <section className="server-part" aria-label="Settings">
             {(server.skillsOffered === true || server.skillsEnabled === true) && (
@@ -196,6 +196,9 @@ function CardForms({
   )
 }
 
+/** Where a connection's card is on Connections, for a link from Activity. */
+export const connectionAnchor = (connectionId: string): string => `connection-${connectionId}`
+
 export function ServerCard({ server, onReload, onMessage, onDone, channel }: ServerCardProps) {
   const { tools, error, retry } = useServerTools(server)
   const { pending, act } = useServerActions(server, onMessage)
@@ -208,7 +211,7 @@ export function ServerCard({ server, onReload, onMessage, onDone, channel }: Ser
     if (loaded && !server.live) onReload()
   }, [loaded, server.live, onReload])
   return (
-    <Card>
+    <Card id={connectionAnchor(server.connectionId)}>
       <CardHeader>
         <CardTitle>
           <span className="server-title">

@@ -1,6 +1,6 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import type { Attention, NotificationView, OrganizeReceipt } from '@goblin/contracts'
+import type { Attention, NotificationView, OrganizeReceipt, ServerView } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import {
   AlarmClockIcon,
@@ -11,6 +11,7 @@ import {
   LayersIcon,
   MessageCircleQuestionIcon,
   MessageSquareTextIcon,
+  RadioTowerIcon,
   Settings2Icon,
   WandSparklesIcon,
 } from 'lucide-react'
@@ -18,10 +19,13 @@ import { type NeedsYou, needsYou, unreadChats, unreadNotifications } from '../..
 import { threadTitle } from '../../../lib/threads.ts'
 import { useApps, useConversations, useNotifications, useReceipts } from '../../../lib/workspace/hooks.ts'
 import { undoWorkspaceReceiptMutation } from '../../../lib/workspace/mutations.ts'
+import { dismissEventsMutation, serversQuery } from '../../../mcp/queries.ts'
 import { readNotificationsMutation } from '../../../notices/queries.ts'
+import { connectionAnchor } from '../../server-card.tsx'
 import { PageSection } from '../../page-section.tsx'
 import { useMinute } from '../../use-now.ts'
 import { undoRefusal } from '../organize.ts'
+import { messageOf } from '../../../lib/query/app-error.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
 import { relativeTime } from '../../../lib/format.ts'
 
@@ -141,6 +145,42 @@ function Notifications({
   )
 }
 
+/** A connection whose events the owner has not set up yet (ADR 0041): Set up on its card, or Not now. */
+function EventOfferRow({ server }: { readonly server: ServerView }) {
+  const dismissing = useMutation(dismissEventsMutation)
+  // expected: a dismissal that failed shows why in place of the row's line, and the row stays
+  const error = dismissing.error === null ? '' : messageOf(dismissing.error, 'dismiss it')
+  return (
+    <li className="list-row" data-static>
+      <RowContents
+        mark={<RadioTowerIcon aria-hidden />}
+        title={`Set up events for ${server.label}`}
+        meta={error === '' ? 'Choose what goblin does with what it sends' : error}
+        end={
+          <span className="row-actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              pending={dismissing.isPending}
+              onClick={() => dismissing.mutate(server.connectionId)}
+            >
+              Not now
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link to="/connections" hash={connectionAnchor(server.connectionId)} />}
+            >
+              Set up
+            </Button>
+          </span>
+        }
+      />
+    </li>
+  )
+}
+
 /** What organizing did (a Topic made, renamed, archived; a Persona changed), with Undo while nothing else touched it. */
 function ReceiptRow({ receipt, now }: { readonly receipt: OrganizeReceipt; readonly now: number }) {
   const undo = useMutation(undoWorkspaceReceiptMutation)
@@ -180,7 +220,8 @@ export function ActivityPage() {
   const now = useMinute()
   const needs = needsYou(conversations, useApps())
   const unread = unreadChats(conversations)
-  if (needs.length + notifications.length + receipts.length + unread.length === 0)
+  const offers = (useQuery(serversQuery).data ?? []).filter((server) => server.events === 'open')
+  if (needs.length + offers.length + notifications.length + receipts.length + unread.length === 0)
     return <p className="page-empty">Nothing needs you.</p>
   return (
     <div className="page-stack">
@@ -197,6 +238,15 @@ export function ActivityPage() {
                 need={need}
                 now={now}
               />
+            ))}
+          </ul>
+        </PageSection>
+      )}
+      {offers.length > 0 && (
+        <PageSection id="event-offers" title="Set up events">
+          <ul className="list-rows">
+            {offers.map((server) => (
+              <EventOfferRow key={server.connectionId} server={server} />
             ))}
           </ul>
         </PageSection>

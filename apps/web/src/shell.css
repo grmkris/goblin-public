@@ -1111,6 +1111,12 @@ a.list-row:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A row's own actions at its end (Activity's Set up events): side by side, never squeezed. */
+.row-actions {
+  display: flex;
+  flex: none;
+  gap: 0.25rem;
+}
 .list-fold {
   display: inline-flex;
   align-items: center;

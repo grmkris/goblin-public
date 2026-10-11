@@ -1193,6 +1193,15 @@ The owner browses a connection's event streams before granting any (`GET /api/mc
 the plan, resident authority and a signed-in connection are enough, no selector grant is made, and each stream says
 whether goblin can subscribe to it (poll and webhook). Descriptions are the server's claims, cut to 500 characters.
 
+A connection that sends events **offers** them (ADR 0041): `ServerView.events` is `open` until the owner sets up a
+routine on it (`done`, recorded when an event routine on it is confirmed) or dismisses it
+(`POST /api/mcp/:id/events/dismiss`); `app_mcp_event_offers` (`mcp/events/offers.ts`) keeps only those answers, and
+a dismissal never undoes `done`. The connection's card shows an **Events** section (`components/connection-events.tsx`):
+the offer while open, each stream with the routines on it ("When `<stream>` → Tell me in #Topic · Hand to @Persona"),
+**Set up**, which opens the routine editor in place with that event and then its review to confirm, and the
+subscriptions' health. Activity lists each open offer ("Set up events for `<label>`", linking to its card, with Not
+now); it is not counted in the rail's badge.
+
 The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
 64 live subscriptions (maintenance reconciles every one; a tombstone is pruned once no delivery or binding
 refers to it and its lease lapsed or its cleanup succeeded), 100 events per page, 256 KiB bodies, 15-second remote

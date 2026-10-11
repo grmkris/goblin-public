@@ -1,6 +1,7 @@
 import { type QueryClient, mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
 import type { RoutineDefinition, RoutineSettings } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
+import { mcpKeys } from '../mcp/queries.ts'
 import { withOperation } from '../lib/query/api-query.ts'
 
 /**
@@ -84,7 +85,11 @@ export const changeRoutineMutation = mutationOptions({
       return withOperation(operationId)(call)
     },
   }),
-  onSuccess: (_routine, _change, _result, { client }) => listChanged(client),
+  onSuccess: async (_routine, { action }, _result, { client }) => {
+    await listChanged(client)
+    // A confirmed event routine answers its connection's offer of events (ADR 0041).
+    if (action === 'confirm' || action === 'confirmAgain') await client.invalidateQueries({ queryKey: mcpKeys.servers })
+  },
 })
 
 /** Runs a routine now; the run it admitted (or skipped) shows in its runs. */

@@ -75,6 +75,14 @@ export const eventsQuery = (connectionId: string | undefined) =>
           }).queryFn,
   })
 
+/** The owner wants nothing from a connection's events: its offer stops asking, here and in Activity (ADR 0041). */
+export const dismissEventsMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, connectionId: string) => api.mcp.dismissEvents({ params: { id: connectionId } }),
+  }),
+  onSuccess: (_dismissed, _connection, _result, { client }) => client.invalidateQueries({ queryKey: mcpKeys.servers }),
+})
+
 /** Reads the server list again, and the suggestions and search results, which say what is already added. */
 export const serversChanged = (client: QueryClient) =>
   Promise.all([

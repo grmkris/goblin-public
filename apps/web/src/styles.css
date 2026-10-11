@@ -1174,6 +1174,47 @@
     color: var(--muted-foreground);
     font-size: var(--text-13);
   }
+  /* What a connection sends and what goblin does with each (components/connection-events.tsx, ADR 0041). */
+  .event-offer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+  }
+  .event-offer > .server-note {
+    flex: 1;
+    min-width: 12rem;
+    margin: 0;
+  }
+  .event-streams {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .event-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.625rem 0;
+    font-size: 0.875rem;
+  }
+  .event-stream + .event-stream {
+    border-top: 1px solid var(--hairline);
+  }
+  .event-stream-head,
+  .event-routine {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem 0.75rem;
+  }
+  .event-routine {
+    color: var(--muted-foreground);
+    font-size: var(--text-13);
+  }
   /*
  * Settings-list rows: what a switch allows on the left, the switch on the right, hairlines between. A row the agent
  * may use (a tool) and a row the owner picks (a suggestion) share the layout.
