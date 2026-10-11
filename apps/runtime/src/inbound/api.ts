@@ -15,9 +15,10 @@ export const InboundHandlers = HttpApiBuilder.group(InternalApi, 'inbound', (han
     .handle('ask', ({ payload }) => askClient(payload))
     .handle('recent', ({ query }) => recentOwnerMessages(query.limit))
     .handle('doorbell', ({ payload }) => acceptDoorbell(payload))
-    .handle('mcpEvents', ({ payload, headers }) =>
+    .handle('mcpEvents', ({ params, payload, headers }) =>
       Events.use((events) =>
         events.receive({
+          connectionId: params.connectionId,
           body: payload,
           subscriptionId: headers['x-mcp-subscription-id'],
           id: headers['webhook-id'],

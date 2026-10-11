@@ -55,11 +55,13 @@ describe('Events Standard Webhooks profile (unit)', () => {
       decodeEnvelope(new TextEncoder().encode('{"type":"unknown","eventId":"evt_vector"}'), 'evt_vector'),
     ).toThrow()
   })
-  it('uses a user-bound, purpose-separated route token', async () => {
+  it('uses a route token bound to the user and the connection, purpose-separated', async () => {
     const key = btoa('goblin-test-key-32-bytes-long!!!')
-    const token = await eventsHookToken(key, 'owner')
-    expect(await eventsHookTokenValid(key, 'owner', token)).toBe(true)
-    expect(await eventsHookTokenValid(key, 'other', token)).toBe(false)
+    const token = await eventsHookToken(key, 'owner', 'sidequest-hirer')
+    expect(token).toMatch(/^[\w-]{43}$/u)
+    expect(await eventsHookTokenValid(key, 'owner', 'sidequest-hirer', token)).toBe(true)
+    expect(await eventsHookTokenValid(key, 'other', 'sidequest-hirer', token)).toBe(false)
+    expect(await eventsHookTokenValid(key, 'owner', 'sidequest-worker', token)).toBe(false)
   })
 })
 

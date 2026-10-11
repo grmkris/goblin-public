@@ -55,6 +55,7 @@ export const deliverEvents = (
     agent,
     (api) =>
       api.inbound.mcpEvents({
+        params: { connectionId: webhook.connectionId },
         payload: webhook.body,
         headers: {
           'x-mcp-subscription-id': webhook.subscriptionId,

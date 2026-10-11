@@ -77,7 +77,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     store,
     cipher,
     principal: 'fixture-owner',
-    callback: 'https://goblin.test/hooks/mcp-events/fixture/token',
+    callback: () => Effect.succeed('https://goblin.test/hooks/mcp-events/owner/fixture/token'),
     authority: Effect.void,
     authorize: (connectionId, name, args) =>
       store.allows(connectionId, name, args) ? Effect.void : Effect.fail(new GrantDenied({ connectionId, name })),
@@ -91,6 +91,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     const exit = await run(
       Effect.exit(
         events.receive({
+          connectionId: 'mygram',
           body: new Uint8Array(await request.arrayBuffer()),
           id: request.headers.get('webhook-id') ?? '',
           timestamp: request.headers.get('webhook-timestamp') ?? '',

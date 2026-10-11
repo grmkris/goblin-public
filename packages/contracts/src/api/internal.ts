@@ -71,6 +71,9 @@ const RecentQuery = {
 /** A doorbell as myagent sent it: its body and the two headers that sign it. */
 const Doorbell = Schema.Struct({ body: Schema.String, timestamp: Schema.String, signature: Schema.String })
 
+/** The connection whose Events webhook a delivery came to (its id, as the hook's path names it). */
+const ConnectionParam = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
+
 /** The headers an MCP Events webhook is signed and addressed with, as the sender sent them. */
 const WebhookHeaders = {
   'x-mcp-subscription-id': Schema.String,
@@ -93,7 +96,8 @@ export type EventWebhookResult = typeof EventWebhookResult.Type
  * - `ask`: `POST /internal/ask`, an inbound MCP client's question (needs current resident authority, never renews it).
  * - `recent`: `GET /internal/recent?limit=`, the newest messages of main.
  * - `doorbell`: `POST /internal/doorbell`, myagent's doorbell (channel/doorbell.ts), checked against its signature.
- * - `mcpEvents`: `POST /internal/mcp-events`, an MCP Events webhook: its bytes and the headers that sign it.
+ * - `mcpEvents`: `POST /internal/mcp-events/:connectionId`, one connection's MCP Events webhook: its bytes and the
+ *   headers that sign it.
  * - `inspect`: `POST /internal/inspect` with `{ query }`, /mcp's read-only inspection (ADR 0024). It answers the result
  *   of the query's kind (`InspectResult[kind]` in `../inspect.ts`), which the caller decodes; it needs no plan.
  */
@@ -109,7 +113,8 @@ export class InboundGroup extends HttpApiGroup.make('inbound').add(
     success: HttpApiSchema.NoContent,
     error: [ApiErrors.forbidden],
   }),
-  HttpApiEndpoint.post('mcpEvents', '/mcp-events', {
+  HttpApiEndpoint.post('mcpEvents', '/mcp-events/:connectionId', {
+    params: { connectionId: ConnectionParam },
     headers: WebhookHeaders,
     payload: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
     success: EventWebhookResult,

@@ -31,7 +31,7 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
 | `/api/billing/…`, `/api/clients…`, `/api/client-errors` | The account API, answered in the Worker without waking an agent (see The owner API). |
 | `/api/*` | The owner API: admitted at the Worker's edge, then forwarded to the signed-in user's own agent (see The owner API). |
-| `/hooks/mcp-events/<userId>/<token>` | Signed MCP Events; the user-bound route token is checked before object lookup, then the agent's internal API takes it (`mcpEvents`). |
+| `/hooks/mcp-events/<userId>/<connectionId>/<token>` | One connection's signed MCP Events; the route token, bound to the user and the connection, is checked before object lookup, then the agent's internal API takes it (`mcpEvents`). |
 | `/hooks/myagent/<userId>/<token>` | The Telegram doorbell, the fallback for servers without Events; the user-bound route token is checked before object lookup, then the internal API's `doorbell`. |
 | anything else, `/internal/*` included | A 404 in the envelope: the internal API is reached only by the Worker, on the agent's stub. |
 | `/hooks/dodo` | Signed payment webhooks (see Plans and payments). |
@@ -1134,8 +1134,9 @@ action grants `inbox`, `send_message` and the exact Events selectors `message.re
 a failure before that fence leaves the old channel checkpoint intact. A server without Events retains the legacy
 `subscribe`/`unsubscribe` doorbell transport. Connections shows the active transport.
 
-`POST /hooks/mcp-events/<userId>/<token>` verifies the user-bound token before lookup. Inside the object, Standard
-Webhooks HMAC and five-minute freshness checks precede decoding. A pre-persisted subscribe intent accepts an early
+`POST /hooks/mcp-events/<userId>/<connectionId>/<token>` verifies the token, bound to the user and the connection (each
+connection has its own URL, ADR 0041), before lookup; ingress only matches that connection's subscriptions. Inside
+the object, Standard Webhooks HMAC and five-minute freshness checks precede decoding. A pre-persisted subscribe intent accepts an early
 signed verification challenge; remote ids are cross-checked when subscribe returns. Receipts and their frozen consumer
 revisions commit in short transactions, with an already armed recovery schedule. The hook returns quickly and dispatch
 runs asynchronously. Replay wakes unfinished handlers without duplicating their accepted intent. Before any of that,

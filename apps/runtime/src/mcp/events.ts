@@ -29,7 +29,12 @@ export type SubscribeConsumer = {
   readonly arguments: Record<string, unknown>
   readonly handlerKey: string
 }
-export type EventWebhook = WebhookHeaders & { readonly subscriptionId: string; readonly body: Uint8Array }
+/** One webhook delivery, as the connection's hook took it. */
+export type EventWebhook = WebhookHeaders & {
+  readonly connectionId: string
+  readonly subscriptionId: string
+  readonly body: Uint8Array
+}
 export type EventWebhookResult = { readonly status: 200 | 204 | 410 | 503; readonly response?: string }
 
 type Binding = { readonly consumerId: string; readonly revision: number }

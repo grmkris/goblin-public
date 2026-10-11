@@ -137,7 +137,7 @@ describe('the inbound handlers', () => {
       ),
     )
 
-  it("hands an Events webhook's bytes and signing headers to ingress, and answers its result", async () => {
+  it("hands a connection's Events webhook bytes and signing headers to ingress, and answers its result", async () => {
     const seen: unknown[] = []
     const events = stub(Events, {
       receive: (input) =>
@@ -148,7 +148,7 @@ describe('the inbound handlers', () => {
     })
     const { fetch } = fixture({ events })
     const response = await fetch(
-      new Request('https://agent/internal/mcp-events', {
+      new Request('https://agent/internal/mcp-events/sidequest-hirer', {
         method: 'POST',
         headers: {
           'content-type': 'application/octet-stream',
@@ -162,7 +162,14 @@ describe('the inbound handlers', () => {
     )
     expect(await response.json()).toEqual({ status: 200, response: '{"ok":1}' })
     expect(seen).toEqual([
-      { body: new Uint8Array([1, 2, 3]), subscriptionId: 'sub-1', id: 'evt-1', timestamp: '17', signature: 'v1,sig' },
+      {
+        connectionId: 'sidequest-hirer',
+        body: new Uint8Array([1, 2, 3]),
+        subscriptionId: 'sub-1',
+        id: 'evt-1',
+        timestamp: '17',
+        signature: 'v1,sig',
+      },
     ])
   })
 

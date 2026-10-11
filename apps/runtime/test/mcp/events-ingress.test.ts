@@ -9,7 +9,14 @@ import { ReporterLive } from '../../src/observability/report.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { fake, unread } from '../fake.ts'
 
-const WEBHOOK = { subscriptionId: 'remote-1', id: 'evt_1', timestamp: '0', signature: '', body: new Uint8Array() }
+const WEBHOOK = {
+  connectionId: 'notes',
+  subscriptionId: 'remote-1',
+  id: 'evt_1',
+  timestamp: '0',
+  signature: '',
+  body: new Uint8Array(),
+}
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -76,7 +83,7 @@ describe('which subscriptions stay valid (unit)', () => {
         store: fake<EventsOptions['store']>({ byRemote: () => [row as Subscription], allows: () => true }),
         cipher: unread,
         principal: 'owner',
-        callback: 'https://goblin.test/hooks/mcp-events/owner/token',
+        callback: () => Effect.succeed('https://goblin.test/hooks/mcp-events/owner/fixture/token'),
         wake: () => Effect.void,
         authority: Effect.void,
         authorize: () => Effect.void,

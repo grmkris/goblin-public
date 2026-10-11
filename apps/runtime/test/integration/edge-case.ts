@@ -157,7 +157,7 @@ export async function internalRefusalCase(url: string): Promise<void> {
   await callOwner(signedIn(url, owner), (api) => api.resident.set({ payload: { enabled: false } }))
   const webhook = await hook(
     url,
-    `/hooks/mcp-events/${owner.userId}/${await eventsHookToken(CREDENTIAL_KEY, owner.userId)}`,
+    `/hooks/mcp-events/${owner.userId}/fixture/${await eventsHookToken(CREDENTIAL_KEY, owner.userId, 'fixture')}`,
     { 'x-mcp-subscription-id': 'remote-1', 'webhook-id': 'msg_1', 'webhook-timestamp': '0', 'webhook-signature': '' },
     '{}',
   )

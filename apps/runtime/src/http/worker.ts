@@ -63,14 +63,21 @@ async function doorbellRoute(request: Request, env: RuntimeEnv, path: string, re
 }
 
 /**
- * POST /hooks/mcp-events/<userId>/<token>: an MCP Events webhook. The user-bound route token is checked before any
- * agent wakes and the raw bytes are bounded before the agent checks its plan and the signature.
+ * POST /hooks/mcp-events/<userId>/<connectionId>/<token>: one connection's MCP Events webhook. The route token, bound
+ * to the user and the connection, is checked before any agent wakes, and the raw bytes are bounded before the agent
+ * checks its plan and the signature.
  */
 async function mcpEventsRoute(request: Request, env: RuntimeEnv, path: string, ref: string): Promise<Response> {
-  const [, userId = '', token = ''] = /^\/hooks\/mcp-events\/([\w-]{1,200})\/([\w-]{43})$/u.exec(path) ?? []
-  if (request.method !== 'POST' || userId === '' || !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, token)))
+  const [, userId = '', connectionId = '', token = ''] =
+    /^\/hooks\/mcp-events\/([\w-]{1,200})\/([\w-]{1,64})\/([\w-]{43})$/u.exec(path) ?? []
+  if (
+    request.method !== 'POST' ||
+    userId === '' ||
+    !(await eventsHookTokenValid(env.CREDENTIAL_KEY, userId, connectionId, token))
+  )
     throw new NotFound({ what: 'route' })
   const webhook = {
+    connectionId,
     body: await readBytes(request, EVENT_BODY_BYTES),
     subscriptionId: request.headers.get('x-mcp-subscription-id') ?? '',
     id: request.headers.get('webhook-id') ?? '',

@@ -31,7 +31,8 @@ export type EventClient = {
   readonly store: SqliteEventStore
   readonly cipher: CredentialCipher
   readonly principal: string
-  readonly callback: string
+  /** The webhook URL of `connectionId`'s Events (one per connection, ADR 0041). */
+  readonly callback: (connectionId: string) => Effect.Effect<string>
   /** Arms the Events alarm no later than `at`. */
   readonly wake: (at: number) => Effect.Effect<void, AppError>
   /** The Events authority for one selector: checked before each request connects and again before it is sent. */
@@ -84,10 +85,11 @@ export const prepareEvents = (
   ttlMs: number = EVENT_LIMITS.ttlMs,
 ) =>
   Effect.gen(function* () {
-    const { store, principal, callback, cipher } = client
+    const { store, principal, cipher } = client
     const argumentsJson = yield* attemptSync(() => canonicalArguments(args))
     if (!store.allows(connectionId, name, argumentsJson)) return yield* new GrantDenied({ connectionId, name })
     const { endpoint } = yield* client.connections.server(connectionId)
+    const callback = yield* client.callback(connectionId)
     const current = store.selector(connectionId, name, argumentsJson)
     if (
       current !== undefined &&

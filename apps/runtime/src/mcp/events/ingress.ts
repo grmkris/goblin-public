@@ -67,10 +67,12 @@ const select = (ingress: Ingress, input: EventWebhook) =>
   Effect.gen(function* () {
     const { store } = ingress
     const now = yield* Clock.currentTimeMillis
-    const known = store.byRemote(input.subscriptionId).filter((row) => row.status !== 'tombstone')
+    const mine = (row: Subscription) => row.connectionId === input.connectionId
+    const known = store.byRemote(input.subscriptionId).filter((row) => mine(row) && row.status !== 'tombstone')
     const candidates = known.length > 0 ? known : []
     if (known.length === 0)
-      for (const row of store.pendingSince(now - 300_000)) if (yield* ingress.valid(row)) candidates.push(row)
+      for (const row of store.pendingSince(now - 300_000).filter(mine))
+        if (yield* ingress.valid(row)) candidates.push(row)
     if (candidates.length === 0) return undefined
     const matched: Subscription[] = []
     for (const row of candidates) if (yield* matches(ingress, row, input)) matched.push(row)
@@ -95,7 +97,8 @@ const accepts = (ingress: Ingress, row: Subscription, input: EventWebhook, envel
 const ended = (ingress: Ingress, input: EventWebhook) =>
   Effect.gen(function* () {
     for (const row of ingress.store.byRemote(input.subscriptionId))
-      if (row.status === 'tombstone' || !(yield* ingress.valid(row))) return true
+      if (row.connectionId === input.connectionId && (row.status === 'tombstone' || !(yield* ingress.valid(row))))
+        return true
     return false
   })
 

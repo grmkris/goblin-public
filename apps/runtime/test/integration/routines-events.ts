@@ -65,6 +65,7 @@ async function setup(storage: DurableObjectStorage, agent: PersonalAgent, fixtur
     const delivered = deliverEvents(
       { fetch: (internal) => agent.onRequest(internal) },
       {
+        connectionId: 'routine-events',
         body: new Uint8Array(await request.arrayBuffer()),
         id: request.headers.get('webhook-id') ?? '',
         timestamp: request.headers.get('webhook-timestamp') ?? '',
