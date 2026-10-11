@@ -1,3 +1,4 @@
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
@@ -12,6 +13,7 @@ import { mcpHost } from '../../src/mcp/host.ts'
 import { McpConnections, Resident, UrlRequests } from '../../src/mcp/service.ts'
 import { answerUrlRequest, holdUrlRequest, urlRequestView } from '../../src/mcp/url-request.ts'
 import { McpUrlRequestStore } from '../../src/mcp/url-requests.ts'
+import { FlowEvents } from '../../src/observability/flows.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { RoutineRuns } from '../../src/routines/service.ts'
 import { scopeOf } from '../../src/setup/scope.ts'
@@ -35,6 +37,8 @@ type Told = { readonly session: string; readonly text: string; readonly operatio
  */
 const fixture = async () => {
   const server = sidequestServer()
+  /** The flow steps recorded, ids and states only (ADR 0024). */
+  const flows: FlowEvent[] = []
   const { db, close } = chatDatabase()
   cleanups.push(close)
   const store = new McpUrlRequestStore(
@@ -56,6 +60,7 @@ const fixture = async () => {
     Layer.provideMerge(
       Layer.mergeAll(
         SingleFlight.layer,
+        FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
         Layer.succeed(UrlRequests, urlRequestsOver(store)),
         stub(Resident, { require: () => Effect.void }),
         stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),
@@ -87,14 +92,14 @@ const fixture = async () => {
       return yield* holdUrlRequest('41', 'c1', 't1', input, outcome.prompt)
     }),
   )
-  return { server, told, answer, asked, view: (id: string) => run(urlRequestView(id)) }
+  return { server, told, answer, asked, flows, view: (id: string) => run(urlRequestView(id)) }
 }
 
 const ID = 'mcp-url:41:c1'
 
 describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
   it('shows the owner the link and its host, and leaves it pending while the server still waits', async () => {
-    const { asked, told, answer, view } = await fixture()
+    const { asked, told, answer, view, flows } = await fixture()
     expect(asked.details).toEqual({ kind: 'url-required', requestId: ID, connectionId: 'sq', name: 'create_agent' })
     expect(await view(ID)).toMatchObject({
       url: APPROVE,
@@ -107,14 +112,24 @@ describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
     // Done before the operator approved: the server asks again, and nothing goes back to the turn yet.
     expect(await answer(ID, 'accept')).toMatchObject({ state: 'pending' })
     expect(told).toEqual([])
+    expect(
+      flows.map(({ flow, actor, status, operationId, chat }) => ({ flow, actor, status, operationId, chat })),
+    ).toEqual([
+      { flow: 'url_request', actor: 'agent', status: 'ok', operationId: ID, chat: '41' },
+      { flow: 'url_request_wait', actor: 'owner', status: 'ok', operationId: ID, chat: '41' },
+    ])
   })
 
   it('retries once with the answer, sends the result back once however often Done is pressed', async () => {
-    const { server, told, answer } = await fixture()
+    const { server, told, answer, flows } = await fixture()
     server.state.approved = true
     expect(await answer(ID, 'accept')).toMatchObject({ state: 'completed' })
     expect(await answer(ID, 'accept')).toMatchObject({ state: 'completed' })
     expect(server.seen.filter(({ answer: given }) => given !== undefined)).toHaveLength(1)
+    expect(flows.slice(1).map(({ flow, status }) => [flow, status])).toEqual([
+      ['url_request_finish', 'ok'],
+      ['url_request_finish', 'replayed'],
+    ])
     expect(told.map(({ operationId }) => operationId)).toEqual([`mcp-url-continue:${ID}`, `mcp-url-continue:${ID}`])
     const [first] = told
     expect(first?.session).toBe('41')
@@ -124,8 +139,9 @@ describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
   })
 
   it('sends a decline on Cancel and tells the turn the step was cancelled', async () => {
-    const { server, told, answer } = await fixture()
+    const { server, told, answer, flows } = await fixture()
     expect(await answer(ID, 'decline')).toMatchObject({ state: 'declined' })
+    expect(flows.at(-1)).toMatchObject({ flow: 'url_request_cancel', status: 'ok' })
     expect(server.seen.at(-1)).toMatchObject({ answer: { action: 'decline' }, state: 'op_1' })
     expect(told[0]?.text).toContain('The owner cancelled the step')
   })

@@ -688,7 +688,11 @@ connection keeps its tokens until the new ones arrive; an abandoned step-up leav
 Continue in the chat once signed in.
 
 Needs you lists open URL requests (Attention `link`, from their store) and sign-ins with more access (`access`); a
-Persona's answer can hold either (`PersonaHold` kinds `url` and `access`).
+Persona's answer can hold either (`PersonaHold` kinds `url` and `access`). Each step is a flow in the run ledger, ids
+and states only: `url_request` (held), then the owner's answer as `url_request_wait` (the server still waits),
+`url_request_finish` (answered; `error` with the state when the retry failed or was uncertain, `refused` when expired,
+`replayed` when answered again) or `url_request_cancel`; `scope_required` when a call needed more access, and `step_up`
+when the owner started signing in again.
 
 ## Skills
 

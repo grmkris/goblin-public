@@ -7,6 +7,7 @@ import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import type * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import { RequestContext } from '../http/api/context.ts'
 import { InvalidInput } from '../http/errors.ts'
+import { withFlow } from '../observability/flows.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { setSkillEvents } from '../skills/events.ts'
 import { challengeScope } from './errors.ts'
@@ -101,7 +102,9 @@ const tools = endpoint('tools')(({ params, query }) =>
 )
 const connect = endpoint('connect')(({ params }) => McpServers.use((offered) => offered.beginConnect(params.id)))
 const stepUp = endpoint('stepUp')(({ params, payload }) =>
-  McpServers.use((offered) => offered.beginStepUp(params.id, challengeScope(payload.scope))),
+  McpServers.use((offered) => offered.beginStepUp(params.id, challengeScope(payload.scope))).pipe(
+    withFlow({ flow: 'step_up', via: 'app', actor: 'owner' }),
+  ),
 )
 const disconnect = endpoint('disconnect')(({ params }) => disconnectOwnerServer(params.id))
 const removeServer = endpoint('removeServer')(({ params }) => removeOwnerServer(params.id))

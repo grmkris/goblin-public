@@ -16,6 +16,7 @@ import { CredentialCipher } from '../src/mcp/cipher.ts'
 import { McpUrlRequestStore } from '../src/mcp/url-requests.ts'
 import { Chats, Conversations } from '../src/chats/service.ts'
 import { RoutineRuns } from '../src/routines/service.ts'
+import { FlowEvents } from '../src/observability/flows.ts'
 import { SingleFlight } from '../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import type { AgentServices } from '../src/layers/index.ts'
@@ -132,6 +133,7 @@ const layer = host.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
       SingleFlight.layer,
+      FlowEvents.noop,
       stub(Setups, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
       // No conversation here is a routine run's.
       stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),

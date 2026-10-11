@@ -5,6 +5,8 @@ import type { Grant } from '@goblin/contracts'
 import type { Tool } from '@modelcontextprotocol/client'
 import * as Option from 'effect/Option'
 import { Apps } from '../apps/service.ts'
+import { Chats } from '../chats/service.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import type { SetupScope } from '../setup/scope.ts'
 import { Setups } from '../setup/service.ts'
 import { type GrantDenied, NotFound, type ScopeRequired } from '../http/errors.ts'
@@ -53,9 +55,17 @@ const grantRequired = (denied: GrantDenied, options: McpRequestOptions) =>
   })
 
 /** A call beyond the connection's granted scope, as the model reads it: the owner signs in again (ADR 0042). */
-const scopeRequired = (required: ScopeRequired, name: string) =>
+const scopeRequired = (required: ScopeRequired, name: string, session: string) =>
   Effect.gen(function* () {
     const connection = named(yield* (yield* McpServers).labels(), required.connectionId)
+    const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(session))
+    yield* FlowEvents.record({
+      flow: 'scope_required',
+      via: 'tool',
+      actor: 'agent',
+      ...(chat === undefined ? {} : { chat }),
+      status: 'ok',
+    })
     return new ReadyResult(scopeRequiredResult(required.connectionId, name, required.scope, connection))
   })
 
@@ -271,7 +281,7 @@ export function residentMcpExtension(run: RunProgram) {
                       (result) => new ReadyResult(result),
                     ),
                   ),
-                  Effect.catchTag('ScopeRequired', (required) => scopeRequired(required, input.name)),
+                  Effect.catchTag('ScopeRequired', (required) => scopeRequired(required, input.name, session)),
                 )
             }),
           ),

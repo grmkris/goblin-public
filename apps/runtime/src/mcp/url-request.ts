@@ -1,9 +1,12 @@
 import type { UrlRequestView } from '@goblin/contracts'
+import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { requirePlan } from '../billing/gates.ts'
 import { type AppError, UpstreamMcp } from '../http/errors.ts'
+import { Chats } from '../chats/service.ts'
+import { FlowEvents } from '../observability/flows.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { bound } from '../runtime/boundary.ts'
 import { authority, resumeRoutine } from './approval-decision.ts'
@@ -48,6 +51,15 @@ export const holdUrlRequest = (
     })
     const connection = named(yield* (yield* McpServers).labels(), input.connectionId)
     yield* waitOnOwner(session, callId, 'mcp-url', `Finish ${connection} · ${input.name} in goblin's card?`)
+    const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(session))
+    yield* FlowEvents.record({
+      flow: 'url_request',
+      via: 'tool',
+      actor: run === undefined ? 'agent' : 'routine',
+      operationId: row.id,
+      ...(chat === undefined ? {} : { chat }),
+      status: 'ok',
+    })
     return urlRequiredResult(row.id, input.connectionId, input.name, connection)
   })
 
@@ -127,6 +139,18 @@ const settledText = (row: UrlRequestRow, connection: string): string => {
   return `The URL request from ${call} is ${row.state}. Nothing completed. Do not retry without the owner asking.`
 }
 
+/**
+ * The flow step an answer recorded (ADR 0024, ids and states only): the server still waiting, the server's answer, a
+ * cancel, or how the retry ended when it did not complete. A repeated answer replays.
+ */
+const answerFlow = (row: UrlRequestRow, changed: boolean): Pick<FlowEvent, 'flow' | 'status' | 'errorType'> => {
+  if (!changed) return { flow: 'url_request_finish', status: 'replayed' }
+  if (row.state === 'pending') return { flow: 'url_request_wait', status: 'ok' }
+  if (row.state === 'declined') return { flow: 'url_request_cancel', status: 'ok' }
+  if (row.state === 'completed') return { flow: 'url_request_finish', status: 'ok' }
+  return { flow: 'url_request_finish', status: row.state === 'expired' ? 'refused' : 'error', errorType: row.state }
+}
+
 /** The states a URL request ends in. */
 const SETTLED: ReadonlySet<UrlRequestRow['state']> = new Set([
   'completed',
@@ -152,6 +176,14 @@ export const answerUrlRequest = <R>(input: {
     const claimed = yield* requests.claim(input.id)
     if (claimed.changed) yield* retry(claimed.row, input.action)
     const row = yield* requests.get(input.id)
+    const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(row.sessionId))
+    yield* FlowEvents.record({
+      ...answerFlow(row, claimed.changed),
+      via: 'app',
+      actor: 'owner',
+      operationId: row.id,
+      ...(chat === undefined ? {} : { chat }),
+    })
     if (SETTLED.has(row.state)) {
       yield* resumeRoutine(row)
       const result = yield* requests.result(input.id)

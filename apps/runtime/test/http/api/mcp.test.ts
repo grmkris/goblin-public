@@ -14,6 +14,7 @@ import { urlRequestsOver } from '../../../src/layers/mcp.ts'
 import { CredentialCipher } from '../../../src/mcp/cipher.ts'
 import { McpUrlRequestStore } from '../../../src/mcp/url-requests.ts'
 import { durable } from '../../chats-sqlite.ts'
+import { FlowEvents } from '../../../src/observability/flows.ts'
 import { SingleFlight } from '../../../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
 import { Apps } from '../../../src/apps/service.ts'
@@ -120,6 +121,7 @@ const fixture = async () => {
           events,
           approvals,
           urlRequests,
+          FlowEvents.noop,
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),
           // Settling a held call, skills and an owner message (agent-program.ts sendOwnerMessage) read these; no test

@@ -125,7 +125,8 @@ export const RunAttribute = {
 
 /**
  * The conversation flows that record a `flow` event: how people and agents move through conversations (replies, "+",
- * start thread, move, Personas, Delegates, Topics, routines, Telegram, decision proposals), plus browser crashes.
+ * start thread, move, Personas, Delegates, Topics, routines, Telegram, decision proposals, URL requests and step-ups),
+ * plus browser crashes.
  */
 export const FlowName = Schema.Literals([
   'send',
@@ -154,6 +155,18 @@ export const FlowName = Schema.Literals([
   'decision_confirm',
   'decision_dismiss',
   'client_error',
+  /** A model's MCP call met a URL request and is held for the owner (ADR 0042). */
+  'url_request',
+  /** The owner pressed Done and the server is still waiting. */
+  'url_request_wait',
+  /** The owner pressed Done and the server answered (or the retry failed, or the request had expired). */
+  'url_request_finish',
+  /** The owner cancelled a URL request. */
+  'url_request_cancel',
+  /** A model's MCP call needed more access than the connection's sign-in granted. */
+  'scope_required',
+  /** The owner started signing a connection in again with more access. */
+  'step_up',
 ])
 export type FlowName = typeof FlowName.Type
 
