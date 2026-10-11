@@ -48,7 +48,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261011000000_conversations',
     tables: ['app_conversations', 'app_client_sessions'],
     sql: [
-      `CREATE TABLE app_conversations (session_id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('main', 'thread', 'subagent')), title TEXT, parent_session TEXT, fork_entry INTEGER, created_at INTEGER NOT NULL, archived_at INTEGER)`,
+      `CREATE TABLE app_conversations (session_id TEXT PRIMARY KEY NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('main', 'thread', 'subagent')), title TEXT, parent_session TEXT, fork_entry INTEGER, created_at INTEGER NOT NULL)`,
       'DROP TABLE app_client_sessions',
     ].join(BREAK),
   },
@@ -174,7 +174,6 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
       'ALTER TABLE app_conversations ADD COLUMN closed_at INTEGER',
       "ALTER TABLE app_conversations ADD COLUMN closed_by TEXT CHECK (closed_by IN ('owner', 'done'))",
       'ALTER TABLE app_conversations ADD COLUMN keep_open_at INTEGER',
-      "UPDATE app_conversations SET closed_at = archived_at, closed_by = 'owner' WHERE archived_at IS NOT NULL",
       'CREATE INDEX app_conversation_parent ON app_conversations (parent_session)',
     ].join(BREAK),
   },
@@ -412,9 +411,9 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
     key: '20261026000200_personas',
     tables: ['app_personas', 'app_persona_revisions', 'app_persona_invocations'],
     sql: [
-      'CREATE TABLE app_personas (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, glyph TEXT NOT NULL, hue INTEGER NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, model TEXT, exclusions TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT UNIQUE, archived_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+      'CREATE TABLE app_personas (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, glyph TEXT NOT NULL, hue INTEGER NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, model TEXT, revision INTEGER NOT NULL, operation_id TEXT UNIQUE, archived_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
       'CREATE UNIQUE INDEX app_personas_active_name ON app_personas (name COLLATE NOCASE) WHERE archived_at IS NULL',
-      `CREATE TABLE app_persona_revisions (persona_id INTEGER NOT NULL, revision INTEGER NOT NULL, name TEXT NOT NULL, glyph TEXT NOT NULL, hue INTEGER NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, model TEXT, exclusions TEXT NOT NULL, actor TEXT NOT NULL CHECK (actor IN ('owner', 'agent')), created_at INTEGER NOT NULL, PRIMARY KEY (persona_id, revision))`,
+      `CREATE TABLE app_persona_revisions (persona_id INTEGER NOT NULL, revision INTEGER NOT NULL, name TEXT NOT NULL, glyph TEXT NOT NULL, hue INTEGER NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, model TEXT, actor TEXT NOT NULL CHECK (actor IN ('owner', 'agent')), created_at INTEGER NOT NULL, PRIMARY KEY (persona_id, revision))`,
       `CREATE TABLE app_persona_invocations (operation_id TEXT NOT NULL, persona_id INTEGER NOT NULL, revision INTEGER NOT NULL, chat_id TEXT NOT NULL, ord INTEGER NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending', 'running', 'answered', 'failed', 'stopped')), answer_entry INTEGER, created_at INTEGER NOT NULL, settled_at INTEGER, PRIMARY KEY (operation_id, persona_id))`,
       'CREATE INDEX app_persona_invocation_chat ON app_persona_invocations (chat_id, state)',
     ].join(BREAK),

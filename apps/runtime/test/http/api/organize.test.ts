@@ -11,7 +11,6 @@ const scout = {
   avatar: { glyph: 'S', hue: 120 },
   role: 'Finds things out',
   instructions: 'Be brief.',
-  exclusions: [],
 }
 
 const decodeReceipt = Schema.decodeUnknownSync(OrganizeReceipt)

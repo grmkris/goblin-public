@@ -63,7 +63,6 @@ const stored = (definition: PersonaDefinition) => ({
   role: definition.role,
   instructions: definition.instructions,
   model: definition.model ?? null,
-  exclusions: '[]',
   setup: JSON.stringify(definition.setup),
 })
 

@@ -15,8 +15,8 @@ export const SETUP_MIGRATIONS: readonly Migration[] = [
     sql: [`ALTER TABLE app_topics ADD COLUMN setup TEXT NOT NULL DEFAULT '${EVERYTHING_JSON}'`].join(BREAK),
   },
   {
-    // A Persona's setup is what it adds to its Topic's; every Persona starts adding nothing. Its exclusions are no
-    // longer read. A Persona's fork keeps the setup the ask froze, keyed by the fork's chat.
+    // A Persona's setup is what it adds to its Topic's; every Persona starts adding nothing. A Persona's fork keeps
+    // the setup the ask froze, keyed by the fork's chat.
     key: '20261028000100_persona_setup',
     tables: ['app_personas', 'app_persona_revisions', 'app_persona_forks'],
     sql: [

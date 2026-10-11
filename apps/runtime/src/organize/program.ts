@@ -2,7 +2,6 @@ import {
   type OrganizeReceipt,
   type PersonaDefinition,
   PersonaDefinition as PersonaDefinitionSchema,
-  PersonaSetup,
   TopicSetup,
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
@@ -16,14 +15,8 @@ import { withFlow } from '../observability/flows.ts'
 import { Receipts } from './service.ts'
 
 const TopicBefore = Schema.NullOr(Schema.Struct({ name: Schema.String, archived: Schema.Boolean }))
-/** A Persona as a receipt kept it; one kept before setups (ADR 0040) has none, and Undo leaves the setup as it is. */
-const PersonaBefore = Schema.NullOr(
-  Schema.Struct({
-    ...PersonaDefinitionSchema.fields,
-    setup: Schema.optionalKey(PersonaSetup),
-    archived: Schema.Boolean,
-  }),
-)
+/** A Persona as a receipt kept it: its definition, setup included, and whether it was archived. */
+const PersonaBefore = Schema.NullOr(Schema.Struct({ ...PersonaDefinitionSchema.fields, archived: Schema.Boolean }))
 /** A Topic's setup as a `topic.setup` receipt kept it (ADR 0040). */
 const SetupBefore = Schema.Struct({ setup: TopicSetup })
 const decodeTopic = Schema.decodeUnknownEffect(TopicBefore)
@@ -37,7 +30,7 @@ type Plan =
   | {
       readonly target: 'persona'
       readonly id: number
-      readonly definition?: Omit<PersonaDefinition, 'setup'> & { readonly setup?: PersonaSetup }
+      readonly definition?: PersonaDefinition
       readonly archived: boolean
     }
 

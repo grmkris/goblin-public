@@ -14,8 +14,6 @@ export const appPersonas = sqliteTable('app_personas', {
   role: text('role').notNull(),
   instructions: text('instructions').notNull(),
   model: text('model'),
-  /** The `HelperExclusions` JSON Personas had before ADR 0040: written `[]`, no longer read. */
-  exclusions: text('exclusions').notNull(),
   /** The `PersonaSetup` JSON: what the Persona adds to its Topic's setup (ADR 0040). */
   setup: text('setup').notNull().default(NOTHING_JSON),
   revision: integer('revision').notNull(),
@@ -37,7 +35,6 @@ export const appPersonaRevisions = sqliteTable(
     role: text('role').notNull(),
     instructions: text('instructions').notNull(),
     model: text('model'),
-    exclusions: text('exclusions').notNull(),
     setup: text('setup').notNull().default(NOTHING_JSON),
     actor: text('actor', { enum: ['owner', 'agent'] }).notNull(),
     createdAt: integer('created_at').notNull(),
