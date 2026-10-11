@@ -31,11 +31,11 @@ export const mcpModelResult = (connectionId: string, result: CallToolResult): To
  * owner-only Allow card. The marker is the top-level `kind`; `mcpModelResult` details never have one, so a remote
  * server's content cannot forge it. The model is told to wait: granting is the owner's act, never the model's.
  */
-export const grantRequiredResult = (connectionId: string, name: string): ToolExecutionResult => ({
+export const grantRequiredResult = (connectionId: string, name: string, connection: string): ToolExecutionResult => ({
   content: [
     {
       type: 'text',
-      text: `Not granted: ${connectionId} · ${name}. The owner has been shown an Allow button for this tool. Stop here and wait for their decision; do not retry until they reply.`,
+      text: `Not granted: ${connection} · ${name}. The owner has been shown an Allow button for this tool. Stop here and wait for their decision; do not retry until they reply.`,
     },
   ],
   isError: true,

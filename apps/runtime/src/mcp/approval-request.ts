@@ -9,7 +9,8 @@ import { requireRoutineSession } from '../routines/authority.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { objectOrJson } from '../pi/typed-tool.ts'
-import { Approvals, McpConnections, McpGrants, requireResident } from './service.ts'
+import { named } from './labels.ts'
+import { Approvals, McpConnections, McpGrants, McpServers, requireResident } from './service.ts'
 
 export const McpCallInput = Schema.Struct({
   connectionId: Schema.String,
@@ -51,6 +52,7 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
 /** End the turn and release a routine's executing slot. The approval itself stays in app-owned storage. */
 export const approvalResult = (session: string, callId: string, id: string, input: McpCallInput) =>
   Effect.gen(function* () {
+    const connection = named(yield* (yield* McpServers).labels(), input.connectionId)
     const runs = yield* RoutineRuns
     const run = yield* runs.session(session)
     if (run !== undefined) {
@@ -59,7 +61,7 @@ export const approvalResult = (session: string, callId: string, id: string, inpu
       yield* runs.ask(
         session,
         callId,
-        [{ id: 'mcp-approval', prompt: `Approve ${input.connectionId} · ${input.name}?`, kind: 'text' }],
+        [{ id: 'mcp-approval', prompt: `Approve ${connection} · ${input.name}?`, kind: 'text' }],
         cipher,
         now,
       )
@@ -73,7 +75,7 @@ export const approvalResult = (session: string, callId: string, id: string, inpu
       content: [
         {
           type: 'text',
-          text: `Ask first: ${input.connectionId} · ${input.name}. Nothing ran. The owner must approve or refuse the exact held arguments in the chat card. Stop and wait. Do not call the tool again; approval dispatches this held call.`,
+          text: `Ask first: ${connection} · ${input.name}. Nothing ran. The owner must approve or refuse the exact held arguments in the chat card. Stop and wait. Do not call the tool again; approval dispatches this held call.`,
         },
       ],
       isError: true,

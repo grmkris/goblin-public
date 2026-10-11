@@ -243,6 +243,9 @@ const connecting = (owner: OwnerServers) => ({
   list: Effect.fn('McpServers.list')(function* () {
     return yield* views(owner)
   }),
+  labels: Effect.fn('McpServers.labels')(function* () {
+    return yield* Effect.sync(() => owner.labels.all())
+  }),
   status: Effect.fn('McpServers.status')(function* (connectionId: string) {
     return yield* Effect.sync(() => owner.credentials.status(connectionId))
   }),

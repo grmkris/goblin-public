@@ -3,7 +3,8 @@ import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { requireBudget } from '../budget.ts'
 import { Setups } from '../setup/service.ts'
-import { requireResident } from '../mcp/service.ts'
+import { named } from '../mcp/labels.ts'
+import { McpServers, requireResident } from '../mcp/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { logLearnOutcome, type LearnOutcome } from '../skills/learner.ts'
 import type { Catalog } from '../skills/library.ts'
@@ -25,16 +26,32 @@ const GUIDE = [
   'part and tell the owner.',
 ].join(' ')
 
-const listing = (catalog: Catalog): string | undefined => {
+/**
+ * The skills on offer, grouped by the connection they come from and headed with its label: two connections to one
+ * library list the same skills under different handles, and the label says whose they are.
+ */
+const listing = ({
+  catalog,
+  labels,
+}: {
+  catalog: Catalog
+  labels: ReadonlyMap<string, string>
+}): string | undefined => {
   if (catalog.skills.length === 0 && catalog.unavailable.length === 0) return undefined
-  const lines = catalog.skills
-    .slice(0, MAX_LISTED)
-    .map((skill) => `- ${skill.handle}: ${skill.description.replaceAll(/\s+/gu, ' ').slice(0, MAX_DESCRIPTION)}`)
+  const lines: string[] = []
+  let from: string | undefined
+  for (const skill of catalog.skills.slice(0, MAX_LISTED)) {
+    if (skill.connectionId !== from) lines.push(`From ${named(labels, skill.connectionId)}:`)
+    from = skill.connectionId
+    lines.push(`- ${skill.handle}: ${skill.description.replaceAll(/\s+/gu, ' ').slice(0, MAX_DESCRIPTION)}`)
+  }
   const more = catalog.skills.length > MAX_LISTED ? [`(${catalog.skills.length - MAX_LISTED} more not listed)`] : []
   const down =
     catalog.unavailable.length === 0
       ? []
-      : [`Unavailable right now: skills from ${catalog.unavailable.join(', ')}. Say so if one is needed.`]
+      : [
+          `Unavailable right now: skills from ${catalog.unavailable.map((id) => named(labels, id)).join(', ')}. Say so if one is needed.`,
+        ]
   return [GUIDE, '', ...(lines.length === 0 ? ['No skills are listed.'] : lines), ...more, ...down].join('\n')
 }
 
@@ -75,15 +92,19 @@ const skillsNow = async (run: RunProgram, session: string): Promise<string | und
           const skills = yield* Skills
           const scope = yield* scopeFor(session)
           const sources = (yield* skills.sources()).filter((connectionId) => scope.skills(connectionId))
-          if (sources.length === 0) return { skills: [], unavailable: [] }
+          const labels = yield* (yield* McpServers).labels()
+          if (sources.length === 0) return { catalog: { skills: [], unavailable: [] }, labels }
           const catalog = yield* skills.catalog(
             { timeout: 5000, authorize: yield* skillScope(session) },
             (connectionId) => scope.skills(connectionId),
           )
           const current = yield* scopeFor(session)
           return {
-            skills: catalog.skills.filter((skill) => current.skill(skill.connectionId, skill.name, skill.entry.uri)),
-            unavailable: catalog.unavailable.filter((id) => current.skills(id)),
+            catalog: {
+              skills: catalog.skills.filter((skill) => current.skill(skill.connectionId, skill.name, skill.entry.uri)),
+              unavailable: catalog.unavailable.filter((id) => current.skills(id)),
+            },
+            labels,
           }
         }),
       ),

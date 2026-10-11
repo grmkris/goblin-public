@@ -19,6 +19,15 @@ export interface Labels {
   remove(connectionId: string): void
 }
 
+/**
+ * How a connection reads in the model's text: the owner's label, with the id the tools take (ADR 0041). The label is the
+ * owner's own words, one bounded line; a server's card claims never reach the model (ADR 0006).
+ */
+export const named = (labels: ReadonlyMap<string, string>, connectionId: string): string => {
+  const label = labels.get(connectionId)
+  return label === undefined || label === connectionId ? connectionId : `"${label}" (${connectionId})`
+}
+
 /** The labels as the owner gives them: one line, no surrounding space. */
 export const labelOf = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim().slice(0, 80)
 

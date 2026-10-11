@@ -18,11 +18,13 @@ export const composerOptions = (chat: string) =>
     const catalog = yield* (yield* Skills).catalog({ timeout: 5000, authorize: yield* skillScope(session) }, (id) =>
       scope.skills(id),
     )
-    const connections: ComposerOption[] = (yield* (yield* McpServers).list())
+    const servers = yield* (yield* McpServers).list()
+    const labels = new Map(servers.map((server) => [server.connectionId, server.label]))
+    const connections: ComposerOption[] = servers
       .filter((server) => server.status === 'connected' && scope.server(server.connectionId))
       .map((server) => ({
         selection: { kind: 'connection', connectionId: server.connectionId },
-        label: server.title ?? server.serverName ?? server.connectionId,
+        label: server.label,
         description: `${server.status} · Connection hint; permissions stay unchanged`,
       }))
     const procedures: ComposerOption[] = catalog.skills
@@ -30,7 +32,7 @@ export const composerOptions = (chat: string) =>
       .map((skill) => ({
         selection: { kind: 'skill', connectionId: skill.connectionId, uri: skill.entry.uri },
         label: skill.name,
-        description: `${skill.connectionId} · ${skill.description.slice(0, 300)}`,
+        description: `${labels.get(skill.connectionId) ?? skill.connectionId} · ${skill.description.slice(0, 300)}`,
       }))
     const helpers: ComposerOption[] = (yield* conversations.list)
       .filter((view) => view.kind === 'subagent')

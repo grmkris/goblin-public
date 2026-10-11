@@ -24,9 +24,7 @@ export const setupCatalog = Effect.gen(function* () {
   const connections = yield* McpConnections
   const servers = yield* (yield* McpServers).list()
   const grants = yield* (yield* McpGrants).list()
-  const labels = new Map(
-    servers.map((server) => [server.connectionId, server.title ?? server.serverName ?? server.connectionId]),
-  )
+  const labels = new Map(servers.map((server) => [server.connectionId, server.label]))
   const listed = yield* Effect.forEach(servers, (server) =>
     Effect.map(connections.snapshot(server.connectionId), (snapshot) => Option.getOrUndefined(snapshot)?.tools),
   )

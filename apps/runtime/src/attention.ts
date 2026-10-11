@@ -7,7 +7,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import { appMcpApprovals } from './storage/mcp-approvals.ts'
-import { appAgentApps, appAgentPowers } from './storage/schema.ts'
+import { appAgentApps, appAgentPowers, appMcpLabels } from './storage/schema.ts'
 
 const LABEL = 200
 const label = (text: string): string => (text.length > LABEL ? `${text.slice(0, LABEL - 1)}…` : text)
@@ -93,8 +93,9 @@ export function storedAsks<RunResult>(
   now: number,
 ): readonly Attention[] {
   const approvals = db
-    .select()
+    .select({ row: appMcpApprovals, label: appMcpLabels.label })
     .from(appMcpApprovals)
+    .leftJoin(appMcpLabels, eq(appMcpLabels.connectionId, appMcpApprovals.connectionId))
     .where(
       and(
         eq(appMcpApprovals.sessionId, chat.session),
@@ -103,10 +104,10 @@ export function storedAsks<RunResult>(
       ),
     )
     .all()
-    .map((row): Attention => ({
+    .map(({ row, label: connection }): Attention => ({
       kind: 'approval',
       since: Math.floor(row.createdAt / 1000),
-      label: label(`${row.connectionId} · ${row.name}`),
+      label: label(`${connection ?? row.connectionId} · ${row.name}`),
     }))
   const powers = db
     .select({ app: appAgentApps, power: appAgentPowers })

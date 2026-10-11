@@ -71,6 +71,8 @@ export class McpServers extends Context.Service<
   {
     /** Every server offered, configured first, with its connection status. */
     readonly list: () => Effect.Effect<readonly ServerView[]>
+    /** The owner's label for every connection, by connection id. */
+    readonly labels: () => Effect.Effect<ReadonlyMap<string, string>>
     /** One server's connection status: signed in, needing sign-in, or never connected. */
     readonly status: (connectionId: string) => Effect.Effect<ConnectionStatus>
     /** goblin's suggested servers for `stage`, each marked added when the owner already has its endpoint. */

@@ -482,8 +482,10 @@ their versions, members and last errors; the skills on offer) goes into one trai
 `beforeRequest` hooks add to each request (`pi/context-tail.ts`), marked as goblin's note and not the owner's. Pi
 never stores it, so everything before it stays a cacheable prefix. The `mcp_list` and `mcp_call` tools
 (`pi/resident-mcp.ts`) are how the model reaches the owner's MCP servers; both require current resident authority, and
-`mcp_call` is marked unsafe to replay. `mcp_list` shows each tool's input and output schema (the server's, untrusted
-data); `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
+`mcp_call` is marked unsafe to replay. `mcp_list` lists the connections with the owner's labels (two accounts of one
+server are told apart by them; ADR 0041), and shows each tool's input and output schema (the server's, untrusted
+data). Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
+(`named` in `mcp/labels.ts`); labels never enter telemetry. `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
 Pi's MCP tools shape it (content blocks, `details.structuredContent`, `_meta` and the origin).
 Remote result details and signed routine event metadata share `mcp/redaction.ts`: it scrubs exact credential-shaped
 keys such as `accessToken`, `refresh_token` and `apiKey`, recursively. Public asset and usage fields such as

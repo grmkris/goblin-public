@@ -45,7 +45,7 @@ await credentials.saveTokens('notes', { access_token: 'fixture-token', token_typ
 const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => notes.fetch(new Request(input, init))
 /** The MCP host over the notes server; each program run opens its connection and closes it when it ends. */
 const host = mcpHost({
-  servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp' }],
+  servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp', label: 'Notes · Mine' }],
   credentials,
   grants: new MemoryGrants([{ connectionId: 'notes', capability: 'tool', name: 'read' }]),
   registries: new MemoryRegistries(),
@@ -118,6 +118,12 @@ describe('mcp_call and the owner grant (unit)', () => {
       details: { kind: 'grant-required', connectionId: 'notes', name: 'write' },
     })
     expect(JSON.stringify(result.content)).toContain('Allow button')
+    expect(JSON.stringify(result.content)).toContain('Not granted: \\"Notes · Mine\\" (notes) · write')
+  })
+  it("lists each connection with the owner's label, so two accounts of one server are told apart", async () => {
+    expect(await listed({}, 7)).toEqual({
+      servers: [{ connectionId: 'notes', label: 'Notes · Mine', status: 'connected' }],
+    })
   })
   it('never asks the owner about a tool that is missing or meant for an App only', async () => {
     // A failure is an error result the model reads, with no details for the web to turn into an Allow card.

@@ -98,7 +98,7 @@ const tools = defineExtension({
       description: 'owner decision',
       parameters: Type.Object({}),
       replay: 'safe',
-      execute: async () => grantRequiredResult('myplan', 'notes_search'),
+      execute: async () => grantRequiredResult('myplan', 'notes_search', 'myplan'),
     }),
     defineTool({
       name: 'guarded',
