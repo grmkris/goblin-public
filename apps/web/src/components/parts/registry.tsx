@@ -2,6 +2,7 @@ import { type ReactNode, memo, useMemo } from 'react'
 import {
   CircleAlertIcon,
   CircleStopIcon,
+  ExternalLinkIcon,
   KeyRoundIcon,
   MessageCircleQuestionIcon,
   PlugIcon,
@@ -66,6 +67,15 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
         <KeyRoundIcon aria-hidden />
         <span>
           Asked to use {interaction.connectionId} · {interaction.name}
+        </span>
+      </Receipt>
+    )
+  if (interaction.kind === 'url')
+    return (
+      <Receipt>
+        <ExternalLinkIcon aria-hidden />
+        <span>
+          Asked you to finish a step on {interaction.connectionId}’s site for {interaction.name}
         </span>
       </Receipt>
     )

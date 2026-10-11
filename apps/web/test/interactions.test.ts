@@ -97,6 +97,29 @@ describe('what the agent waits on the owner for', () => {
     expect(interactionOperation({ kind: 'access', callId: 'g1', connectionId: 'myplan', scope: '' })).toBe('access:g1')
     expect(openInteractions([mcpCall(scope), user('u2')])).toEqual([])
   })
+  it('waits on a URL request for the exact call until its store says it is done (ADR 0042)', () => {
+    const url = { kind: 'url-required', requestId: 'mcp-url:7:g1', connectionId: 'myplan', name: 'document_edit' }
+    const request = {
+      kind: 'url',
+      callId: 'g1',
+      requestId: 'mcp-url:7:g1',
+      connectionId: 'myplan',
+      name: 'document_edit',
+    }
+    expect(interactionOf(mcpCall(url))).toEqual(request)
+    expect(interactionOf(mcpCall({ ...url, name: 'other' }))).toBeUndefined()
+    expect(interactionOf(mcpCall({ ...url, requestId: 7 }))).toBeUndefined()
+    expect(interactionOf(mcpCall({ ...url, origin: { connectionId: 'myplan', trust: 'untrusted' } }))).toBeUndefined()
+    // The owner's next message does not settle it: the server answers once they press Done or Cancel.
+    expect(openInteractions([mcpCall(url), user('u2'), mcpCall(grant)])).toEqual([
+      request,
+      { kind: 'grant', callId: 'g1', connectionId: 'myplan', name: 'document_edit' },
+    ])
+    expect(openInteractions([mcpCall(url), mcpCall(grant), user('u2')])).toEqual([request])
+    expect(interactionOperation({ kind: 'url', callId: 'g1', requestId: 'r', connectionId: 'm', name: 'n' })).toBe(
+      'url:g1',
+    )
+  })
   it('reads ask_user questions, and ignores details that do not fit the contract', () => {
     expect(interactionOf(asked([question]))).toEqual({ kind: 'question', callId: 'q1', questions: [question] })
     expect(interactionOf(asked([{ id: 'x', prompt: 'Bad', kind: 'essay' }]))).toBeUndefined()

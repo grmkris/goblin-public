@@ -6,11 +6,12 @@ import { useMutation } from '@tanstack/react-query'
 import { replyPersonaMutation } from '../../personas/queries.ts'
 import { ApprovalCard } from '../approval-card.tsx'
 import { AccessCard, GrantCard } from '../interaction-cards.tsx'
+import { UrlRequestCard } from '../url-request-card.tsx'
 
 /**
  * A Persona's hold, as a card under its answer: an approval decides the held call (the Persona then goes on with the
- * outcome); a grant allows the tool, and a sign-in with more access opens the server's consent, each replying to the
- * Persona's fork so it goes on.
+ * outcome), and so does a URL request once finished or cancelled; a grant allows the tool, and a sign-in with more
+ * access opens the server's consent, each replying to the Persona's fork so it goes on.
  */
 export function PersonaHoldCard({
   hold,
@@ -40,8 +41,12 @@ export function PersonaHoldCard({
         onAnswer={onAnswer}
       />
     )
-  // A URL request's card comes with the URL request card itself.
-  if (hold.kind === 'url') return null
+  if (hold.kind === 'url')
+    return hold.requestId === undefined ? null : (
+      <UrlRequestCard
+        interaction={{ kind: 'url', callId: answer, requestId: hold.requestId, connectionId, name: hold.name }}
+      />
+    )
   return (
     <GrantCard
       interaction={{ kind: 'grant', callId: answer, connectionId, name: hold.name }}

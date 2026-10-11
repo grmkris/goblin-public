@@ -22,6 +22,14 @@ export type Interaction =
   | { readonly kind: 'grant'; readonly callId: string; readonly connectionId: string; readonly name: string }
   /** A call needed more access than the connection's sign-in granted: the owner signs in again (ADR 0042). */
   | { readonly kind: 'access'; readonly callId: string; readonly connectionId: string; readonly scope: string }
+  /** A server asks the owner to finish a step on its site first: its URL request, read from the owner API (ADR 0042). */
+  | {
+      readonly kind: 'url'
+      readonly callId: string
+      readonly requestId: string
+      readonly connectionId: string
+      readonly name: string
+    }
   | {
       readonly kind: 'server'
       readonly callId: string
@@ -78,6 +86,7 @@ const MARKERS = new Map<string, (part: ToolPart, details: Record<string, unknown
   ['approval-required', approvalOf],
   ['grant-required', grantOf],
   ['scope-required', accessOf],
+  ['url-required', urlOf],
   ['not-in-topic', setupOf],
 ])
 
@@ -134,6 +143,20 @@ function accessOf(part: ToolPart, details: Record<string, unknown>): Interaction
   return { kind: 'access', callId: part.call.id, connectionId: target.connectionId, scope }
 }
 
+/** A URL request, only from `mcp_call` and only for exactly the server and tool that were called. */
+function urlOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const target = part.target
+  if (part.call.name !== 'mcp_call' || target === undefined || !isString(details.requestId)) return undefined
+  if (details.connectionId !== target.connectionId || details.name !== target.name) return undefined
+  return {
+    kind: 'url',
+    callId: part.call.id,
+    requestId: details.requestId,
+    connectionId: target.connectionId,
+    name: target.name,
+  }
+}
+
 /** A request to add a server, only from `mcp_request_server` and only for an https endpoint without credentials. */
 function serverOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
   const { endpoint, name, reason } = details
@@ -152,16 +175,20 @@ function serverOf(part: ToolPart, details: Record<string, unknown>): Interaction
 const setupKey = (interaction: Interaction): string | undefined =>
   interaction.kind === 'setup' ? `${String(interaction.topic.id)}:${JSON.stringify(interaction.target)}` : undefined
 
+/** What waits in goblin's own store, not in the chat: a later message does not settle it. */
+const STORED: ReadonlySet<Interaction['kind']> = new Set(['approval', 'url'])
+
 /**
- * The interactions still waiting: those after the owner's last message. Any later message settles them. Asks to add
- * the same item to the Topic show once, as the latest.
+ * The interactions still waiting: those after the owner's last message, which settles every other one, and held calls
+ * and URL requests until their store says they are done. Asks to add the same item to the Topic show once, as the
+ * latest.
  */
 export function openInteractions(parts: readonly Part[]): Interaction[] {
   const lastUser = parts.findLastIndex((part) => part.kind === 'user')
   const open = parts.flatMap((part, index) => {
     if (part.kind !== 'tool') return []
     const interaction = interactionOf(part)
-    return interaction === undefined || (interaction.kind !== 'approval' && index <= lastUser) ? [] : [interaction]
+    return interaction === undefined || (!STORED.has(interaction.kind) && index <= lastUser) ? [] : [interaction]
   })
   return open.filter((interaction, index) => {
     const key = setupKey(interaction)
@@ -174,6 +201,7 @@ const OPERATION = {
   question: 'answer',
   grant: 'grant',
   access: 'access',
+  url: 'url',
   setup: 'setup',
   server: 'server',
 } as const

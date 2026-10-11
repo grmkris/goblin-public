@@ -29,6 +29,7 @@ import { messageOf } from '../lib/query/app-error.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { setWorkspaceTopicSetupMutation } from '../lib/workspace/mutations.ts'
 import { ApprovalCard } from './approval-card.tsx'
+import { UrlRequestCard } from './url-request-card.tsx'
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
 export type Answer = (input: string, operationId: string) => Promise<boolean>
@@ -402,6 +403,7 @@ export function InteractionCards({
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'access')
       return <AccessCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
+    if (interaction.kind === 'url') return <UrlRequestCard key={interaction.callId} interaction={interaction} />
     if (interaction.kind === 'server')
       return <ServerRequestCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'setup')
