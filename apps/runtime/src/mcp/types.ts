@@ -93,6 +93,33 @@ export type McpCallOptions = McpRequestOptions & {
 }
 export type McpToolResult = CallToolResult
 
+/** What a server asks before a model's call can complete: the owner opens this link (a URL request, ADR 0042). */
+export type UrlPrompt = {
+  /** The input request's key in the server's `inputRequests`, answered under the same key. */
+  readonly inputKey: string
+  /** The server's opaque request state, echoed back with the answer. */
+  readonly requestState: string | undefined
+  readonly url: string
+  readonly message: string
+}
+
+/** The owner's answer to a URL request, sent with the call retried. */
+export type UrlAnswer = {
+  readonly inputKey: string
+  readonly action: 'accept' | 'decline'
+  readonly requestState: string | undefined
+}
+
+/** A model's own call: it may meet a URL request, and its retry carries the owner's answer. */
+export type McpModelCallOptions = Omit<McpCallOptions, 'caller' | 'approvalId' | 'approvalContext'> & {
+  readonly answer?: UrlAnswer
+}
+
+/** A model's call that may meet a URL request: the server's result, or what it asks first. */
+export type McpModelCallResult =
+  | { readonly kind: 'complete'; readonly result: McpToolResult }
+  | { readonly kind: 'url'; readonly prompt: UrlPrompt }
+
 /** One skill as an authority check names it: its name and, when known, the URI of its `SKILL.md`. */
 export type SkillIdentity = { readonly name: string; readonly uri?: string }
 

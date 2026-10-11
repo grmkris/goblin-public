@@ -30,9 +30,11 @@ import {
   type McpGrants,
   McpServers,
   type Resident,
+  UrlRequests,
   requireResident,
 } from '../mcp/service.ts'
-import type { McpManagerOptions } from '../mcp/types.ts'
+import type { McpManagerOptions, UrlPrompt } from '../mcp/types.ts'
+import { type HeldUrlRequest, McpUrlRequestStore } from '../mcp/url-requests.ts'
 import type { SingleFlight } from '../observability/single-flight.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
@@ -87,6 +89,51 @@ const approvalsOver = (store: McpApprovalStore) =>
     }),
   })
 
+/** URL requests over their one store (ADR 0042). */
+const urlRequestsOver = (store: McpUrlRequestStore) =>
+  UrlRequests.of({
+    hold: Effect.fn('UrlRequests.hold')(function* (request: HeldUrlRequest) {
+      const now = yield* Clock.currentTimeMillis
+      return yield* attempt(() => store.hold(request, now))
+    }),
+    get: Effect.fn('UrlRequests.get')(function* (id: string) {
+      return yield* attemptSync(() => store.get(id))
+    }),
+    claim: Effect.fn('UrlRequests.claim')(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis
+      return yield* attemptSync(() => store.claim(id, now))
+    }),
+    again: Effect.fn('UrlRequests.again')(function* (id: string, prompt: UrlPrompt) {
+      const now = yield* Clock.currentTimeMillis
+      yield* attempt(() => store.again(id, prompt, now))
+    }),
+    finish: Effect.fn('UrlRequests.finish')(function* (
+      id: string,
+      state: 'completed' | 'declined',
+      result: CallToolResult,
+    ) {
+      const now = yield* Clock.currentTimeMillis
+      yield* attempt(() => store.finish(id, state, result, now))
+    }),
+    fail: Effect.fn('UrlRequests.fail')(function* (id: string, state: 'failed' | 'uncertain') {
+      const now = yield* Clock.currentTimeMillis
+      yield* Effect.sync(() => store.fail(id, state, now))
+    }),
+    decline: Effect.fn('UrlRequests.decline')(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis
+      yield* Effect.sync(() => store.decline(id, now))
+    }),
+    arguments: Effect.fn('UrlRequests.arguments')(function* (id: string) {
+      return yield* attempt(() => store.arguments(id))
+    }),
+    prompt: Effect.fn('UrlRequests.prompt')(function* (id: string) {
+      return yield* attempt(() => store.prompt(id))
+    }),
+    result: Effect.fn('UrlRequests.result')(function* (id: string) {
+      return Option.fromNullishOr(yield* attempt(() => store.result(id)))
+    }),
+  })
+
 /**
  * The owner's decision on a call by the model or an App: an ask-first tool's call goes out only as the held call the
  * owner approved, with exactly its reviewed arguments, conversation and grant version; `authorize`, the caller's own
@@ -118,7 +165,7 @@ const heldCalls =
  * connections, the owner's servers and grants, and held calls.
  */
 export const McpHostLive: Layer.Layer<
-  McpConnections | McpServers | McpGrants | Approvals | Cipher,
+  McpConnections | McpServers | McpGrants | Approvals | UrlRequests | Cipher,
   never,
   AgentInput | Db | SingleFlight
 > = Layer.unwrap(
@@ -135,6 +182,8 @@ export const McpHostLive: Layer.Layer<
     const grants = new GrantStore(db)
     const approvals = new McpApprovalStore(db, cipher)
     yield* Effect.sync(() => approvals.recover(now))
+    const urlRequests = new McpUrlRequestStore(db, cipher)
+    yield* Effect.sync(() => urlRequests.recover(now))
     const skillState = new SqliteSkillState(db)
     const host = mcpHost({
       servers,
@@ -150,7 +199,12 @@ export const McpHostLive: Layer.Layer<
       fetch: input.mcpFetch,
       report: mcpReporter(input.telemetry),
     })
-    return Layer.mergeAll(host, Layer.succeed(Approvals, approvalsOver(approvals)), Layer.succeed(Cipher, cipher))
+    return Layer.mergeAll(
+      host,
+      Layer.succeed(Approvals, approvalsOver(approvals)),
+      Layer.succeed(UrlRequests, urlRequestsOver(urlRequests)),
+      Layer.succeed(Cipher, cipher),
+    )
   }),
 )
 

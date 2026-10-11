@@ -6,6 +6,7 @@ import { epochSeconds } from '../clock.ts'
 import { ResidentInactive } from '../http/errors.ts'
 import {
   type Approvals,
+  type UrlRequests,
   type Events,
   type McpConnections,
   type McpGrants,
@@ -124,6 +125,7 @@ type StartServices =
   | McpServers
   | McpGrants
   | Approvals
+  | UrlRequests
   | Cipher
   | Events
   | CheapModels

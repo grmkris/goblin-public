@@ -49,28 +49,31 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
     return row
   })
 
-/** End the turn and release a routine's executing slot. The approval itself stays in app-owned storage. */
-export const approvalResult = (session: string, callId: string, id: string, input: McpCallInput) =>
+/**
+ * The turn ends waiting on the owner: a routine run asks them `prompt` and releases its executing slot; a subagent's
+ * chat stays open for the answer.
+ */
+export const waitOnOwner = (session: string, callId: string, question: string, prompt: string) =>
   Effect.gen(function* () {
-    const connection = named(yield* (yield* McpServers).labels(), input.connectionId)
     const runs = yield* RoutineRuns
     const run = yield* runs.session(session)
     if (run !== undefined) {
       const { cipher } = yield* Approvals
       const now = yield* Clock.currentTimeMillis
-      yield* runs.ask(
-        session,
-        callId,
-        [{ id: 'mcp-approval', prompt: `Approve ${connection} · ${input.name}?`, kind: 'text' }],
-        cipher,
-        now,
-      )
-    } else {
-      const conversations = yield* Conversations
-      const chat = yield* (yield* Chats).chatOf(session)
-      if (Option.isSome(chat) && (yield* conversations.kindOf(chat.value)) === 'subagent')
-        yield* conversations.update(chat.value, { keepOpen: true })
+      yield* runs.ask(session, callId, [{ id: question, prompt, kind: 'text' }], cipher, now)
+      return
     }
+    const conversations = yield* Conversations
+    const chat = yield* (yield* Chats).chatOf(session)
+    if (Option.isSome(chat) && (yield* conversations.kindOf(chat.value)) === 'subagent')
+      yield* conversations.update(chat.value, { keepOpen: true })
+  })
+
+/** End the turn and release a routine's executing slot. The approval itself stays in app-owned storage. */
+export const approvalResult = (session: string, callId: string, id: string, input: McpCallInput) =>
+  Effect.gen(function* () {
+    const connection = named(yield* (yield* McpServers).labels(), input.connectionId)
+    yield* waitOnOwner(session, callId, 'mcp-approval', `Approve ${connection} · ${input.name}?`)
     return {
       content: [
         {

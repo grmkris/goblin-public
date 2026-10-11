@@ -60,3 +60,29 @@ export const scopeRequiredResult = (connectionId: string, scope: string, connect
   diagnostics: [{ severity: 'info', code: 'ScopeRequired', message: 'More access required.' }],
   details: { kind: 'scope-required', connectionId, scope },
 })
+
+/**
+ * A model's call the server answered "input required: open this URL" (ADR 0042): goblin's own marker for the owner's
+ * card, which reads the link from the kept request. Neither the link nor the server's message is in the result: the
+ * transcript is indexed, and approval links can carry one-time tokens. The turn ends; the server's answer comes back
+ * once the owner finishes or cancels it.
+ */
+export const urlRequiredResult = (
+  requestId: string,
+  connectionId: string,
+  name: string,
+  connection: string,
+): ToolExecutionResult => ({
+  content: [
+    {
+      type: 'text',
+      text: `Waiting on the owner: ${connection} · ${name} asks them to finish a step on its site first, and nothing has completed yet. They have a card with the server's link. Once they finish or cancel it, the server's answer comes back here. Stop and wait; do not call the tool again.`,
+    },
+  ],
+  isError: true,
+  control: { terminate: true },
+  diagnostics: [
+    { severity: 'info', code: 'url_required', message: 'The owner must finish a step on the server first.' },
+  ],
+  details: { kind: 'url-required', requestId, connectionId, name },
+})

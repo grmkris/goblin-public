@@ -27,13 +27,17 @@ import type { SettledOffer } from './events/offers.ts'
 import type { EventDescriptor } from './events/protocol.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
+import type { HeldUrlRequest, UrlRequestRow } from './url-requests.ts'
 import type {
   McpCallOptions,
   McpConnectionSnapshot,
+  McpModelCallOptions,
+  McpModelCallResult,
   McpRequestOptions,
   McpServerConfig,
   McpToolResult,
   SkillRequestOptions,
+  UrlPrompt,
 } from './types.ts'
 import type { SkillEntry } from '../skills/protocol.ts'
 
@@ -179,6 +183,16 @@ export class McpConnections extends Context.Service<
       args: Record<string, unknown>,
       options?: McpCallOptions,
     ) => Effect.Effect<McpToolResult, AppError>
+    /**
+     * A model's own call of a granted tool (ADR 0042): on a 2026 connection it declares URL elicitation for this
+     * request, so the server may answer with a URL request instead of a result; `answer` retries it with the owner's.
+     */
+    readonly callModelTool: (
+      connectionId: string,
+      name: string,
+      args: Record<string, unknown>,
+      options?: McpModelCallOptions,
+    ) => Effect.Effect<McpModelCallResult, AppError>
     /** A granted resource; `app` reads an App's `ui://` HTML bundle, under its larger bound. */
     readonly readResource: (
       connectionId: string,
@@ -247,6 +261,40 @@ export class Approvals extends Context.Service<
     readonly view: (id: string) => Effect.Effect<ApprovalView, AppError>
   }
 >()('goblin/mcp/Approvals') {}
+
+/**
+ * URL requests (ADR 0042): a model's call the server answered "input required: open this URL", kept sealed until the
+ * owner finishes or cancels it.
+ */
+export class UrlRequests extends Context.Service<
+  UrlRequests,
+  {
+    /** Keeps the call as a URL request (or finds it kept, a pending one taking the newer prompt). */
+    readonly hold: (request: HeldUrlRequest) => Effect.Effect<UrlRequestRow, AppError>
+    /** The request, or `NotFound`. */
+    readonly get: (id: string) => Effect.Effect<UrlRequestRow, AppError>
+    /** Claims the one retry of a pending request, before any I/O; `changed` is false otherwise. */
+    readonly claim: (id: string) => Effect.Effect<{ readonly row: UrlRequestRow; readonly changed: boolean }, AppError>
+    /** The server is still waiting: pending again, with its newer prompt. */
+    readonly again: (id: string, prompt: UrlPrompt) => Effect.Effect<void, AppError>
+    /** The server's answer to the retry. */
+    readonly finish: (
+      id: string,
+      state: 'completed' | 'declined',
+      result: McpToolResult,
+    ) => Effect.Effect<void, AppError>
+    /** A retry that did not complete: `uncertain` once it may have reached the server. */
+    readonly fail: (id: string, state: 'failed' | 'uncertain') => Effect.Effect<void>
+    /** The owner cancelled it. */
+    readonly decline: (id: string) => Effect.Effect<void>
+    /** The call's frozen arguments. */
+    readonly arguments: (id: string) => Effect.Effect<JsonObject, AppError>
+    /** What the server asked, unsealed. */
+    readonly prompt: (id: string) => Effect.Effect<UrlPrompt, AppError>
+    /** The retry's result, once the server answered it. */
+    readonly result: (id: string) => Effect.Effect<Option.Option<McpToolResult>, AppError>
+  }
+>()('goblin/mcp/UrlRequests') {}
 
 /**
  * MCP Events (ADR 0011): exact owner grants per event selector, durable subscriptions shared by their consumers, the

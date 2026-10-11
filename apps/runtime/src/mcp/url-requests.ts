@@ -7,19 +7,12 @@ import { appMcpUrlRequests as requests } from '../storage/mcp-url-requests.ts'
 import { Conflict, NotFound, PayloadTooLarge } from '../http/errors.ts'
 import type { CredentialCipher } from './cipher.ts'
 import { argumentsHash } from './approvals.ts'
+import type { UrlPrompt } from './types.ts'
 
 // URL requests (ADR 0042): a model's MCP call the server answered "input required: open this URL", kept until the
 // owner finishes or cancels it. Sealing and every other wait run outside SQLite transactions.
 
 export type UrlRequestRow = typeof requests.$inferSelect
-
-/** What the server asked, as goblin keeps it: the input request's key, its state, the link and its message. */
-export type UrlPrompt = {
-  readonly inputKey: string
-  readonly requestState: string | undefined
-  readonly url: string
-  readonly message: string
-}
 
 /** A model's call held as a URL request. */
 export type HeldUrlRequest = UrlPrompt & {

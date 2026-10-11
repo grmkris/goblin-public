@@ -105,6 +105,9 @@ const optionalTemplates = async (
   }
 }
 
+/** What goblin's client declares to every server: the Skills and Events extensions. */
+export const CLIENT_CAPABILITIES = { extensions: { [SKILLS_EXTENSION]: {}, [EVENTS_EXTENSION]: {} } }
+
 /** How a client is opened: the server's bearer tokens, the guarded fetch, and the bounds of discovery. */
 export type OpenOptions = {
   readonly auth: AuthProvider
@@ -153,7 +156,7 @@ export async function openRemote(
   const client = new Client(
     { name: 'goblin', version: '0.1.0' },
     {
-      capabilities: { extensions: { [SKILLS_EXTENSION]: {}, [EVENTS_EXTENSION]: {} } },
+      capabilities: CLIENT_CAPABILITIES,
       versionNegotiation: { mode: 'auto', probe: { timeoutMs: options.timeoutMs, maxRetries: 0 } },
       listMaxPages: options.maxPages,
       cachePartition: server.connectionId,

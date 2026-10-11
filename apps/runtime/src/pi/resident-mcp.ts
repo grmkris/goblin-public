@@ -20,6 +20,7 @@ import type { RunProgram } from '../runtime/bridge.ts'
 import { outsideScopeResult, mcpOff } from './setup.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-request.ts'
+import { holdUrlRequest } from '../mcp/url-request.ts'
 
 /** What a model's MCP tool checks before it runs: resident authority, then a routine run's own, when it is one. */
 const executionAuthority = (session: string) => Effect.andThen(requireResident, requireRoutineSession(session))
@@ -250,14 +251,21 @@ export function residentMcpExtension(run: RunProgram) {
               const connections = yield* McpConnections
               const recheck = yield* bound(dispatchAuthority(session, input))
               return yield* connections
-                .callTool(input.connectionId, input.name, input.arguments, {
-                  caller: 'model',
+                .callModelTool(input.connectionId, input.name, input.arguments, {
                   authorize: recheck,
                   ...requestFor(api, context.abortSignal),
                 })
                 .pipe(
-                  Effect.tap(() => keepApp(session, api.callId, input)),
-                  Effect.map((result) => new ReadyResult(mcpModelResult(input.connectionId, result))),
+                  Effect.flatMap((outcome) =>
+                    Effect.gen(function* () {
+                      if (outcome.kind === 'url')
+                        return new ReadyResult(
+                          yield* holdUrlRequest(session, api.callId, String(api.taskId), input, outcome.prompt),
+                        )
+                      yield* keepApp(session, api.callId, input)
+                      return new ReadyResult(mcpModelResult(input.connectionId, outcome.result))
+                    }),
+                  ),
                   Effect.catchTag('GrantDenied', (denied) =>
                     Effect.map(
                       grantRequired(denied, requestFor(api, context.abortSignal)),

@@ -1,7 +1,7 @@
-import type { ReadResourceResult, RequestOptions } from '@modelcontextprotocol/client'
+import type { ReadResourceResult, RequestOptions, Tool } from '@modelcontextprotocol/client'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
-import { type AppError, Conflict, Forbidden, GrantDenied, NotFound, UpstreamMcp } from '../http/errors.ts'
+import { type AppError, Conflict, Forbidden, GrantDenied, NotFound, UpstreamMcp, attemptSync } from '../http/errors.ts'
 import { type SkillEntry, skillsListStandard } from '../skills/protocol.ts'
 import { timed } from './log.ts'
 import {
@@ -20,7 +20,15 @@ import { EVENT_LIMITS } from './events/store.ts'
 import { offersEvents, offersSkills, toolOffered } from './remote.ts'
 import { refreshTools } from './tool-list.ts'
 import type { EventMethod } from './service.ts'
-import type { McpCallOptions, McpManagerOptions, SkillRequestOptions } from './types.ts'
+import type {
+  McpCallOptions,
+  McpManagerOptions,
+  McpModelCallOptions,
+  McpToolResult,
+  SkillRequestOptions,
+  UrlAnswer,
+} from './types.ts'
+import { type AskingOutcome, callAsking, urlPromptOf } from './url-asks.ts'
 
 // The connection manager: its connections (mcp/connections.ts) and the requests it sends over them, tool calls,
 // resources, draft Events and the Skills extension. Each request checks the owner's grant and the caller's authority
@@ -64,7 +72,32 @@ const toolGuards = (
   return { frozen, granted, guard, dispatch }
 }
 
-const callTool = (manager: Manager, call: ToolCall, args: Record<string, unknown>, options: McpCallOptions) => {
+/** How a tool call goes out once its checks pass: over the live connection, with the tool as listed. */
+type Send<A> = (live: Connection, tool: Tool, args: Record<string, unknown>, guarded: RequestOptions) => Promise<A>
+
+/** The SDK's own tool call. */
+const plainCall: Send<McpToolResult> = (live, tool, args, guarded) =>
+  live.client.callTool({ name: tool.name, arguments: args }, guarded)
+
+/**
+ * A model's call, which may meet a URL request on a 2026 connection (ADR 0042); on an older one, a plain call, and a
+ * retry with the owner's answer is unsupported.
+ */
+const modelCall =
+  (connectionId: string, answer: UrlAnswer | undefined): Send<AskingOutcome> =>
+  async (live, tool, args, guarded) => {
+    if (live.snapshot.protocolEra === 'modern') return callAsking(live.client, tool, args, answer, guarded)
+    if (answer !== undefined) throw new UpstreamMcp({ connectionId, reason: 'unsupported' })
+    return { kind: 'complete', result: await plainCall(live, tool, args, guarded) }
+  }
+
+const callTool = <A>(
+  manager: Manager,
+  call: ToolCall,
+  args: Record<string, unknown>,
+  options: McpCallOptions,
+  send: Send<A>,
+) => {
   const { caller = 'model', authorize, approvalId, approvalContext, runContext, ...request } = options
   const { connectionId, name } = call
   const checks = toolGuards(manager, call, options)
@@ -82,7 +115,7 @@ const callTool = (manager: Manager, call: ToolCall, args: Record<string, unknown
     yield* fits(connectionId, args, manager.maxResultBytes)
     return yield* remote(manager, live, () =>
       manager.dispatch.request(checks.dispatch, { timeout: manager.requestTimeoutMs, ...request }, (guarded) =>
-        live.client.callTool({ name, arguments: checks.frozen() }, guarded),
+        send(live, tool, checks.frozen(), guarded),
       ),
     )
   }).pipe(
@@ -219,7 +252,26 @@ const requests = (manager: Manager) => ({
     options: McpCallOptions = {},
   ) {
     // Freeze the input before any wait; local guards and the SDK dispatch see the same object.
-    return yield* callTool(manager, { connectionId, name, argumentsJson: JSON.stringify(args) }, args, options)
+    const call = { connectionId, name, argumentsJson: JSON.stringify(args) }
+    return yield* callTool(manager, call, args, options, plainCall)
+  }),
+  callModelTool: Effect.fn('McpConnections.callModelTool')(function* (
+    connectionId: string,
+    name: string,
+    args: Record<string, unknown> = {},
+    options: McpModelCallOptions = {},
+  ) {
+    const { answer, ...call } = options
+    const frozen = { connectionId, name, argumentsJson: JSON.stringify(args) }
+    const outcome = yield* callTool(
+      manager,
+      frozen,
+      args,
+      { ...call, caller: 'model' },
+      modelCall(connectionId, answer),
+    )
+    if (outcome.kind === 'complete') return { kind: 'complete' as const, result: outcome.result }
+    return { kind: 'url' as const, prompt: yield* attemptSync(() => urlPromptOf(connectionId, outcome.result)) }
   }),
   readResource: Effect.fn('McpConnections.readResource')(function* (
     connectionId: string,

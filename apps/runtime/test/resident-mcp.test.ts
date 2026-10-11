@@ -2,6 +2,7 @@ import { EVERYTHING, type TopicSetup } from '@goblin/contracts'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { type AppError, UpstreamMcp } from '../src/http/errors.ts'
@@ -10,24 +11,28 @@ import { mcpHost } from '../src/mcp/host.ts'
 import { type SetupScope, type Exclusion, scopeOf, topicScope } from '../src/setup/scope.ts'
 import { Setups } from '../src/setup/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import { Events, Resident } from '../src/mcp/service.ts'
+import { Events, Resident, UrlRequests } from '../src/mcp/service.ts'
+import { CredentialCipher } from '../src/mcp/cipher.ts'
+import { McpUrlRequestStore } from '../src/mcp/url-requests.ts'
+import { Chats, Conversations } from '../src/chats/service.ts'
 import { RoutineRuns } from '../src/routines/service.ts'
 import { SingleFlight } from '../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import type { AgentServices } from '../src/layers/index.ts'
-import { chatDatabase } from './chats-sqlite.ts'
+import { chatDatabase, durable } from './chats-sqlite.ts'
 import { FixedProfiles } from './fixed-services.ts'
 import { plans, sqliteDb, stub } from './http/api/fixture.ts'
 import { MemoryCredentials, MemoryGrants, MemoryLabels, MemoryRegistries } from './mcp/memory.ts'
-import { lowLevelServer } from './mcp/low-level-server.ts'
+import { declaresUrlElicitation, lowLevelServer } from './mcp/low-level-server.ts'
 import { executeTool, inConversation } from './pi-tool.ts'
 
 /** The tools the notes server ran, in order. */
 const ran: string[] = []
 
 /**
- * A notes server: `read` is granted, `write` exists but is not, `panel` is for its App only, and `admin` is granted but
- * needs more than the sign-in's scope. It offers Events through the extension, and sends seventy event streams.
+ * A notes server: `read` is granted, `write` exists but is not, `panel` is for its App only, `admin` is granted but
+ * needs more than the sign-in's scope, and `share` is granted but asks the owner to open a link first, when the call
+ * can take a URL request. It offers Events through the extension, and sends seventy event streams.
  */
 const notes = createMcpHandler(() => {
   const server = lowLevelServer(
@@ -40,14 +45,27 @@ const notes = createMcpHandler(() => {
       { name: 'write', inputSchema: { type: 'object', properties: {} } },
       { name: 'panel', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { visibility: ['app'] } } },
       { name: 'admin', inputSchema: { type: 'object', properties: {} } },
+      { name: 'share', inputSchema: { type: 'object', properties: {} } },
     ],
   }))
-  server.setRequestHandler('tools/call', (request) => {
+  server.setRequestHandler('tools/call', (request, ctx) => {
     ran.push(request.params.name)
+    if (request.params.name === 'share' && declaresUrlElicitation(ctx.mcpReq.envelope))
+      // SAFETY: the 2026 server seam takes a hand-built input_required result in place of a CallToolResult.
+      return {
+        resultType: 'input_required',
+        inputRequests: {
+          approval: { method: 'elicitation/create', params: { mode: 'url', message: 'Share it?', url: SHARE } },
+        },
+        requestState: 'share_1',
+      } as never
     return { content: [{ type: 'text', text: `ran ${request.params.name}` }] }
   })
   return server
 })
+
+/** The link `share` asks the owner to open: it carries a one-time token, so it never enters a transcript. */
+const SHARE = 'https://notes.test/share?token=one-time'
 
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
@@ -69,6 +87,7 @@ const host = mcpHost({
   grants: new MemoryGrants([
     { connectionId: 'notes', capability: 'tool', name: 'read' },
     { connectionId: 'notes', capability: 'tool', name: 'admin' },
+    { connectionId: 'notes', capability: 'tool', name: 'share' },
   ]),
   registries: new MemoryRegistries(),
   labels: new MemoryLabels(),
@@ -105,6 +124,10 @@ const scopes: Readonly<Record<string, SetupScope>> = {
 }
 /** The tools' services over the host and the fixed switches above, always resident, on an active plan. */
 const profiles = new FixedProfiles(scopes)
+const urlRequests = new McpUrlRequestStore(
+  durable(chatDatabase().db),
+  await CredentialCipher.fromBase64(btoa(String.fromCharCode(...new Uint8Array(32)))),
+)
 const layer = host.pipe(
   Layer.provideMerge(
     Layer.mergeAll(
@@ -112,6 +135,10 @@ const layer = host.pipe(
       stub(Setups, { scope: (session) => Effect.sync(() => profiles.scope(session)) }),
       // No conversation here is a routine run's.
       stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),
+      // No conversation here is a subagent's or has a chat; URL requests are kept in the test's own store.
+      stub(Chats, { chatOf: () => Effect.succeed(Option.none()) }),
+      stub(Conversations),
+      stub(UrlRequests, { hold: (request) => Effect.promise(() => urlRequests.hold(request, 1000)) }),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
     ),
@@ -122,10 +149,10 @@ const run = <A>(program: Effect.Effect<A, AppError, AgentServices>): Promise<A> 
   // SAFETY: mcp_call and mcp_list need only the MCP, resident authority and capability services provided here.
   Effect.runPromise(Effect.provide(program, layer) as Effect.Effect<A, AppError>)
 const tools = residentMcpExtension(run).tools ?? []
-const execute = (tool: string, input: Record<string, unknown>, conversationId: number) => {
+const execute = (tool: string, input: Record<string, unknown>, conversationId: number, callId?: string) => {
   const found = tools.find((candidate) => candidate.name === tool)
   if (found === undefined) throw new Error(`${tool} is not registered`)
-  return executeTool(found, input, inConversation(conversationId))
+  return executeTool(found, input, inConversation(conversationId, callId === undefined ? {} : { callId }))
 }
 const call = (name: string, conversationId = 7) =>
   execute('mcp_call', { connectionId: 'notes', name, arguments: {} }, conversationId)
@@ -163,6 +190,21 @@ describe('mcp_call and the owner grant (unit)', () => {
     expect(JSON.stringify(result.content)).toContain('Needs more access: \\"Notes · Mine\\" (notes)')
     // The connection is not broken by it: the next granted call runs.
     expect((await call('read')).isError).toBe(false)
+  })
+  it('keeps a URL request for the owner and ends the turn, with no link in what the model reads (ADR 0042)', async () => {
+    const result = await execute('mcp_call', { connectionId: 'notes', name: 'share', arguments: {} }, 7, 'c9')
+    expect(result).toMatchObject({
+      isError: true,
+      details: { kind: 'url-required', requestId: 'mcp-url:7:c9', connectionId: 'notes', name: 'share' },
+    })
+    expect(JSON.stringify(result)).not.toContain('one-time')
+    expect(JSON.stringify(result)).not.toContain('Share it?')
+    expect(await urlRequests.prompt('mcp-url:7:c9')).toEqual({
+      inputKey: 'approval',
+      requestState: 'share_1',
+      url: SHARE,
+      message: 'Share it?',
+    })
   })
   it("lists each connection with the owner's label, so two accounts of one server are told apart", async () => {
     expect(await listed({}, 7)).toEqual({
