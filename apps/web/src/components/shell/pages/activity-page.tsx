@@ -7,6 +7,7 @@ import {
   AppWindowIcon,
   BellIcon,
   CircleDotIcon,
+  ExternalLinkIcon,
   KeyRoundIcon,
   LayersIcon,
   MessageCircleQuestionIcon,
@@ -36,6 +37,7 @@ const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundI
   setup: { icon: Settings2Icon, label: 'Something to add to a Topic' },
   'app-power': { icon: AppWindowIcon, label: 'An app power to allow' },
   access: { icon: KeyRoundIcon, label: 'A connection that needs more access' },
+  link: { icon: ExternalLinkIcon, label: 'A step to finish on a server’s site' },
 }
 
 /** One thing that waits for the owner, linked to where it waits. */

@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { heldCall, openAsks, storedAsks } from '../src/attention.ts'
 import { conversationId, entryId } from '../src/pi/context.ts'
 import { appMcpApprovals } from '../src/storage/mcp-approvals.ts'
+import { appMcpUrlRequests } from '../src/storage/mcp-url-requests.ts'
 import { appPersonaChats } from '../src/storage/personas.ts'
-import { appAgentApps, appAgentPowers, appConversations } from '../src/storage/schema.ts'
+import { appAgentApps, appAgentPowers, appConversations, appMcpLabels } from '../src/storage/schema.ts'
 import { chatDatabase } from './chats-sqlite.ts'
 
 const cleanups: (() => void)[] = []
@@ -128,6 +129,26 @@ describe('attention (A5, ADR 0032)', () => {
     expect([heldCall(remote), heldCall(ran), heldCall(user('hello'))]).toEqual([undefined, undefined, undefined])
   })
 
+  it('holds a URL request and a sign-in with more access from their markers (ADR 0042)', () => {
+    const url = result('mcp_call', true, {
+      kind: 'url-required',
+      requestId: 'mcp-url:9:c2',
+      connectionId: 'sq',
+      name: 'create_agent',
+    })
+    expect(heldCall(url)).toEqual({ kind: 'url', requestId: 'mcp-url:9:c2', connectionId: 'sq', name: 'create_agent' })
+    const access = result('mcp_call', true, {
+      kind: 'scope-required',
+      connectionId: 'sq',
+      name: 'apply',
+      scope: 'sidequest:work',
+    })
+    expect(heldCall(access)).toEqual({ kind: 'access', scope: 'sidequest:work', connectionId: 'sq', name: 'apply' })
+    const forged = result('mcp_call', true, { kind: 'url-required', connectionId: 'sq', name: 'x' })
+    const inherited = result('mcp_call', true, { kind: 'constructor', connectionId: 'sq', name: 'x' })
+    expect([heldCall(forged), heldCall(inherited)]).toEqual([undefined, undefined])
+  })
+
   it("keeps a Persona's tool to allow until its next answer (ADR 0041)", () => {
     const answer = () => entry('app.persona', (timestamp) => ({ role: 'user', content: 'answer', timestamp }))
     const hold = { kind: 'grant', connectionId: 'sq', name: 'bid', fork: '90' }
@@ -177,6 +198,47 @@ describe('attention (A5, ADR 0032)', () => {
       .run()
     expect(storedAsks(db, { id: '50', session: '50' }, 3000)).toEqual([
       { kind: 'approval', since: 2, label: 'sq · quote', persona: 3 },
+    ])
+  })
+
+  it('lists the open URL requests of a chat and its Persona forks, by connection label (ADR 0042)', () => {
+    const { db, close } = chatDatabase()
+    cleanups.push(close)
+    db.insert(appConversations)
+      .values([
+        { chatId: '50', piSession: '50', kind: 'thread', createdAt: 1 },
+        { chatId: '51', piSession: '51', kind: 'thread', role: 'persona', parentSession: '50', createdAt: 1 },
+      ])
+      .run()
+    db.insert(appPersonaChats).values({ chatId: '51', personaId: 3, revision: 1, setup: '{}', createdAt: 1 }).run()
+    db.insert(appMcpLabels).values({ connectionId: 'sq', label: 'Sidequest · Worker' }).run()
+    const request = {
+      sourceCallId: 'c1',
+      taskId: 't1',
+      connectionId: 'sq',
+      name: 'create_agent',
+      endpoint: 'https://sq.example/mcp',
+      argumentsSealed: 'sealed',
+      argumentsHash: 'hash',
+      inputKey: 'approval',
+      promptSealed: 'sealed',
+      state: 'pending' as const,
+      expiresAt: 10_000,
+      createdAt: 2000,
+      updatedAt: 2000,
+    }
+    db.insert(appMcpUrlRequests)
+      .values([
+        { ...request, id: 'u1', sessionId: '50' },
+        { ...request, id: 'u2', sessionId: '51' },
+        { ...request, id: 'u3', sessionId: '50', state: 'completed' },
+        { ...request, id: 'u4', sessionId: '50', expiresAt: 2500 },
+        { ...request, id: 'u5', sessionId: '60' },
+      ])
+      .run()
+    expect(storedAsks(db, { id: '50', session: '50' }, 3000)).toEqual([
+      { kind: 'link', since: 2, label: 'Sidequest · Worker · create_agent' },
+      { kind: 'link', since: 2, label: 'Sidequest · Worker · create_agent', persona: 3 },
     ])
   })
 })

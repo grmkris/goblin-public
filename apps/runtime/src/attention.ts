@@ -7,6 +7,7 @@ import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import type { SQLiteAsyncDatabase } from 'drizzle-orm/sqlite-core/async/db'
 import { appMcpApprovals } from './storage/mcp-approvals.ts'
+import { appMcpUrlRequests } from './storage/mcp-url-requests.ts'
 import { appPersonaChats } from './storage/personas.ts'
 import { appAgentApps, appAgentPowers, appConversations, appMcpLabels } from './storage/schema.ts'
 
@@ -72,17 +73,23 @@ function askOf(entry: EntryRecord): Attention | undefined {
   return undefined
 }
 
-/** A call goblin held for the owner, by its marker: an approval of exact arguments, or a tool to allow. */
+/**
+ * A call goblin held for the owner, by its marker: an approval of exact arguments, a tool to allow, a URL request to
+ * finish, or a sign-in with more access (ADR 0042).
+ */
 export type HeldCall = {
-  readonly kind: 'approval' | 'grant'
+  readonly kind: 'approval' | 'grant' | 'url' | 'access'
   readonly approvalId?: string
+  readonly requestId?: string
+  readonly scope?: string
   readonly connectionId: string
   readonly name: string
 }
 
 /**
- * The call a tool result held for the owner, from goblin's own markers only (`approval-required`, `grant-required`);
- * a remote result always carries an `origin`, so a server's content can never hold one.
+ * The call a tool result held for the owner, from goblin's own markers only (`approval-required`, `grant-required`,
+ * `url-required`, `scope-required`); a remote result always carries an `origin`, so a server's content can never hold
+ * one.
  */
 export function heldCall(entry: EntryRecord): HeldCall | undefined {
   for (const message of entry.model ?? []) {
@@ -94,15 +101,31 @@ export function heldCall(entry: EntryRecord): HeldCall | undefined {
   return undefined
 }
 
-/** The call one marker holds, by its `kind`: an approval names its held call, a grant only the tool. */
+/**
+ * The call one marker holds, by its `kind`: an approval names its held call, a URL request its request, a sign-in with
+ * more access the scope asked for, a grant only the tool.
+ */
+const HOLDS: Readonly<
+  Record<string, (details: Fields, call: Pick<HeldCall, 'connectionId' | 'name'>) => HeldCall | undefined>
+> = {
+  'grant-required': (_details, call) => ({ kind: 'grant', ...call }),
+  'approval-required': (details, call) => {
+    const approvalId = text(details.approvalId)
+    return approvalId === undefined ? undefined : { kind: 'approval', approvalId, ...call }
+  },
+  'url-required': (details, call) => {
+    const requestId = text(details.requestId)
+    return requestId === undefined ? undefined : { kind: 'url', requestId, ...call }
+  },
+  'scope-required': (details, call) => ({ kind: 'access', scope: (text(details.scope) ?? '').slice(0, 512), ...call }),
+}
+
 function holdOf(details: Fields): HeldCall | undefined {
   const connectionId = text(details.connectionId)
   const name = text(details.name)
-  if (connectionId === undefined || name === undefined) return undefined
-  if (details.kind === 'grant-required') return { kind: 'grant', connectionId, name }
-  const approvalId = text(details.approvalId)
-  const approval = details.kind === 'approval-required' && approvalId !== undefined
-  return approval ? { kind: 'approval', approvalId, connectionId, name } : undefined
+  const hold = Object.hasOwn(HOLDS, text(details.kind) ?? '') ? HOLDS[text(details.kind) ?? ''] : undefined
+  if (connectionId === undefined || name === undefined || hold === undefined) return undefined
+  return hold(details, { connectionId, name })
 }
 
 const personaAnswer = Schema.decodeUnknownOption(PersonaAnswerData)
@@ -116,13 +139,14 @@ function personaAsk(entry: EntryRecord): { readonly persona: number; readonly as
   const answer = Option.getOrUndefined(personaAnswer(entry.data))
   if (answer === undefined) return undefined
   const { hold } = answer
-  if (hold?.kind !== 'grant') return { persona: answer.persona }
+  // Held calls and URL requests are read from their stores; a grant or a sign-in waits in the answer itself.
+  if (hold?.kind !== 'grant' && hold?.kind !== 'access') return { persona: answer.persona }
   const since = Math.floor((entry.model?.[0]?.timestamp ?? 0) / 1000)
   const ask: Attention = {
-    kind: 'grant',
+    kind: hold.kind,
     since,
     entry: Number(entry.id),
-    label: label(`${hold.connectionId} · ${hold.name}`),
+    label: label(`${hold.connectionId} · ${hold.kind === 'grant' ? hold.name : 'more access'}`),
     persona: answer.persona,
   }
   return { persona: answer.persona, ask }
@@ -148,9 +172,9 @@ export function openAsks(entries: readonly EntryRecord[], before: readonly Atten
 }
 
 /**
- * What waits on the owner in a chat from goblin's own stores: its held MCP calls still pending (by the chat's current
- * Pi session, where they were held, and those of the Persona forks answering in it), and the powers its agent apps' running releases ask for that the owner has not
- * answered. Times in seconds.
+ * What waits on the owner in a chat from goblin's own stores: its held MCP calls and URL requests still pending (by the
+ * chat's current Pi session, where they were held, and those of the Persona forks answering in it), and the powers its
+ * agent apps' running releases ask for that the owner has not answered. Times in seconds.
  */
 export function storedAsks<RunResult>(
   db: SQLiteAsyncDatabase<'sync', RunResult>,
@@ -204,5 +228,26 @@ export function storedAsks<RunResult>(
       since: Math.floor(app.updatedAt / 1000),
       label: label(`${app.title} asks for ${power.kind} ${power.target}`),
     }))
-  return [...approvals, ...powers]
+  const links = db
+    .select({ row: appMcpUrlRequests, label: appMcpLabels.label })
+    .from(appMcpUrlRequests)
+    .leftJoin(appMcpLabels, eq(appMcpLabels.connectionId, appMcpUrlRequests.connectionId))
+    .where(
+      and(
+        inArray(appMcpUrlRequests.sessionId, [chat.session, ...personaOf.keys()]),
+        eq(appMcpUrlRequests.state, 'pending'),
+        gt(appMcpUrlRequests.expiresAt, now),
+      ),
+    )
+    .all()
+    .map(({ row, label: connection }): Attention => {
+      const persona = personaOf.get(row.sessionId)
+      return {
+        kind: 'link',
+        since: Math.floor(row.createdAt / 1000),
+        label: label(`${connection ?? row.connectionId} · ${row.name}`),
+        ...(persona === undefined ? {} : { persona }),
+      }
+    })
+  return [...approvals, ...links, ...powers]
 }

@@ -106,13 +106,22 @@ export const PersonaAskData = Schema.Struct({
 export type PersonaAskData = typeof PersonaAskData.Type
 
 /**
- * What a Persona's answer waits on (ADR 0041): a held call the owner approves or refuses, or a tool the owner allows.
- * `fork` is the Persona's own chat, which goes on from the owner's reply.
+ * What a Persona's answer waits on (ADRs 0041, 0042): a held call the owner approves or refuses, a tool the owner
+ * allows, a URL request the owner finishes or cancels, or a sign-in with more access. `fork` is the Persona's own chat,
+ * which goes on from the owner's reply.
  */
 export const PersonaHold = Schema.Struct({
-  kind: Schema.Literals(['approval', 'grant']),
+  /**
+   * What the Persona waits on: approval of its held call, a tool to allow, a URL request to finish (`url`) or a sign-in
+   * with more access (`access`, ADR 0042).
+   */
+  kind: Schema.Literals(['approval', 'grant', 'url', 'access']),
   /** The held call, for an approval. */
   approvalId: Schema.optional(Schema.String),
+  /** The URL request, for `url`. */
+  requestId: Schema.optional(Schema.String),
+  /** The scope the server asked for, for `access`; empty when it named none. */
+  scope: Schema.optional(Schema.String.check(Schema.isMaxLength(512))),
   connectionId: Schema.String,
   name: Schema.String,
   fork: ChatId,

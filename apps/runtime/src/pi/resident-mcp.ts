@@ -53,11 +53,10 @@ const grantRequired = (denied: GrantDenied, options: McpRequestOptions) =>
   })
 
 /** A call beyond the connection's granted scope, as the model reads it: the owner signs in again (ADR 0042). */
-const scopeRequired = (required: ScopeRequired) =>
+const scopeRequired = (required: ScopeRequired, name: string) =>
   Effect.gen(function* () {
-    const labels = yield* (yield* McpServers).labels()
-    const result = scopeRequiredResult(required.connectionId, required.scope, named(labels, required.connectionId))
-    return new ReadyResult(result)
+    const connection = named(yield* (yield* McpServers).labels(), required.connectionId)
+    return new ReadyResult(scopeRequiredResult(required.connectionId, name, required.scope, connection))
   })
 
 /**
@@ -272,7 +271,7 @@ export function residentMcpExtension(run: RunProgram) {
                       (result) => new ReadyResult(result),
                     ),
                   ),
-                  Effect.catchTag('ScopeRequired', (required) => scopeRequired(required)),
+                  Effect.catchTag('ScopeRequired', (required) => scopeRequired(required, input.name)),
                 )
             }),
           ),

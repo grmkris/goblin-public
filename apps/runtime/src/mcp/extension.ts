@@ -48,7 +48,12 @@ export const grantRequiredResult = (connectionId: string, name: string, connecti
  * marker the web turns into an owner-only card to sign in again with more access. The turn ends: signing in is the
  * owner's act, and they say when to continue.
  */
-export const scopeRequiredResult = (connectionId: string, scope: string, connection: string): ToolExecutionResult => ({
+export const scopeRequiredResult = (
+  connectionId: string,
+  name: string,
+  scope: string,
+  connection: string,
+): ToolExecutionResult => ({
   content: [
     {
       type: 'text',
@@ -58,7 +63,7 @@ export const scopeRequiredResult = (connectionId: string, scope: string, connect
   isError: true,
   control: { terminate: true },
   diagnostics: [{ severity: 'info', code: 'ScopeRequired', message: 'More access required.' }],
-  details: { kind: 'scope-required', connectionId, scope },
+  details: { kind: 'scope-required', connectionId, name, scope },
 })
 
 /**

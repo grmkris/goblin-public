@@ -49,7 +49,7 @@ export type DelegateResultData = typeof DelegateResultData.Type
 
 /** Something in a chat that waits for the owner, collected in Activity and linked to its origin. */
 export const Attention = Schema.Struct({
-  kind: Schema.Literals(['question', 'approval', 'grant', 'setup', 'app-power', 'access']),
+  kind: Schema.Literals(['question', 'approval', 'grant', 'setup', 'app-power', 'access', 'link']),
   since: Schema.Number,
   entry: Schema.optional(EntryId),
   label: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),

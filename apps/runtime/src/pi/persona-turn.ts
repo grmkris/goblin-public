@@ -338,28 +338,30 @@ async function heldIn(tx: Tx, fork: ConversationId, requestId: string): Promise<
   const after = await tx.scanEntries({ conversationId: fork, minEntryId: entryId(Number(asked.entry) + 1) }, 50)
   for (const entry of after.items) {
     const held = heldCall(entry)
-    if (held !== undefined) {
-      const { kind, approvalId, connectionId, name } = held
-      return { kind, connectionId, name, fork: String(fork), ...(approvalId === undefined ? {} : { approvalId }) }
-    }
+    if (held !== undefined) return holdJson({ ...held, fork: String(fork) })
   }
   return undefined
 }
 
 /** A hold as an entry keeps it: JSON with no key left undefined. */
-const holdJson = ({ kind, approvalId, connectionId, name, fork }: PersonaHold) => ({
+const holdJson = ({ kind, approvalId, requestId, scope, connectionId, name, fork }: PersonaHold) => ({
   kind,
   connectionId,
   name,
   fork,
   ...(approvalId === undefined ? {} : { approvalId }),
+  ...(requestId === undefined ? {} : { requestId }),
+  ...(scope === undefined ? {} : { scope }),
 })
 
 /** What a Persona's answer says when it stopped on a hold without words of its own. */
-const holdText = (hold: PersonaHold): string =>
-  hold.kind === 'approval'
-    ? 'I need your approval for this call before I can go on.'
-    : 'I need you to allow this tool before I can go on.'
+const HOLD_TEXT: Readonly<Record<PersonaHold['kind'], string>> = {
+  approval: 'I need your approval for this call before I can go on.',
+  grant: 'I need you to allow this tool before I can go on.',
+  url: 'I need you to finish a step on the server’s site before I can go on.',
+  access: 'I need you to sign in to this connection again with more access before I can go on.',
+}
+const holdText = (hold: PersonaHold): string => HOLD_TEXT[hold.kind]
 
 /**
  * Prompts the fork and takes its answer, and what it stopped on when it needs the owner first (ADR 0041); a stopped,

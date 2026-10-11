@@ -233,7 +233,7 @@ const signInLink = (url: string | undefined): string | undefined => {
  * request is blocked as a popup); the chat stays here, and Continue tells the agent to go on. The server decides what
  * it grants, so the card promises nothing.
  */
-function AccessCard({ interaction, onAnswer }: { readonly interaction: Access; readonly onAnswer: Answer }) {
+export function AccessCard({ interaction, onAnswer }: { readonly interaction: Access; readonly onAnswer: Answer }) {
   const { connectionId, scope } = interaction
   const connection = useConnectionLabels()(connectionId)
   const { busy, error, replying } = useReplying()
