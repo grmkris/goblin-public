@@ -79,7 +79,7 @@ event streams, the files group and the OAuth callback). It annotates the request
 | `setup` | `GET /setup/catalog` | `setup/api.ts` |
 | `personas` | `/personas`, `/personas/:id` | `personas/api.ts` |
 | `organize` | `/organize/:id/undo` | `organize/api.ts` |
-| `mcp` | `/mcp/servers`, `/mcp/suggested`, `/mcp/catalog`, `/mcp/registries`, `/mcp/registries/remove`, `/mcp/grants`, `/mcp/ask-first`, `/mcp/skills`, `/mcp/app-grants`, `/mcp/approvals/:id`, `/mcp/oauth/callback`, and `/mcp/:id/` `tools`, `events`, `connect`, `disconnect`, `remove`, `tools/call`, `resources/read` | `mcp/api.ts` |
+| `mcp` | `/mcp/servers`, `/mcp/suggested`, `/mcp/catalog`, `/mcp/registries`, `/mcp/registries/remove`, `/mcp/grants`, `/mcp/ask-first`, `/mcp/skills`, `/mcp/app-grants`, `/mcp/approvals/:id`, `/mcp/url-requests/:id`, `/mcp/oauth/callback`, and `/mcp/:id/` `tools`, `events`, `connect`, `step-up`, `disconnect`, `remove`, `tools/call`, `resources/read` | `mcp/api.ts` |
 | `resident` | `/agent/resident` | `mcp/resident-api.ts` |
 | `agent` | `/agent/usage`, `/agent/model`, `/agent/channel` | `routines/agent-api.ts` |
 | `memory` | `/agent/memory` | `memory/api.ts` |
@@ -644,6 +644,51 @@ not granted, nothing runs. `mcp_call` returns an error result whose details are
 `mcpModelResult` details never carry a top-level `kind`, so remote content cannot forge one. The web turns that
 result into an owner-only Allow card. A Topic's setup chooses servers and tools for its chats (Setup and scope, above);
 that check comes first, and a helper's exclusions are forgotten with the server's grants.
+
+### Protocol 2026-07-28: live tool lists, URL requests and step-up
+
+goblin negotiates the protocol era (`versionNegotiation: auto`); on a 2026 connection it implements three client
+features ([ADR 0042](adr/0042-mcp-2026-client.md)).
+
+**Live tool lists** (`mcp/tool-list.ts`). A connection's snapshot keeps its tools in place: `refreshTools` lists them
+again, one flight per connection that lists once more while changes arrive, bounded as discovery is; a list that fails
+or overflows is never kept in part, and the connection is marked stale so its next use opens it again. A call (or a
+grant request) for a tool goblin does not list re-lists once before refusing. After a 2026 connect to a server that
+advertises `tools.listChanged`, goblin holds a `subscriptions/listen` stream and re-lists on each
+`notifications/tools/list_changed`. The stream closes 60 seconds after the connection's last use (`listenIdleMs`): an
+open outbound stream keeps the agent's Durable Object awake and its WebSockets from hibernating. The next use lists the
+tools first, then listens again, so a change made while nothing listened is not missed. A server that refuses the
+stream, or ends it with a result (Sidequest does when the connection is revoked), is not asked again on that
+connection; one that drops it (a deploy) is listened to again at the next use. The SDK client's stray errors are logged
+by type only.
+
+**URL requests** (`mcp/url-asks.ts`, `mcp/url-request.ts`, `app_mcp_url_requests`). Only the model's own `mcp_call`
+(Goblin, a Persona, a routine run) declares URL elicitation, per request and only on a 2026 connection, and takes an
+`input_required` result back (`McpConnections.callModelTool`). The owner's console, Apps and an ask-first approval's
+dispatch never declare it, so servers answer them with a plain link. goblin accepts one url-mode elicitation with an
+https link and no credentials; anything else is refused as `unsupported`. It keeps the call's arguments, the server's
+request state (at most 64 KiB) and the link with its message, sealed, for a day or until the routine run's deadline,
+and ends the turn with `{ kind: 'url-required', requestId, connectionId, name }`: the details carry neither the link nor
+the message, since transcripts are indexed and approval links can hold one-time tokens. A routine run waits on the
+owner and a subagent's chat stays open, as for an approval. The owner reads the request
+(`GET /api/mcp/url-requests/:id`: the message, the link, its host and whether it is the server's own or a subdomain of
+it) and answers it (`POST`, `accept` or `decline`): the one retry is claimed before any I/O and sends the call again
+with the answer under the server's key and its request state, under the authority the call needs now. A server still
+waiting makes the request pending again; its answer is kept, the connection's tools are listed again, and the outcome
+goes back to the turn that asked (routine run, Persona or chat) under one operation id. A retry that may have reached
+the server and did not complete is `uncertain`, and a start recovers an interrupted one as such. A Cancel stands
+whether or not the server heard it.
+
+**Step-up.** The transport throws on HTTP 403 `insufficient_scope` (`onInsufficientScope: 'throw'`), which is
+`ScopeRequired { connectionId, scope }` (the challenge's scope tokens, validated and capped), not `UpstreamMcp`: the
+connection stays open. The model's `mcp_call` ends the turn with `{ kind: 'scope-required', connectionId, name, scope }`,
+and the owner's card starts `POST /api/mcp/:id/step-up`: a fresh authorization (`forceReauthorization`) for the union of
+what the server offers, what the connection holds and what it asked for, opened from a real link in a new tab. The
+connection keeps its tokens until the new ones arrive; an abandoned step-up leaves it as it was. The owner presses
+Continue in the chat once signed in.
+
+Needs you lists open URL requests (Attention `link`, from their store) and sign-ins with more access (`access`); a
+Persona's answer can hold either (`PersonaHold` kinds `url` and `access`).
 
 ## Skills
 
