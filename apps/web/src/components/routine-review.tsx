@@ -13,7 +13,8 @@ import {
   CardTitle,
 } from '@goblin/ui'
 import { dateTime } from '../lib/format.ts'
-import { usePersonas } from '../lib/workspace/hooks.ts'
+import { usePersonas, useTopics } from '../lib/workspace/hooks.ts'
+import { useConnectionLabels } from '../mcp/hooks.ts'
 import { routineStatus } from '../lib/labels.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { changeRoutineMutation } from '../routines/queries.ts'
@@ -23,16 +24,20 @@ import { StatusLabel } from './status-label.tsx'
 const operation = () => crypto.randomUUID()
 const count = (value: number) => value.toLocaleString()
 
-/** When a routine runs, in words. */
-function whenOf(definition: RoutineDefinition): string {
+/** When a routine runs, in words; an event names its connection as the owner does (`connection`). */
+function whenOf(definition: RoutineDefinition, connection: (id: string) => string): string {
   const trigger = definition.trigger
   if (trigger.kind === 'once') {
     const at = Date.parse(trigger.at)
     return Number.isNaN(at) ? `Once, at ${trigger.at}` : `Once, ${dateTime(at, definition.timezone)}`
   }
   if (trigger.kind === 'cron') return `Repeats on the schedule ${trigger.expression}`
-  return `When ${trigger.connectionId} sends ${trigger.name}`
+  return `When ${connection(trigger.connectionId)} sends ${trigger.name}`
 }
+
+/** Whether a routine tells the owner, in words (ADR 0041). */
+const tellMeOf = (tellMe: RoutineDefinition['tellMe']): string =>
+  !tellMe.on ? 'Off' : tellMe.telegram ? 'In Activity, and on Telegram' : 'In Activity'
 
 /** Who a routine hands its work to, in words: Goblin, or the Persona by name at the pinned revision. */
 function useHandedTo(definition: RoutineDefinition): string | undefined {
@@ -50,6 +55,7 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
   const { trigger } = definition
   const handOver = handOverOf(definition)
   const handedTo = useHandedTo(definition)
+  const topic = useTopics().find((each) => each.id === routine.topic)
   return (
     <>
       {handOver !== undefined && <p className="routine-prompt">{handOver.instruction}</p>}
@@ -103,9 +109,15 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
           </div>
         )}
         <div>
-          <dt>Telegram</dt>
-          <dd>{definition.tellMe.telegram ? 'Sends its report there too' : 'Off'}</dd>
+          <dt>Tell me</dt>
+          <dd>{tellMeOf(definition.tellMe)}</dd>
         </div>
+        {topic !== undefined && (
+          <div>
+            <dt>Topic</dt>
+            <dd>#{topic.name}</dd>
+          </div>
+        )}
       </dl>
       {routine.health !== null &&
         routine.health !== 'execution_pending' &&
@@ -147,12 +159,13 @@ export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineVi
   const { state, definition } = routine
   const busy = pending !== undefined
   const persona = personaNote(routine.persona)
+  const connection = useConnectionLabels()
   const repin = persona !== undefined && routine.persona?.archived === false && state !== 'archived'
   return (
     <Card>
       <CardHeader>
         <CardTitle>{definition.title}</CardTitle>
-        <CardDescription>{whenOf(definition)}</CardDescription>
+        <CardDescription>{whenOf(definition, connection)}</CardDescription>
         <CardAction>
           <StatusLabel label={routineStatus(routine)} />
         </CardAction>

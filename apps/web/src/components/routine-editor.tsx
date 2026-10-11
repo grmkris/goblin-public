@@ -1,5 +1,5 @@
-// Writing a routine: what it does, when it runs, and what it may use. Saving makes a proposal the owner then confirms
-// on its card; nothing here turns a routine on.
+// Writing a routine (ADR 0041): when it fires, where it lives, whether it tells the owner, and whom it hands the work
+// to. Saving makes a proposal the owner then confirms on its card; nothing here turns a routine on.
 import { type SubmitEvent, useId, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
@@ -19,17 +19,16 @@ import {
   CardHeader,
   CardTitle,
   Field,
-  FieldDescription,
   FieldLabel,
   Input,
-  Switch,
-  Textarea,
 } from '@goblin/ui'
 import { grantsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { usePersonas, useTopics } from '../lib/workspace/hooks.ts'
 import { saveRoutineMutation } from '../routines/queries.ts'
 import { EditorPart } from './editor-part.tsx'
-import { type Kind, WhenFields, triggerFrom } from './routine-when.tsx'
+import { type HandKind, HandToFields, TellMeFields, WhereField } from './routine-hand.tsx'
+import { type EventChoice, type Kind, WhenFields, eventOf, triggerFrom } from './routine-when.tsx'
 
 type Tool = { readonly connectionId: string; readonly name: string }
 
@@ -41,17 +40,22 @@ const GOBLIN: RoutineHandOver = {
   budget: { tokensPerRun: 25_000, tokensPerDay: 50_000, runtimeSeconds: 900 },
 }
 
+/** A new routine: a reminder that tells the owner, handed to nobody yet. */
 const defaults = (timezone: string): RoutineDefinition => ({
   title: '',
   timezone,
   trigger: { kind: 'once', at: '' },
-  tellMe: { on: false, telegram: false },
-  handTo: GOBLIN,
+  tellMe: { on: true, telegram: false },
+  handTo: { kind: 'none' },
 })
 
 type EditorProps = {
   readonly timezone: string
   readonly routine?: RoutineView
+  /** A new routine's start, when it is not a blank one: an event the owner picked on a connection's card. */
+  readonly draft?: RoutineDefinition
+  /** A new routine's Topic, when not Personal. */
+  readonly topic?: number
   readonly onSaved: (routine: RoutineView) => void
   readonly onCancel?: () => void
 }
@@ -71,172 +75,110 @@ function useAvailableTools(selected: readonly Tool[]) {
 
 const same = (a: Tool, b: Tool): boolean => a.connectionId === b.connectionId && a.name === b.name
 
-function useRoutineEditor({ timezone, routine, onSaved }: EditorProps) {
-  const id = useId()
-  const initial = routine?.definition ?? defaults(timezone)
+/** Where the routine lives, whether it tells the owner, and whom it hands the work to, as the owner picks them. */
+function useHand(initial: RoutineDefinition, startTopic: number) {
+  const { handTo } = initial
+  const [topic, setTopic] = useState(startTopic)
+  const [tellMe, setTellMe] = useState(initial.tellMe.on)
+  const [telegram, setTelegram] = useState(initial.tellMe.telegram)
+  const [hand, setHand] = useState<HandKind>(handTo.kind)
+  const [persona, setPersona] = useState(handTo.kind === 'persona' ? handTo.persona : undefined)
   const handOver = handOverOf(initial) ?? GOBLIN
+  const [selected, setSelected] = useState<readonly Tool[]>(handOver.allowedTools)
+  const toggle = (tool: Tool, on: boolean) =>
+    setSelected((current) => (on ? [...current, tool] : current.filter((item) => !same(item, tool))))
+  const topics = useTopics().filter((each) => each.archivedAt === undefined || each.id === topic)
+  const personas = usePersonas().filter((each) => each.archivedAt === undefined || each.id === persona)
+  return {
+    topic,
+    setTopic,
+    tellMe,
+    setTellMe,
+    telegram,
+    setTelegram,
+    hand,
+    setHand,
+    persona,
+    setPersona,
+    handOver,
+    selected,
+    toggle,
+    topics,
+    personas,
+  }
+}
+
+type Hand = ReturnType<typeof useHand>
+
+/** The hand-over the form describes, with a Persona pinned at its revision now; or what to fix first. */
+function handToFrom(hand: Hand, field: (name: string) => string): RoutineDefinition['handTo'] | { problem: string } {
+  if (hand.hand === 'none')
+    return hand.tellMe ? { kind: 'none' } : { problem: 'Turn Tell me on, hand it over, or both.' }
+  const handOver = {
+    instruction: field('prompt'),
+    allowedTools: hand.selected,
+    budget: {
+      tokensPerRun: Number(field('tokensPerRun')),
+      tokensPerDay: Number(field('tokensPerDay')),
+      runtimeSeconds: Number(field('runtimeMinutes')) * 60,
+    },
+  }
+  if (hand.hand === 'goblin') return { kind: 'goblin', ...handOver }
+  const persona = hand.personas.find((each) => each.id === hand.persona)
+  if (persona === undefined) return { problem: 'Pick the Persona it hands the work to.' }
+  return { kind: 'persona', persona: persona.id, revision: persona.revision, ...handOver }
+}
+
+function useRoutineEditor({ timezone, routine, draft, topic, onSaved }: EditorProps) {
+  const id = useId()
+  const initial = routine?.definition ?? draft ?? defaults(timezone)
   const [kind, setKind] = useState<Kind>(initial.trigger.kind)
   const [cron, setCron] = useState(initial.trigger.kind === 'cron' ? initial.trigger.expression : '')
-  const [selected, setSelected] = useState<readonly Tool[]>(handOver.allowedTools)
-  const [notify, setNotify] = useState(initial.tellMe.telegram)
+  const [event, setEvent] = useState<EventChoice>(eventOf(initial))
+  const hand = useHand(initial, routine?.topic ?? topic ?? PERSONAL_TOPIC)
   const saving = useMutation(saveRoutineMutation)
   const [problem, setProblem] = useState('')
-  const { available, unread } = useAvailableTools(selected)
-  const pending = saving.isPending
+  const { available, unread } = useAvailableTools(hand.selected)
   const error = problem || (saving.error === null ? '' : messageOf(saving.error, 'save the routine')) || unread
-  function save(event: SubmitEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
+  function save(submit: SubmitEvent<HTMLFormElement>): void {
+    submit.preventDefault()
+    const data = new FormData(submit.currentTarget)
     const field = (name: string) => {
       const value = data.get(name)
       return typeof value === 'string' ? value : ''
     }
     setProblem('')
     saving.reset()
-    const trigger = triggerFrom(kind, field, cron)
+    const trigger = triggerFrom(kind, field, cron, event)
     if ('problem' in trigger) {
       setProblem(trigger.problem)
+      return
+    }
+    const handTo = handToFrom(hand, field)
+    if ('problem' in handTo) {
+      setProblem(handTo.problem)
       return
     }
     const definition: RoutineDefinition = {
       title: field('title'),
       timezone: field('timezone'),
       trigger,
-      tellMe: { on: notify, telegram: notify },
-      handTo: {
-        ...(initial.handTo.kind === 'persona'
-          ? { kind: 'persona', persona: initial.handTo.persona, revision: initial.handTo.revision }
-          : { kind: 'goblin' }),
-        instruction: field('prompt'),
-        allowedTools: selected,
-        budget: {
-          tokensPerRun: Number(field('tokensPerRun')),
-          tokensPerDay: Number(field('tokensPerDay')),
-          runtimeSeconds: Number(field('runtimeMinutes')) * 60,
-        },
-      },
+      tellMe: { on: hand.tellMe, telegram: hand.tellMe && hand.telegram },
+      handTo,
     }
-    const topic = routine?.topic ?? PERSONAL_TOPIC
     saving.mutate(
-      { operationId: crypto.randomUUID(), topic, definition, ...(routine && { routine }) },
+      { operationId: crypto.randomUUID(), topic: hand.topic, definition, ...(routine && { routine }) },
       { onSuccess: onSaved },
     )
   }
-  const toggle = (tool: Tool, on: boolean) =>
-    setSelected((current) => (on ? [...current, tool] : current.filter((item) => !same(item, tool))))
-  return {
-    id,
-    initial,
-    handOver,
-    kind,
-    setKind,
-    cron,
-    setCron,
-    available,
-    selected,
-    toggle,
-    notify,
-    setNotify,
-    pending,
-    error,
-    save,
-  }
-}
-type Kit = ReturnType<typeof useRoutineEditor>
-
-function WhatFields({ kit }: { readonly kit: Kit }) {
-  const { id, initial, handOver } = kit
-  return (
-    <EditorPart title="What">
-      <Field>
-        <FieldLabel htmlFor={`${id}-title`}>Title</FieldLabel>
-        <Input id={`${id}-title`} name="title" defaultValue={initial.title} maxLength={120} required />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-prompt`}>Instructions</FieldLabel>
-        <Textarea id={`${id}-prompt`} name="prompt" defaultValue={handOver.instruction} maxLength={12_000} required />
-        <FieldDescription>What your agent should do each time, in your own words.</FieldDescription>
-      </Field>
-    </EditorPart>
-  )
-}
-
-function ToolRows({ kit }: { readonly kit: Kit }) {
-  const { available, selected, toggle, notify, setNotify, id } = kit
-  return (
-    <ul className="grant-list">
-      {available.length === 0 && (
-        <li className="setting-row">
-          <span className="server-note">You have allowed no tools yet, so this routine can only answer.</span>
-        </li>
-      )}
-      {available.map((tool) => {
-        const label = `${id}-${tool.connectionId}-${tool.name}`
-        return (
-          <li key={`${tool.connectionId}:${tool.name}`} className="setting-row">
-            <span className="grant-text">
-              <span id={label} className="grant-name">
-                {tool.name} <code>{tool.connectionId}</code>
-              </span>
-            </span>
-            <Switch
-              checked={selected.some((item) => same(item, tool))}
-              aria-labelledby={label}
-              onCheckedChange={(on) => toggle(tool, on)}
-            />
-          </li>
-        )
-      })}
-      <li className="setting-row">
-        <span className="grant-text">
-          <span id={`${id}-telegram`} className="grant-name">
-            Send its report to Telegram too
-          </span>
-          <span className="grant-about">Through the server you use for Telegram, if you have one.</span>
-        </span>
-        <Switch checked={notify} aria-labelledby={`${id}-telegram`} onCheckedChange={setNotify} />
-      </li>
-    </ul>
-  )
-}
-
-const LIMITS = [
-  { name: 'tokensPerRun', label: 'Tokens a run', max: 100_000 },
-  { name: 'tokensPerDay', label: 'Tokens a day', max: 2_000_000 },
-  { name: 'runtimeMinutes', label: 'Minutes at most', max: 30 },
-] as const
-
-function ToolsAndLimits({ kit }: { readonly kit: Kit }) {
-  const { id, handOver } = kit
-  const value = (name: (typeof LIMITS)[number]['name']) =>
-    name === 'runtimeMinutes' ? Math.max(1, Math.round(handOver.budget.runtimeSeconds / 60)) : handOver.budget[name]
-  return (
-    <EditorPart title="Tools and limits">
-      <ToolRows kit={kit} />
-      <div className="editor-limits">
-        {LIMITS.map((limit) => (
-          <Field key={limit.name}>
-            <FieldLabel htmlFor={`${id}-${limit.name}`}>{limit.label}</FieldLabel>
-            <Input
-              id={`${id}-${limit.name}`}
-              name={limit.name}
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={limit.max}
-              defaultValue={value(limit.name)}
-              required
-            />
-          </Field>
-        ))}
-      </div>
-    </EditorPart>
-  )
+  const when = { id, initial, kind, setKind, cron, setCron, event, setEvent }
+  return { when, hand: { id, available, ...hand }, pending: saving.isPending, error, save }
 }
 
 /** Saving creates a proposed revision; the separate review is the only activation control. */
 export function RoutineEditor(props: EditorProps) {
   const kit = useRoutineEditor(props)
+  const { id, initial } = kit.when
   return (
     <Card>
       <CardHeader>
@@ -249,9 +191,16 @@ export function RoutineEditor(props: EditorProps) {
       </CardHeader>
       <CardContent>
         <form className="editor" onSubmit={kit.save}>
-          <WhatFields kit={kit} />
-          <WhenFields kit={kit} />
-          <ToolsAndLimits kit={kit} />
+          <EditorPart title="What">
+            <Field>
+              <FieldLabel htmlFor={`${id}-title`}>Title</FieldLabel>
+              <Input id={`${id}-title`} name="title" defaultValue={initial.title} maxLength={120} required />
+            </Field>
+            <WhereField kit={kit.hand} />
+          </EditorPart>
+          <WhenFields kit={kit.when} />
+          <TellMeFields kit={kit.hand} />
+          <HandToFields kit={kit.hand} />
           {kit.error && (
             <Alert variant="destructive">
               <AlertDescription>{kit.error}</AlertDescription>

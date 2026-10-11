@@ -1497,7 +1497,12 @@ definition (ADR 0041) is a trigger, a timezone, **Tell me** (`tellMe: { on, tele
 **Hand to** (`handTo`: `none`; `goblin` with its instruction, allowed tools and budget; or `persona` with those and the
 Persona's id and the revision it pins); one that hands nothing over must tell the owner. Only a hand-over makes runs
 (`handOverOf`, `runHandOver`). Settings shows the instruction, exact
-tool pairs, timezone, budgets and Telegram policy before confirmation. A routine lives in a
+tool pairs, timezone, budgets and Telegram policy before confirmation. Its editor (`components/routine-editor.tsx`,
+`routine-when.tsx`, `routine-hand.tsx`) asks what, where (the Topic), when, Tell me (and Telegram) and Hand to
+(nobody, Goblin or a Persona, with the instruction, tools and limits only for a hand-over); an event trigger picks a
+connection that sends events, one of its streams from `GET /api/mcp/:id/events`, and its filters through a form
+generated from the stream's input schema (`lib/schema-form.ts`, `components/schema-form.tsx`: text, a choice, a
+number, yes or no, a list of texts, required first), with raw JSON for anything a flat form cannot hold. A routine lives in a
 Topic, and its runs are bounded by that Topic's setup as well as its allowed tools (ADR 0040): each `RoutineView`
 carries `topic` and `outsideSetup`, the allowed tools the setup does not hold now, read live so a proposal or a
 routine's page can flag them; a run that calls one gets the words-only `not-in-topic` refusal (code `not_in_topic` in

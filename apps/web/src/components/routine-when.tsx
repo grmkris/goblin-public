@@ -1,6 +1,6 @@
-// When a routine runs, as its editor asks it: once at a time the owner picks, on a schedule, or when a server sends
-// an event; and the trigger those fields make.
-import { Option, Schema } from 'effect'
+// When a routine runs, as its editor asks it: once at a time the owner picks, on a schedule, or when one of their
+// connections sends an event (with filters from the event's own schema); and the trigger those fields make.
+import { useQuery } from '@tanstack/react-query'
 import type { RoutineDefinition } from '@goblin/contracts'
 import {
   Button,
@@ -8,19 +8,28 @@ import {
   FieldDescription,
   FieldLabel,
   Input,
+  NativeSelect,
+  NativeSelectOption,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-  Textarea,
 } from '@goblin/ui'
 import { browserZone } from '../lib/format.ts'
+import { connectionName } from '../lib/labels.ts'
 import { localInput, localInstant } from '../lib/local-time.ts'
+import { messageOf } from '../lib/query/app-error.ts'
+import type { FormResult } from '../lib/schema-form.ts'
+import { eventsQuery, serversQuery } from '../mcp/queries.ts'
 import { EditorPart } from './editor-part.tsx'
+import { SchemaForm } from './schema-form.tsx'
 
 export type Kind = RoutineDefinition['trigger']['kind']
 
-/** What the When fields read from the editor: the routine as it started, the chosen kind and the schedule typed. */
+/** The event a routine waits for: on which connection, which stream, and the filters as the form reports them. */
+export type EventChoice = { readonly connectionId: string; readonly name: string; readonly filters: FormResult }
+
+/** What the When fields read from the editor: the routine as it started, the chosen kind, schedule and event. */
 export type WhenKit = {
   readonly id: string
   readonly initial: RoutineDefinition
@@ -28,8 +37,8 @@ export type WhenKit = {
   readonly setKind: (kind: Kind) => void
   readonly cron: string
   readonly setCron: (cron: string) => void
-  /** The tools the routine may use, whose servers an event can come from. */
-  readonly available: readonly { readonly connectionId: string }[]
+  readonly event: EventChoice
+  readonly setEvent: (event: EventChoice) => void
 }
 
 /** Schedules most people want, as a start for the cron field. */
@@ -39,10 +48,18 @@ const PRESETS = [
   { label: 'Mondays at 9:00', expression: '0 9 * * 1' },
 ] as const
 
-/** An event routine's filters: a JSON object, or nothing for every event. */
-const decodeFilters = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json)))
 /** A trigger the form cannot make yet, with what to fix. */
 type TriggerProblem = { readonly problem: string }
+
+/** The event a routine starts with: its own, or none picked yet. */
+export const eventOf = (definition: RoutineDefinition): EventChoice =>
+  definition.trigger.kind === 'event'
+    ? {
+        connectionId: definition.trigger.connectionId,
+        name: definition.trigger.name,
+        filters: { value: definition.trigger.arguments },
+      }
+    : { connectionId: '', name: '', filters: { value: {} } }
 
 /**
  * The trigger the form describes, or what to fix first; a reminder's picked wall time becomes an instant with its
@@ -52,13 +69,13 @@ export function triggerFrom(
   kind: Kind,
   field: (name: string) => string,
   cron: string,
+  event: EventChoice,
 ): RoutineDefinition['trigger'] | TriggerProblem {
   if (kind === 'cron') return { kind: 'cron', expression: cron }
   if (kind === 'event') {
-    const filters = field('eventArguments').trim()
-    const parsed = filters === '' ? Option.some({}) : decodeFilters(filters)
-    if (Option.isNone(parsed)) return { problem: 'Write the filters as a JSON object, or leave them empty.' }
-    return { kind: 'event', connectionId: field('eventServer'), name: field('eventName'), arguments: parsed.value }
+    if (event.connectionId === '' || event.name === '') return { problem: 'Pick the connection and its event.' }
+    if ('problem' in event.filters) return event.filters
+    return { kind: 'event', connectionId: event.connectionId, name: event.name, arguments: event.filters.value }
   }
   const at = localInstant(field('at'))
   if (at === undefined) return { problem: 'Pick the date and time it should run.' }
@@ -114,49 +131,69 @@ function CronFields({ kit }: { readonly kit: WhenKit }) {
   )
 }
 
+/** The connections that send events, and the one picked if it no longer says so (an edit keeps what it had). */
+function useEventConnections(picked: string) {
+  const servers = useQuery(serversQuery).data ?? []
+  const sending = servers.filter((server) => server.eventsOffered === true || server.connectionId === picked)
+  return sending.map((server) => ({ id: server.connectionId, label: connectionName(server) }))
+}
+
 function EventFields({ kit }: { readonly kit: WhenKit }) {
-  const trigger = kit.initial.trigger
-  const servers = [...new Set(kit.available.map((tool) => tool.connectionId))]
+  const { id, event, setEvent } = kit
+  const connections = useEventConnections(event.connectionId)
+  const streams = useQuery(eventsQuery(event.connectionId === '' ? undefined : event.connectionId))
+  const offered = (streams.data ?? []).filter((stream) => stream.subscribable || stream.name === event.name)
+  const stream = offered.find((each) => each.name === event.name)
+  const unread = streams.error === null ? '' : messageOf(streams.error, 'read the events it sends')
+  if (connections.length === 0)
+    return <p className="server-note">None of your connections sends events yet. Connect one that does first.</p>
   return (
     <>
       <Field>
-        <FieldLabel htmlFor={`${kit.id}-event-server`}>Server</FieldLabel>
-        <Input
-          id={`${kit.id}-event-server`}
-          name="eventServer"
-          list={`${kit.id}-servers`}
-          defaultValue={trigger.kind === 'event' ? trigger.connectionId : (servers[0] ?? '')}
+        <FieldLabel htmlFor={`${id}-event-connection`}>Connection</FieldLabel>
+        <NativeSelect
+          id={`${id}-event-connection`}
+          value={event.connectionId}
+          onChange={(change) => setEvent({ connectionId: change.target.value, name: '', filters: { value: {} } })}
           required
-          maxLength={64}
-        />
-        <datalist id={`${kit.id}-servers`}>
-          {servers.map((server) => (
-            <option key={server} value={server} />
+        >
+          <NativeSelectOption value="">Choose one</NativeSelectOption>
+          {connections.map((connection) => (
+            <NativeSelectOption key={connection.id} value={connection.id}>
+              {connection.label}
+            </NativeSelectOption>
           ))}
-        </datalist>
+        </NativeSelect>
       </Field>
-      <Field>
-        <FieldLabel htmlFor={`${kit.id}-event-name`}>Event</FieldLabel>
-        <Input
-          id={`${kit.id}-event-name`}
-          name="eventName"
-          defaultValue={trigger.kind === 'event' ? trigger.name : ''}
-          placeholder="message.received"
-          required
-          maxLength={256}
+      {event.connectionId !== '' && (
+        <Field>
+          <FieldLabel htmlFor={`${id}-event-name`}>Event</FieldLabel>
+          <NativeSelect
+            id={`${id}-event-name`}
+            value={event.name}
+            onChange={(change) => setEvent({ ...event, name: change.target.value, filters: { value: {} } })}
+            required
+          >
+            <NativeSelectOption value="">{streams.isPending ? 'Reading its events…' : 'Choose one'}</NativeSelectOption>
+            {offered.map((each) => (
+              <NativeSelectOption key={each.name} value={each.name}>
+                {each.name}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+          {stream?.description !== undefined && <FieldDescription>{stream.description}</FieldDescription>}
+          {unread !== '' && <FieldDescription role="alert">{unread}</FieldDescription>}
+        </Field>
+      )}
+      {event.name !== '' && (
+        <SchemaForm
+          key={`${event.connectionId}:${event.name}:${String(stream !== undefined)}`}
+          id={`${id}-filters`}
+          schema={stream?.inputSchema}
+          initial={'value' in event.filters ? event.filters.value : {}}
+          onChange={(filters) => setEvent({ ...event, filters })}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${kit.id}-event-args`}>Only events matching (optional)</FieldLabel>
-        <Textarea
-          id={`${kit.id}-event-args`}
-          name="eventArguments"
-          defaultValue={trigger.kind === 'event' ? JSON.stringify(trigger.arguments) : ''}
-          placeholder="{}"
-          maxLength={16_384}
-        />
-        <FieldDescription>Exact values as JSON, which the server checks for you.</FieldDescription>
-      </Field>
+      )}
     </>
   )
 }

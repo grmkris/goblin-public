@@ -1004,6 +1004,20 @@
     grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
     gap: 0.75rem;
   }
+  /* An event's filters as a form from its schema (components/schema-form.tsx), its switch to JSON at the end. */
+  .schema-form {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+  .schema-form > button {
+    align-self: flex-start;
+  }
+  .field-optional {
+    color: var(--muted-foreground);
+    font-weight: 400;
+  }
   /* Pages outside the workspace (components/auth-shell.tsx): the task's parts, a plan's points, the policies' links. */
   .auth-body {
     display: flex;

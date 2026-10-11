@@ -24,6 +24,7 @@ export const mcpKeys = {
   catalogs: ['mcp', 'catalog'] as const,
   catalog: (q: string | undefined): readonly ['mcp', 'catalog', string | undefined] => ['mcp', 'catalog', q],
   tools: (connectionId: string) => ['mcp', 'tools', connectionId] as const,
+  events: (connectionId: string) => ['mcp', 'events', connectionId] as const,
 }
 
 /** The owner's servers, with where each stands. */
@@ -56,6 +57,22 @@ export const connectedToolsQuery = (connectionId: string, connected: boolean) =>
   queryOptions({
     queryKey: mcpKeys.tools(connectionId),
     queryFn: connected ? toolsQuery(connectionId).queryFn : skipToken,
+  })
+
+/**
+ * The event streams a connection's server sends (ADR 0041), each with the schema of its filters: the server's claims,
+ * untrusted. Nothing is read for no connection.
+ */
+export const eventsQuery = (connectionId: string | undefined) =>
+  queryOptions({
+    queryKey: mcpKeys.events(connectionId ?? ''),
+    queryFn:
+      connectionId === undefined
+        ? skipToken
+        : owner.apiQuery({
+            queryKey: mcpKeys.events(connectionId),
+            queryFn: (api) => api.mcp.events({ params: { id: connectionId } }),
+          }).queryFn,
   })
 
 /** Reads the server list again, and the suggestions and search results, which say what is already added. */
