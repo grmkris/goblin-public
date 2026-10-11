@@ -69,6 +69,13 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
         </span>
       </Receipt>
     )
+  if (interaction.kind === 'access')
+    return (
+      <Receipt>
+        <KeyRoundIcon aria-hidden />
+        <span>Asked you to sign in to {interaction.connectionId} again with more access</span>
+      </Receipt>
+    )
   if (interaction.kind === 'server')
     return (
       <Receipt>

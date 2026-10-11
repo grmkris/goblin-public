@@ -55,12 +55,14 @@ describe('attention (A5, ADR 0032)', () => {
       target: { kind: 'subagents' },
       topic: { id: 2, name: 'Work' },
     })
+    const access = result('mcp_call', true, { kind: 'scope-required', connectionId: 'notes', scope: 'notes:write' })
     const remote = result('mcp_call', true, { kind: 'grant-required', connectionId: 'x', name: 'y', origin: 'remote' })
     const settled = result('mcp_call', true, { kind: 'grant-required', connectionId: 'old', name: 'call' })
-    expect(openAsks([settled, user('go on'), question, grant, capability, remote])).toEqual([
+    expect(openAsks([settled, user('go on'), question, grant, capability, access, remote])).toEqual([
       { kind: 'question', since: question.id, entry: question.id, label: 'Which day?' },
       { kind: 'grant', since: grant.id, entry: grant.id, label: 'notes · write' },
       { kind: 'setup', since: capability.id, entry: capability.id, label: 'Add subagents to #Work' },
+      { kind: 'access', since: access.id, entry: access.id, label: 'notes · more access' },
     ])
     expect(openAsks([user('answered')], openAsks([question]))).toEqual([])
     expect(openAsks([grant], openAsks([question])).map((ask) => ask.kind)).toEqual(['question', 'grant'])

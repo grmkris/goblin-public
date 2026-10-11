@@ -7,9 +7,9 @@ import * as Option from 'effect/Option'
 import { Apps } from '../apps/service.ts'
 import type { SetupScope } from '../setup/scope.ts'
 import { Setups } from '../setup/service.ts'
-import { type GrantDenied, NotFound } from '../http/errors.ts'
+import { type GrantDenied, NotFound, type ScopeRequired } from '../http/errors.ts'
 import { offersEvents, toolAppResource, toolOffered } from '../mcp/remote.ts'
-import { grantRequiredResult, mcpModelResult } from '../mcp/extension.ts'
+import { grantRequiredResult, mcpModelResult, scopeRequiredResult } from '../mcp/extension.ts'
 import { named } from '../mcp/labels.ts'
 import { Events, McpConnections, McpGrants, McpServers, requireResident } from '../mcp/service.ts'
 import type { McpRequestOptions } from '../mcp/types.ts'
@@ -44,6 +44,14 @@ const grantRequired = (denied: GrantDenied, options: McpRequestOptions) =>
     if (tool === undefined || !toolOffered(tool, 'model')) return yield* new NotFound({ what: `tool ${denied.name}` })
     const labels = yield* (yield* McpServers).labels()
     return grantRequiredResult(denied.connectionId, denied.name, named(labels, denied.connectionId))
+  })
+
+/** A call beyond the connection's granted scope, as the model reads it: the owner signs in again (ADR 0042). */
+const scopeRequired = (required: ScopeRequired) =>
+  Effect.gen(function* () {
+    const labels = yield* (yield* McpServers).labels()
+    const result = scopeRequiredResult(required.connectionId, required.scope, named(labels, required.connectionId))
+    return new ReadyResult(result)
   })
 
 /**
@@ -251,6 +259,7 @@ export function residentMcpExtension(run: RunProgram) {
                       (result) => new ReadyResult(result),
                     ),
                   ),
+                  Effect.catchTag('ScopeRequired', (required) => scopeRequired(required)),
                 )
             }),
           ),

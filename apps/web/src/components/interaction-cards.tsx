@@ -23,7 +23,7 @@ import {
   QuestionnaireTitle,
   Receipt,
 } from '@goblin/ui'
-import { serversQuery, toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
+import { serversQuery, stepUpMutation, toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
 import { useAddAndConnect, useConnectionLabels } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
@@ -34,6 +34,7 @@ import { ApprovalCard } from './approval-card.tsx'
 export type Answer = (input: string, operationId: string) => Promise<boolean>
 type Question = Extract<Interaction, { kind: 'question' }>
 type Grant = Extract<Interaction, { kind: 'grant' }>
+type Access = Extract<Interaction, { kind: 'access' }>
 type Setup = Extract<Interaction, { kind: 'setup' }>
 
 /** The server's own description and hints for a tool, shown as its claims; nothing while they cannot be read. */
@@ -219,6 +220,77 @@ export function GrantCard({
   )
 }
 
+/** An authorization address the card may link to: http(s) only, so a server's metadata cannot make it a script. */
+const signInLink = (url: string | undefined): string | undefined => {
+  if (url === undefined || !URL.canParse(url)) return undefined
+  const { protocol, href } = new URL(url)
+  return protocol === 'https:' || protocol === 'http:' ? href : undefined
+}
+
+/**
+ * A call needed more access than the connection's sign-in granted (ADR 0042). Sign in again prepares the server's
+ * consent, asking for that access too, and Open sign-in opens it in a new tab from a real link (a window opened after a
+ * request is blocked as a popup); the chat stays here, and Continue tells the agent to go on. The server decides what
+ * it grants, so the card promises nothing.
+ */
+function AccessCard({ interaction, onAnswer }: { readonly interaction: Access; readonly onAnswer: Answer }) {
+  const { connectionId, scope } = interaction
+  const connection = useConnectionLabels()(connectionId)
+  const { busy, error, replying } = useReplying()
+  const stepUp = useMutation(stepUpMutation)
+  const link = signInLink(stepUp.data?.authorizationUrl)
+  const [opened, setOpened] = useState(false)
+  const reply = (going: boolean) =>
+    void replying(() =>
+      onAnswer(
+        going ? `Signed in again with more access to ${connection}. Continue.` : 'Not now.',
+        interactionOperation(interaction),
+      ),
+    )
+  const failed = stepUp.error === null ? '' : messageOf(stepUp.error, 'start the sign-in')
+  return (
+    <AskCard aria-label="More access needed">
+      <AskCardHeader>
+        <KeyRoundIcon aria-hidden />
+        <p>
+          <strong className="font-medium">{connection}</strong> says this needs more access
+        </p>
+      </AskCardHeader>
+      {scope !== '' && (
+        <AskCardDescription>
+          It asks for: <code>{scope}</code>
+        </AskCardDescription>
+      )}
+      <AskCardDescription>
+        Sign in to it again in a new tab and allow the extra access there, then come back and continue.
+      </AskCardDescription>
+      {(failed || error) && <Receipt tone="error">{failed || error}</Receipt>}
+      <AskCardActions>
+        <Button variant="ghost" disabled={busy} onClick={() => reply(false)}>
+          Not now
+        </Button>
+        {link === undefined ? (
+          <Button pending={stepUp.isPending} disabled={busy} onClick={() => stepUp.mutate({ connectionId, scope })}>
+            Sign in again
+          </Button>
+        ) : (
+          <Button
+            variant={opened ? 'outline' : 'default'}
+            nativeButton={false}
+            render={<a href={link} target="_blank" rel="noopener noreferrer" />}
+            onClick={() => setOpened(true)}
+          >
+            Open sign-in
+          </Button>
+        )}
+        <Button variant={opened ? 'default' : 'outline'} disabled={busy} onClick={() => reply(true)}>
+          Continue
+        </Button>
+      </AskCardActions>
+    </AskCard>
+  )
+}
+
 /**
  * Something the chat's Topic's setup does not hold that the agent tried to use (ADR 0040). Adding it changes what every
  * chat of the Topic works with, never a grant (a tool still needs the owner's grant), then tells the agent to continue.
@@ -328,6 +400,8 @@ export function InteractionCards({
     if (interaction.kind === 'approval') return <ApprovalCard key={interaction.callId} interaction={interaction} />
     if (interaction.kind === 'grant')
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
+    if (interaction.kind === 'access')
+      return <AccessCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'server')
       return <ServerRequestCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'setup')

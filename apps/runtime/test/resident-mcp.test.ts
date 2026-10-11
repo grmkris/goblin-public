@@ -26,8 +26,8 @@ import { executeTool, inConversation } from './pi-tool.ts'
 const ran: string[] = []
 
 /**
- * A notes server: `read` is granted, `write` exists but is not, `panel` is for its App only. It offers Events through
- * the extension, and sends seventy event streams.
+ * A notes server: `read` is granted, `write` exists but is not, `panel` is for its App only, and `admin` is granted but
+ * needs more than the sign-in's scope. It offers Events through the extension, and sends seventy event streams.
  */
 const notes = createMcpHandler(() => {
   const server = lowLevelServer(
@@ -39,6 +39,7 @@ const notes = createMcpHandler(() => {
       { name: 'read', inputSchema: { type: 'object', properties: {} } },
       { name: 'write', inputSchema: { type: 'object', properties: {} } },
       { name: 'panel', inputSchema: { type: 'object', properties: {} }, _meta: { ui: { visibility: ['app'] } } },
+      { name: 'admin', inputSchema: { type: 'object', properties: {} } },
     ],
   }))
   server.setRequestHandler('tools/call', (request) => {
@@ -50,12 +51,25 @@ const notes = createMcpHandler(() => {
 
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
-const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => notes.fetch(new Request(input, init))
+/** A call to `admin` is beyond the sign-in's scope: the server answers 403 `insufficient_scope` (ADR 0042). */
+const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const request = new Request(input, init)
+  const body = request.method === 'POST' ? await request.clone().text() : ''
+  if (body.includes('"method":"tools/call"') && body.includes('"name":"admin"'))
+    return new Response(null, {
+      status: 403,
+      headers: { 'www-authenticate': 'Bearer error="insufficient_scope", scope="notes:read notes:admin"' },
+    })
+  return notes.fetch(request)
+}
 /** The MCP host over the notes server; each program run opens its connection and closes it when it ends. */
 const host = mcpHost({
   servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp', label: 'Notes · Mine' }],
   credentials,
-  grants: new MemoryGrants([{ connectionId: 'notes', capability: 'tool', name: 'read' }]),
+  grants: new MemoryGrants([
+    { connectionId: 'notes', capability: 'tool', name: 'read' },
+    { connectionId: 'notes', capability: 'tool', name: 'admin' },
+  ]),
   registries: new MemoryRegistries(),
   labels: new MemoryLabels(),
   appUrl: 'https://goblin.test',
@@ -139,6 +153,16 @@ describe('mcp_call and the owner grant (unit)', () => {
     })
     expect(JSON.stringify(result.content)).toContain('Allow button')
     expect(JSON.stringify(result.content)).toContain('Not granted: \\"Notes · Mine\\" (notes) · write')
+  })
+  it('asks the owner to sign in again with more access when the server says the scope is short (ADR 0042)', async () => {
+    const result = await call('admin')
+    expect(result).toMatchObject({
+      isError: true,
+      details: { kind: 'scope-required', connectionId: 'notes', scope: 'notes:read notes:admin' },
+    })
+    expect(JSON.stringify(result.content)).toContain('Needs more access: \\"Notes · Mine\\" (notes)')
+    // The connection is not broken by it: the next granted call runs.
+    expect((await call('read')).isError).toBe(false)
   })
   it("lists each connection with the owner's label, so two accounts of one server are told apart", async () => {
     expect(await listed({}, 7)).toEqual({

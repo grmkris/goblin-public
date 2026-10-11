@@ -6,8 +6,9 @@ import { subagentAction } from './threads.ts'
 
 /**
  * Something the agent is waiting on the owner for: answers to `ask_user` questions, permission for an MCP tool it may
- * not call yet, an MCP server it asks them to add, or something its Topic's setup does not hold that it tried to use
- * (ADR 0040). Each settles with the owner's next message, from this web app or any other channel.
+ * not call yet, a sign-in with more access (ADR 0042), an MCP server it asks them to add, or something its Topic's
+ * setup does not hold that it tried to use (ADR 0040). Each settles with the owner's next message, from this web app or
+ * any other channel.
  */
 export type Interaction =
   | { readonly kind: 'question'; readonly callId: string; readonly questions: readonly QuestionSpec[] }
@@ -19,6 +20,8 @@ export type Interaction =
       readonly name: string
     }
   | { readonly kind: 'grant'; readonly callId: string; readonly connectionId: string; readonly name: string }
+  /** A call needed more access than the connection's sign-in granted: the owner signs in again (ADR 0042). */
+  | { readonly kind: 'access'; readonly callId: string; readonly connectionId: string; readonly scope: string }
   | {
       readonly kind: 'server'
       readonly callId: string
@@ -70,19 +73,26 @@ function setupOf(part: ToolPart, details: Record<string, unknown>): Interaction 
   })
 }
 
+/** goblin's own error results that ask the owner, by their details' `kind`. */
+const MARKERS = new Map<string, (part: ToolPart, details: Record<string, unknown>) => Interaction | undefined>([
+  ['approval-required', approvalOf],
+  ['grant-required', grantOf],
+  ['scope-required', accessOf],
+  ['not-in-topic', setupOf],
+])
+
 /**
  * The interaction a tool result asks for, if any. A grant request is trusted only from goblin's own `mcp_call`
  * result: an error whose details carry `kind: 'grant-required'` for exactly the server and tool that were called, and
- * no `origin` (remote results always have one), so a server's content cannot conjure an Allow card. An ask to add
+ * no `origin` (remote results always have one), so a server's content cannot conjure an Allow card. A request for more
+ * access (`scope-required`) is trusted the same way, for the connection that was called. An ask to add
  * something to the Topic's setup (`not-in-topic`) is trusted the same way, for exactly what the call asked for.
  */
 export function interactionOf(part: ToolPart): Interaction | undefined {
   const result = part.result
   const details = record(result?.details)
   if (result === undefined || details === undefined || 'origin' in details) return undefined
-  if (result.isError && details.kind === 'approval-required') return approvalOf(part, details)
-  if (result.isError && details.kind === 'grant-required') return grantOf(part, details)
-  if (result.isError && details.kind === 'not-in-topic') return setupOf(part, details)
+  if (result.isError) return isString(details.kind) ? MARKERS.get(details.kind)?.(part, details) : undefined
   if (part.call.name === 'mcp_request_server' && !result.isError && details.kind === 'server-request')
     return serverOf(part, details)
   if (part.call.name === 'ask_user' && !result.isError && details.kind === 'question')
@@ -113,6 +123,15 @@ function grantOf(part: ToolPart, details: Record<string, unknown>): Interaction 
   if (part.call.name !== 'mcp_call' || target === undefined) return undefined
   if (details.connectionId !== target.connectionId || details.name !== target.name) return undefined
   return { kind: 'grant', callId: part.call.id, connectionId: target.connectionId, name: target.name }
+}
+
+/** A request for more access, only from `mcp_call` and only for the connection that was called. */
+function accessOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const target = part.target
+  if (part.call.name !== 'mcp_call' || target === undefined || details.connectionId !== target.connectionId)
+    return undefined
+  const scope = isString(details.scope) ? details.scope.slice(0, 512) : ''
+  return { kind: 'access', callId: part.call.id, connectionId: target.connectionId, scope }
 }
 
 /** A request to add a server, only from `mcp_request_server` and only for an https endpoint without credentials. */
@@ -154,6 +173,7 @@ const OPERATION = {
   approval: 'approval',
   question: 'answer',
   grant: 'grant',
+  access: 'access',
   setup: 'setup',
   server: 'server',
 } as const

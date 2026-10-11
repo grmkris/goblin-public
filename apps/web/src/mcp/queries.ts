@@ -134,6 +134,18 @@ export const connectMutation = mutationOptions({
     started.authorizationUrl === undefined ? serversChanged(client) : undefined,
 })
 
+/** What a step-up asks for: the connection, and the scope the server said the call needs. */
+export type StepUpRequest = { readonly connectionId: string; readonly scope: string }
+
+/**
+ * Starts signing a connection in again with more access (ADR 0042): the consent URL to open in a new tab. The
+ * connection keeps working with its current access until the new sign-in completes.
+ */
+export const stepUpMutation = owner.apiMutation({
+  mutationFn: (api, { connectionId, scope }: StepUpRequest) =>
+    api.mcp.stepUp({ params: { id: connectionId }, payload: { scope } }),
+})
+
 /** Closes a server's connection; its grants stay. */
 export const disconnectMutation = mutationOptions({
   ...owner.apiMutation({

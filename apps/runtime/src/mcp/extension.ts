@@ -42,3 +42,21 @@ export const grantRequiredResult = (connectionId: string, name: string, connecti
   diagnostics: [{ severity: 'info', code: 'GrantDenied', message: 'Owner grant required.' }],
   details: { kind: 'grant-required', connectionId, name },
 })
+
+/**
+ * What the model gets for a call beyond what the connection's sign-in granted (ADR 0042): words it can relay, and a
+ * marker the web turns into an owner-only card to sign in again with more access. The turn ends: signing in is the
+ * owner's act, and they say when to continue.
+ */
+export const scopeRequiredResult = (connectionId: string, scope: string, connection: string): ToolExecutionResult => ({
+  content: [
+    {
+      type: 'text',
+      text: `Needs more access: ${connection} says this call needs ${scope === '' ? 'more access' : `the scope ${scope}`}. The owner has been shown a card to sign in to it again with more access. Stop here and wait until they say to continue.`,
+    },
+  ],
+  isError: true,
+  control: { terminate: true },
+  diagnostics: [{ severity: 'info', code: 'ScopeRequired', message: 'More access required.' }],
+  details: { kind: 'scope-required', connectionId, scope },
+})

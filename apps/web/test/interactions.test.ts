@@ -81,6 +81,22 @@ describe('what the agent waits on the owner for', () => {
       interactionOperation({ kind: 'approval', callId: 'g1', approvalId: 'mcp:1:g1', connectionId: 's', name: 'n' }),
     ).toBe('approval:g1')
   })
+  it('asks to sign in again with more access only for the connection that was called (ADR 0042)', () => {
+    const scope = { kind: 'scope-required', connectionId: 'myplan', scope: 'notes:write' }
+    expect(interactionOf(mcpCall(scope))).toEqual({
+      kind: 'access',
+      callId: 'g1',
+      connectionId: 'myplan',
+      scope: 'notes:write',
+    })
+    expect(interactionOf(mcpCall({ ...scope, scope: undefined }))).toMatchObject({ kind: 'access', scope: '' })
+    expect(interactionOf(mcpCall({ ...scope, connectionId: 'other' }))).toBeUndefined()
+    expect(interactionOf(mcpCall({ ...scope, origin: { connectionId: 'myplan', trust: 'untrusted' } }))).toBeUndefined()
+    expect(interactionOf(mcpCall(scope, false))).toBeUndefined()
+    expect(interactionOf(switchedOff('skill_activate', { connectionId: 'myplan' }, scope))).toBeUndefined()
+    expect(interactionOperation({ kind: 'access', callId: 'g1', connectionId: 'myplan', scope: '' })).toBe('access:g1')
+    expect(openInteractions([mcpCall(scope), user('u2')])).toEqual([])
+  })
   it('reads ask_user questions, and ignores details that do not fit the contract', () => {
     expect(interactionOf(asked([question]))).toEqual({ kind: 'question', callId: 'q1', questions: [question] })
     expect(interactionOf(asked([{ id: 'x', prompt: 'Bad', kind: 'essay' }]))).toBeUndefined()
