@@ -8,7 +8,7 @@ import { Cipher } from '../mcp/cipher.ts'
 import type { EventContext } from '../mcp/events/dispatcher.ts'
 import { type Consumer, canonicalArguments } from '../mcp/events/store.ts'
 import { redactSecretFields } from '../mcp/redaction.ts'
-import { Events } from '../mcp/service.ts'
+import { Events, McpServers } from '../mcp/service.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
 import { postEventNotice } from './notices.ts'
@@ -75,6 +75,8 @@ export const confirmEvents = Effect.fn('routines.confirmEvents')(function* (id: 
   yield* events.grant(trigger.connectionId, trigger.name, trigger.arguments, true)
   yield* events.subscribe(subscription(row, trigger))
   yield* routines.markActive(id, revision, null, yield* Clock.currentTimeMillis)
+  // A routine on the connection's events answers its offer (ADR 0041): Activity stops asking.
+  yield* (yield* McpServers).settleEvents(trigger.connectionId, 'done')
 })
 
 /** A bound revision whose lease ended pauses for the owner to review; one whose lease is active is active. */

@@ -23,6 +23,7 @@ import type { CredentialCipher } from './cipher.ts'
 import type { ConnectionStatus } from './credentials.ts'
 import type { EventWebhook, EventWebhookResult, SubscribeConsumer } from './events.ts'
 import type { EventContext } from './events/dispatcher.ts'
+import type { SettledOffer } from './events/offers.ts'
 import type { EventDescriptor } from './events/protocol.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
@@ -92,6 +93,8 @@ export class McpServers extends Context.Service<
     readonly finishConnect: (state: string, code: string, issuer?: string) => Effect.Effect<string, AppError>
     /** Forgets the server's credentials and closes its connection; grants stay. */
     readonly disconnect: (connectionId: string) => Effect.Effect<void, AppError>
+    /** Records what the owner did with a connection's offer of events (ADR 0041): dismissed, or a routine set up. */
+    readonly settleEvents: (connectionId: string, state: SettledOffer) => Effect.Effect<void, AppError>
     /** The server's tools as the owner sees them, from the live connection or a fresh one. */
     readonly tools: (connectionId: string, refresh: boolean) => Effect.Effect<readonly ToolView[], AppError>
     /**

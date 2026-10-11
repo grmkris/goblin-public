@@ -254,6 +254,16 @@ export const appMcpEventGrants = sqliteTable(
   (t) => [primaryKey({ columns: [t.connectionId, t.name, t.argumentsJson] })],
 )
 
+/**
+ * What the owner did with a connection's offer of events (ADR 0041): dismissed it, or set up a routine on it (`done`).
+ * A connection that sends events and has no row here offers them still.
+ */
+export const appMcpEventOffers = sqliteTable('app_mcp_event_offers', {
+  connectionId: text('connection_id').primaryKey().notNull(),
+  state: text('state', { enum: ['dismissed', 'done'] }).notNull(),
+  at: integer('at').notNull(),
+})
+
 /** Endpoint-bound finite leases. Secrets are ciphertext bound to server, subscription and purpose. */
 export const appMcpEventSubscriptions = sqliteTable(
   'app_mcp_event_subscriptions',

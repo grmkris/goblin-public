@@ -114,6 +114,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
       'app_event_consumer_receipts',
       'app_telegram_channel',
       'app_skill_catalog_state',
+      'app_mcp_event_offers',
     ],
     sql: [
       'CREATE TABLE app_mcp_event_grants (connection_id TEXT NOT NULL, name TEXT NOT NULL, arguments_json TEXT NOT NULL, granted_at INTEGER NOT NULL, revoked_at INTEGER, PRIMARY KEY (connection_id, name, arguments_json))',
@@ -126,6 +127,7 @@ export const BASE_MIGRATIONS: readonly Migration[] = [
       'CREATE TABLE app_event_consumer_receipts (subscription_id TEXT NOT NULL, webhook_id TEXT NOT NULL, consumer_id TEXT NOT NULL, revision INTEGER NOT NULL, operation_id TEXT NOT NULL, state TEXT NOT NULL, accepted_at INTEGER, PRIMARY KEY (subscription_id, webhook_id, consumer_id, revision))',
       'CREATE TABLE app_telegram_channel (id INTEGER PRIMARY KEY NOT NULL CHECK (id = 1), connection_id TEXT NOT NULL, inbox_cursor TEXT NOT NULL, enabled_at INTEGER NOT NULL)',
       'CREATE TABLE app_skill_catalog_state (connection_id TEXT PRIMARY KEY NOT NULL, dirty_generation INTEGER NOT NULL, refreshed_generation INTEGER NOT NULL, next_retry_at INTEGER NOT NULL, last_error TEXT)',
+      "CREATE TABLE app_mcp_event_offers (connection_id TEXT PRIMARY KEY NOT NULL, state TEXT NOT NULL CHECK (state IN ('dismissed', 'done')), at INTEGER NOT NULL)",
     ].join(BREAK),
   },
   {

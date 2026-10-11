@@ -194,7 +194,11 @@ export const ServerView = Schema.Struct({
   icon: Schema.optional(Schema.String),
   /** The live connection declares the MCP Skills extension. */
   skillsOffered: Schema.optional(Schema.Boolean),
-  eventsOffered: Schema.optional(Schema.Boolean),
+  /**
+   * The live connection sends events (ADR 0041), and what the owner did with the offer: `open` until they set up a
+   * routine on it (`done`) or dismiss it (`dismissed`). None when it sends no events.
+   */
+  events: Schema.optional(Schema.Literals(['open', 'dismissed', 'done'])),
   eventHealth: Schema.optional(Schema.Array(EventHealth)),
   /** The owner uses this server's skills (procedures the agent follows). */
   skillsEnabled: Schema.optional(Schema.Boolean),

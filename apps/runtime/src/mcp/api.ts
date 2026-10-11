@@ -35,6 +35,12 @@ const addServer = endpoint('addServer')(({ payload }) =>
 const renameConnection = endpoint('renameConnection')(({ params, payload }) =>
   McpServers.use((offered) => offered.rename(params.id, payload.label)),
 )
+const dismissEvents = endpoint('dismissEvents')(({ params }) =>
+  Effect.as(
+    McpServers.use((offered) => offered.settleEvents(params.id, 'dismissed')),
+    null,
+  ),
+)
 const suggested = endpoint('suggested')(() => AgentInput.use(({ env }) => suggestedServers(env.STAGE)))
 const catalog = endpoint('catalog')(({ query }) => {
   const text = query.q ?? ''
@@ -131,6 +137,7 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       setAppGrant,
       approval,
       events,
+      dismissEvents,
       decideApproval,
       tools,
       connect,

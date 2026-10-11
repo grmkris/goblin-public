@@ -134,7 +134,7 @@ function CronFields({ kit }: { readonly kit: WhenKit }) {
 /** The connections that send events, and the one picked if it no longer says so (an edit keeps what it had). */
 function useEventConnections(picked: string) {
   const servers = useQuery(serversQuery).data ?? []
-  const sending = servers.filter((server) => server.eventsOffered === true || server.connectionId === picked)
+  const sending = servers.filter((server) => server.events !== undefined || server.connectionId === picked)
   return sending.map((server) => ({ id: server.connectionId, label: connectionName(server) }))
 }
 

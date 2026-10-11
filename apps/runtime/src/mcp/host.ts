@@ -9,6 +9,7 @@ import { mcpAuth } from './auth.ts'
 import type { McpManager } from './connections.ts'
 import type { Credentials } from './credentials.ts'
 import type { Grants } from './grants.ts'
+import type { EventOffers } from './events/offers.ts'
 import type { Labels } from './labels.ts'
 import type { StepReport } from './log.ts'
 import { makeManager } from './manager.ts'
@@ -36,6 +37,8 @@ export type McpHostOptions = {
   readonly random?: () => string
   /** Whether the owner uses skills from a server; without it, no server's skills are read. */
   readonly skillsEnabled?: (connectionId: string) => boolean
+  /** What the owner did with each connection's offer of events (ADR 0041); without it, every offer stays open. */
+  readonly offers?: EventOffers
   /** Where each remote step is reported (the run ledger, ADR 0024). */
   readonly report?: StepReport
   /** The owner's decision on a call (held calls); without it, an ask-first tool is refused to all but the owner. */
@@ -148,6 +151,7 @@ export const mcpHost = (
         registries: options.registries,
         ...(options.added === undefined ? {} : { added: options.added }),
         labels: options.labels,
+        ...(options.offers === undefined ? {} : { offers: options.offers }),
         random: options.random ?? (() => crypto.randomUUID().replaceAll('-', '')),
         skillsEnabled,
       })

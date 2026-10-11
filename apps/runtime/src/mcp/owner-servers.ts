@@ -1,5 +1,6 @@
 import { auth, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
 import type { ServerSource, ServerView, ToolView } from '@goblin/contracts'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { epochSeconds } from '../clock.ts'
@@ -17,6 +18,7 @@ import type { McpManager } from './connections.ts'
 import type { Credentials } from './credentials.ts'
 import { addedConnectionId, serverClaims, userEndpoint } from './endpoint.ts'
 import type { Grants } from './grants.ts'
+import type { EventOffers, SettledOffer } from './events/offers.ts'
 import type { Labels } from './labels.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
 import type { AddedRegistries } from './registries.ts'
@@ -55,6 +57,8 @@ export type OwnerServers = {
   readonly added?: AddedServers
   /** The owner's name for every connection. */
   readonly labels: Labels
+  /** What the owner did with each connection's offer of events (ADR 0041); without it, every offer stays open. */
+  readonly offers?: EventOffers
   /** Random characters for added server ids. */
   readonly random: () => string
   readonly skillsEnabled: (connectionId: string) => boolean
@@ -68,6 +72,7 @@ const viewOf = (
 ): ServerView => {
   const name = snapshot?.serverInfo?.name
   const events = snapshot !== undefined && offersEvents(snapshot)
+  const offer = events ? (owner.offers?.settled(server.connectionId) ?? 'open') : undefined
   return {
     connectionId: server.connectionId,
     label: owner.labels.of(server.connectionId) ?? server.connectionId,
@@ -75,7 +80,7 @@ const viewOf = (
     status: owner.credentials.status(server.connectionId),
     live: snapshot !== undefined,
     skillsOffered: snapshot !== undefined && offersSkills(snapshot),
-    ...(events ? { eventsOffered: true } : {}),
+    ...(offer === undefined ? {} : { events: offer }),
     skillsEnabled: owner.skillsEnabled(server.connectionId),
     ...(name === undefined ? {} : { serverName: name }),
     source: claims === undefined ? 'config' : 'added',
@@ -134,6 +139,7 @@ const removeServer = (owner: OwnerServers, connectionId: string) =>
       })
     yield* owner.manager.remove(connectionId)
     yield* attemptSync(() => added.remove(connectionId))
+    yield* Effect.sync(() => owner.offers?.remove(connectionId))
   })
 
 /**
@@ -273,6 +279,11 @@ const connecting = (owner: OwnerServers) => ({
     yield* owner.manager.server(connectionId)
     yield* owner.manager.close(connectionId)
     yield* Effect.sync(() => owner.credentials.remove(connectionId))
+  }),
+  settleEvents: Effect.fn('McpServers.settleEvents')(function* (connectionId: string, state: SettledOffer) {
+    yield* owner.manager.server(connectionId)
+    const at = yield* Clock.currentTimeMillis
+    yield* Effect.sync(() => owner.offers?.settle(connectionId, state, at))
   }),
   tools: Effect.fn('McpServers.tools')(function* (connectionId: string, refresh: boolean) {
     const snapshot = refresh ? yield* owner.manager.reconnect(connectionId) : yield* owner.manager.connect(connectionId)

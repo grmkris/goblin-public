@@ -20,6 +20,7 @@ import { GrantStore } from '../mcp/grants.ts'
 import { mcpHost } from '../mcp/host.ts'
 import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
+import { ConnectionEventOffers } from '../mcp/events/offers.ts'
 import { ConnectionLabels } from '../mcp/labels.ts'
 import { AddedServerStore } from '../mcp/servers.ts'
 import {
@@ -143,6 +144,7 @@ export const McpHostLive: Layer.Layer<
       grants,
       registries: new RegistryStore(db),
       skillsEnabled: (connectionId) => skillState.enabled(connectionId),
+      offers: new ConnectionEventOffers(db),
       authorizeTool: heldCalls(approvals, grants),
       appUrl: env.APP_URL,
       fetch: input.mcpFetch,

@@ -124,6 +124,12 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     success: Schema.Array(EventStream),
     error: [ApiErrors.notFound, ...REMOTE],
   }),
+  /** `POST /api/mcp/:id/events/dismiss`: the owner wants nothing from this connection's events (ADR 0041). */
+  HttpApiEndpoint.post('dismissEvents', '/mcp/:id/events/dismiss', {
+    params: { id: ConnectionParam },
+    success: Schema.Null,
+    error: [ApiErrors.notFound],
+  }),
   HttpApiEndpoint.post('connect', '/mcp/:id/connect', {
     params: { id: ConnectionParam },
     success: ConnectStart,
