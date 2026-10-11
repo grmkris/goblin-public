@@ -196,6 +196,12 @@ export const McpEventsLive: Layer.Layer<
         return url
       })
     const authority = Effect.provideContext(eventsAuthority, context)
+    const connected = (connectionId: string) =>
+      Effect.gen(function* () {
+        yield* authority
+        if ((yield* servers.status(connectionId)) !== 'connected')
+          return yield* new Forbidden({ reason: 'event connection requires authorization' })
+      })
     const events = yield* makeEvents({
       connections: yield* McpConnections,
       store,
@@ -204,11 +210,10 @@ export const McpEventsLive: Layer.Layer<
       callback,
       wake: (at) => attempt(() => input.scheduleEvents(at)),
       authority,
+      connected,
       authorize: (connectionId, name, argumentsJson) =>
         Effect.gen(function* () {
-          yield* authority
-          if ((yield* servers.status(connectionId)) !== 'connected')
-            return yield* new Forbidden({ reason: 'event connection requires authorization' })
+          yield* connected(connectionId)
           if (!store.allows(connectionId, name, argumentsJson)) return yield* new GrantDenied({ connectionId, name })
         }),
     })

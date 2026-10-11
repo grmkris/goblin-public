@@ -23,6 +23,7 @@ import type { CredentialCipher } from './cipher.ts'
 import type { ConnectionStatus } from './credentials.ts'
 import type { EventWebhook, EventWebhookResult, SubscribeConsumer } from './events.ts'
 import type { EventContext } from './events/dispatcher.ts'
+import type { EventDescriptor } from './events/protocol.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
 import type {
@@ -233,6 +234,8 @@ export class Events extends Context.Service<
   {
     /** The server's subscriptions as the owner sees them; no callback URL, secret or event body. */
     readonly health: (connectionId: string) => Effect.Effect<readonly EventHealth[]>
+    /** The event streams a connection's server offers, read for the owner with no grant (none is made). */
+    readonly catalog: (connectionId: string) => Effect.Effect<readonly EventDescriptor[], AppError>
     /** Grants or revokes one exact selector (server, event name and canonical arguments). */
     readonly grant: (
       connectionId: string,

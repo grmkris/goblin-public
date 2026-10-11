@@ -37,6 +37,8 @@ export type EventClient = {
   readonly wake: (at: number) => Effect.Effect<void, AppError>
   /** The Events authority for one selector: checked before each request connects and again before it is sent. */
   readonly authorize: (connectionId: string, name: string, argumentsJson: string) => Effect.Effect<void, AppError>
+  /** The authority to read a connection's catalog: the plan, resident authority and a signed-in connection, no grant. */
+  readonly connected: (connectionId: string) => Effect.Effect<void, AppError>
 }
 
 /** One Events request for `row`'s selector, through its server's connection. */
@@ -55,26 +57,31 @@ const request = <S extends Schema.ConstraintDecoder<unknown>>(
     client.authorize(row.connectionId, row.name, row.argumentsJson),
   )
 
-/** The server's event descriptors for one selector, every page up to the subscription bound. */
-export const listEvents = (client: EventClient, connectionId: string, name: string, args: Record<string, unknown>) =>
+/** Every page of a connection's `events/list` under `authorize`, up to the page bound. */
+const pagesOf = (client: EventClient, connectionId: string, authorize: Effect.Effect<void, AppError>) =>
   Effect.gen(function* () {
-    const selector = { connectionId, name, argumentsJson: yield* attemptSync(() => canonicalArguments(args)) }
     const events: EventDescriptor[] = []
     let cursor: string | undefined
     for (let page = 0; page < EVENT_LIMITS.listPages; page++) {
-      const result = yield* request(
-        client,
-        selector,
-        'events/list',
-        cursor === undefined ? {} : { cursor },
-        EventsListResult,
-      )
+      const params = cursor === undefined ? {} : { cursor }
+      const result = yield* client.connections.events(connectionId, 'events/list', params, EventsListResult, authorize)
       events.push(...result.events)
       if (result.nextCursor === undefined || result.nextCursor === cursor) return events
       cursor = result.nextCursor
     }
     return yield* new UpstreamMcp({ connectionId, reason: 'content-limit' })
   })
+
+/** The server's event descriptors, read for one granted selector before it is subscribed. */
+export const listEvents = (client: EventClient, connectionId: string, name: string, args: Record<string, unknown>) =>
+  Effect.flatMap(
+    attemptSync(() => canonicalArguments(args)),
+    (argumentsJson) => pagesOf(client, connectionId, client.authorize(connectionId, name, argumentsJson)),
+  )
+
+/** The server's event descriptors as the owner browses them: no selector grant is needed, and none is made. */
+export const catalogEvents = (client: EventClient, connectionId: string) =>
+  pagesOf(client, connectionId, client.connected(connectionId))
 
 /** The durable intent for a selector, made (or found current) before anything is sent: a finite lease to come. */
 export const prepareEvents = (

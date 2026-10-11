@@ -79,7 +79,7 @@ event streams, the files group and the OAuth callback). It annotates the request
 | `setup` | `GET /setup/catalog` | `setup/api.ts` |
 | `personas` | `/personas`, `/personas/:id` | `personas/api.ts` |
 | `organize` | `/organize/:id/undo` | `organize/api.ts` |
-| `mcp` | `/mcp/servers`, `/mcp/suggested`, `/mcp/catalog`, `/mcp/registries`, `/mcp/registries/remove`, `/mcp/grants`, `/mcp/ask-first`, `/mcp/skills`, `/mcp/app-grants`, `/mcp/approvals/:id`, `/mcp/oauth/callback`, and `/mcp/:id/` `tools`, `connect`, `disconnect`, `remove`, `tools/call`, `resources/read` | `mcp/api.ts` |
+| `mcp` | `/mcp/servers`, `/mcp/suggested`, `/mcp/catalog`, `/mcp/registries`, `/mcp/registries/remove`, `/mcp/grants`, `/mcp/ask-first`, `/mcp/skills`, `/mcp/app-grants`, `/mcp/approvals/:id`, `/mcp/oauth/callback`, and `/mcp/:id/` `tools`, `events`, `connect`, `disconnect`, `remove`, `tools/call`, `resources/read` | `mcp/api.ts` |
 | `resident` | `/agent/resident` | `mcp/resident-api.ts` |
 | `agent` | `/agent/usage`, `/agent/model`, `/agent/channel` | `routines/agent-api.ts` |
 | `memory` | `/agent/memory` | `memory/api.ts` |
@@ -1162,6 +1162,10 @@ to them only where its Events offer them to this connection; a server without th
 untrusted metadata; the handler persists a dirty catalog generation and invalidates the cache before acknowledgement.
 A listing can clear only the generation it observed, and retained activations stay pinned. Gap controls trigger reconciliation;
 termination stops lease refresh and surfaces health. Mail and workspace changes have no installed consumer yet.
+
+The owner browses a connection's event streams before granting any (`GET /api/mcp/:id/events`, `Events.catalog`):
+the plan, resident authority and a signed-in connection are enough, no selector grant is made, and each stream says
+whether goblin can subscribe to it (poll and webhook). Descriptions are the server's claims, cut to 500 characters.
 
 The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
 64 live subscriptions (maintenance reconciles every one; a tombstone is pruned once no delivery or binding

@@ -139,6 +139,19 @@ export const EventHealth = Schema.Struct({
 export type EventHealth = typeof EventHealth.Type
 
 /**
+ * One stream of events a connection's server offers (`events/list`), as the owner sees it before subscribing: its name,
+ * the server's own description (a claim, for the owner's eyes), the arguments it takes, and whether goblin can
+ * subscribe to it (it delivers by poll and webhook).
+ */
+export const EventStream = Schema.Struct({
+  name: Schema.String,
+  description: Schema.optional(Schema.String),
+  inputSchema: Schema.Record(Schema.String, Schema.Unknown),
+  subscribable: Schema.Boolean,
+})
+export type EventStream = typeof EventStream.Type
+
+/**
  * An outbound MCP server as the owner sees it. `live`: a connection is open right now. `source`: the deployment
  * configured it, or the owner added it. `title`, `description` and `icon` are the server's own claims.
  */

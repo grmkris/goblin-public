@@ -11,7 +11,7 @@ import { AgentInput } from '../runtime/input.ts'
 import { setSkillEvents } from '../skills/events.ts'
 import { approvalView, decideOwnerApproval, ownerResource, setAskFirst } from './approval-owner.ts'
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
-import { McpConnections, McpGrants, McpServers } from './service.ts'
+import { Events, McpConnections, McpGrants, McpServers } from './service.ts'
 
 /** The mcp group's endpoints as the owner API serves them: behind owner admission, which may answer any failure. */
 type Endpoints = (typeof OwnerApi.groups)['mcp']['endpoints']
@@ -58,6 +58,20 @@ const setAppGrant = endpoint('setAppGrant')(({ payload }) =>
   McpGrants.use((owned) => owned.setApp(payload.connectionId, payload.uri, payload.allowed)),
 )
 const approval = endpoint('approval')(({ params }) => approvalView(params.id))
+/** The longest description of an event stream the owner reads; the rest of a server's claim is cut. */
+const EVENT_DESCRIPTION = 500
+const events = endpoint('events')(({ params }) =>
+  Events.use((offered) => offered.catalog(params.id)).pipe(
+    Effect.map((descriptors) =>
+      descriptors.map(({ name, description, inputSchema, delivery }) => ({
+        name,
+        ...(description === undefined ? {} : { description: description.slice(0, EVENT_DESCRIPTION) }),
+        inputSchema,
+        subscribable: delivery.includes('poll') && delivery.includes('webhook'),
+      })),
+    ),
+  ),
+)
 const decideApproval = endpoint('decideApproval')(({ params, payload }) =>
   decideOwnerApproval(params.id, payload.allowed),
 )
@@ -112,6 +126,7 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       setSkills,
       setAppGrant,
       approval,
+      events,
       decideApproval,
       tools,
       connect,

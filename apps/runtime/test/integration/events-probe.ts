@@ -79,6 +79,7 @@ async function setup(storage: DurableObjectStorage, harness: PiHarness) {
     principal: 'fixture-owner',
     callback: () => Effect.succeed('https://goblin.test/hooks/mcp-events/owner/fixture/token'),
     authority: Effect.void,
+    connected: () => Effect.void,
     authorize: (connectionId, name, args) =>
       store.allows(connectionId, name, args) ? Effect.void : Effect.fail(new GrantDenied({ connectionId, name })),
     wake: (at) =>

@@ -10,6 +10,7 @@ import {
   AskFirstChange,
   CatalogResults,
   ConnectStart,
+  EventStream,
   Grant,
   GrantChange,
   McpResourceResult,
@@ -27,8 +28,8 @@ import {
 import { ApiErrors } from './errors.ts'
 import { RenewsResident } from './resident.ts'
 
-/** A server's id in a path; anything else names no server (404). */
-const ServerParam = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
+/** A connection's id in a path; anything else names no connection (404). */
+const ConnectionParam = Schema.String.check(Schema.isPattern(/^[\w-]{1,64}$/u))
 /** A held call's id in a path (`mcp:<session>:<call>` for the model's): anything else names no approval (404). */
 const ApprovalParam = Schema.String.check(Schema.isPattern(/^[\w:-]{1,256}$/u))
 /**
@@ -106,35 +107,40 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     error: [ApiErrors.notFound, ApiErrors.conflict],
   }),
   HttpApiEndpoint.get('tools', '/mcp/:id/tools', {
-    params: { id: ServerParam },
+    params: { id: ConnectionParam },
     query: { refresh: Schema.optional(Schema.String) },
     success: Schema.Array(ToolView),
     error: [ApiErrors.notFound, ...REMOTE],
   }),
+  HttpApiEndpoint.get('events', '/mcp/:id/events', {
+    params: { id: ConnectionParam },
+    success: Schema.Array(EventStream),
+    error: [ApiErrors.notFound, ...REMOTE],
+  }),
   HttpApiEndpoint.post('connect', '/mcp/:id/connect', {
-    params: { id: ServerParam },
+    params: { id: ConnectionParam },
     success: ConnectStart,
     error: [ApiErrors.notFound, ...REMOTE],
   }),
   HttpApiEndpoint.post('disconnect', '/mcp/:id/disconnect', {
-    params: { id: ServerParam },
+    params: { id: ConnectionParam },
     success: Schema.Null,
     error: ApiErrors.notFound,
   }),
   HttpApiEndpoint.post('removeServer', '/mcp/:id/remove', {
-    params: { id: ServerParam },
+    params: { id: ConnectionParam },
     success: Schema.Null,
     error: ApiErrors.invalidInput,
   }),
   HttpApiEndpoint.post('callTool', '/mcp/:id/tools/call', {
-    params: { id: ServerParam },
+    params: { id: ConnectionParam },
     headers: Caller,
     payload: ToolCall,
     success: McpToolResult,
     error: [ApiErrors.notFound, ApiErrors.payloadTooLarge, ...REMOTE],
   }),
   HttpApiEndpoint.post('readResource', '/mcp/:id/resources/read', {
-    params: { id: ServerParam },
+    params: { id: ConnectionParam },
     headers: Caller,
     payload: ResourceRead,
     success: McpResourceResult,

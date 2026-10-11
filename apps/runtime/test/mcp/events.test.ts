@@ -4,6 +4,9 @@ import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { GrantDenied } from '../../src/http/errors.ts'
 import { offersEvents } from '../../src/mcp/remote.ts'
+import { catalogEvents, listEvents } from '../../src/mcp/events/client.ts'
+import { unread } from '../fake.ts'
+import { McpConnections } from '../../src/mcp/service.ts'
 import { EventsListResult } from '../../src/mcp/events/protocol.ts'
 import { decodeEnvelope, sign, verifyWebhook } from '../../src/mcp/events/webhook.ts'
 import { eventsHookToken, eventsHookTokenValid } from '../../src/mcp/events/route-token.ts'
@@ -118,6 +121,40 @@ describe('actual MCP Events connection manager (unit)', () => {
       const answer = await connections.events('fixture', 'events/list', {}, EventsListResult, Effect.void)
       const catalog = Schema.decodeUnknownSync(EventsListResult)(answer)
       expect(catalog.events.every((event) => event.payloadSchema === undefined)).toBe(true)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it("reads a connection's catalog for the owner without a selector grant, while a selector's listing needs one", async () => {
+    const fixture = new EventsFixture()
+    const { run, dispose } = managerOf({
+      servers: [{ connectionId: 'fixture', endpoint: 'https://events.test/mcp' }],
+      allows: () => false,
+      auth: () => ({ token: async () => 'fixture-bearer' }),
+      fetch: (input, init) => fixture.fetch(input, init),
+    })
+    const client = {
+      connections: await run(McpConnections),
+      store: unread,
+      cipher: unread,
+      principal: 'owner',
+      callback: () => Effect.succeed('https://goblin.test/hooks/mcp-events/owner/fixture/token'),
+      wake: () => Effect.void,
+      authorize: (connectionId: string, name: string) => Effect.fail(new GrantDenied({ connectionId, name })),
+      connected: () => Effect.void,
+    }
+    try {
+      const catalog = await Effect.runPromise(catalogEvents(client, 'fixture'))
+      expect(catalog.map((event) => event.name)).toEqual([
+        'message.received',
+        'question.answered',
+        'skills.updated',
+        'skills.list_changed',
+      ])
+      await expect(Effect.runPromise(listEvents(client, 'fixture', 'message.received', {}))).rejects.toMatchObject({
+        _tag: 'GrantDenied',
+      })
     } finally {
       await dispose()
     }

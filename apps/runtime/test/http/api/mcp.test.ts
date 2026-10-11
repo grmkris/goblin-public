@@ -1,5 +1,5 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
-import { type ApprovalView, Grant, ServerView, ToolView } from '@goblin/contracts'
+import { type ApprovalView, EventStream, Grant, ServerView, ToolView } from '@goblin/contracts'
 import { McpGroup } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -78,6 +78,17 @@ const fixture = async () => {
   const disabled: (string | undefined)[] = []
   const events = stub(Events, {
     health: () => Effect.succeed([]),
+    catalog: () =>
+      Effect.succeed([
+        {
+          name: 'sidequest.inbox',
+          description: 'x'.repeat(900),
+          inputSchema: { type: 'object' },
+          payloadSchema: { type: 'object' },
+          delivery: ['poll', 'webhook'] as const,
+        },
+        { name: 'sidequest.stream', inputSchema: {}, delivery: ['poll'] as const },
+      ]),
     disableServer: (connectionId?: string) => Effect.sync(() => void disabled.push(connectionId)),
   })
   const approvals = stub(Approvals, {
@@ -113,6 +124,19 @@ const decodeGrants = Schema.decodeUnknownSync(Schema.Array(Grant))
 const decodeTools = Schema.decodeUnknownSync(Schema.Array(ToolView))
 
 describe('the mcp group', () => {
+  it("lists a connection's event streams for the owner: bounded descriptions, subscribable only by poll and webhook", async () => {
+    const { fetch } = await fixture()
+    const response = await fetch(get('/api/mcp/notes/events'))
+    expect(response.status).toBe(200)
+    const streams = Schema.decodeUnknownSync(Schema.Array(EventStream))(await response.json())
+    expect(streams.map(({ name, subscribable }) => ({ name, subscribable }))).toEqual([
+      { name: 'sidequest.inbox', subscribable: true },
+      { name: 'sidequest.stream', subscribable: false },
+    ])
+    expect(streams[0]?.description).toHaveLength(500)
+    expect(streams[0]).not.toHaveProperty('payloadSchema')
+  })
+
   it('lists the servers with their Events health, and the built-in registries', async () => {
     const { fetch } = await fixture()
     const servers = await fetch(get('/api/mcp/servers'))

@@ -87,6 +87,7 @@ describe('which subscriptions stay valid (unit)', () => {
         wake: () => Effect.void,
         authority: Effect.void,
         authorize: () => Effect.void,
+        connected: () => Effect.void,
       }).pipe(Effect.provide(SingleFlight.layer)),
     )
   }

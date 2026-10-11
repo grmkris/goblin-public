@@ -7,6 +7,7 @@ import { type AppError, InvalidInput, attempt, attemptSync } from '../http/error
 import { SingleFlight } from '../observability/single-flight.ts'
 import {
   type EventClient,
+  catalogEvents,
   envelopeAad,
   listEvents,
   pollEvents,
@@ -246,6 +247,9 @@ const ackWith = (engine: Engine, input: ReceiptKey, write: () => void) =>
 
 /** What the owner and the consumers read and grant. */
 const reads = (engine: Engine) => ({
+  catalog: Effect.fn('Events.catalog')(function* (connectionId: string) {
+    return yield* catalogEvents(engine, connectionId)
+  }),
   health: Effect.fn('Events.health')(function* (connectionId: string) {
     const { store } = engine
     return yield* Effect.sync(() =>
