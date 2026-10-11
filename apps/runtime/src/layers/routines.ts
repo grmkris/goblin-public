@@ -12,6 +12,8 @@ import { RoutineRunStore as RunStore } from '../routines/runs.ts'
 import { RoutineControl, RoutineRuns, RoutineUsage, Routines } from '../routines/service.ts'
 import { RoutineStore } from '../routines/store.ts'
 import { RoutineUsage as UsageProjection, installRoutineUsage } from '../routines/usage.ts'
+import { Notices } from '../notices/service.ts'
+import { NoticeStore } from '../notices/store.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
@@ -56,6 +58,17 @@ export const routinesOf = (store: RoutineStore) =>
     pending: sync('Routines.pending', store.pending.bind(store)),
     queue: trySync('Routines.queue', store.queue.bind(store)),
     clearPending: trySync('Routines.clearPending', store.clearPending.bind(store)),
+  })
+
+/** The routines' notices over `store` (ADR 0041), a synchronous Drizzle repository wrapped once here. */
+export const noticesOf = (store: NoticeStore) =>
+  Notices.of({
+    claim: trySync('Notices.claim', store.claim.bind(store)),
+    get: sync('Notices.get', store.get.bind(store)),
+    written: trySync('Notices.written', store.written.bind(store)),
+    digestsDue: trySync('Notices.digestsDue', store.digestsDue.bind(store)),
+    unwritten: sync('Notices.unwritten', store.unwritten.bind(store)),
+    prune: trySync('Notices.prune', store.prune.bind(store)),
   })
 
 /** Routine runs over `store`, wrapped once here. */
@@ -123,15 +136,20 @@ export const ChannelLive: Layer.Layer<Channel, never, AgentInput | Db | Cipher> 
  * Routine runs (start step 6) and the Telegram channel (11) are start steps above.
  */
 export const RoutinesLive: Layer.Layer<
-  Routines | RoutineControl,
+  Routines | RoutineControl | Notices,
   never,
-  Exclude<RoutineControlServices, Routines> | Db
+  Exclude<RoutineControlServices, Routines | Notices> | Db
 > = Layer.effectContext(
   Effect.gen(function* () {
     const { userId } = yield* AgentInput
-    const store = new RoutineStore(yield* Db, userId)
+    const db = yield* Db
+    const store = new RoutineStore(db, userId)
     const routines = routinesOf(store)
-    const control = yield* makeRoutineControl(store).pipe(Effect.provideService(Routines, routines))
-    return Context.make(Routines, routines).pipe(Context.add(RoutineControl, control))
+    const notices = noticesOf(new NoticeStore(db))
+    const control = yield* makeRoutineControl(store).pipe(
+      Effect.provideService(Routines, routines),
+      Effect.provideService(Notices, notices),
+    )
+    return Context.make(Routines, routines).pipe(Context.add(RoutineControl, control), Context.add(Notices, notices))
   }),
 )

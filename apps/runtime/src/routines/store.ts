@@ -42,12 +42,10 @@ function validate(input: RoutineDefinition, at: number): RoutineDefinition {
   const definition = Schema.decodeUnknownSync(RoutineDefinition)(input)
   canonicalArguments(definition.trigger.kind === 'event' ? definition.trigger.arguments : {})
   const handOver = handOverOf(definition)
-  // Tell me without a hand-over posts notices, which land with the notices themselves (ADR 0041).
-  if (handOver === undefined) throw new InvalidInput({ reason: 'notice_only_unsupported' })
-  if (handOver.allowedTools.some((tool) => tool.connectionId === '' || tool.name === ''))
+  if (handOver?.allowedTools.some((tool) => tool.connectionId === '' || tool.name === ''))
     throw new InvalidInput({ reason: 'empty tool selector' })
   timezoneValid(definition.timezone)
-  if (handOver.budget.tokensPerDay < handOver.budget.tokensPerRun)
+  if (handOver !== undefined && handOver.budget.tokensPerDay < handOver.budget.tokensPerRun)
     throw new InvalidInput({ reason: 'daily budget below per-run budget' })
   // nextFire validates cron syntax and explicit one-off offsets without persisting a malformed draft.
   if (definition.trigger.kind !== 'event') nextFire(definition, at - 1)

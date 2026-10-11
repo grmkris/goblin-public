@@ -4,6 +4,7 @@ import { BASE_MIGRATIONS } from './migrations/base.ts'
 import { CONVERSATION_MIGRATIONS } from './migrations/conversation.ts'
 import { DECISION_MIGRATIONS } from './migrations/decisions.ts'
 import { BREAK, type Migration } from './migrations/migration.ts'
+import { NOTICE_MIGRATIONS } from './migrations/notices.ts'
 import { SETUP_MIGRATIONS } from './migrations/setup.ts'
 import { Internal } from '../http/errors.ts'
 import { assertApplicationTable } from './vendor.ts'
@@ -14,6 +15,7 @@ const MIGRATIONS: readonly Migration[] = [
   ...CONVERSATION_MIGRATIONS,
   ...DECISION_MIGRATIONS,
   ...SETUP_MIGRATIONS,
+  ...NOTICE_MIGRATIONS,
 ].toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 
 /** The migration keys in the order they apply. */

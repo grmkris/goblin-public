@@ -1,5 +1,6 @@
 import type { EntryDraft, EntryRecord, Submission, UserInput } from '@earendil-works/pi-durable'
 import type {
+  NoticeData,
   ConversationKind,
   ConversationView,
   CreateConversation,
@@ -196,6 +197,15 @@ export type HelperReference = {
 export type Updated = { readonly view: ConversationView; readonly closed: readonly string[] }
 
 /** A routine's frozen report into its Topic's Conversation (Personal's by default). */
+/** A notice to write: the chat it goes to, its request id, its data, the framed words the model reads, and when. */
+export type NoticePost = {
+  readonly chat: string
+  readonly requestId: string
+  readonly data: NoticeData
+  readonly text: string
+  readonly at: number
+}
+
 export type RoutineReport = {
   readonly runId: string
   readonly routineId: string
@@ -269,6 +279,13 @@ export class Conversations extends Context.Service<
       topic?: number,
     ) => Effect.Effect<void, AppError>
     readonly reportRoutine: (report: RoutineReport) => Effect.Effect<void, AppError>
+    /**
+     * Where a routine of Topic `topic` posts: that Topic's Conversation, or Personal's while the Topic is archived or
+     * gone (ADR 0032).
+     */
+    readonly routineHome: (topic: number) => Effect.Effect<{ readonly chat: string; readonly topic: number }, AppError>
+    /** A routine's notice (ADR 0041) as a passive `app.notice` entry of `chat`; its request id makes a repeat the same. */
+    readonly postNotice: (notice: NoticePost) => Effect.Effect<void, AppError>
     /** A thread's note into the chat it came from; returns how that chat is named. */
     readonly shareBack: (thread: string, note: string, requestId: string) => Effect.Effect<string, AppError>
     /** Tells a "+" thread's Conversation about it once it has a title; true only when this call wrote the note. */

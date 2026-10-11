@@ -75,6 +75,19 @@ describe('thread replies (unit)', () => {
     expect(replyStats([])).toEqual({ replies: 0 })
   })
 
+  it("counts what a routine posts as a reply: its notice, its report and a Persona's answer (ADR 0041)", () => {
+    const stats = replyStats([
+      said(10, THREAD, 'user', 100),
+      entry(11, THREAD, 'app.notice', {
+        role: 'user',
+        content: '[notice from "Sidequest"]\nPicked',
+        timestamp: 110_000,
+      }),
+      entry(12, THREAD, 'app.routine', { role: 'user', content: 'Quoted.', timestamp: 120_000 }),
+    ])
+    expect(stats).toEqual({ replies: 3, lastReplyAt: 120 })
+  })
+
   it('leaves out what a thread inherited from main and reads only what was written since the last count', async () => {
     const all = [said(3, MAIN, 'user', 10), said(4, MAIN, 'assistant', 11), said(20, THREAD, 'user', 50)]
     const conversation = conversationOf(all)

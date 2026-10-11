@@ -48,12 +48,24 @@ export const transcriptMessages = (entries: readonly EntryRecord[], limit: numbe
 export type ReplyStats = { readonly replies: number; readonly lastReplyAt?: number }
 
 /**
- * The owner's and the agent's messages in `entries` (tool traffic, system entries and messages without text left
- * out), with the newest one's time in seconds.
+ * The entries that count as replies: the owner's and the agent's messages, and what a routine posts (its notices,
+ * its report, a Persona's answer it handed over), which leave the chat unread (ADR 0041).
+ */
+const REPLY_KINDS: ReadonlySet<string> = new Set([
+  'pi.user',
+  'pi.assistant',
+  'app.notice',
+  'app.routine',
+  'app.persona',
+])
+
+/**
+ * The replies in `entries` (tool traffic, system entries and messages without text left out), with the newest one's
+ * time in seconds.
  */
 export function replyStats(entries: readonly EntryRecord[]): ReplyStats {
   const messages = entries
-    .filter((entry) => entry.kind === 'pi.user' || entry.kind === 'pi.assistant')
+    .filter((entry) => REPLY_KINDS.has(entry.kind))
     .flatMap((entry) => entry.model ?? [])
     .filter(
       (message) =>

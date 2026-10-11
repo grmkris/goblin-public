@@ -1,5 +1,5 @@
 import type { EntryDraft, Submission } from '@earendil-works/pi-durable'
-import { PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
+import { type NoticeData, PERSONAL_TOPIC, type UpdateConversation } from '@goblin/contracts'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
@@ -14,7 +14,7 @@ import { BACKGROUND } from '../../pi/context.ts'
 import { recentMessages } from '../../pi/transcript.ts'
 import { appConversations } from '../../storage/schema.ts'
 import { type ChatDb, chatRow, conversationAbove, isChannel } from '../directory.ts'
-import type { ChatOperations, ChatWrite, RoutineReport } from '../service.ts'
+import type { ChatOperations, ChatWrite, NoticePost, RoutineReport } from '../service.ts'
 import { closeTree, dropRelays, stopChats, subagentsBelow } from '../stops.ts'
 import { type RegistryCore, changed, channelRefusal, describe, labelOf, piConversation, registered } from './core.ts'
 import { routineHome } from './threads.ts'
@@ -209,6 +209,38 @@ const reportRoutine = Effect.fn('Conversations.reportRoutine')(function* (
   })
 })
 
+/** A notice's data as the entry keeps it: JSON with no key left undefined. */
+const noticeJson = (notice: NoticeData) => ({
+  notice: notice.notice,
+  routine: notice.routine,
+  source: notice.source,
+  from: {
+    label: notice.from.label,
+    ...(notice.from.connectionId === undefined ? {} : { connectionId: notice.from.connectionId }),
+  },
+  title: notice.title,
+  ...(notice.body === undefined ? {} : { body: notice.body }),
+  ...(notice.url === undefined ? {} : { url: notice.url }),
+  ...(notice.event === undefined ? {} : { event: { name: notice.event.name, occurredAt: notice.event.occurredAt } }),
+  ...(notice.folded === undefined ? {} : { folded: notice.folded }),
+})
+
+/** A routine's notice into the chat it was claimed for: passive, so no run starts (ADR 0041). */
+const postNotice = Effect.fn('Conversations.postNotice')(function* (
+  operations: ChatOperations['Service'],
+  notice: NoticePost,
+) {
+  yield* operations.passiveWrite(notice.chat, {
+    requestId: notice.requestId,
+    origin: 'routine',
+    entry: {
+      kind: 'app.notice',
+      data: noticeJson(notice.data),
+      model: [{ role: 'user', content: notice.text, timestamp: notice.at }],
+    },
+  })
+})
+
 /**
  * Rename, close or reopen, or pin a subagent open. Main keeps its name and never closes. Closing stops and closes the
  * conversation with everything under it, as its `close` flow; reopening opens only the one asked for.
@@ -269,6 +301,8 @@ const stopSubagents = Effect.fn('Conversations.stopSubagents')(function* (core: 
 export const registryWrites = (core: RegistryCore, ports: WritePorts) => ({
   touched: (chats: readonly string[]) => changed(core, chats).pipe(Effect.withSpan('Conversations.touched')),
   reportRoutine: (report: RoutineReport) => reportRoutine(core, ports.operations, report),
+  routineHome: (topic: number) => attemptSync(() => routineHome(core.db, topic)),
+  postNotice: (notice: NoticePost) => postNotice(ports.operations, notice),
   shareBack: (thread: string, text: string, requestId: string) => shareBack(core, ports, { thread, text, requestId }),
   announce: (thread: string) => announce(core, ports.operations, thread),
   writeEntry: (chat: string, requestId: string, entry: EntryDraft) =>

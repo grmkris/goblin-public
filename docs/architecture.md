@@ -1522,6 +1522,28 @@ and requires owner reconfirmation. Pause/edit/archive retire the consumer; pause
 retired receipt cannot become live again. Local signed-fixture proof is separate from real producer acceptance. See
 [ADR 0012](adr/0012-routines.md).
 
+## Notices
+
+**Tell me** (ADR 0041) makes a routine's posts notifications. An event's **notice** comes first: `routines/notices.ts`
+derives its text from the producer's convention (`data.title` or `data.summary`, with `data.url`; else "<event> from
+<label>", `notices/text.ts`), redacted, scrubbed of controls and bounded, with only a plain http(s) link. It is posted as
+a passive `app.notice` entry in the routine's home chat (`Conversations.routineHome`: its Topic's Conversation, or
+Personal's while that Topic is archived) and attributed to the connection by its label. The model reads it framed as
+untrusted data from that connection; memory and retrieval leave it out. A schedule that hands nothing over posts a
+reminder (the routine's title) at its slot and advances, with no run; a hand-over's answer, when the owner asked to be
+told, is a notification pointing at its report (`notice-report:<run>`), except for a run the owner started. A routine
+that hands nothing over cannot be run by hand (`nothing_to_run`).
+
+`app_notices` (`notices/store.ts`) keeps every notification: its entry's request id and chat, the label and text, the
+owner's read mark and the Telegram copy's outbox state. A notice is kept once by its id (`notice:<routine>:<eventId>`,
+`notice:<routine>:<slot>`), so a replayed delivery posts nothing again; a notice claimed but not written (a write cut
+short) is written by the routines' sweep. An event's notice is counted into its routine's hour (`app_notice_windows`):
+twenty are posted, the rest folded into one digest line ("+N more from <label>") the next hour's first notice, or the
+sweep, writes. Reminders, answers and digests are not counted. Notifications older than thirty days are pruned. An
+occurrence more than five minutes older than the routine's confirmation, or a day old, is acknowledged and dropped,
+so a producer that replays its backlog on a fresh subscription neither notifies nor runs. `app.notice`, `app.routine`
+and `app.persona` entries count as replies, so a routine's posts leave its chat unread.
+
 ## Deferred Home dashboard
 
 Main contains the transcript and composer, without a dashboard above the input. It opens at the transcript's end and uses the same jump button as other conversations. Apps follow page > inline placement; saved Home tiles no longer displace their tool-row views. The browser has no Home pinning, edit mode, tile renderer or special receipt actions.

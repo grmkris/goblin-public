@@ -1,4 +1,4 @@
-import type { RoutineDefinition } from '@goblin/contracts'
+import { type RoutineDefinition, handOverOf } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Match from 'effect/Match'
@@ -11,6 +11,7 @@ import { redactSecretFields } from '../mcp/redaction.ts'
 import { Events } from '../mcp/service.ts'
 import { writeLine } from '../observability/logger.ts'
 import { safeErrorType } from '../observability/report.ts'
+import { postEventNotice } from './notices.ts'
 import { admit, wakeIn } from './runner.ts'
 import type { Firing } from './runs.ts'
 import { Routines } from './service.ts'
@@ -26,6 +27,8 @@ type EventTrigger = Extract<Trigger, { kind: 'event' }>
 const consumerId = (id: string) => `routine:${id}`
 const live = (state: RoutineRow['state']) => state === 'active' || state === 'activating'
 const DAY = 86_400_000
+/** How long before its confirmation an event may have happened and still be the routine's (a clock's leeway). */
+const REPLAY_GRACE = 300_000
 
 /**
  * Whether subscribing a confirmed event routine failed for a reason the owner has to act on: the server needs signing
@@ -158,8 +161,19 @@ const current = (row: RoutineRow, trigger: Trigger, context: EventContext) =>
   canonicalArguments(trigger.arguments) === context.subscription.argumentsJson
 
 /**
- * One event occurrence as a firing, its selected metadata sealed for the run's prompt. A busy routine keeps it sealed
- * as the routine's pending trigger, in one short transaction with this consumer's acknowledgement (`store`'s write).
+ * Whether an occurrence is a replay the routine should not act on (ADR 0041): one that happened more than five
+ * minutes before the owner confirmed the routine (a producer that replays its backlog on a fresh subscription), more
+ * than a day ago, or at no readable time. It is acknowledged and dropped.
+ */
+const replayed = (row: RoutineRow, occurredAt: number, at: number): boolean =>
+  !Number.isFinite(occurredAt) ||
+  occurredAt < at - DAY ||
+  (row.confirmedAt !== null && occurredAt < row.confirmedAt - REPLAY_GRACE)
+
+/**
+ * One event occurrence: its notice first when the routine tells the owner (ADR 0041), then, when it hands the work
+ * over, a firing with its selected metadata sealed for the run's prompt. A busy routine keeps the firing sealed as its
+ * pending trigger, in one short transaction with this consumer's acknowledgement (`store`'s write).
  */
 const occurrence = (store: RoutineStore, row: RoutineRow, context: EventContext) =>
   Effect.gen(function* () {
@@ -168,6 +182,16 @@ const occurrence = (store: RoutineStore, row: RoutineRow, context: EventContext)
     const operationId = `routine:${row.id}:${encodeURIComponent(envelope.eventId)}`
     const at = yield* Clock.currentTimeMillis
     const occurredAt = Date.parse(envelope.timestamp)
+    if (replayed(row, occurredAt, at)) return
+    const definition = definitionOf(row)
+    if (definition.tellMe.on)
+      yield* postEventNotice(row, definition, {
+        eventId: envelope.eventId,
+        name: envelope.name,
+        data: envelope.data,
+        occurredAt,
+      })
+    if (handOverOf(definition) === undefined) return
     const data = JSON.stringify(
       redactSecretFields({ name: envelope.name, timestamp: envelope.timestamp, data: envelope.data }),
     )
@@ -195,8 +219,7 @@ const occurrence = (store: RoutineStore, row: RoutineRow, context: EventContext)
       const now = yield* Clock.currentTimeMillis
       yield* (yield* Events).ackWith(context.receipt, () => store.pending(row.id, row.revision, pending, now))
     })
-    const stale = !Number.isFinite(occurredAt) || occurredAt < at - DAY
-    yield* admit(firing, stale ? 'Event is invalid or older than the 24-hour catch-up window' : undefined).pipe(
+    yield* admit(firing).pipe(
       // expected: a busy routine holds the occurrence as its pending trigger, acknowledged with it
       Effect.catchIf(busy, () => hold),
       // expected: the routine changed since the delivery was bound to it, so the occurrence is not its to run

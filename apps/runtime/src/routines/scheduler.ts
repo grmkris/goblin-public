@@ -1,10 +1,11 @@
-import type { RoutineDefinition } from '@goblin/contracts'
+import { type RoutineDefinition, handOverOf } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { type AppError, Conflict, attempt, toAppError } from '../http/errors.ts'
 import { Cipher } from '../mcp/cipher.ts'
 import { AgentInput } from '../runtime/input.ts'
+import { postReminder } from './notices.ts'
 import { admit, wakeIn } from './runner.ts'
 import type { Firing } from './runs.ts'
 import { Routines } from './service.ts'
@@ -109,6 +110,12 @@ export const fire = Effect.fn('routines.fire')(function* (slot: RoutineSlot) {
   if (definition.trigger.kind === 'event') return
   const due = dueSlot(definition, slot.firedAt, now)
   const schedule = { expectedAt: slot.firedAt, nextAt: due.nextAt, missed: due.missed }
+  // A routine that hands nothing over only reminds the owner (ADR 0041): a reminder at the slot, no run.
+  if (handOverOf(definition) === undefined) {
+    if (!due.old) yield* postReminder(row, definition, due.firedAt)
+    yield* routines.advance({ id: row.id, revision: row.revision, ...schedule }, now)
+    return yield* wakeIn(1000)
+  }
   const firing: Firing = {
     ...slot,
     firedAt: due.firedAt,

@@ -10,7 +10,9 @@ import { Budget } from '../src/budget.ts'
 import { ChatId, SessionId } from '../src/chats/directory.ts'
 import { Chats, Conversations } from '../src/chats/service.ts'
 import { type AppError, BudgetExhausted, Internal } from '../src/http/errors.ts'
-import { routineRunsOf, routinesOf } from '../src/layers/routines.ts'
+import { noticesOf, routineRunsOf, routinesOf } from '../src/layers/routines.ts'
+import { Notices } from '../src/notices/service.ts'
+import { NoticeStore } from '../src/notices/store.ts'
 import { Cipher } from '../src/mcp/cipher.ts'
 import { Resident } from '../src/mcp/service.ts'
 import { Models } from '../src/models.ts'
@@ -95,6 +97,7 @@ const fixture = (
     stub(Cipher),
     stub(Conversations, { reportRoutine: () => Effect.void }),
     stub(RoutineUsage, { snapshot: () => Effect.void }),
+    Layer.succeed(Notices, noticesOf(new NoticeStore(sqlite))),
     stub(AgentInput, { routineSchedules: schedules, startRoutine: async () => 'session-1' }),
   )
   const run = <A>(program: Effect.Effect<A, AppError, Layer.Success<typeof layer>>) =>

@@ -3,6 +3,7 @@ import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { Events } from '../mcp/service.ts'
 import { confirmEvents, consumeEvent, reconcileEvents } from './events.ts'
+import { sweepNotices } from './notices.ts'
 import { notifyRoutine } from './notifications.ts'
 import {
   DEADLINE_REACHED,
@@ -39,6 +40,7 @@ const maintainRoutines = Effect.gen(function* () {
   const notifications = yield* runs.notifications(yield* Clock.currentTimeMillis)
   for (const record of notifications) yield* notifyRoutine(record)
   if (notifications.length > 0) yield* wakeIn(30_000)
+  yield* sweepNotices
   const now = yield* Clock.currentTimeMillis
   const next = live.filter((record) => record.deadlineAt > now).map((record) => record.deadlineAt)
   if (next.length > 0 || reports.length === 100) yield* wakeAt(Math.min(now + 60_000, ...next))

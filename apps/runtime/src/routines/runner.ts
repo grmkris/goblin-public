@@ -1,4 +1,4 @@
-import type { RoutineManualRun } from '@goblin/contracts'
+import { type RoutineManualRun, handOverOf } from '@goblin/contracts'
 import type { FlowStatus, FlowVia } from '@goblin/contracts/telemetry'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
@@ -7,7 +7,7 @@ import { nextInt } from 'effect/Random'
 import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { Chats, Conversations } from '../chats/service.ts'
-import { Conflict, attempt, toAppError } from '../http/errors.ts'
+import { Conflict, InvalidInput, attempt, toAppError } from '../http/errors.ts'
 import { Cipher } from '../mcp/cipher.ts'
 import { requireResident } from '../mcp/service.ts'
 import { Models } from '../models.ts'
@@ -17,8 +17,10 @@ import { BACKGROUND } from '../pi/context.ts'
 import { type PiFailure, PiSessions } from '../pi/sessions.ts'
 import { sha256Hex } from '../runtime/digest.ts'
 import { AgentInput } from '../runtime/input.ts'
+import { notifyReport } from './notices.ts'
 import type { Firing, RoutineRun } from './runs.ts'
 import { type RoutineAnswer, RoutineRuns, RoutineUsage, Routines } from './service.ts'
+import { definitionOf } from './store.ts'
 
 // A routine run's life on the app side: admission, the handoff to Pi, the owner's answer, stopping and the frozen
 // report. Pi executes the run; these programs repair the handoffs to it and never wait on the model.
@@ -178,8 +180,13 @@ export const admit = Effect.fn('routines.admit')(function* (firing: Firing, forc
   return yield* RoutineRuns.use((runs) => runs.get(claimed.run.id))
 })
 
-/** The owner's "run now" at a confirmed revision; the same operation finds the same run. */
+/**
+ * The owner's "run now" at a confirmed revision; the same operation finds the same run. A routine that hands nothing
+ * over has nothing to run (ADR 0041).
+ */
 export const manualRun = Effect.fn('routines.manual')(function* (id: string, input: RoutineManualRun) {
+  if (handOverOf(definitionOf(yield* (yield* Routines).get(id))) === undefined)
+    return yield* new InvalidInput({ reason: 'nothing_to_run' })
   const firedAt = yield* Clock.currentTimeMillis
   return yield* admit({
     routineId: id,
@@ -198,15 +205,23 @@ export const reportRun = (record: RoutineRun) =>
     const topic = yield* (yield* Routines).topicOf(record.routineId)
     const session = record.sessionId
     if (session !== null) yield* RoutineUsage.use((projection) => projection.snapshot(session))
+    const text = record.notificationText ?? 'Routine ended.'
     yield* conversations.reportRoutine({
       runId: record.id,
       routineId: record.routineId,
       sessionId: record.sessionId,
       outcome: record.outcome ?? record.state,
-      text: record.notificationText ?? 'Routine ended.',
+      text,
       at: record.updatedAt,
       topic,
     })
+    // An answer the owner asked to be told about is a notification, except of a run they started themselves.
+    if (record.source !== 'manual')
+      yield* notifyReport({ id: record.routineId, topicId: topic }, definitionOf(record), {
+        runId: record.id,
+        text,
+        at: record.updatedAt,
+      })
     yield* store.reported(record.id, yield* Clock.currentTimeMillis)
     yield* reportFlow(record, topic, 'ok')
   }).pipe(Effect.tapError((error) => reportFlow(record, undefined, 'error', safeErrorType(error))))
