@@ -484,7 +484,9 @@ never stores it, so everything before it stays a cacheable prefix. The `mcp_list
 (`pi/resident-mcp.ts`) are how the model reaches the owner's MCP servers; both require current resident authority, and
 `mcp_call` is marked unsafe to replay. `mcp_list` lists the connections with the owner's labels (two accounts of one
 server are told apart by them; ADR 0041), and shows each tool's input and output schema (the server's, untrusted
-data). Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
+data) and, for a connection whose server offers Events, its first 64 event streams with their argument schemas
+(`events`, from `Events.catalog`, also untrusted), so the model can propose a routine on one; a catalog the plan, the
+connection's sign-in or the server does not let it read leaves `events` out and the tools listed. Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
 (`named` in `mcp/labels.ts`); labels never enter telemetry. `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
 Pi's MCP tools shape it (content blocks, `details.structuredContent`, `_meta` and the origin).
 Remote result details and signed routine event metadata share `mcp/redaction.ts`: it scrubs exact credential-shaped
@@ -1473,7 +1475,9 @@ review; real source checkpoints and explicit product criteria do not authorize p
 
 `routines/store.ts` stores bounded drafts and immutable operation receipts in application SQLite. A model can propose a
 typed definition (`routine_propose`, which ends its turn), list (`routine_list`) or pause (`routine_pause`), one typed
-tool each (ADR 0027); only an authenticated owner may confirm the exact revision. Routine writes require
+tool each (ADR 0027); only an authenticated owner may confirm the exact revision. The model names a Persona and,
+optionally, another Topic by name; `proposeAsked` (`routines/program.ts`) resolves them and pins the Persona's revision
+now (`topicNamed`, `personaNamed`). Routine writes require
 an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and stale revisions return 409. A
 definition (ADR 0041) is a trigger, a timezone, **Tell me** (`tellMe: { on, telegram }`, Telegram only with Tell me) and
 **Hand to** (`handTo`: `none`; `goblin` with its instruction, allowed tools and budget; or `persona` with those and the

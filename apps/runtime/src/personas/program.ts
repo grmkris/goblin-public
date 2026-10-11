@@ -6,6 +6,8 @@ import {
   type UpdatePersona,
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
+import { NotFound } from '../http/errors.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
 import { Receipts } from '../organize/service.ts'
 import { refuseUnallowed } from '../setup/catalog.ts'
@@ -14,6 +16,14 @@ import { Personas } from './service.ts'
 
 /** Who changed a Persona and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type PersonaProvenance = { readonly actor: PersonaActor; readonly chat?: string; readonly operationId?: string }
+
+/** The active Persona named `name` (an `@` in front is ignored, and case), as the model names one; `NotFound` otherwise. */
+export const personaNamed = (name: string) =>
+  Personas.use((personas) => personas.byName(name.replace(/^@/u, ''))).pipe(
+    Effect.flatMap(
+      Option.match({ onNone: () => Effect.fail(new NotFound({ what: 'persona' })), onSome: Effect.succeed }),
+    ),
+  )
 
 /** One Persona with its revisions. */
 export const personaDetail = (id: number) => Personas.use((personas) => personas.detail(id))

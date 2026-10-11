@@ -1,6 +1,7 @@
 import {
   PERSONAL_TOPIC,
   type RoutineDefinition,
+  type RoutineHandTo,
   type RoutineEdit,
   type RoutineRevision,
   type RoutineSettings,
@@ -11,6 +12,8 @@ import * as Option from 'effect/Option'
 import { nextInt } from 'effect/Random'
 import { requirePlan } from '../billing/gates.ts'
 import { Chats } from '../chats/service.ts'
+import { personaNamed } from '../personas/program.ts'
+import { topicNamed } from '../topics/program.ts'
 import { RoutineControl, Routines } from './service.ts'
 
 export const routinesList = Effect.gen(function* () {
@@ -42,6 +45,40 @@ export const proposeRoutineFrom = Effect.fn('routines.proposeFrom')(function* (
   const topic = Option.isNone(chat) ? PERSONAL_TOPIC : yield* chats.topicOf(chat.value)
   return yield* proposeRoutine(definition, operationId, topic)
 })
+/**
+ * Who a proposal from the model hands its work to: nobody, Goblin, or a Persona by its name, whose revision now the
+ * program pins (ADR 0041).
+ */
+export type AskedHandTo =
+  | Exclude<RoutineHandTo, { readonly kind: 'persona' }>
+  | (Omit<Extract<RoutineHandTo, { readonly kind: 'persona' }>, 'persona' | 'revision'> & { readonly persona: string })
+
+/** A routine as the model proposes it: its definition with the Persona by name, and the Topic by name if not this one. */
+export type AskedRoutine = Omit<RoutineDefinition, 'handTo'> & { readonly handTo: AskedHandTo; readonly topic?: string }
+
+/** The hand-over `asked` names, with a Persona's name resolved to it at its revision now. */
+const handToOf = (asked: AskedHandTo) =>
+  Effect.gen(function* () {
+    if (asked.kind !== 'persona') return asked
+    const persona = yield* personaNamed(asked.persona)
+    return { ...asked, persona: persona.id, revision: persona.revision } satisfies RoutineHandTo
+  })
+
+/**
+ * A draft routine the model proposed from the Pi session `session`: in the Topic it names, else its chat's Topic (else
+ * Personal), handed to the Persona it names at that Persona's revision now. The owner reviews it before it runs.
+ */
+export const proposeAsked = Effect.fn('routines.proposeAsked')(function* (
+  asked: AskedRoutine,
+  operationId: string,
+  session: string,
+) {
+  const { topic: topicName, handTo, ...rest } = asked
+  const definition = { ...rest, handTo: yield* handToOf(handTo) }
+  if (topicName === undefined) return yield* proposeRoutineFrom(definition, operationId, session)
+  return yield* proposeRoutine(definition, operationId, (yield* topicNamed(topicName)).id)
+})
+
 export const editRoutine = Effect.fn('routines.edit')(function* (id: string, input: RoutineEdit) {
   const store = yield* Routines
   const at = yield* Clock.currentTimeMillis

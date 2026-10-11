@@ -23,7 +23,7 @@ export const RoutineBudget = Schema.Struct({
 export type RoutineBudget = typeof RoutineBudget.Type
 
 /** What a hand-over carries (ADR 0041): the owner's instruction, the tools the work may call, and its limits. */
-const HandOver = {
+export const RoutineHandOverFields = {
   instruction: NonEmptyString(12_000),
   allowedTools: Schema.Array(Schema.Struct({ connectionId: server, name: NonEmptyString(256) })).check(
     Schema.isMaxLength(100),
@@ -37,8 +37,13 @@ const HandOver = {
  */
 export const RoutineHandTo = Schema.Union([
   Schema.Struct({ kind: Schema.Literal('none') }),
-  Schema.Struct({ kind: Schema.Literal('goblin'), ...HandOver }),
-  Schema.Struct({ kind: Schema.Literal('persona'), persona: PersonaId, revision: positive(1_000_000), ...HandOver }),
+  Schema.Struct({ kind: Schema.Literal('goblin'), ...RoutineHandOverFields }),
+  Schema.Struct({
+    kind: Schema.Literal('persona'),
+    persona: PersonaId,
+    revision: positive(1_000_000),
+    ...RoutineHandOverFields,
+  }),
 ])
 export type RoutineHandTo = typeof RoutineHandTo.Type
 /** A hand-over: the routine gives its work to someone, with an instruction, tools and limits. */

@@ -16,7 +16,7 @@ import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
 import { stopChat } from '../agent-program.ts'
 import { Chats, Conversations } from '../chats/service.ts'
-import type { AppError } from '../http/errors.ts'
+import { type AppError, NotFound } from '../http/errors.ts'
 import { viaOf } from '../organize/flows.ts'
 import { FlowEvents, failedFlow, withFlow } from '../observability/flows.ts'
 import type { NewReceipt } from '../organize/receipts.ts'
@@ -25,6 +25,16 @@ import { refuseUnallowed, setupCatalog } from '../setup/catalog.ts'
 import { Setups } from '../setup/service.ts'
 import type { TopicActor } from './registry.ts'
 import { Topics } from './service.ts'
+
+/** The open Topic named `name`, ignoring case and the ends' spaces, as the model names one; `NotFound` otherwise. */
+export const topicNamed = (name: string) =>
+  Effect.gen(function* () {
+    const wanted = name.trim().toLowerCase()
+    const topics = yield* Topics.use((registry) => registry.list)
+    const found = topics.find((topic) => topic.archivedAt === undefined && topic.name.toLowerCase() === wanted)
+    if (found === undefined) return yield* new NotFound({ what: 'topic' })
+    return found
+  })
 
 /** Who changed a Topic and from where: the receipt it leaves says so. `chat` is the run that did it, for the agent. */
 export type Provenance = { readonly actor: TopicActor; readonly chat?: string; readonly operationId?: string }

@@ -3,6 +3,7 @@ import type { RoutineDefinition } from '@goblin/contracts'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Entitlements } from '../src/billing/gates.ts'
 import type { AccountPlan } from '../src/billing/reconcile.ts'
@@ -22,15 +23,17 @@ import { PersonaRegistry } from '../src/personas/registry.ts'
 import { Personas } from '../src/personas/service.ts'
 import type { RoutineStart } from '../src/pi/routine-run.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
+import { proposeAsked } from '../src/routines/program.ts'
 import { admit, reportRun } from '../src/routines/runner.ts'
 import { RoutineRunStore } from '../src/routines/runs.ts'
 import type { RoutineSchedules } from '../src/routines/scheduler.ts'
 import { RoutineRuns, RoutineUsage, Routines } from '../src/routines/service.ts'
 import { RoutineStore } from '../src/routines/store.ts'
 import { AgentInput } from '../src/runtime/input.ts'
+import { Topics } from '../src/topics/service.ts'
 import { chatDatabase, durable } from './chats-sqlite.ts'
 import { stub } from './http/api/fixture.ts'
-import { PERSONAL_TOPIC } from '@goblin/contracts'
+import { EVERYTHING, PERSONAL_TOPIC } from '@goblin/contracts'
 
 const PLAN: AccountPlan = {
   active: true,
@@ -123,7 +126,27 @@ const fixture = (
     stub(Resident, { require: () => Effect.void }),
     stub(Budget, { require: () => gate.budget ?? Effect.void }),
     stub(Models, { current: Effect.succeed('model-a') }),
-    stub(Chats, { primary: ChatId('1'), session: () => Effect.succeed(SessionId('1')) }),
+    stub(Chats, {
+      primary: ChatId('1'),
+      session: () => Effect.succeed(SessionId('1')),
+      chatOf: () => Effect.succeed(Option.some(ChatId('1'))),
+      topicOf: () => Effect.succeed(PERSONAL_TOPIC),
+    }),
+    stub(Topics, {
+      list: Effect.succeed([
+        {
+          id: PERSONAL_TOPIC,
+          name: 'Personal',
+          conversation: ChatId('1'),
+          personal: true,
+          searchExcluded: false,
+          revision: 0,
+          setup: EVERYTHING,
+          createdBy: 'system' as const,
+          createdAt: 1,
+        },
+      ]),
+    }),
     // SAFETY: the start below never touches the opened Pi it is handed.
     stub(PiSessions, { pi: Effect.succeed({} as Harness) }),
     stub(Cipher),
@@ -227,5 +250,22 @@ describe('routine flows', () => {
     expect(() => routines.propose(next, 'op-old-pin', 'rt_3', Date.now(), PERSONAL_TOPIC)).toThrow(
       expect.objectContaining({ reason: 'persona_changed' }),
     )
+  })
+
+  it('pins the Persona and finds the Topic the model names when it proposes a routine (routine_propose)', async () => {
+    const { run, registry, worker } = fixture()
+    registry.update(worker.id, { role: 'Quotes and delivers', expectedRevision: 1 }, 'owner', 2)
+    if (DEFINITION.handTo.kind === 'none') throw new Error('the definition hands its work over')
+    const asked = { ...DEFINITION, handTo: { ...DEFINITION.handTo, kind: 'persona' as const, persona: '@worker' } }
+    const draft = await run(proposeAsked({ ...asked, topic: 'personal' }, 'op-asked', 's1'))
+    expect(draft).toMatchObject({ topic: PERSONAL_TOPIC, persona: { name: 'Worker', pinned: 2, current: 2 } })
+    expect(draft.definition.handTo).toMatchObject({ kind: 'persona', persona: worker.id, revision: 2 })
+    await expect(
+      run(proposeAsked({ ...asked, handTo: { ...asked.handTo, persona: 'Nobody' } }, 'op-nobody', 's1')),
+    ).rejects.toMatchObject({ _tag: 'NotFound', what: 'persona' })
+    await expect(run(proposeAsked({ ...asked, topic: 'Elsewhere' }, 'op-elsewhere', 's1'))).rejects.toMatchObject({
+      _tag: 'NotFound',
+      what: 'topic',
+    })
   })
 })

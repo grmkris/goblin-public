@@ -52,6 +52,17 @@ describe('routine tools (unit, ADR 0027)', () => {
     ).toThrow('Validation failed')
   })
 
+  it('name a Persona and a Topic, and may hand nothing over when they tell the owner (ADR 0041)', () => {
+    const propose = tool('routine_propose')
+    const validate = (args: Parameters<typeof validateToolArguments>[1]['arguments']) =>
+      validateToolArguments(propose, { type: 'toolCall', id: 'c', name: 'routine_propose', arguments: args })
+    const asked = { ...definition, topic: 'Work', handTo: { ...definition.handTo, kind: 'persona', persona: 'Worker' } }
+    expect(validate(asked)).toEqual(asked)
+    const told = { ...definition, tellMe: { on: true, telegram: false }, handTo: { kind: 'none' } }
+    expect(validate(told)).toEqual(told)
+    expect(() => validate({ ...asked, handTo: { ...asked.handTo, persona: 7 } })).toThrow('Validation failed')
+  })
+
   it('propose a typed definition, end the turn and leave the receipt the web reviews', async () => {
     // The tool reads only the conversation and call ids of its API.
     const result = await executeTool(tool('routine_propose'), definition, inConversation(1, { callId: 'c1' }))

@@ -1,7 +1,15 @@
 import { defineExtension, section } from '@earendil-works/pi-durable'
 import * as Schema from 'effect/Schema'
-import { RoutineDefinition, RoutinePage, RoutineView } from '@goblin/contracts'
-import { changeRoutine, proposeRoutineFrom, routinesList } from '../routines/program.ts'
+import {
+  PersonaName,
+  RoutineDefinition,
+  RoutineHandOverFields,
+  RoutinePage,
+  RoutineTellMe,
+  RoutineTrigger,
+  RoutineView,
+} from '@goblin/contracts'
+import { changeRoutine, proposeAsked, routinesList } from '../routines/program.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -11,16 +19,38 @@ const operationOf = (api: { readonly conversationId: unknown; readonly callId: s
 /** A draft the owner must review: its id, the revision they will confirm, and its title. */
 const Proposed = Schema.Struct({ routineId: Schema.String, revision: Schema.Int, title: Schema.String })
 
+/** Who the model hands a routine's work to: nobody, Goblin, or a Persona by its name (its revision is pinned for it). */
+const AskedHandTo = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal('none') }),
+  Schema.Struct({ kind: Schema.Literal('goblin'), ...RoutineHandOverFields }),
+  Schema.Struct({ kind: Schema.Literal('persona'), persona: PersonaName, ...RoutineHandOverFields }),
+])
+
+/** A routine as the model proposes it (ADR 0041): its definition, the Persona by name, and another Topic by name. */
+const Asked = Schema.Struct({
+  title: RoutineDefinition.fields.title,
+  trigger: RoutineTrigger,
+  timezone: RoutineDefinition.fields.timezone,
+  tellMe: RoutineTellMe,
+  handTo: AskedHandTo,
+  topic: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80))),
+}).check(
+  Schema.makeFilter(
+    (asked) =>
+      asked.handTo.kind !== 'none' || asked.tellMe.on || 'A routine that hands nothing over must tell the owner.',
+  ),
+)
+
 const proposeTool = (run: RunProgram) =>
   typedTool({
     name: 'routine_propose',
     description:
-      "Propose a routine: what happens at a time, on a schedule, or when a connection sends an event. `handTo` gives the work to Goblin (`{ kind: 'goblin', instruction, allowedTools, budget }`); `tellMe` (`{ on, telegram }`) tells the owner of what it posts. It lives in this chat's Topic. Proposing does not activate it: the owner reviews and confirms it in Settings → Routines, which ends this turn.",
-    input: RoutineDefinition,
+      "Propose a routine: what happens at a time (`trigger: { kind: 'once', at }`), on a schedule (`{ kind: 'cron', expression }`), or when a connection sends an event (`{ kind: 'event', connectionId, name, arguments }`, with a name and arguments from that connection's `events` in mcp_list). `tellMe` (`{ on, telegram }`) tells the owner of everything it posts: each event as a notice, and the answer. `handTo` gives the work to nobody (`{ kind: 'none' }`, then `tellMe.on` must be true), to Goblin (`{ kind: 'goblin', instruction, allowedTools, budget }`) or to a Persona by its name (`{ kind: 'persona', persona, instruction, allowedTools, budget }`). It lives in this chat's Topic unless `topic` names another. Proposing does not activate it: the owner reviews and confirms it in Settings → Routines, which ends this turn.",
+    input: Asked,
     output: Proposed,
     replay: 'safe',
-    execute: async (definition, api) => {
-      const draft = await run(proposeRoutineFrom(definition, operationOf(api), String(api.conversationId)))
+    execute: async (asked, api) => {
+      const draft = await run(proposeAsked(asked, operationOf(api), String(api.conversationId)))
       return { routineId: draft.id, revision: draft.revision, title: draft.definition.title }
     },
     text: ({ title, revision }) =>
@@ -58,7 +88,7 @@ export function routinesExtension(run: RunProgram) {
       section(
         'routines',
         () =>
-          'Use routine_propose to propose a scheduled reminder or event-driven task. The owner reviews and confirms the exact definition in Settings → Routines before it can run. You may list (routine_list) or pause (routine_pause) routines; you cannot activate them.',
+          'Use routine_propose to propose a reminder, a schedule, or what happens when a connection sends an event: tell the owner (Tell me), hand the work to Goblin or a Persona (Hand to), or both. When the owner connects something that sends events, offer to set one up. The owner reviews and confirms the exact definition in Settings → Routines before it can run. You may list (routine_list) or pause (routine_pause) routines; you cannot activate them.',
       ),
     ],
     tools: [proposeTool(run), listTool(run), pauseTool(run)],

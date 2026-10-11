@@ -14,15 +14,13 @@ import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Chats } from '../chats/service.ts'
-import { InvalidInput, NotFound, attempt } from '../http/errors.ts'
+import { InvalidInput, attempt } from '../http/errors.ts'
 import { requireResident } from '../mcp/service.ts'
-import { createPersona, updatePersona } from '../personas/program.ts'
+import { createPersona, personaNamed, updatePersona } from '../personas/program.ts'
 import { defaultAvatar } from '../personas/registry.ts'
-import { Personas } from '../personas/service.ts'
 import type { RunProgram } from '../runtime/bridge.ts'
-import { createTopic, editTopicSetup, updateTopic } from '../topics/program.ts'
+import { createTopic, editTopicSetup, topicNamed, updateTopic } from '../topics/program.ts'
 import { discussionSeed } from '../topics/seed.ts'
-import { Topics } from '../topics/service.ts'
 import { PiSessions, fromPi } from './sessions.ts'
 import { typedTool } from './typed-tool.ts'
 
@@ -55,22 +53,6 @@ const operationOf = (api: { readonly conversationId: unknown; readonly callId: s
 /** The chat the calling run belongs to, which a receipt records. */
 const chatOf = (api: { readonly conversationId: unknown }) =>
   Chats.use((chats) => chats.chatOf(String(api.conversationId))).pipe(Effect.map(Option.getOrUndefined))
-
-const topicNamed = (name: string) =>
-  Effect.gen(function* () {
-    const wanted = name.trim().toLowerCase()
-    const topics = yield* Topics.use((registry) => registry.list)
-    const found = topics.find((topic) => topic.archivedAt === undefined && topic.name.toLowerCase() === wanted)
-    if (found === undefined) return yield* new NotFound({ what: 'topic' })
-    return found
-  })
-
-const personaNamed = (name: string) =>
-  Personas.use((personas) => personas.byName(name.replace(/^@/u, ''))).pipe(
-    Effect.flatMap(
-      Option.match({ onNone: () => Effect.fail(new NotFound({ what: 'persona' })), onSome: Effect.succeed }),
-    ),
-  )
 
 /** Who made the change: the agent, from this chat, under this call (a rerun finds its receipt). */
 const byAgent = (api: { readonly conversationId: unknown; readonly callId: string }) =>
