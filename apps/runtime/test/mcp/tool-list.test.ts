@@ -1,4 +1,4 @@
-import { createMcpHandler } from '@modelcontextprotocol/server'
+import { InMemoryServerEventBus, createMcpHandler } from '@modelcontextprotocol/server'
 import * as Option from 'effect/Option'
 import { describe, expect, it } from 'vitest'
 import type { McpStep } from '../../src/telemetry/report.ts'
@@ -8,30 +8,44 @@ import { MemoryGrants } from './memory.ts'
 
 const serverConfig = { connectionId: 'roles', endpoint: 'https://roles.test/mcp' }
 
+type RolesState = {
+  names: string[]
+  lists: number
+  opened: number
+  listens: number
+  pad: number
+  hold: Promise<void> | undefined
+}
+
 /**
  * A server whose tools change while goblin is connected, as Sidequest's do when the operator grants the agent a role
- * (ADR 0042): `names` is what it lists now, `lists` counts its tools/list answers and `opened` its handshakes. While
- * `hold` is set, a list waits for it.
+ * (ADR 0042): `names` is what it lists now, `lists` counts its tools/list answers, `opened` its handshakes and
+ * `listens` the listen streams asked of it. While `hold` is set, a list waits for it. With `listChanged` it announces
+ * tool changes on listen streams, which goblin closes `listenIdleMs` after the connection's last use.
  */
-type RolesState = { names: string[]; lists: number; opened: number; pad: number; hold: Promise<void> | undefined }
-const rolesServer = () => {
-  const state: RolesState = { names: ['whoami'], lists: 0, opened: 0, pad: 0, hold: undefined }
-  const official = createMcpHandler(() => {
-    const server = lowLevelServer({ name: 'roles', version: '1.0.0' }, { capabilities: { tools: {} } })
-    server.setRequestHandler('tools/list', async () => {
-      state.lists += 1
-      await state.hold
-      return {
-        tools: state.names.map((name) => ({
-          name,
-          description: 'x'.repeat(state.pad),
-          inputSchema: { type: 'object' as const, properties: {} },
-        })),
-      }
-    })
-    server.setRequestHandler('tools/call', (request) => ({ content: [{ type: 'text', text: request.params.name }] }))
-    return server
-  })
+const rolesServer = ({ listChanged = false, listenIdleMs = 60_000 } = {}) => {
+  const state: RolesState = { names: ['whoami'], lists: 0, opened: 0, listens: 0, pad: 0, hold: undefined }
+  const bus = new InMemoryServerEventBus()
+  const official = createMcpHandler(
+    () => {
+      const capabilities = { tools: listChanged ? { listChanged: true } : {} }
+      const server = lowLevelServer({ name: 'roles', version: '1.0.0' }, { capabilities })
+      server.setRequestHandler('tools/list', async () => {
+        state.lists += 1
+        await state.hold
+        return {
+          tools: state.names.map((name) => ({
+            name,
+            description: 'x'.repeat(state.pad),
+            inputSchema: { type: 'object' as const, properties: {} },
+          })),
+        }
+      })
+      server.setRequestHandler('tools/call', (request) => ({ content: [{ type: 'text', text: request.params.name }] }))
+      return server
+    },
+    { bus },
+  )
   const reports: { step: McpStep; outcome: string }[] = []
   const manager = managerOf({
     servers: [serverConfig],
@@ -43,15 +57,30 @@ const rolesServer = () => {
       ]).allows(grant),
     auth: () => ({ token: async () => 'fixture' }),
     maxResultBytes: 4096,
+    listenIdleMs,
     report: (step, outcome) => reports.push({ step, outcome }),
     fetch: async (input, init) => {
       const request = new Request(input, init)
       const body = request.method === 'POST' ? await request.clone().text() : ''
       if (/"method":"(?:server\/discover|initialize)"/u.test(body)) state.opened += 1
+      if (body.includes('"method":"subscriptions/listen"')) state.listens += 1
       return official.fetch(request)
     },
   })
-  return { state, manager, reports }
+  const dispose = async () => {
+    await manager.dispose()
+    await official.close()
+  }
+  return { state, manager, reports, official, bus, dispose }
+}
+
+/** Waits, in small real steps, until `check` holds; fails after about five seconds. */
+const until = async (check: () => boolean | Promise<boolean>) => {
+  for (let step = 0; step < 500; step++) {
+    if (await check()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error('the condition never held')
 }
 
 describe("a connection's tools, re-listed in place (unit, ADR 0042)", () => {
@@ -117,6 +146,57 @@ describe("a connection's tools, re-listed in place (unit, ADR 0042)", () => {
       expect(reopened.tools.map(({ name }) => name)).toEqual(['whoami', 'create_task'])
     } finally {
       await manager.dispose()
+    }
+  })
+})
+
+/** The names of the tools the connection lists now. */
+const listed = async (manager: ReturnType<typeof rolesServer>['manager']) =>
+  Option.getOrThrow(await manager.connections.snapshot('roles')).tools.map(({ name }) => name)
+
+describe('live tool lists over subscriptions/listen (unit, ADR 0042)', () => {
+  it('lists the tools again, in place, when the server announces a change while the connection is used', async () => {
+    const { state, manager, official, bus, reports, dispose } = rolesServer({ listChanged: true })
+    try {
+      await manager.connections.connect('roles')
+      await until(() => bus.listenerCount === 1)
+      state.names = ['whoami', 'create_task']
+      official.notify.toolsChanged()
+      await until(async () => (await listed(manager)).includes('create_task'))
+      expect(state.opened).toBe(1)
+      expect(reports.some(({ step }) => step.step === 'tools')).toBe(true)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('closes the stream once the connection goes unused, then lists first and listens again on its next use', async () => {
+    const { state, manager, official, reports, dispose } = rolesServer({ listChanged: true, listenIdleMs: 50 })
+    try {
+      await manager.connections.connect('roles')
+      // The stream's step is reported when it ends.
+      await until(() => reports.some(({ step }) => step.step === 'listen'))
+      expect(reports.find(({ step }) => step.step === 'listen')?.outcome).toBe('ok')
+      // A change while nothing listens is not announced to goblin, and is not missed: the next use lists first.
+      state.names = ['whoami', 'create_task']
+      official.notify.toolsChanged()
+      const next = await manager.connections.connect('roles')
+      expect(next.tools.map(({ name }) => name)).toEqual(['whoami', 'create_task'])
+      await until(() => state.listens === 2)
+      expect(state.opened).toBe(1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('never listens to a server that does not announce tool changes', async () => {
+    const { state, manager, dispose } = rolesServer()
+    try {
+      await manager.connections.connect('roles')
+      await manager.connections.callTool('roles', 'whoami', {})
+      expect(state.listens).toBe(0)
+    } finally {
+      await dispose()
     }
   })
 })

@@ -13,12 +13,12 @@ import {
   fits,
   lifecycle,
   managerState,
-  refreshTools,
   remote,
   serverOf,
 } from './connections.ts'
 import { EVENT_LIMITS } from './events/store.ts'
 import { offersEvents, offersSkills, toolOffered } from './remote.ts'
+import { refreshTools } from './tool-list.ts'
 import type { EventMethod } from './service.ts'
 import type { McpCallOptions, McpManagerOptions, SkillRequestOptions } from './types.ts'
 

@@ -60,6 +60,11 @@ export type McpManagerOptions = {
   readonly maxAppResourceBytes?: number
   /** Close a connection this long after its last use (default 5 minutes). */
   readonly idleMs?: number
+  /**
+   * Close a connection's listen stream for tool changes this long after its last use (default 60 s, ADR 0042): an open
+   * stream keeps the agent's Durable Object awake.
+   */
+  readonly listenIdleMs?: number
   /** Where each remote step is reported (the run ledger, ADR 0024); a log line when absent. */
   readonly report?: StepReport
 }

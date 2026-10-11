@@ -59,6 +59,19 @@ export const timed =
       ),
     )
 
+/**
+ * One `mcp` log line for an error the SDK client reports outside any request it was asked to make (a listen stream's,
+ * a stray message): the server and the error's type, never its message.
+ */
+export function logClientError(connectionId: string, error: unknown): void {
+  writeLine('warn', {
+    event: 'mcp',
+    [RunAttribute.mcpStep]: 'client-error',
+    [RunAttribute.mcpServer]: connectionId,
+    'error.type': safeErrorType(error),
+  })
+}
+
 /** One log line per server that lost its credentials and grants because its endpoint changed (ids only). */
 export function logEndpointsReset(connectionIds: readonly string[]): void {
   for (const connectionId of connectionIds)
