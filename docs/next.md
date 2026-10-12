@@ -33,26 +33,15 @@ operation reconciliation require fresh owner connections and separate deployed a
   check: the live pass's `wallet-beat3-exa-0001` still holds $0.007 and needs an owner action that marks it failed. A
   transaction that is never mined stays unknown until its nonce is shown spent by another hash.
 - **Fees in the ledger.** The per-chain fee ceilings bound each signature, but the dollar windows count principal only.
-- **Gas paid in USDC.** This is proven on Base mainnet and not yet built in (12 October, userOp
-  `0x2ef0787972aacaed5e8c45a7199569997335c28932119baf009ee333e1a2ba48`).
-  - **The proven path.** The agent is 7702-delegated to the same MetaMask DeleGator, an ERC-4337 account on
-    EntryPoint v0.7. Its first userOp carries the upgrade (`eip7702Auth`), redeems from the owner's allowance, approves
-    Pimlico's ERC-20 paymaster and pays. Privy's `eth_signUserOperation` signs it, and the policy matches every inner
-    call. The agent paid 0.0079 USDC of gas and held no ETH. x402 signatures still verify through ERC-1271.
-  - **Where it applies.** The same contracts are deployed on Base, Arbitrum, Ethereum, Monad and Tempo.
-  - **What production needs.**
-    - A `sendCalls` port with an EOA path and a userOp path, so that a top-up and its payment become one userOp.
-    - A per-chain USDC fee ceiling.
-    - A Pimlico API key as a Worker secret.
-    - Fee-inclusive reservations in the ledger.
-    - The three userOp rules in `agentPolicy()`. Until they are there, `privy-policy.ts --apply` would delete them.
-  - **Estimate:** about a week.
+- **Gas paid in USDC: what is left after ADR 0050.**
+  - Record a UserOperation's hash before its receipt is awaited (`ledger.submitted` from `onSubmitted`), so a crash in
+    between keeps it.
+  - Reserve the gas in the ledger's dollar windows, not only bound it by the per-chain ceiling.
+  - Monad: the same contracts are deployed; add its chain entry once Pimlico's paymaster is verified there.
+  - Upstream the Privy React SDK fix (it leaves `authorization_list` out of type-4 sends; report drafted).
 - **Paid inference follow-up.** Production recording now covers per-call MPP charges on Tempo and x402 search on Base.
   A complete MPP settlement receipt and explorer transaction should be added to the public proof bundle before claiming
   that payment path as independently reproducible. MPP sessions for an OpenAI-compatible endpoint remain future work.
-- **Self-sent upgrade.** Privy's embedded wallet answers HTTP 500 to a type-4 transaction, so the relay sends the
-  owner's EIP-7702 upgrade; the owner can fund the relay.
-
 - **Ethereum and Arbitrum proof.** The wallet supports these chains in its funding, transfer, upgrade and allowance
   paths, and the UI exposes those operations. A mainnet operation and explorer receipt on each chain are still needed
   before claiming their hackathon tracks; existing Base and Tempo receipts do not prove either chain.

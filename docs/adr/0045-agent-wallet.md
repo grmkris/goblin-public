@@ -21,7 +21,7 @@ tokens) is a port of Sidequest's, with its consent page in the wallet's web app.
 
 **Every limit names the layer that enforces it.** There are five, and each can only narrow the next:
 - **On-chain allowance.** The owner's account is upgraded with EIP-7702 to MetaMask's `EIP7702StatelessDeleGator`
-  (the owner signs, our relay sends the type-4 transaction) and signs an ERC-7710 delegation to the agent signer with
+  (the owner signs; since ADR 0050 the upgrade is their own UserOperation, gas paid in USDC) and signs an ERC-7710 delegation to the agent signer with
   `ERC20PeriodTransfer` (e.g. 20 USDC an hour), transfer-only to the agent, with an expiry. The agent tops itself up just
   in time. MetaMask's v1.3.0 contracts sit at the same addresses on Ethereum, Base, Arbitrum and Tempo.
 - **Tempo access key.** On Tempo, a keychain access key with a per-token periodic limit and an expiry, when the spike
@@ -52,7 +52,7 @@ and a global entrypoint so goblin can put the wallet in its navigation.
 - **The wallet inside goblin's agent.** Financial authority would share an origin and a runtime with an agent that runs
   untrusted tools; ADR 0043 already keeps outside work in servers.
 - **Privy's gas sponsorship on the owner's account.** It upgrades the account with its own EIP-7702 implementation,
-  which would replace MetaMask's delegator; our relay sends the upgrade instead.
+  which would replace MetaMask's delegator; the owner's own UserOperation carries the upgrade instead (ADR 0050).
 - **Proxying Mercator through the wallet.** It doubles Mercator's own authority and limits; the client composes them.
 - **`workers-oauth-provider`.** It rejects ids with `:`, which every Privy id has, and Sidequest's server already works
   with goblin's client.

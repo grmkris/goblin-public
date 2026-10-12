@@ -249,6 +249,16 @@ On-chain only: the owner account's ERC-7710 delegation to the agent signer, capp
 and expiring. Not goblin's spending rule and not the model budget.
 _Avoid_: budget, spending rule
 
+**UserOperation**:
+An ERC-4337 action from a 7702-delegated owner or agent address, sent by Pimlico's bundler instead of as a plain
+transaction. Every EVM send of the wallet is one; its gas is paid in USDC (ADR 0050).
+_Avoid_: meta-transaction, relayed transaction
+
+**Paymaster**:
+Pimlico's ERC-20 paymaster: it pays a UserOperation's gas and takes it back in USDC, up to the bound the batch
+approves. Not the wallet's treasury.
+_Avoid_: gas sponsor (nothing is sponsored; the user pays in USDC)
+
 **Access key**:
 On Tempo: a keychain key of the owner's Tempo account with a per-token periodic limit and an expiry, enforced by the
 Tempo protocol.

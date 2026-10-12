@@ -1851,14 +1851,25 @@ MCP server any client can connect; goblin connects it as a first-class server.
 - **`apps/wallet-web`** is the owner's app (Privy sign-in, onboarding, activity, limits, connections, the consent and
   Approve pages) and builds the single-file MCP App views.
 - **`packages/wallet`** holds the contract (tool and route schemas, goblin's `WalletStatus` shape), the chain table,
-  amounts in integer base units, the Privy client and agent signer, delegation encoders, the relay and the rails (x402,
-  MPP on Tempo, transfers, LI.FI swaps, Relay bridges).
+  amounts in integer base units, the Privy client and agent signer, delegation encoders, UserOperations (`userop`, and
+  the server-only `bundler` for Pimlico) and the rails (x402, MPP on Tempo, transfers, LI.FI swaps, Relay bridges).
 
 A spend is an operation: the wallet freezes its terms, reserves them against the wallet limits in one SQLite
 transaction, asks the owner through a URL request when a limit, recipient or service needs it, signs through the
 agent signer (whose Privy policy refuses what it does not allow), pays, and records the receipt. On-chain, the owner's
 account (EIP-7702 upgraded to MetaMask's DeleGator) grants the agent signer an `ERC20PeriodTransfer` allowance, so the
 chain itself caps what the agent can draw per period.
+
+Every EVM send is an ERC-4337 v0.7 UserOperation from a 7702-delegated address ([ADR
+0050](adr/0050-gas-in-usdc-through-useroperations.md)): Pimlico bundles it and its
+ERC-20 paymaster takes the gas in USDC, approved in the batch for exactly the fee bound and refused above the chain's
+ceiling. The agent sends only through `sendCalls` (`balances/agent-send.ts`): when it lacks what a batch spends plus the
+gas, the batch first redeems exactly that from the allowance, and its first operation carries its 7702 authorization.
+A payment keeps its `userOpHash`, and `operation_check` asks the bundler about it, because the bundle's own transaction
+succeeds even when the operation inside it reverted. The owner's upgrade is their own operation, prepared and stored by
+the Worker (`POST /api/onboarding/upgrade/prepare`), checked and signed in the browser, then sent (`POST
+/api/onboarding/upgrade`). It needs USDC on that chain. The Privy policy allows the agent's calls only as
+`eth_signUserOperation`.
 
 A caller that makes the paid request itself uses `pay_challenge`, an App-only tool hidden from the model that goblin's
 runtime calls for MPP inference. It hands over the service's 402 `WWW-Authenticate` value for an allow-listed payee

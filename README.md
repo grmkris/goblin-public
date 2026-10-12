@@ -71,10 +71,11 @@ the dev stage binds Workers AI; elsewhere nothing is judged. See
 
 **Goblin Wallet** (ADR 0045) gives the agent money with limits its owner sets. It is a separate Worker with its own MCP
 server at `wallet.goblin.surf` (`wallet-dev.goblin.surf` for dev), built from `apps/wallet`, `apps/wallet-web` and
-`packages/wallet`, and those three are MIT-licensed. The owner signs in with Privy, funds their own address with ETH or
-USDC (Relay deposit addresses convert from Base, Arbitrum or Ethereum), and has the account upgraded with EIP-7702 to
-MetaMask's DeleGator; the relay pays that gas. The owner then signs an ERC-7710 period allowance to an agent wallet that
-Privy holds under a signer policy. The agent pays x402 services on Base and MPP services on Tempo, sends USDC, swaps
+`packages/wallet`, and those three are MIT-licensed. The owner signs in with Privy, funds their own address with USDC
+(Relay deposit addresses convert ETH or USDC from Base, Arbitrum or Ethereum), and upgrades the account with EIP-7702 to
+MetaMask's DeleGator. The owner then signs an ERC-7710 period allowance to an agent wallet that Privy holds under a
+signer policy. Every EVM send, the owner's upgrade included, is an ERC-4337 UserOperation bundled by Pimlico, its gas
+paid in USDC by the ERC-20 paymaster, so no account ever needs ETH (ADR 0050). The agent pays x402 services on Base and MPP services on Tempo, sends USDC, swaps
 through LI.FI and bridges through Relay, topping up just in time from the allowance. Paid inference and MPP services pay
 from the agent's own address on Tempo; the wallet App shows that address with a QR code and adds funds to it from any
 chain.
