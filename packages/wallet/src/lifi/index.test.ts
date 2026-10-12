@@ -126,8 +126,10 @@ const FEES: Record<string, unknown> = {
   eth_maxPriorityFeePerGas: '0x186a0',
 }
 
-const harness = (options: { held: bigint; allowance?: bigint }) => {
+/** `staleReads`: allowance reads after the approval that still show the old value (a lagging RPC node). */
+const harness = (options: { held: bigint; allowance?: bigint; staleReads?: number }) => {
   const sent: Sent[] = []
+  let stale = options.staleReads ?? 0
   const agent: AgentSigner = {
     address: AGENT,
     signTypedData: () => Promise.reject(new Error('unused')),
@@ -142,7 +144,9 @@ const harness = (options: { held: bigint; allowance?: bigint }) => {
     if (method in FEES) return FEES[method]
     if (method === 'eth_call') {
       const data = String(field(params[0], 'data'))
-      return word(data.startsWith('0xdd62ed3e') ? (options.allowance ?? 0n) : options.held)
+      if (!data.startsWith('0xdd62ed3e')) return word(options.held)
+      const approved = sent.some((s) => s.key.endsWith(':approve')) && (stale -= 1) < 0
+      return word(approved ? 10n ** 12n : (options.allowance ?? 0n))
     }
     throw new Error(`unexpected ${method}`)
   }
@@ -171,6 +175,15 @@ describe('LI.FI execute', () => {
     ])
     expect(h.sent[1]).toMatchObject({ to: LIFI_DIAMOND, data: swap.transaction.data })
     expect(result).toMatchObject({ status: 'success', explorerUrl: expect.stringContaining('basescan.org/tx/') })
+  })
+
+  test('waits for a lagging node to show the approval before simulating the swap, or fails having swapped nothing', async () => {
+    const lagging = harness({ held: 5_000_000n, staleReads: 1 })
+    expect((await run(await quote(), lagging)).status).toBe('success')
+    expect(lagging.sent.map((s) => s.key)).toEqual(['op-swap-0001:approve', 'op-swap-0001:swap'])
+    const stuck = harness({ held: 5_000_000n, staleReads: 99 })
+    await expect(run(await quote(), stuck)).rejects.toMatchObject({ code: 'rpc_unavailable', uncertain: false })
+    expect(stuck.sent.map((s) => s.key)).toEqual(['op-swap-0001:approve'])
   })
 
   test('skips the approval when the allowance already covers it', async () => {
