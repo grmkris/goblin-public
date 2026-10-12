@@ -9,8 +9,8 @@ app's state live (every change by you, the owner or a schedule) and changes it o
 
 Make the view look like one of goblin's own pages: calm, roomy, the important number first. Follow these rules.
 
-- Root: `mx-auto flex w-full max-w-3xl flex-col gap-6`, with `p-6` on a page and `p-4` in the chat. Read the surface
-  with `const { surface } = useHost()` and write `surface === 'page' ? 'p-6' : 'p-4'`.
+- Root: `<div className="flex flex-col gap-6">`. goblin's frame centres the view, keeps it at most 48rem wide and pads
+  it for the chat or a page, clear of the chat bar; do not add padding or a width of your own.
 - Do not repeat the app's name as a heading: goblin's frame already shows it. Start with what the owner came for.
 - Each part of the view is a `<Section title="Hotels">` from `@goblin/ui`: a small muted head, an optional `action`
   (a button) beside it, then its content. The root's `gap-6` spaces them.
@@ -20,6 +20,9 @@ Make the view look like one of goblin's own pages: calm, roomy, the important nu
   small muted label above it and an optional `note` under it. Every other number that changes gets `tabular-nums`.
 - Buttons sit in `flex flex-wrap items-center gap-2`. One primary button (the default variant) per section; the rest
   `outline` or `ghost`. Name a button by what it does: "Check now", not "Submit".
+- A form row: the `Label` and its `Input` stacked (`flex flex-col gap-2`), then the buttons, all in
+  `flex flex-wrap items-end gap-2`. Do: one primary button, the others `outline`, all the default size. Don't: a
+  `size="sm"` button beside a field, or two primary buttons in one row.
 - A state is a `Badge`: `default` for good news ("Under target"), `secondary` for neutral, `destructive` for a problem.
 - A log or a list of facts is two columns: `grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm`, the time or
   name `text-muted-foreground`.
@@ -33,7 +36,7 @@ A trip app: a price target, the best price, a "Check now" button, the hotels on 
 log of checks.
 
 ```tsx
-import { useActions, useAppState, useHost } from '@goblin/app'
+import { useActions, useAppState } from '@goblin/app'
 import { MapView } from '@goblin/kit/map'
 import {
   Badge,
@@ -55,13 +58,12 @@ const euros = (value: number) => `€${Math.round(value)}`
 export default function View() {
   const [state] = useAppState<State>()
   const { act, pending, error } = useActions()
-  const { surface } = useHost()
   const hotels = state.hotels ?? []
   const checks = state.checks ?? []
   const days = state.days ?? []
   const best = hotels.length === 0 ? undefined : Math.min(...hotels.map((hotel) => hotel.price))
   return (
-    <div className={`mx-auto flex w-full max-w-3xl flex-col gap-6 ${surface === 'page' ? 'p-6' : 'p-4'}`}>
+    <div className="flex flex-col gap-6">
       <Section title="Price watch">
         <Card>
           <CardContent className="flex flex-col gap-4">
