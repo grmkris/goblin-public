@@ -1,9 +1,10 @@
 // The skill learner: after a final answer that followed a correction or a request to remember how something was done,
 // a cheap model decides whether the exchange teaches a reusable procedure, and if so the agent proposes a draft to the
-// owner's skills library through its `skill_draft` tool. The owner reviews every draft there; nothing here publishes
-// a skill. Facts about the owner stay in memory and are not skills. Drafts are capped per day, never repeated, and a
-// rejected one is not proposed again.
+// owner's skills library through its `skill_draft` tool (`myskills_skill_draft` through mysi, ADR 0052). The owner
+// reviews every draft there; nothing here publishes a skill. Facts about the owner stay in memory and are not skills.
+// Drafts are capped per day, never repeated, and a rejected one is not proposed again.
 import type { ConversationId } from '@earendil-works/pi-durable'
+import { toolSpellings } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
@@ -18,9 +19,9 @@ import { Learner, type Skills } from './service.ts'
 import type { DraftLog, SkillState } from './store.ts'
 import { digestOf } from './verify.ts'
 
-/** The library tools a skills server offers for drafts (MySkills). */
-export const DRAFT_TOOL = 'skill_draft'
-export const DRAFT_STATUS_TOOL = 'skill_draft_status'
+/** The library tools a skills server offers for drafts: myskills' own names, then mysi's `myskills_` ones. */
+const DRAFT_TOOL = toolSpellings('myskills', 'skill_draft')
+const DRAFT_STATUS_TOOL = toolSpellings('myskills', 'skill_draft_status')
 
 const DRAFTS_PER_DAY = 5
 const DAY_MS = 86_400_000
@@ -118,8 +119,16 @@ type Teacher = LearnerDeps & {
 }
 
 const signalled = (signal: AbortSignal | undefined) => (signal === undefined ? {} : { signal })
-const allowed = (teacher: Teacher, connectionId: string, tool: string) =>
-  Effect.map(teacher.grants.policy(connectionId, tool), Option.isSome)
+
+/** The one of a tool's names the owner allowed on `connectionId`; none when they allowed neither. */
+const allowed = (teacher: Teacher, connectionId: string, names: readonly string[]) =>
+  Effect.gen(function* () {
+    for (const name of names) if (Option.isSome(yield* teacher.grants.policy(connectionId, name))) return name
+    return undefined
+  })
+
+/** A library that takes drafts: its connection, and its draft tool by the name the owner allowed. */
+type DraftServer = { readonly connectionId: string; readonly tool: string }
 
 /** A skill source that takes drafts and whose draft tool the owner allowed. */
 const draftServer = (teacher: Teacher, preferred: string | undefined, signal: AbortSignal | undefined) =>
@@ -127,13 +136,14 @@ const draftServer = (teacher: Teacher, preferred: string | undefined, signal: Ab
     const sources = yield* teacher.skills.sources()
     const ordered = preferred !== undefined && sources.includes(preferred) ? [preferred] : sources
     for (const connectionId of ordered) {
-      if (!(yield* allowed(teacher, connectionId, DRAFT_TOOL))) continue
+      const tool = yield* allowed(teacher, connectionId, DRAFT_TOOL)
+      if (tool === undefined) continue
       const takes = yield* teacher.connections.connect(connectionId, { ...signalled(signal), use: 'background' }).pipe(
-        Effect.map((snapshot) => snapshot.tools.some((tool) => tool.name === DRAFT_TOOL)),
+        Effect.map((snapshot) => snapshot.tools.some(({ name }) => name === tool)),
         // expected: an unreachable server takes no draft now; the next answer asks it again
         Effect.catch(() => Effect.succeed(false)),
       )
-      if (takes) return connectionId
+      if (takes) return { connectionId, tool } satisfies DraftServer
     }
     return undefined
   })
@@ -143,9 +153,10 @@ const refresh = (teacher: Teacher, signal: AbortSignal | undefined) =>
   Effect.gen(function* () {
     for (const row of teacher.drafts.open(5)) {
       const draftId = row.draftId
-      if (draftId === undefined || !(yield* allowed(teacher, row.connectionId, DRAFT_STATUS_TOOL))) continue
+      const tool = draftId === undefined ? undefined : yield* allowed(teacher, row.connectionId, DRAFT_STATUS_TOOL)
+      if (draftId === undefined || tool === undefined) continue
       const status = yield* teacher.connections
-        .callTool(row.connectionId, DRAFT_STATUS_TOOL, { draftId }, { caller: 'model', ...signalled(signal) })
+        .callTool(row.connectionId, tool, { draftId }, { caller: 'model', ...signalled(signal) })
         .pipe(
           Effect.map((result) => Option.getOrUndefined(decodeAnswer(result.structuredContent))?.status),
           // expected: a status that cannot be read now is checked again next time
@@ -160,11 +171,11 @@ const refresh = (teacher: Teacher, signal: AbortSignal | undefined) =>
 /** Hands one draft to the library; `undefined` when it did not take it. */
 const submit = (
   teacher: Teacher,
-  connectionId: string,
+  { connectionId, tool }: DraftServer,
   args: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ) =>
-  teacher.connections.callTool(connectionId, DRAFT_TOOL, args, { caller: 'model', ...signalled(signal) }).pipe(
+  teacher.connections.callTool(connectionId, tool, args, { caller: 'model', ...signalled(signal) }).pipe(
     Effect.map((result) =>
       result.isError === true ? undefined : Option.getOrUndefined(decodeAnswer(result.structuredContent)),
     ),
@@ -184,16 +195,17 @@ const targetOf = (
   return { name: String(base.entry.frontmatter['name']), baseUri: base.entry.uri }
 }
 
-/** Proposes `decision` to `connectionId`'s library as one draft, unless the same or a rejected one is known. */
+/** Proposes `decision` to `server`'s library as one draft, unless the same or a rejected one is known. */
 const draft = (
   teacher: Teacher,
-  connectionId: string,
+  server: DraftServer,
   decision: Exclude<Decision, { action: 'none' }>,
   used: ReturnType<SkillState['activations']>,
   signal: AbortSignal | undefined,
 ) =>
   Effect.gen(function* () {
     const { drafts } = teacher
+    const { connectionId } = server
     const target = targetOf(connectionId, decision, used)
     if (target === undefined) return 'failed'
     const { name, baseUri } = target
@@ -214,7 +226,7 @@ const draft = (
       ...(baseUri === undefined ? {} : { base: baseUri }),
       evidence: scrub(decision.evidence),
     }
-    const taken = yield* submit(teacher, connectionId, args, signal)
+    const taken = yield* submit(teacher, server, args, signal)
     // A draft the library never took must not block the next one.
     if (taken === undefined) {
       yield* Effect.sync(() => drafts.forget(contentHash))
