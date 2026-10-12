@@ -25,6 +25,21 @@ Local native tests cover exact arguments, approval/refusal, owner isolation, gra
 routine and subagent calls, App refusal, and recovery without replay. Real Sidequest hiring and provider-side
 operation reconciliation require fresh owner connections and separate deployed acceptance.
 
+## Goblin Wallet
+
+- **Reconciling unknown operations.** A payment whose credential left without a receipt stays `unknown` and keeps its
+  reservation, as it must; there is no way yet to close one. The live pass left one: `wallet-beat3-exa-0001` holds
+  $0.007 after Exa answered 402 to a credential signed against a balance the facilitator had not seen. The fix is an
+  owner action that marks the operation failed and releases the hold once the credential's `validBefore` has passed
+  with no matching transfer on-chain; for a transaction, once its nonce is spent by another hash.
+- **Fees in the ledger.** The per-chain fee ceilings bound each signature, but the dollar windows count principal only.
+- **Agent gas from the owner.** MetaMask's `NativeTokenPeriodTransferEnforcer` (v1.3.0, the same address on every
+  chain) would let the agent redeem a capped ETH allowance for its own gas, so the owner pays every fee.
+- **Paid inference.** Users paying for their own inference from the wallet: OpenRouter OAuth PKCE or BYOK, or MPP
+  sessions for an OpenAI-compatible endpoint on Tempo. The wallet speaks MPP `charge` today, not sessions.
+- **Self-sent upgrade.** Privy's embedded wallet answers HTTP 500 to a type-4 transaction, so the relay sends the
+  owner's EIP-7702 upgrade; the owner can fund the relay.
+
 ## Smaller items
 
 - `app_metadata` is created by the application migrations, but its `AppMetadata` service is used only by the
