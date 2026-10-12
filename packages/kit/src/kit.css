@@ -197,11 +197,17 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+/*
+ * The web imports this sheet into a layer while leaflet.css arrives unlayered, and an unlayered rule beats any layered
+ * one; so where these rules restyle Leaflet's own (its container, controls and tooltips) they are !important, which is
+ * the only way a layered rule wins. App frames load the sheet unlayered, where they win either way.
+ */
 .kit-map-canvas {
   height: 18rem;
   border: 1px solid var(--border);
   border-radius: 0.75rem;
-  background: var(--muted);
+  background: var(--muted) !important;
+  font-family: inherit !important;
   isolation: isolate;
 }
 /* The basemap, quieted to sit with goblin's neutrals; in the dark it is inverted, water staying blue-ish. */
@@ -212,12 +218,57 @@
   filter: invert(1) hue-rotate(180deg) saturate(0.4) brightness(0.85) contrast(0.95);
 }
 .kit-map .leaflet-tooltip {
-  border-color: var(--border);
-  background: var(--popover);
-  box-shadow: none;
-  color: var(--popover-foreground);
+  border-color: var(--border) !important;
+  background: var(--popover) !important;
+  box-shadow: none !important;
+  color: var(--popover-foreground) !important;
 }
+.kit-map .leaflet-tooltip-top::before {
+  border-top-color: var(--border) !important;
+}
+.kit-map .leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--border) !important;
+}
+.kit-map .leaflet-tooltip-left::before {
+  border-left-color: var(--border) !important;
+}
+.kit-map .leaflet-tooltip-right::before {
+  border-right-color: var(--border) !important;
+}
+/* Zoom buttons and the attribution in the theme's card and border, light and dark, instead of Leaflet's white. */
+.kit-map .leaflet-bar {
+  overflow: clip;
+  border: 1px solid var(--border) !important;
+  border-radius: 0.5rem !important;
+  box-shadow: none !important;
+}
+.kit-map .leaflet-bar a {
+  border-bottom-color: var(--border) !important;
+  border-radius: 0 !important;
+  background-color: var(--card) !important;
+  color: var(--foreground) !important;
+}
+.kit-map .leaflet-bar a.leaflet-disabled {
+  color: var(--muted-foreground) !important;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kit-map .leaflet-bar a:not(.leaflet-disabled):hover {
+    background-color: var(--muted) !important;
+  }
+}
+.kit-map .leaflet-bar a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.kit-map .leaflet-control-attribution {
+  background: color-mix(in oklch, var(--card) 80%, transparent) !important;
+  color: var(--muted-foreground) !important;
+}
+.kit-map .leaflet-control-attribution a {
+  color: inherit !important;
+}
+/* A block's stand-in while its module loads, as tall as a map so the column does not jump when it arrives. */
 .kit-loading {
-  height: 12rem;
+  height: 18rem;
   margin: 0.75rem 0;
 }
