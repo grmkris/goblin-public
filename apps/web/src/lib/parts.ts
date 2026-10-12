@@ -241,6 +241,8 @@ const OWN_TOOLS: Readonly<Record<string, string>> = {
   share_back: 'Shared a note back',
   skill_activate: 'Opened a skill',
   skill_read: 'Read a skill',
+  subagent_status: 'Checked on a subagent',
+  subagent_stop: 'Stopped a subagent',
 }
 
 /** How a connection is named to the owner: its label (`useConnectionLabels`), or its id where none is known. */

@@ -1,6 +1,7 @@
 // A turn's quiet work (its thinking and tool calls) folded to one line that opens to it, so a nine-step turn is one row
 // above its answer instead of fourteen. What the owner must see or act on stays where it is: a request to them, a call that
-// failed or was blocked, a subagent, an App build, a routine to confirm, what a search found, an App a call opened.
+// failed or was blocked, a subagent started or messaged, an App build, a routine to confirm, what a search found, an App
+// a call opened. A subagent's status check or stop is quiet work, as its plain line (`SubagentBlock`) says.
 import { interactionOf } from './interactions.ts'
 import { type Named, type Part, type ToolPart, type WorkStep, partKey } from './parts.ts'
 import { sourcesOf } from './sources.ts'
@@ -14,11 +15,13 @@ const MIN_STEPS = 2
 
 /** Whether a tool call must stay in the main flow, because the owner needs to see or act on it. */
 function stays(part: ToolPart, keep: WorkKeep): boolean {
+  const subagent = subagentAction(part)
   return (
     part.state === 'error' ||
     interactionOf(part) !== undefined ||
     part.built !== undefined ||
-    subagentAction(part) !== undefined ||
+    subagent === 'spawn' ||
+    subagent === 'send' ||
     part.call.name === 'routine_propose' ||
     part.call.name === 'routine' ||
     (part.call.name === 'search_chats' && sourcesOf(part.result?.details).length > 0) ||
