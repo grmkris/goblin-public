@@ -19,6 +19,7 @@ export function FixtureAuthProvider({
     () => ({
       status: signedIn ? 'ready' : 'signed-out',
       ...(signedIn ? { address: OWNER } : {}),
+      getToken: () => Promise.resolve('fixture'),
       login: () => setSignedIn(true),
       logout: () => setSignedIn(false),
       upgrade: async () => {

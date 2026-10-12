@@ -11,6 +11,8 @@ export interface ActionState {
 export interface Auth {
   readonly status: 'loading' | 'signed-out' | 'ready'
   readonly address?: string
+  /** A current access token for the API; null when signed out. */
+  readonly getToken: () => Promise<string | null>
   readonly login: () => void
   readonly logout: () => void
   /** Sign the owner's EIP-7702 authorization for Base and have the relay send it. */
