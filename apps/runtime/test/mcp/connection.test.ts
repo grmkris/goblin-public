@@ -65,6 +65,7 @@ const handler = (resourceTemplates = true, resource: ResourceFixture = {}) =>
     }))
     return server
   })
+const base64 = (bytes: Uint8Array) => btoa(String.fromCodePoint(...bytes))
 const makeManager = (
   maxResultBytes?: number,
   resourceTemplates = true,
@@ -295,7 +296,6 @@ describe('official MCP SDK host interoperability (unit)', () => {
     }
   })
   describe('a base64 blob App bundle', () => {
-    const base64 = (bytes: Uint8Array) => btoa(String.fromCodePoint(...bytes))
     const read = async (resource: ResourceFixture, max?: number) => {
       const manager = makeManager(undefined, true, resource, max)
       try {

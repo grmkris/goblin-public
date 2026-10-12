@@ -120,8 +120,9 @@ describe("an agent app's frame", () => {
   })
 })
 
+const blobOf = (bytes: Uint8Array) => btoa(String.fromCodePoint(...bytes))
+
 describe('an App resource as text or base64 blob', () => {
-  const blobOf = (bytes: Uint8Array) => btoa(String.fromCodePoint(...bytes))
   it('reads text as it is', () => {
     expect(appResourceHtml({ text: '<p>héllo</p>' })).toBe('<p>héllo</p>')
   })
