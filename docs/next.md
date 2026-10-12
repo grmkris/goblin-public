@@ -33,8 +33,20 @@ operation reconciliation require fresh owner connections and separate deployed a
   check: the live pass's `wallet-beat3-exa-0001` still holds $0.007 and needs an owner action that marks it failed. A
   transaction that is never mined stays unknown until its nonce is shown spent by another hash.
 - **Fees in the ledger.** The per-chain fee ceilings bound each signature, but the dollar windows count principal only.
-- **Agent gas from the owner.** MetaMask's `NativeTokenPeriodTransferEnforcer` (v1.3.0, the same address on every
-  chain) would let the agent redeem a capped ETH allowance for its own gas, so the owner pays every fee.
+- **Gas paid in USDC.** This is proven on Base mainnet and not yet built in (12 October, userOp
+  `0x2ef0787972aacaed5e8c45a7199569997335c28932119baf009ee333e1a2ba48`).
+  - **The proven path.** The agent is 7702-delegated to the same MetaMask DeleGator, an ERC-4337 account on
+    EntryPoint v0.7. Its first userOp carries the upgrade (`eip7702Auth`), redeems from the owner's allowance, approves
+    Pimlico's ERC-20 paymaster and pays. Privy's `eth_signUserOperation` signs it, and the policy matches every inner
+    call. The agent paid 0.0079 USDC of gas and held no ETH. x402 signatures still verify through ERC-1271.
+  - **Where it applies.** The same contracts are deployed on Base, Arbitrum, Ethereum, Monad and Tempo.
+  - **What production needs.**
+    - A `sendCalls` port with an EOA path and a userOp path, so that a top-up and its payment become one userOp.
+    - A per-chain USDC fee ceiling.
+    - A Pimlico API key as a Worker secret.
+    - Fee-inclusive reservations in the ledger.
+    - The three userOp rules in `agentPolicy()`. Until they are there, `privy-policy.ts --apply` would delete them.
+  - **Estimate:** about a week.
 - **Paid inference.** Users paying for their own inference from the wallet: OpenRouter OAuth PKCE or BYOK, or MPP
   sessions for an OpenAI-compatible endpoint on Tempo. The wallet speaks MPP `charge` today, not sessions.
 - **Self-sent upgrade.** Privy's embedded wallet answers HTTP 500 to a type-4 transaction, so the relay sends the
