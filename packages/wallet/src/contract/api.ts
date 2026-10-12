@@ -5,6 +5,7 @@ import { LimitView, WalletLimits } from './limits.ts'
 import { Operation } from './operations.ts'
 import { Recipient, ServiceRule } from './services.ts'
 import { WalletStatusResult } from './status.ts'
+import { OperationCheck } from './tools.ts'
 
 /**
  * The owner API the web app calls with `authorization: Bearer <Privy access token>`. Every route acts for the signed-in
@@ -139,6 +140,7 @@ export const OwnerRoutes = {
   limits: { method: 'GET', path: '/api/limits', response: Schema.Array(LimitView) },
   setLimits: { method: 'PUT', path: '/api/limits', request: WalletLimits, response: WalletLimits },
   activity: { method: 'GET', path: '/api/activity', response: Schema.Array(Operation) },
+  checkOperation: { method: 'POST', path: '/api/operations/:operationId/check', response: OperationCheck },
   approval: { method: 'GET', path: '/api/approvals/:operationId', response: ApprovalView },
   decide: { method: 'POST', path: '/api/approvals/:operationId', request: ApprovalDecision, response: ApprovalView },
   services: { method: 'GET', path: '/api/services', response: Schema.Array(ServiceRule) },

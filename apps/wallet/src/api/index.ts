@@ -12,6 +12,7 @@ import { connections, disconnectOne, revokeAll } from './connections.ts'
 import { deposit, depositStatus } from './deposits.ts'
 import { limits, setLimits } from './limits.ts'
 import { activity, addressBook, services } from './lists.ts'
+import { checkOperation } from './operations.ts'
 import { me, status } from './me.ts'
 import { decidePolicyChange, policyChanges } from './policy-changes.ts'
 import { allowanceConfirm, allowancePrepare, createAgent, upgrade } from './onboarding.ts'
@@ -49,6 +50,7 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.limits.method, OwnerRoutes.limits.path, limits),
   compile(OwnerRoutes.setLimits.method, OwnerRoutes.setLimits.path, setLimits),
   compile(OwnerRoutes.activity.method, OwnerRoutes.activity.path, activity),
+  compile(OwnerRoutes.checkOperation.method, OwnerRoutes.checkOperation.path, checkOperation),
   compile(OwnerRoutes.approval.method, OwnerRoutes.approval.path, approval),
   compile(OwnerRoutes.decide.method, OwnerRoutes.decide.path, decide),
   compile(OwnerRoutes.services.method, OwnerRoutes.services.path, services),

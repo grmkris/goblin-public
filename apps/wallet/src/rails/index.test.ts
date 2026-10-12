@@ -414,3 +414,68 @@ describe('upgrade', () => {
     await expect(createRails(deps()).upgrade(request)).rejects.toThrow(/No relay/u)
   })
 })
+
+describe('check', () => {
+  const HASH = `0x${'ef'.repeat(32)}`
+  const uncertainOp = (kind: Terms['kind'], payment: Operation['payment']): Operation => ({
+    ...operation({
+      kind,
+      chain: 'base',
+      rail: kind === 'paid_fetch' ? 'x402' : 'transfer',
+      subject: 'check',
+      token: { symbol: 'USDC', address: BASE_USDC, decimals: 6 },
+      amount: '0.007',
+      amountUsd: '0.007',
+      recipient: PAY_TO,
+      expiresAt: NOW.toISOString(),
+    }),
+    status: 'uncertain',
+    ...(payment === undefined ? {} : { payment }),
+  })
+  const authorization = (validBefore: Date) => ({
+    from: AGENT,
+    nonce: `0x${'cd'.repeat(32)}`,
+    validBefore: String(Math.floor(validBefore.getTime() / 1000)),
+  })
+  const node =
+    (answer: { receipt?: unknown; used?: boolean }): JsonRpc =>
+    async (method) =>
+      method === 'eth_getTransactionReceipt' ? (answer.receipt ?? null) : word(answer.used === true ? 1n : 0n)
+  const checked = (rpc: JsonRpc, op: Operation) => createRails(deps({ rpcFor: () => rpc })).check(op)
+
+  test('a sent transaction: mined is paid, reverted is not, missing is not known yet', async () => {
+    const sent = uncertainOp('transfer', { rail: 'transfer', txHash: HASH })
+    expect(await checked(node({ receipt: { status: '0x1' } }), sent)).toMatchObject({
+      found: 'paid',
+      delivered: true,
+      payment: { rail: 'transfer', txHash: HASH, settledAt: NOW.toISOString() },
+    })
+    expect(await checked(node({ receipt: { status: '0x0' } }), sent)).toMatchObject({ found: 'not_paid' })
+    expect(await checked(node({}), sent)).toMatchObject({ found: 'unknown' })
+  })
+
+  test('an x402 authorization: used is paid, unused past its deadline is not, unused before it could still be', async () => {
+    const later = uncertainOp('paid_fetch', {
+      rail: 'x402',
+      authorization: authorization(new Date(NOW.getTime() + 60_000)),
+    })
+    const lapsed = uncertainOp('paid_fetch', {
+      rail: 'x402',
+      authorization: authorization(new Date(NOW.getTime() - 60_000)),
+    })
+    expect(await checked(node({ used: true }), later)).toMatchObject({
+      found: 'paid',
+      delivered: false,
+      payment: { rail: 'x402', settledAt: NOW.toISOString() },
+    })
+    expect(await checked(node({ used: false }), lapsed)).toMatchObject({ found: 'not_paid' })
+    expect(await checked(node({ used: false }), later)).toMatchObject({
+      found: 'unknown',
+      reason: expect.stringContaining('could still settle'),
+    })
+  })
+
+  test('nothing recorded to ask about is not known', async () => {
+    expect(await checked(node({}), uncertainOp('paid_fetch', undefined))).toMatchObject({ found: 'unknown' })
+  })
+})

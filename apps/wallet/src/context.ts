@@ -62,6 +62,7 @@ export const unconfiguredRails: RailsPort = {
   bridgeExecute: unavailable,
   balances: unavailable,
   allowances: unavailable,
+  check: unavailable,
   upgrade: unavailable,
 }
 

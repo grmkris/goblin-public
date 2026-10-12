@@ -47,6 +47,15 @@ export interface BalanceRead {
   readonly unread: ChainKey[]
 }
 
+/**
+ * What the chain says about an operation whose outcome is unknown: it was paid (settle it), it was not (fail it and
+ * release the hold), or it cannot tell yet (leave it). Reading it never pays.
+ */
+export type CheckFinding =
+  | { readonly found: 'paid'; readonly payment: Payment; readonly delivered: boolean }
+  | { readonly found: 'not_paid'; readonly reason: string }
+  | { readonly found: 'unknown'; readonly reason: string }
+
 /** A swap or bridge quote the wallet froze: the owner-visible quote, the terms approval binds to, the rail's payload. */
 export interface FrozenQuote {
   quote: Quote
@@ -75,6 +84,8 @@ export interface RailsPort {
   balances(): Promise<BalanceRead>
   /** The limits the chain and the signer enforce (layers `onchain`, `tempo`, `signer`), with what is left. */
   allowances(): Promise<LimitView[]>
+  /** Reads the chain for an uncertain operation's transaction or x402 authorization; never signs or sends. */
+  check(operation: Operation): Promise<CheckFinding>
   /** Relays the owner's signed EIP-7702 authorization. */
   upgrade(request: UpgradeRequest): Promise<Operation>
 }

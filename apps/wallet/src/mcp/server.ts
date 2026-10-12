@@ -5,6 +5,7 @@ import { registerWalletOpen } from './tools/wallet-open.ts'
 import { registerAllowances } from './tools/allowances.ts'
 import { registerBalances } from './tools/balances.ts'
 import { registerOperation } from './tools/operation.ts'
+import { registerOperationCheck } from './tools/operation-check.ts'
 import { registerBridgeExecute } from './tools/bridge-execute.ts'
 import { registerBridgeQuote } from './tools/bridge-quote.ts'
 import { registerPaidFetch } from './tools/paid-fetch.ts'
@@ -19,7 +20,7 @@ import { registerWalletStatus } from './tools/wallet-status.ts'
 import type { Toolbox } from './toolbox.ts'
 
 const GUIDE =
-  "Goblin Wallet is the owner's agent wallet. Every limit names the layer that enforces it. Paid tools take a stable operation_id: retrying with the same id never pays twice. A spend over a limit or to a new recipient waits for the owner's approval."
+  "Goblin Wallet is the owner's agent wallet. Every limit names the layer that enforces it. Paid tools take a stable operation_id: retrying with the same id never pays twice. A spend over a limit or to a new recipient waits for the owner's approval. A spend whose outcome is uncertain may have paid: check it with operation_check, never pay again for it."
 
 /** The wallet's MCP server for one request: the owner's tools bound to a toolbox. */
 export function walletServer(box: Toolbox): McpServer {
@@ -29,6 +30,7 @@ export function walletServer(box: Toolbox): McpServer {
   registerAllowances(server, box)
   registerServices(server, box)
   registerOperation(server, box)
+  registerOperationCheck(server, box)
   registerReceipt(server, box)
   registerPaidFetch(server, box)
   registerPayChallenge(server, box)

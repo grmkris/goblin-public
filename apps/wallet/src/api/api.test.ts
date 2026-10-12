@@ -6,7 +6,7 @@ import type { IdentityVerifier } from '../identity.ts'
 import { LedgerObject } from '../ledger/durable.ts'
 import { termsFor } from '../ledger/fixtures.ts'
 import { authClient, WalletAuth } from '../oauth/durable.ts'
-import type { RailsPort } from '../services/rails.ts'
+import type { CheckFinding, RailsPort } from '../services/rails.ts'
 import { testEnv } from '../test-env.ts'
 import { createApi } from './index.ts'
 
@@ -26,7 +26,7 @@ const sqlHost = () => {
 
 const setup = (
   upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed',
-  options: { fetchFn?: typeof fetch; live?: boolean } = {},
+  options: { fetchFn?: typeof fetch; live?: boolean; check?: RailsPort['check'] } = {},
 ) => {
   const ledger = new LedgerObject(sqlHost(), () => Date.parse('2026-10-12T10:00:00.000Z'))
   const auth = authClient(new WalletAuth(sqlHost()))
@@ -35,6 +35,7 @@ const setup = (
     ...unconfiguredRails,
     balances: () => Promise.resolve({ balances: [], unread: [] }),
     allowances: () => Promise.resolve([]),
+    ...(options.check === undefined ? {} : { check: options.check }),
     upgrade: (request) => {
       upgrades.push(request)
       return Promise.resolve({
@@ -238,6 +239,53 @@ describe('the owner API', () => {
     expect((await call('GET', '/api/approvals/op-missing-01')).status).toBe(404)
     expect(await (await call('GET', '/api/address-book')).json()).toMatchObject([{ address: STRANGER.toLowerCase() }])
     expect(await (await call('GET', '/api/activity')).json()).toMatchObject([{ id: 'op-approve-01' }])
+  })
+
+  test('check: an uncertain operation is settled, released or left as the chain says, and a settled one is not read', async () => {
+    const findings: Record<string, CheckFinding> = {
+      'op-check-paid': {
+        found: 'paid',
+        payment: { rail: 'x402', settledAt: '2026-10-12T10:01:00.000Z' },
+        delivered: false,
+      },
+      'op-check-gone': { found: 'not_paid', reason: 'The payment authorization expired unused; nothing was paid.' },
+      'op-check-wait': { found: 'unknown', reason: 'The transaction is not on chain yet.' },
+    }
+    const reads: string[] = []
+    const { call, ledger } = setup('confirmed', {
+      check: async (operation) => {
+        reads.push(operation.id)
+        return findings[operation.id] ?? { found: 'unknown', reason: 'none' }
+      },
+    })
+    const post = (body: unknown) =>
+      ledger.fetch(new Request('https://x/call', { method: 'POST', body: JSON.stringify(body) }))
+    for (const id of Object.keys(findings)) {
+      const terms = termsFor('0.007')
+      await post({
+        method: 'begin',
+        args: [{ id, argsHash: id, terms, termsHash: await termsHash(terms), client: 'goblin' }],
+      })
+      await post({ method: 'reserve', args: [id] })
+      await post({ method: 'signing', args: [id] })
+      await post({ method: 'uncertain', args: [id, 'No payment receipt.', { rail: 'x402' }] })
+    }
+    const check = async (id: string) => (await call('POST', `/api/operations/${id}/check`)).json()
+    expect(await check('op-check-paid')).toMatchObject({
+      found: 'paid',
+      note: 'Paid on Base.',
+      operation: { status: 'confirmed' },
+    })
+    expect(await check('op-check-gone')).toMatchObject({
+      found: 'not_paid',
+      note: expect.stringContaining('The held amount is released.'),
+      operation: { status: 'failed' },
+    })
+    expect(await check('op-check-wait')).toMatchObject({ found: 'unknown', operation: { status: 'uncertain' } })
+    // Settled now: a second check reads nothing and changes nothing.
+    expect(await check('op-check-paid')).toMatchObject({ found: 'known', operation: { status: 'confirmed' } })
+    expect(reads).toEqual(['op-check-paid', 'op-check-gone', 'op-check-wait'])
+    expect((await call('POST', '/api/operations/op-check-none/check')).status).toBe(404)
   })
 
   test("services lists the allowlist; status serves goblin's shape", async () => {

@@ -22,6 +22,7 @@ const rails: RailsPort = {
   bridgeExecute: () => Promise.reject(new Error('unused')),
   balances: () => Promise.resolve({ balances: [], unread: [] }),
   allowances: () => Promise.resolve([]),
+  check: () => Promise.reject(new Error('unused')),
   upgrade: () => Promise.reject(new Error('unused')),
 }
 

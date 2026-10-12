@@ -87,6 +87,18 @@ export type PayChallengeResult = typeof PayChallengeResult.Type
 export const OperationInput = Schema.Struct({ operation_id: OperationId })
 export type OperationInput = typeof OperationInput.Type
 
+/**
+ * `operation_check` and `POST /api/operations/:operationId/check`: what the chain said about an operation whose outcome
+ * was unknown, and the operation as it stands now. `paid` and `not_paid` moved it; `unknown` left it as it was; `known`
+ * means its outcome was already settled and nothing was read. Checking never pays.
+ */
+export const OperationCheck = Schema.Struct({
+  operation: Operation,
+  found: Schema.Literals(['paid', 'not_paid', 'unknown', 'known']),
+  note: Text(240),
+})
+export type OperationCheck = typeof OperationCheck.Type
+
 export const PolicyChangeInput = Schema.Struct({
   /** What the agent asks for, e.g. raise the hourly limit to $30, or allow a new service. */
   change: Text(400),
@@ -134,6 +146,7 @@ export const TOOLS = {
   bridgeQuote: 'bridge_quote',
   bridgeExecute: 'bridge_execute',
   operation: 'operation',
+  operationCheck: 'operation_check',
   receipt: 'receipt',
   policyChange: 'request_policy_change',
   viewState: 'view_state',

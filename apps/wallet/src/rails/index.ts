@@ -1,4 +1,5 @@
 import type { RailsPort } from '../services/rails.ts'
+import { check } from './check.ts'
 import type { RailsDeps } from './deps.ts'
 import { confirmChallenge, payChallenge } from './challenge.ts'
 import { bridgeExecute, bridgeQuote, swapExecute, swapQuote } from './exchange.ts'
@@ -26,5 +27,6 @@ export const createRails = (deps: RailsDeps): RailsPort => ({
   bridgeExecute: (operation, payload) => bridgeExecute(operation, payload, deps),
   balances: () => balances(deps),
   allowances: () => allowances(deps),
+  check: (operation) => check(operation, deps),
   upgrade: (request) => upgrade(request, deps),
 })
