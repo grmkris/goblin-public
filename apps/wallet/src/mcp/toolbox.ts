@@ -12,4 +12,6 @@ export interface Toolbox {
   readonly client: string
   /** The OAuth scopes the connection holds: `wallet:read`, `wallet:spend`. */
   readonly scopes: readonly string[]
+  /** One MCP App view's single-file HTML, from the assets binding. */
+  readonly readView: (name: 'dashboard' | 'receipt') => Promise<string>
 }

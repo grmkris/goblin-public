@@ -6,6 +6,12 @@ import { walletLayer } from '../services/index.ts'
 import type { McpAuthenticator } from './auth.ts'
 import { walletServer } from './server.ts'
 
+async function readView(env: WalletEnv, origin: string, name: string): Promise<string> {
+  const response = await env.ASSETS.fetch(new Request(`${origin}/views/${name}.html`))
+  if (!response.ok) throw new Error(`view ${name} is not built: ${response.status}`)
+  return response.text()
+}
+
 export interface McpDeps {
   readonly authenticate: McpAuthenticator
   readonly wiring: Wiring
@@ -32,6 +38,7 @@ export function createMcpEndpoint(deps: McpDeps): (request: Request, env: Wallet
         era: ctx.era,
         client: principal.clientName,
         scopes: principal.scopes,
+        readView: (name) => readView(env, url.origin, name),
       }),
     )
     return handler.fetch(request, {

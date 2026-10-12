@@ -236,3 +236,64 @@ describe('the paid tools over MCP', () => {
     expect(result.structuredContent).toMatchObject({ request: { status: 'pending', client: 'Test client' } })
   })
 })
+
+describe('the App tools and views', () => {
+  const ToolList = Schema.Struct({
+    result: Schema.Struct({
+      tools: Schema.Array(
+        Schema.Struct({ name: Schema.String, _meta: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)) }),
+      ),
+    }),
+  })
+  const listTools = async () => {
+    const body = await (await rpc('tools/list', {})).text()
+    const data = body.startsWith('event:')
+      ? (body.split('\n').find((line) => line.startsWith('data:')) ?? '').slice(5)
+      : body
+    return Schema.decodeUnknownSync(ToolList)(JSON.parse(data)).result.tools
+  }
+
+  test('wallet_open carries the dashboard view and returns the status with recent spends', async () => {
+    const tools = await listTools()
+    expect(tools.find((tool) => tool.name === 'wallet_open')?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://goblin-wallet/dashboard' },
+    })
+    const result = await call('wallet_open')
+    expect(result.structuredContent).toMatchObject({ status: { kind: 'wallet' }, recent: expect.any(Array) })
+    expect(result.content?.[0]?.text).toContain('Wallet dashboard')
+  })
+
+  test('wallet_home is the same view as an app-only global entrypoint', async () => {
+    const home = (await listTools()).find((tool) => tool.name === 'wallet_home')
+    expect(home?._meta).toMatchObject({
+      ui: { resourceUri: 'ui://goblin-wallet/dashboard', visibility: ['app'] },
+      'openai/ui': { entrypoints: [{ type: 'global' }] },
+    })
+    expect((await call('wallet_home')).structuredContent).toMatchObject({ status: { kind: 'wallet' } })
+  })
+
+  test('the spending tools attach the receipt view', async () => {
+    const tools = await listTools()
+    for (const name of ['paid_fetch', 'transfer', 'swap_execute', 'bridge_execute'])
+      expect(tools.find((tool) => tool.name === name)?._meta).toMatchObject({
+        ui: { resourceUri: 'ui://goblin-wallet/receipt' },
+      })
+  })
+
+  test('the views are read from the assets as text/html;profile=mcp-app', async () => {
+    const body = await (await rpc('resources/read', { uri: 'ui://goblin-wallet/receipt' })).text()
+    expect(body).toContain('text/html;profile=mcp-app')
+    expect(body).toContain('asset')
+  })
+
+  test('view_state keeps bounded JSON and refuses a large one', async () => {
+    expect((await call('view_state', { state: { tab: 'limits' } })).structuredContent).toEqual({
+      state: { tab: 'limits' },
+    })
+    expect((await call('view_state')).structuredContent).toEqual({ state: { tab: 'limits' } })
+    expect(await call('view_state', { state: { big: 'x'.repeat(9000) } })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'view_state_too_large' } },
+    })
+  })
+})
