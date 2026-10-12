@@ -94,6 +94,8 @@ export const quotePaidFetch = async (
   deps: RailsDeps,
   want?: 'x402' | 'mpp',
 ): Promise<Terms> => {
+  // The paid services price and settle on Base and Tempo mainnet; a testnet wallet would pay them real money.
+  if (!deps.live) throw new RailError('Paid services take mainnet payments only; this wallet is on testnets.')
   const found = await probes(service, args, deps, want)
   const cheapest = found.toSorted(
     (a, b) =>
@@ -165,6 +167,8 @@ export const payPaidFetch = async (
 ): Promise<PayOutcome> => {
   const { signer } = deps
   if (signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
+  if (!deps.live)
+    return { outcome: 'failed', reason: 'Paid services take mainnet payments only; this wallet is on testnets.' }
   const { terms } = operation
   const request = requestOf(service, args)
   const common = {
@@ -177,6 +181,7 @@ export const payPaidFetch = async (
   try {
     if (terms.rail === 'x402') {
       await ensureUsdc({
+        live: deps.live,
         chain: 'base',
         amount: BigInt(atomic(terms)),
         operationKey: operation.id,

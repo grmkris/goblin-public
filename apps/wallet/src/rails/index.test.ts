@@ -110,6 +110,16 @@ describe('paid fetch', () => {
     expect(mpp).toMatchObject({ chain: 'tempo', rail: 'mpp', token: { symbol: 'USDC.e' }, amountUsd: '0.007' })
   })
 
+  test('a testnet wallet neither quotes nor pays a paid service, which settles on mainnet only', async () => {
+    const quote = await createRails(deps({ fetchFn: exaFetch() })).quotePaidFetch(EXA, {}, 'x402')
+    const rails = createRails(deps({ live: false, fetchFn: exaFetch() }))
+    await expect(rails.quotePaidFetch(EXA, {})).rejects.toThrow(/mainnet payments only/u)
+    expect(await rails.payPaidFetch(operation(quote), EXA, {})).toMatchObject({
+      outcome: 'failed',
+      reason: expect.stringContaining('mainnet payments only'),
+    })
+  })
+
   test('refuses a service that offers no price on an allowed rail', async () => {
     const rails = createRails(deps({ fetchFn: async () => new Response('free', { status: 200 }) }))
     await expect(rails.quotePaidFetch(EXA, {})).rejects.toThrow(/no price/u)
