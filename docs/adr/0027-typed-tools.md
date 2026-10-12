@@ -28,8 +28,9 @@ show is summarized as valid JSON rather than cut mid-text. A view may declare th
 (`output`): `<apps>` shows it after `→`, and a value that does not fit is the app's error, like a state that does not
 fit its schema.
 
-**MCP tools carry the server's types.** `mcp_list` returns each remote tool's input and output schema, untrusted data
-like its description, for a typed caller to read. `mcp_call` keeps the result Pi's MCP tools give (content blocks,
+**MCP tools carry the server's types.** `mcp_list` returns a remote tool's input schema, untrusted data like its
+description, for a typed caller to read; to keep the model's context small it lists a connection's tools in brief and
+gives the schemas of the tools named in its `tools` input only (amended 12 October 2026). `mcp_call` keeps the result Pi's MCP tools give (content blocks,
 `details.structuredContent`, `_meta`, the origin), since MCP Apps read it as the server sent it. A free-form object
 field (`mcp_call`'s `arguments`, `app_call`'s `input`) also takes the JSON string of an object (`objectOrJson`).
 

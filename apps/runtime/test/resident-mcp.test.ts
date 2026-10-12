@@ -68,8 +68,38 @@ const notes = createMcpHandler(() => {
 /** The link `share` asks the owner to open: it carries a one-time token, so it never enters a transcript. */
 const SHARE = 'https://notes.test/share?token=one-time'
 
+/** A long remote description, over several lines: what a large server's tools carry. */
+const LONG = Array.from(
+  { length: 40 },
+  (_, line) => `Line ${String(line)} of how this job runs and what it costs.`,
+).join('\n')
+/** A large schema, as a paid job's input or output: forty described fields. */
+const LARGE = {
+  type: 'object' as const,
+  properties: Object.fromEntries(
+    Array.from({ length: 40 }, (_, field) => [
+      `field${String(field)}`,
+      { type: 'string', description: LONG.slice(0, 120) },
+    ]),
+  ),
+}
+/** The tools of a large server, as Mercator or GitHub list theirs: sixty, each with long words and large schemas. */
+const JOBS = Array.from({ length: 60 }, (_, index) => ({
+  name: `job.${String(index)}`,
+  description: LONG,
+  inputSchema: LARGE,
+  outputSchema: LARGE,
+}))
+/** A large server: `job.0` is granted and asks first under a spending rule, `job.1` is granted, the rest are not. */
+const jobs = createMcpHandler(() => {
+  const server = lowLevelServer({ name: 'jobs', version: '1.0.0' }, { capabilities: { tools: {} } })
+  server.setRequestHandler('tools/list', () => ({ tools: JOBS }))
+  return server
+})
+
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
+await credentials.saveTokens('jobs', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
 /** A call to `admin` is beyond the sign-in's scope: the server answers 403 `insufficient_scope` (ADR 0042). */
 const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
   const request = new Request(input, init)
@@ -79,16 +109,21 @@ const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
       status: 403,
       headers: { 'www-authenticate': 'Bearer error="insufficient_scope", scope="notes:read notes:admin"' },
     })
-  return notes.fetch(request)
+  return new URL(request.url).hostname === 'jobs.test' ? jobs.fetch(request) : notes.fetch(request)
 }
 /** The MCP host over the notes server; each program run opens its connection and closes it when it ends. */
 const host = mcpHost({
-  servers: [{ connectionId: 'notes', endpoint: 'https://notes.test/mcp', label: 'Notes · Mine' }],
+  servers: [
+    { connectionId: 'notes', endpoint: 'https://notes.test/mcp', label: 'Notes · Mine' },
+    { connectionId: 'jobs', endpoint: 'https://jobs.test/mcp', label: 'Jobs' },
+  ],
   credentials,
   grants: new MemoryGrants([
     { connectionId: 'notes', capability: 'tool', name: 'read' },
     { connectionId: 'notes', capability: 'tool', name: 'admin' },
     { connectionId: 'notes', capability: 'tool', name: 'share' },
+    { connectionId: 'jobs', capability: 'tool', name: 'job.0', askFirst: true },
+    { connectionId: 'jobs', capability: 'tool', name: 'job.1' },
   ]),
   registries: new MemoryRegistries(),
   labels: new MemoryLabels(),
@@ -141,8 +176,13 @@ const layer = host.pipe(
       stub(Chats, { chatOf: () => Effect.succeed(Option.none()) }),
       stub(Conversations),
       stub(UrlRequests, { hold: (request) => Effect.promise(() => urlRequests.hold(request, 1000)) }),
-      // No paid tool here has a spending rule.
-      stub(Spending, { rule: () => Effect.succeed(undefined) }),
+      // Only the large server's `job.0` has a spending rule.
+      stub(Spending, {
+        rule: (connectionId, tool) =>
+          Effect.succeed(
+            connectionId === 'jobs' && tool === 'job.0' ? { perJob: 5_000_000, daily: 20_000_000 } : undefined,
+          ),
+      }),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
     ),
@@ -160,11 +200,19 @@ const execute = (tool: string, input: Record<string, unknown>, conversationId: n
 }
 const call = (name: string, conversationId = 7) =>
   execute('mcp_call', { connectionId: 'notes', name, arguments: {} }, conversationId)
-const listed = async (input: Record<string, unknown>, conversationId: number): Promise<unknown> => {
+/** What the model reads of an `mcp_list` call. */
+const listedText = async (input: Record<string, unknown>, conversationId: number): Promise<string> => {
   const result = await execute('mcp_list', input, conversationId)
   const [block] = result.content ?? []
-  return block?.type === 'text' ? JSON.parse(block.text) : undefined
+  return block?.type === 'text' ? block.text : ''
 }
+const listed = async (input: Record<string, unknown>, conversationId: number): Promise<unknown> =>
+  JSON.parse(await listedText(input, conversationId))
+/** A connection's listed tools, each as the model reads it. */
+const toolsOf = (listing: unknown) =>
+  Schema.decodeUnknownSync(Schema.Struct({ tools: Schema.Array(Schema.Record(Schema.String, Schema.Unknown)) }))(
+    listing,
+  ).tools
 
 describe('mcp_call and the owner grant (unit)', () => {
   it('runs a granted tool and returns its untrusted result', async () => {
@@ -212,12 +260,19 @@ describe('mcp_call and the owner grant (unit)', () => {
   })
   it("lists each connection with the owner's label, so two accounts of one server are told apart", async () => {
     expect(await listed({}, 7)).toEqual({
-      servers: [{ connectionId: 'notes', label: 'Notes · Mine', status: 'connected' }],
+      servers: [
+        { connectionId: 'notes', label: 'Notes · Mine', status: 'connected' },
+        { connectionId: 'jobs', label: 'Jobs', status: 'connected' },
+      ],
     })
   })
-  it('lists the event streams a connection sends, at most 64, as the server words them, for routine_propose', async () => {
-    const listing = await listed({ connectionId: 'notes' }, 7)
-    expect(listing).toMatchObject({ origin: 'notes', trusted: false })
+  it('lists the event streams a connection sends only when asked, at most 64, for routine_propose', async () => {
+    // Unasked, the listing only says there are some.
+    const brief = await listed({ connectionId: 'notes' }, 7)
+    expect(brief).toMatchObject({ origin: 'notes', trusted: false, sendsEvents: true })
+    expect(brief).not.toHaveProperty('events')
+    const listing = await listed({ connectionId: 'notes', events: true }, 7)
+    expect(listing).not.toHaveProperty('sendsEvents')
     const { events: streams } = Schema.decodeUnknownSync(Schema.Struct({ events: Schema.Array(Schema.Unknown) }))(
       listing,
     )
@@ -228,8 +283,10 @@ describe('mcp_call and the owner grant (unit)', () => {
       inputSchema: { type: 'object' },
     })
     catalog.readable = false
-    expect(await listed({ connectionId: 'notes' }, 7)).not.toHaveProperty('events')
+    expect(await listed({ connectionId: 'notes', events: true }, 7)).not.toHaveProperty('events')
     catalog.readable = true
+    // A server that sends none says nothing of events.
+    expect(await listed({ connectionId: 'jobs', events: true }, 7)).not.toHaveProperty('sendsEvents')
   })
 
   it('never asks the owner about a tool that is missing or meant for an App only', async () => {
@@ -240,6 +297,49 @@ describe('mcp_call and the owner grant (unit)', () => {
       expect(result.details).toBeUndefined()
       expect(JSON.stringify(result.content)).toContain('NotFound')
     }
+  })
+})
+
+describe('mcp_list keeps what the model reads small (unit)', () => {
+  it("lists a large server's tools in brief: names, short descriptions and the flags that differ, no schemas", async () => {
+    const text = await listedText({ connectionId: 'jobs' }, 7)
+    // The server lists over half a megabyte; the model reads names and a line of each, about 220 characters a tool.
+    expect(JSON.stringify(JOBS).length).toBeGreaterThan(500_000)
+    expect(text.length).toBeLessThan(JOBS.length * 220)
+    const shown = toolsOf(JSON.parse(text))
+    expect(shown).toHaveLength(JOBS.length)
+    const short = expect.stringMatching(/^Line 0 of how this job runs[^\n]*…$/u)
+    expect(shown[0]).toEqual({
+      name: 'job.0',
+      description: short,
+      askFirst: true,
+      spending: 'asks above $5 a job or past $20 today',
+    })
+    expect(shown[1]).toEqual({ name: 'job.1', description: short })
+    expect(shown[2]).toEqual({ name: 'job.2', description: short, granted: false })
+    for (const tool of shown) expect(String(tool['description']).length).toBeLessThanOrEqual(160)
+  })
+  it('shows the tools the model names in full, with their input schemas, and says which it is not offered', async () => {
+    expect(await listed({ connectionId: 'jobs', tools: ['job.1', 'job.0', 'missing'] }, 7)).toEqual({
+      origin: 'jobs',
+      trusted: false,
+      tools: [
+        {
+          name: 'job.0',
+          description: LONG,
+          inputSchema: LARGE,
+          askFirst: true,
+          spending: 'asks above $5 a job or past $20 today',
+        },
+        { name: 'job.1', description: LONG, inputSchema: LARGE },
+      ],
+      unknown: ['missing'],
+    })
+    // A tool meant for an App only is not offered to the model, named or not.
+    expect(await listed({ connectionId: 'notes', tools: ['panel'] }, 7)).toMatchObject({
+      tools: [],
+      unknown: ['panel'],
+    })
   })
 })
 

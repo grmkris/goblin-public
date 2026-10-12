@@ -531,10 +531,15 @@ their versions, members and last errors; the skills on offer) goes into one trai
 never stores it, so everything before it stays a cacheable prefix. The `mcp_list` and `mcp_call` tools
 (`pi/resident-mcp.ts`) are how the model reaches the owner's MCP servers; both require current resident authority, and
 `mcp_call` is marked unsafe to replay. `mcp_list` lists the connections with the owner's labels (two accounts of one
-server are told apart by them; ADR 0041), and shows each tool's input and output schema (the server's, untrusted
-data) and, for a connection whose server offers Events, its first 64 event streams with their argument schemas
-(`events`, from `Events.catalog`, also untrusted), so the model can propose a routine on one; a catalog the plan, the
-connection's sign-in or the server does not let it read leaves `events` out and the tools listed. Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
+server are told apart by them; ADR 0041). A connection's tools come in brief, since the result stays in the model's
+context and is paid for again on every later call: each tool's name, its description cut to one line of 160
+characters, and only the flags that differ (`granted: false`, `askFirst: true`, a paid tool's `spending`), with no
+schemas. The tools the model names in `tools` come in full, with their input schemas (the server's, untrusted data),
+and names it is not offered come back as `unknown`; the persona tells it to ask for the schemas of the tools it will
+call. Asked with `events: true`, for a connection whose server offers Events, it adds the first 64 event streams with
+their argument schemas (`events`, from `Events.catalog`, also untrusted), so the model can propose a routine on one;
+unasked, `sendsEvents` says there are some. A catalog the plan, the connection's sign-in or the server does not let it
+read leaves `events` out and the tools listed. Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
 (`named` in `mcp/labels.ts`); labels never enter telemetry. `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
 Pi's MCP tools shape it (content blocks, `details.structuredContent`, `_meta` and the origin).
 Remote result details and signed routine event metadata share `mcp/redaction.ts`: it scrubs exact credential-shaped
