@@ -227,7 +227,9 @@ const maintain = (engine: Engine) =>
       for (const row of engine.store.live()) yield* reconcile(engine, row, now)
       yield* Effect.sync(() => engine.store.prune(now))
       yield* dispatch(engine)
-      yield* engine.wake(now + 60_000)
+      // The next sweep only when something is due: an alarm every minute keeps the agent awake for nothing.
+      const due = engine.store.nextDue()
+      if (due !== undefined) yield* engine.wake(Math.max(due, now + 1000))
     }),
   )
 
@@ -324,6 +326,7 @@ const changes = (engine: Engine) => ({
   maintain: Effect.fn('Events.maintain')(function* () {
     yield* maintain(engine)
   }),
+  nextDue: () => Effect.sync(() => engine.store.nextDue()),
 })
 
 /**

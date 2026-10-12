@@ -85,4 +85,24 @@ describe('the Events store keeps every live subscription in view', () => {
       'leased',
     ])
   })
+
+  it('knows when a sweep next has work, and that nothing waits when no subscription runs', () => {
+    const events = store()
+    expect(events.nextDue()).toBeUndefined()
+    events.save(row('gone', 'tombstone', { nextPollAt: NOW - 5000 }))
+    events.save(row('ended', 'terminated', { nextPollAt: NOW - 4000 }))
+    expect(events.nextDue()).toBeUndefined()
+    events.save(row('live', 'active', { nextRefreshAt: NOW + 50_000, nextPollAt: NOW + 30_000 }))
+    expect(events.nextDue()).toBe(NOW + 30_000)
+    events.receive({
+      subscriptionId: 'live',
+      webhookId: 'evt-1',
+      kind: 'occurrence',
+      envelope: 'sealed',
+      bytes: 10,
+      receivedAt: NOW,
+      nextAttemptAt: NOW + 2000,
+    })
+    expect(events.nextDue()).toBe(NOW + 2000)
+  })
 })

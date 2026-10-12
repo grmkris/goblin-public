@@ -12,8 +12,15 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** The wake over Events whose sweep ends with `sweep`, on an account whose plan is `active`. */
-const wakeWith = async (sweep: Effect.Effect<void, Internal | ResidentInactive>, active = true) => {
+/**
+ * The wake over Events whose sweep ends with `sweep`, on an account whose plan is `active`; `due` is when the store's
+ * next work is (`null`: nothing waits).
+ */
+const wakeWith = async (
+  sweep: Effect.Effect<void, Internal | ResidentInactive>,
+  active = true,
+  due: number | null = 0,
+) => {
   const lines: string[] = []
   vi.spyOn(console, 'error').mockImplementation((line: string) => void lines.push(line))
   vi.spyOn(console, 'warn').mockImplementation((line: string) => void lines.push(line))
@@ -21,7 +28,7 @@ const wakeWith = async (sweep: Effect.Effect<void, Internal | ResidentInactive>,
   // SAFETY: the wake reads only `scheduleEvents` from the agent's inputs.
   const input = { scheduleEvents: async (at: number) => void scheduled.push(at) } as AgentInputs
   const services = Layer.mergeAll(
-    stub(Events, { maintain: () => sweep }),
+    stub(Events, { maintain: () => sweep, nextDue: () => Effect.succeed(due ?? undefined) }),
     ReporterLive,
     plans(active),
     Layer.succeed(AgentInput, input),
@@ -47,6 +54,13 @@ describe('the Events alarm (unit)', () => {
     expect(revoked.scheduled).toHaveLength(1)
     expect(revoked.failures).toEqual([])
     expect(await wakeWith(Effect.void)).toEqual({ scheduled: [], failures: [] })
+  })
+
+  it('keeps no alarm after a failure when nothing waits', async () => {
+    const idle = await wakeWith(Effect.fail(new Internal({ reason: 'sweep broke' })), true, null)
+    expect(idle.scheduled).toEqual([])
+    const lapsed = await wakeWith(Effect.void, false, null)
+    expect(lapsed.scheduled).toEqual([])
   })
 
   it('sweeps nothing without an active plan, and tries again in a minute', async () => {

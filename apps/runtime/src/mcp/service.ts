@@ -354,5 +354,7 @@ export class Events extends Context.Service<
     ) => Effect.Effect<void>
     /** One maintenance sweep: dispatch, refresh or poll each subscription, prune, dispatch again. */
     readonly maintain: () => Effect.Effect<void, AppError>
+    /** When a sweep next has work, in Clock milliseconds; none when nothing waits. */
+    readonly nextDue: () => Effect.Effect<number | undefined>
   }
 >()('goblin/mcp/Events') {}

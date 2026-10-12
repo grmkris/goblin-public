@@ -10,8 +10,9 @@ import { Events } from './service.ts'
 const RETRY_MS = 60_000
 
 /**
- * The Events alarm (`mcpEventsWake`): the plan, then one maintenance sweep. A sweep that fails is reported (an owner's
- * refusal, such as revoked authority, is expected and is not); either failure tries again in a minute.
+ * The Events alarm (`mcpEventsWake`): the plan, then one maintenance sweep, which keeps the next alarm itself. A sweep
+ * that fails is reported (an owner's refusal, such as revoked authority, is expected and is not); either failure tries
+ * again in a minute, but only while something waits: with no subscription or delivery left, no alarm is kept.
  */
 export const mcpEventsWake = Effect.andThen(
   requirePlan(),
@@ -19,8 +20,11 @@ export const mcpEventsWake = Effect.andThen(
 ).pipe(
   // expected: the sweep's failure was reported above, and a refused plan is the owner's; either way, a minute on.
   Effect.catch(() =>
-    Effect.flatMap(Clock.currentTimeMillis, (now) =>
-      AgentInput.use((input) => attempt(() => input.scheduleEvents(now + RETRY_MS))),
-    ),
+    Effect.gen(function* () {
+      const due = yield* Events.use((events) => events.nextDue())
+      if (due === undefined) return
+      const now = yield* Clock.currentTimeMillis
+      yield* AgentInput.use((input) => attempt(() => input.scheduleEvents(Math.max(due, now + RETRY_MS))))
+    }),
   ),
 )

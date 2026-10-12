@@ -89,6 +89,30 @@ export class SqliteEventStore {
   live(): Subscription[] {
     return this.db.select().from(subscriptions).where(ne(subscriptions.status, 'tombstone')).all()
   }
+  /**
+   * When a sweep next has work: the earliest lease refresh or poll of a subscription still running, or the earliest
+   * retry of a delivery not yet processed. Nothing when nothing waits, so no alarm is kept for it.
+   */
+  nextDue(): number | undefined {
+    const running = and(ne(subscriptions.status, 'tombstone'), ne(subscriptions.status, 'terminated'))
+    const subscription = this.db
+      .select({
+        refresh: sql<number | null>`min(${subscriptions.nextRefreshAt})`,
+        poll: sql<number | null>`min(${subscriptions.nextPollAt})`,
+      })
+      .from(subscriptions)
+      .where(running)
+      .get()
+    const delivery = this.db
+      .select({ retry: sql<number | null>`min(${deliveries.nextAttemptAt})` })
+      .from(deliveries)
+      .where(isNull(deliveries.processedAt))
+      .get()
+    const times = [subscription?.refresh, subscription?.poll, delivery?.retry].filter(
+      (time): time is number => typeof time === 'number',
+    )
+    return times.length === 0 ? undefined : Math.min(...times)
+  }
   /** How many subscriptions are live, for the cap. */
   count(): number {
     return (

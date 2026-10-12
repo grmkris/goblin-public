@@ -1230,7 +1230,9 @@ whose gate refuses an account without a plan (402); then ingress checks the plan
 authority: the owner's own refusal (revoked authority, a forbidden connection) answers 410 and the producer drops the
 subscription, and any other failure of either check (a plan lookup that failed) is reported and answers 503, so the
 producer retries. A subscription is dropped as invalid only when its server is gone (`NotFound`) or its grant or
-endpoint changed. A failed maintenance sweep is reported, then retried a minute later (`mcp/wake.ts`).
+endpoint changed. A maintenance sweep keeps the next alarm only for when something is due (`SqliteEventStore.nextDue`:
+the earliest lease refresh or poll of a running subscription, or a delivery's retry); with nothing waiting, no alarm is
+kept. A failed sweep is reported, then retried a minute later while something waits (`mcp/wake.ts`).
 
 `message.received` and `question.answered` both pull the authoritative inbox into the primary chat's current Pi session:
 the consumer schedules the channel's pull alarm at once (`channelPull`), as a doorbell does, and the pull runs there,
