@@ -3,6 +3,7 @@ import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { type Operation, PayChallengeInput, type PayChallengeResult, TOOLS } from '@goblin/wallet/contract'
 import * as Effect from 'effect/Effect'
 import { failure } from '../../services/errors.ts'
+import { FUNDS_SHORT } from '../../rails/challenge.ts'
 import { payChallenge, reportChallengeReceipt } from '../../services/programs/challenge.ts'
 import { readLimits } from '../../services/programs/status.ts'
 import { answer, refusal } from '../results.ts'
@@ -39,6 +40,13 @@ const noCredential = (operation: Operation) => {
       `Operation ${operation.id} may have signed, but no credential was kept for it.`,
       409,
       'Never pay this challenge again; fetch a new one under a new operation_id.',
+    )
+  if (operation.status === 'failed' && operation.reason?.startsWith(FUNDS_SHORT) === true)
+    return failure(
+      'insufficient_funds',
+      operation.reason,
+      402,
+      'Nothing was signed. Fund the agent wallet, then pay the challenge under a new operation_id.',
     )
   return failure(
     `payment_${operation.status}`,

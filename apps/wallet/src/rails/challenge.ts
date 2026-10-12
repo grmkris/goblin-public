@@ -1,4 +1,6 @@
-import { parseUnits } from '@goblin/wallet/amounts'
+import { formatUnits, parseUnits } from '@goblin/wallet/amounts'
+import { erc20Balance } from '@goblin/wallet/balances'
+import { TEMPO } from '@goblin/wallet/chains'
 import type { Operation } from '@goblin/wallet/contract'
 import {
   confirmReceipt,
@@ -17,6 +19,21 @@ const HANDED_OVER =
 
 const client = (deps: RailsDeps) => tempoClient(undefined, deps.fetchFn)
 
+/** How a challenge refused for want of USDC.e starts its reason; `pay_challenge` answers it as `insufficient_funds`. */
+export const FUNDS_SHORT = 'The agent wallet holds'
+
+/**
+ * Why the agent cannot pay `amount` USDC.e on Tempo, or undefined when it can or Tempo did not answer: an unread balance
+ * never blocks signing, since the service refuses a credential its payer cannot cover.
+ */
+const fundsShort = async (deps: RailsDeps, agent: string, amount: bigint): Promise<string | undefined> => {
+  // expected: a Tempo read that fails leaves the balance unknown, and unknown is not short.
+  const held = await erc20Balance(deps.rpcFor('tempo'), TEMPO.usdc.address, agent).catch(() => undefined)
+  if (held === undefined || held >= amount) return undefined
+  const { decimals } = TEMPO.usdc
+  return `${FUNDS_SHORT} ${formatUnits(held, decimals)} USDC.e on Tempo; this payment needs ${formatUnits(amount, decimals)}. Send USDC.e on Tempo to ${agent}, or add funds from any chain (add_funds).`
+}
+
 /**
  * Signs a reserved `pay_challenge` operation: the challenge must still be the one its terms froze (id, recipient,
  * amount), and the agent signs it under those terms. Once the credential exists it is `uncertain`, never settled: the
@@ -32,14 +49,17 @@ export const payChallenge = async (
   if (signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
   if (!deps.live)
     return { outcome: 'failed', reason: 'MPP payees take mainnet payments only; this wallet is on testnets.' }
-  if (!isTempoAgent(signer)) return { outcome: 'failed', reason: 'The agent wallet cannot sign on Tempo yet.' }
   const { terms } = operation
+  const amount = parseUnits(terms.amount, terms.token.decimals)
+  const short = await fundsShort(deps, signer.address, amount)
+  if (short !== undefined) return { outcome: 'failed', reason: short }
+  if (!isTempoAgent(signer)) return { outcome: 'failed', reason: 'The agent wallet cannot sign on Tempo yet.' }
   try {
     const credential = await signChallenge({
       header: challenge,
       challengeId,
       recipient: terms.recipient,
-      amount: parseUnits(terms.amount, terms.token.decimals),
+      amount,
       agent: signer,
       operationKey: operation.id,
       client: client(deps),

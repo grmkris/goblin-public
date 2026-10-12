@@ -2,6 +2,7 @@ import { toHex, type JsonRpc } from '@goblin/wallet/balances'
 import type { AgentSigner, Operation, ServiceRule, Terms } from '@goblin/wallet/contract'
 import { DEFAULT_SERVICES, termsHash } from '@goblin/wallet/contract'
 import { describe, expect, test, vi } from 'vitest'
+import { FUNDS_SHORT } from './challenge.ts'
 import { TOP_UP_SETTLE_MS } from './fetch.ts'
 import { createRails, type RailsDeps } from './index.ts'
 
@@ -245,6 +246,22 @@ describe('paid fetch', () => {
     const rails = createRails(deps({ fetchFn: exaFetch() }))
     const outcome = await rails.payPaidFetch(operation(cheaper), EXA, {})
     expect(outcome).toMatchObject({ outcome: 'failed', reason: expect.stringContaining('changed') })
+  })
+})
+
+describe('pay challenge', () => {
+  test('refuses before signing when the agent holds too little USDC.e on Tempo; an unread balance never blocks', async () => {
+    const terms = await createRails(deps({ fetchFn: exaFetch() })).quotePaidFetch(EXA, { query: 'goblin' }, 'mpp')
+    const empty = createRails(deps({ rpcFor: () => async () => word(0n) }))
+    expect(await empty.payChallenge(operation(terms), mppHeader(), 'abc')).toEqual({
+      outcome: 'failed',
+      reason: `${FUNDS_SHORT} 0 USDC.e on Tempo; this payment needs 0.007. Send USDC.e on Tempo to ${AGENT}, or add funds from any chain (add_funds).`,
+    })
+    const unread = createRails(deps({ rpcFor: () => () => Promise.reject(new Error('Tempo is down')) }))
+    // The test signer cannot sign on Tempo, so getting this far means the funds check let it through.
+    expect(await unread.payChallenge(operation(terms), mppHeader(), 'abc')).toMatchObject({
+      reason: 'The agent wallet cannot sign on Tempo yet.',
+    })
   })
 })
 

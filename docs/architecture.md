@@ -1789,7 +1789,9 @@ runtime calls for MPP inference. It hands over the service's 402 `WWW-Authentica
 (`MPP_PAYEES`: an exact origin and its one recipient, no first-use approval); the wallet reserves the Tempo USDC.e
 charge like any spend, signs it in Tempo's sponsored form (the service's fee payer pays the fee) and returns the
 credential, never fetching. The operation stays uncertain, its amount held, until the caller reports the service's
-`Payment-Receipt`, which settles it only when Tempo shows the agent's transfer under that challenge's memo.
+`Payment-Receipt`, which settles it only when Tempo shows the agent's transfer under that challenge's memo. An agent
+that holds less USDC.e than the charge is refused before anything is signed, as `insufficient_funds` naming its address
+and `add_funds`; a Tempo balance that cannot be read does not block signing.
 
 Paid inference and MPP services pay from the agent's own wallet on Tempo, in USDC.e. `wallet_status` names it as
 `payFrom` (the address, and the USDC.e it holds when Tempo could be read) and, below about two paid calls (0.05 USDC.e),

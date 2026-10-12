@@ -3,6 +3,7 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, test } from 'vitest'
 import { defaultWiring, unconfiguredRails, type Wiring } from '../context.ts'
 import { WalletLedger } from '../ledger/durable.ts'
+import { FUNDS_SHORT } from '../rails/challenge.ts'
 import { RailError } from '../rails/deps.ts'
 import type { RailsPort } from '../services/rails.ts'
 import { testEnv } from '../test-env.ts'
@@ -203,7 +204,11 @@ describe('the paid tools over MCP', () => {
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
       }),
     payChallenge: (_operation, _challenge, challengeId) =>
-      Promise.resolve({ outcome: 'uncertain', reason: 'handed over', credential: `token-${challengeId}` }),
+      Promise.resolve(
+        challengeId === 'mcp-short'
+          ? { outcome: 'failed', reason: `${FUNDS_SHORT} 0 USDC.e on Tempo; this payment needs 0.00075.` }
+          : { outcome: 'uncertain', reason: 'handed over', credential: `token-${challengeId}` },
+      ),
     confirmChallenge: () => Promise.resolve({ kind: 'paid', payment: { rail: 'mpp', txHash: `0x${'ab'.repeat(32)}` } }),
   }
   const paying = createMcpEndpoint({ authenticate, wiring: { ...wiring, rails: () => quoting } })
@@ -282,6 +287,19 @@ describe('the paid tools over MCP', () => {
       challenge: wwwAuthenticate,
     })
     expect(both).toMatchObject({ isError: true, structuredContent: { error: { code: 'bad_request' } } })
+    const short = await callPaying('pay_challenge', {
+      url: 'https://openrouter.mpp.tempo.xyz/v1/chat/completions',
+      method: 'POST',
+      challenge: wwwAuthenticate.replace('id="mcp-c1"', 'id="mcp-short"'),
+      max_usd: '0.02',
+      operation_id: 'op-mcp-challenge-2',
+    })
+    expect(short).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: { code: 'insufficient_funds', message: expect.stringContaining('0 USDC.e on Tempo') },
+      },
+    })
   })
 
   test('request_policy_change only records the ask', async () => {
