@@ -4,6 +4,7 @@
  * allowance in the ERC20PeriodTransfer enforcer. Read-only; nothing here signs.
  */
 import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
+import { erc20Balance } from './erc20.ts'
 import { formatUnits } from '../amounts/index.ts'
 import { ARBITRUM, BASE, ETHEREUM, TEMPO, type Chain } from '../chains/index.ts'
 import type { ChainKey } from '../contract/index.ts'
@@ -19,7 +20,6 @@ const CHAIN_BY_KEY: Readonly<Record<ChainKey, Chain>> = {
 
 export const BALANCE_CHAINS: readonly ChainKey[] = ['base', 'ethereum', 'arbitrum', 'tempo']
 
-const ERC20 = parseAbi(['function balanceOf(address owner) view returns (uint256)'])
 const ENFORCER = parseAbi([
   'function getAvailableAmount(bytes32 delegationHash, address delegationManager, bytes terms) view returns (uint256 availableAmount, bool isNewPeriod, uint256 currentPeriod)',
 ])
@@ -60,12 +60,6 @@ const token = (symbol: string, address: string, decimals: number, raw: bigint): 
   raw,
   formatted: formatUnits(raw, decimals),
 })
-
-export const erc20Balance = async (rpc: JsonRpc, tokenAddress: string, holder: string): Promise<bigint> => {
-  const data = encodeFunctionData({ abi: ERC20, functionName: 'balanceOf', args: [toAddress(holder)] })
-  const result = await rpc('eth_call', [{ to: tokenAddress, data }, 'latest'])
-  return decodeFunctionResult({ abi: ERC20, functionName: 'balanceOf', data: toHex(String(result)) })
-}
 
 const accountBalance = async (rpc: JsonRpc, chain: Chain, key: ChainKey, holder: string): Promise<AccountBalance> => {
   const usdcRaw = await erc20Balance(rpc, chain.usdc.address, holder)
@@ -166,3 +160,6 @@ export const getAllowanceState = async (input: AllowanceInput): Promise<Allowanc
     ...(currentPeriod === 0n ? {} : { periodEndsAt: terms.startDate + currentPeriod * terms.periodDuration }),
   }
 }
+
+export { erc20Balance } from './erc20.ts'
+export * from './transfer.ts'

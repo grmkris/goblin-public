@@ -47,3 +47,24 @@ export const quantity = (value: unknown): bigint => {
 export const field = (value: unknown, name: string): unknown => (isRecord(value) ? value[name] : undefined)
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null
+
+export type TxStatus = 'success' | 'reverted' | 'pending'
+
+export interface WaitOptions {
+  readonly attempts?: number
+  readonly intervalMs?: number
+  readonly sleep?: (ms: number) => Promise<void>
+}
+
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** Polls for a transaction receipt; `pending` when none arrived in time (the caller treats that as uncertain). */
+export const waitForReceipt = async (rpc: JsonRpc, hash: string, options: WaitOptions = {}): Promise<TxStatus> => {
+  const sleep = options.sleep ?? realSleep
+  for (let attempt = 0; attempt < (options.attempts ?? 20); attempt += 1) {
+    const receipt = await rpc('eth_getTransactionReceipt', [hash])
+    if (isRecord(receipt)) return receipt['status'] === '0x1' ? 'success' : 'reverted'
+    await sleep(options.intervalMs ?? 1500)
+  }
+  return 'pending'
+}
