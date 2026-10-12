@@ -60,6 +60,21 @@ export const PayFrom = Schema.Struct({
 })
 export type PayFrom = typeof PayFrom.Type
 
+/**
+ * The agent's Tempo float (ADR 0051): its USDC.e on Tempo, which the wallet refills from the owner's Base allowance to
+ * `target` whenever it falls below `low`. `automatic` is false when the allowance cannot refill it (none, expired, used
+ * up this period, nothing on Base, or testnets): then the owner funds Tempo by hand. `held` is absent when Tempo was
+ * not read.
+ */
+export const TempoFloat = Schema.Struct({
+  held: Schema.optional(TokenAmount),
+  low: TokenAmount,
+  target: TokenAmount,
+  refilling: Schema.Boolean,
+  automatic: Schema.Boolean,
+})
+export type TempoFloat = typeof TempoFloat.Type
+
 /** `wallet_status` structured content: goblin's `WalletStatus` plus what the App shows. */
 export const WalletStatusResult = Schema.Struct({
   status: WalletStatus,
@@ -67,6 +82,8 @@ export const WalletStatusResult = Schema.Struct({
   agent: Schema.Struct({ address: Address }),
   /** Absent until the owner has created the agent wallet. */
   payFrom: Schema.optional(PayFrom),
+  /** Absent until the owner has created the agent wallet. */
+  float: Schema.optional(TempoFloat),
   balances: Schema.Array(ChainBalance),
   /** Chains whose balances could not be read just now: unknown, never zero. Their rows are absent from `balances`. */
   unread: Schema.optional(Schema.Array(ChainKey)),

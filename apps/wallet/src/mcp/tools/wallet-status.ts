@@ -35,7 +35,7 @@ export function registerWalletStatus(server: McpServer, box: Toolbox): void {
         `${limits.length} limits are in force; ask for allowances to see each layer.`,
         status.expiresAt === undefined ? '' : `The grant expires ${status.expiresAt}.`,
         setupSentence(read.value.setup, box.origin) ?? '',
-        fundingSentence(read.value.result.payFrom) ?? '',
+        fundingSentence(read.value.result.payFrom, read.value.float) ?? '',
       ]
         .filter((line) => line !== '')
         .join('\n')

@@ -52,6 +52,8 @@ export type PayOutcome =
 export interface BalanceRead {
   readonly balances: ChainBalance[]
   readonly unread: ChainKey[]
+  /** Read on the mainnets (`WALLET_LIVE`); absent or false on testnets, where the Tempo float is never refilled. */
+  readonly live?: boolean
 }
 
 /**

@@ -1,6 +1,6 @@
-import type { ChainBalance } from '@goblin/wallet/contract'
+import type { ChainBalance, ChainSetup, LimitView } from '@goblin/wallet/contract'
 import { describe, expect, test } from 'vitest'
-import { fundingSentence, setupGaps, setupSentence } from './setup.ts'
+import { type FloatSource, floatSource, fundingSentence, setupGaps, setupSentence } from './setup.ts'
 
 const OWNER = '0x1111111111111111111111111111111111111111'
 const usdc = (balance: string): ChainBalance => ({
@@ -62,5 +62,65 @@ describe('setup gaps', () => {
     expect(fundingSentence(at('0.05'))).toBeUndefined()
     expect(fundingSentence(at())).toBeUndefined()
     expect(fundingSentence(undefined)).toBeUndefined()
+  })
+})
+
+/** The on-chain allowance on Base as the rails report it, with `remaining` left this period. */
+const onchain = (remaining: string): LimitView => ({
+  layer: 'onchain',
+  period: 'hour',
+  limit: '20',
+  remaining,
+  chain: 'base',
+  enforcedBy: 'Base, MetaMask ERC20PeriodTransfer enforcer',
+})
+
+describe('the Tempo float source', () => {
+  const NOW = Date.parse('2026-10-12T10:00:00Z')
+  const signed: ChainSetup = {
+    chain: 'base',
+    upgraded: true,
+    allowance: { perHour: '20', expiresAt: '2026-10-19T10:00:00Z', delegationHash: '0xdd' },
+  }
+  const source = (overrides: Partial<Parameters<typeof floatSource>[0]> = {}) =>
+    floatSource({
+      live: true,
+      chains: [signed],
+      limits: [onchain('20')],
+      balances: [usdc('12.5')],
+      now: NOW,
+      ...overrides,
+    })
+
+  test.each<[string, Partial<Parameters<typeof floatSource>[0]>, FloatSource]>([
+    ['a signed, unexpired allowance with room and USDC refills it', {}, 'allowance'],
+    ['testnets never refill', { live: false }, 'testnet'],
+    ['no allowance on Base', { chains: [{ chain: 'base', upgraded: true }] }, 'no_allowance'],
+    ['an allowance on another chain only', { chains: [{ ...signed, chain: 'arbitrum' }] }, 'no_allowance'],
+    ['an expired allowance', { now: Date.parse('2026-10-20T00:00:00Z') }, 'expired'],
+    ['less than the smallest refill and its gas left this period', { limits: [onchain('0.59')] }, 'exhausted'],
+    ['exactly the smallest refill and its gas left', { limits: [onchain('0.6')] }, 'allowance'],
+    ['an owner with too little USDC on Base', { balances: [usdc('0.2')] }, 'unfunded'],
+    ['Base not read: unknown is not empty', { balances: [], limits: [] }, 'allowance'],
+  ])('%s', (_name, overrides, expected) => {
+    expect(source(overrides)).toBe(expected)
+  })
+
+  test('the funding sentence asks for USDC.e by hand only when the allowance cannot refill it', () => {
+    const AGENT = '0x4444444444444444444444444444444444444444'
+    const empty = { address: AGENT, chain: 'tempo' as const, token: 'USDC.e' as const, held: '0.01' }
+    expect(fundingSentence(empty, { source: 'allowance', refilling: false })).toContain(
+      "the wallet keeps it topped up from the owner's Base allowance",
+    )
+    expect(fundingSentence(empty, { source: 'allowance', refilling: false })).not.toContain('send USDC.e')
+    expect(fundingSentence(empty, { source: 'exhausted', refilling: true })).toContain('a refill')
+    expect(fundingSentence(empty, { source: 'unfunded', refilling: false })).toContain('add USDC on Base')
+    expect(fundingSentence(empty, { source: 'expired', refilling: false })).toContain(
+      'send USDC.e on Tempo to that address',
+    )
+    expect(fundingSentence(empty, { source: 'expired', refilling: false })).toContain('has expired')
+    expect(fundingSentence(empty, { source: 'exhausted', refilling: false })).toContain('used up for this period')
+    expect(fundingSentence(empty, { source: 'no_allowance', refilling: false })).toContain('No Base allowance')
+    expect(fundingSentence({ ...empty, held: '2' }, { source: 'no_allowance', refilling: false })).toBeUndefined()
   })
 })

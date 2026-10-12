@@ -1,4 +1,13 @@
-import type { ChainBalance, ChainKey, LimitView, PayFrom, WalletStatusResult } from '@goblin/wallet/contract'
+import { formatUnits } from '@goblin/wallet/amounts'
+import { FLOAT_LOW, FLOAT_TARGET } from '@goblin/wallet/bridge'
+import type {
+  ChainBalance,
+  ChainKey,
+  LimitView,
+  PayFrom,
+  TempoFloat,
+  WalletStatusResult,
+} from '@goblin/wallet/contract'
 import * as Clock from 'effect/Clock'
 import * as DateTime from 'effect/DateTime'
 import * as Effect from 'effect/Effect'
@@ -7,7 +16,7 @@ import { Approvals } from '../approvals.ts'
 import { Ledger } from '../ledger.ts'
 import { type BalanceRead, Rails } from '../rails.ts'
 import { deriveStatus } from './derive-status.ts'
-import { setupGaps } from './setup.ts'
+import { type FloatSource, floatSource, setupGaps } from './setup.ts'
 
 const NO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -37,8 +46,17 @@ const payFromOf = (
   }
 }
 
-/** `wallet_status` and `GET /api/status`: goblin's `WalletStatus` plus what the App shows. */
-export const readStatus = Effect.gen(function* () {
+/** The Tempo float as the status shows it: what it holds, its thresholds, and whether the allowance refills it. */
+const floatOf = (payFrom: PayFrom, source: FloatSource, refilling: boolean): TempoFloat => ({
+  ...(payFrom.held === undefined ? {} : { held: payFrom.held }),
+  low: formatUnits(FLOAT_LOW, 6),
+  target: formatUnits(FLOAT_TARGET, 6),
+  refilling,
+  automatic: source === 'allowance',
+})
+
+/** The status and where the Tempo float's refills come from (ADR 0051). */
+const readStatusParts = Effect.gen(function* () {
   const ledger = yield* Ledger
   const rails = yield* Rails
   const { site } = yield* Approvals
@@ -61,6 +79,9 @@ export const readStatus = Effect.gen(function* () {
     now,
   })
   const payFrom = payFromOf(profile.agentAddress, balances, unread)
+  const live = Option.isSome(read) && read.value.live === true
+  const source = floatSource({ live, chains: profile.chains, limits, balances, now })
+  const { refilling } = yield* ledger.use((api) => api.floatState())
   const result: WalletStatusResult = {
     status,
     owner: {
@@ -68,7 +89,7 @@ export const readStatus = Effect.gen(function* () {
       upgraded: profile.chains.some((chain) => chain.upgraded),
     },
     agent: { address: profile.agentAddress ?? NO_ADDRESS },
-    ...(payFrom === undefined ? {} : { payFrom }),
+    ...(payFrom === undefined ? {} : { payFrom, float: floatOf(payFrom, source, refilling) }),
     balances,
     ...(unread.length === 0 ? {} : { unread }),
     limits,
@@ -76,17 +97,23 @@ export const readStatus = Effect.gen(function* () {
     site,
     checkedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
   }
-  return result
+  return { result, float: { source, refilling } }
 })
 
-/** `wallet_status` for the agent: the status plus what the owner still has to set up, if anything. */
+/** `wallet_status` and `GET /api/status`: goblin's `WalletStatus` plus what the App shows. */
+export const readStatus = Effect.map(readStatusParts, ({ result }) => result)
+
+/**
+ * `wallet_status` for the agent: the status, what the owner still has to set up, if anything, and where the Tempo
+ * float's refills come from.
+ */
 export const readStatusWithSetup = Effect.gen(function* () {
-  const result = yield* readStatus
+  const { result, float } = yield* readStatusParts
   const profile = yield* (yield* Ledger).use((api) => api.profile())
   const setup = setupGaps({
     hasAgent: profile.agentAddress !== undefined,
     chains: profile.chains,
     balances: result.balances,
   })
-  return { result, setup }
+  return { result, setup, float }
 })

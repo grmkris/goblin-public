@@ -45,7 +45,11 @@ export const balances = async (deps: RailsDeps): Promise<BalanceRead> => {
       ),
     )
   })
-  return { balances: found, unread: rows.flatMap((row) => (row.error === undefined ? [] : [row.chain])) }
+  return {
+    balances: found,
+    unread: rows.flatMap((row) => (row.error === undefined ? [] : [row.chain])),
+    live: deps.live,
+  }
 }
 
 const periodOf = (seconds: bigint): LimitView['period'] => {
