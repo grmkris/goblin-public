@@ -1,4 +1,7 @@
-/** Goblin Wallet's stage loader: `dev` (local), `plan:dev` and `deploy:dev`. scripts/stage.ts stays goblin's own. */
+/**
+ * Goblin Wallet's stage loader: `dev` (local), `plan:dev`/`deploy:dev` and `plan:prod`/`deploy:prod` (the latter needs
+ * `GOBLIN_CONFIRM_PROD=1`). Each stage reads `.local/wallet-<stage>.env`. scripts/stage.ts stays goblin's own.
+ */
 import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { resolveStage } from './stage-config.ts'
@@ -7,12 +10,25 @@ import { attachStageState, DEFAULT_RELEASE_ROOT } from './stage-state.ts'
 const root = resolve(import.meta.dirname, '..')
 const releaseRoot = process.env['GOBLIN_RELEASE_ROOT'] ?? DEFAULT_RELEASE_ROOT
 const command = Bun.argv[2] ?? 'dev'
-const subcommands: Record<string, string> = { dev: 'dev', 'plan:dev': 'plan', 'deploy:dev': 'deploy' }
-const alchemyCommand = subcommands[command]
-if (alchemyCommand === undefined) throw new Error('unsupported_wallet_stage_command')
+const subcommands: Record<string, readonly [alchemy: string, stage: string]> = {
+  dev: ['dev', 'local'],
+  'plan:dev': ['plan', 'dev'],
+  'deploy:dev': ['deploy', 'dev'],
+  'plan:prod': ['plan', 'prod'],
+  'deploy:prod': ['deploy', 'prod'],
+}
+const selected = subcommands[command]
+if (selected === undefined) throw new Error('unsupported_wallet_stage_command')
+const [alchemyCommand, stageName] = selected
+if (command === 'deploy:prod' && process.env['GOBLIN_CONFIRM_PROD'] !== '1')
+  throw new Error('prod_deploy_requires_confirmation')
 
-const stage = resolveStage(command === 'dev' ? 'local' : 'dev', 'goblin-wallet')
-const config = resolve(process.env['GOBLIN_ENV_DIR'] ?? resolve(root, '.local'), 'wallet-dev.env')
+const stage = resolveStage(stageName, 'goblin-wallet')
+// Local development runs with the dev stage's values.
+const config = resolve(
+  process.env['GOBLIN_ENV_DIR'] ?? resolve(root, '.local'),
+  `wallet-${stage.local ? 'dev' : stage.name}.env`,
+)
 const shared = process.env['GOBLIN_CLOUD_ENV_FILE'] ?? resolve(root, '.local/cloud.env')
 const requirePrivate = (file: string) => {
   if ((statSync(file).mode & 0o077) !== 0) throw new Error(`private_stage_file_requires_mode_600: ${file}`)
@@ -77,10 +93,10 @@ const args = [
   stage.name,
   ...envFiles.flatMap((file) => ['--env-file', file]),
 ]
-if (command === 'deploy:dev') args.push('--yes')
+if (alchemyCommand === 'deploy') args.push('--yes')
 const child = Bun.spawn(['bun', ...args], {
   cwd: resolve(root, 'apps/wallet'),
   env: childEnv,
-  stdio: [command === 'dev' || command === 'deploy:dev' ? 'inherit' : 'ignore', 'inherit', 'inherit'],
+  stdio: [alchemyCommand === 'plan' ? 'ignore' : 'inherit', 'inherit', 'inherit'],
 })
 process.exitCode = await child.exited
