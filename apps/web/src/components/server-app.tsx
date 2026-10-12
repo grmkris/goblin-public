@@ -54,7 +54,8 @@ function Opened({
 export function ServerAppPage({ connectionId }: { readonly connectionId: string }) {
   const servers = useSuspenseQuery(serversQuery).data
   const server = servers.find((each) => each.connectionId === connectionId)
-  const tool = server?.profile?.app?.tool
+  // A profile names its app tool; a server without one may declare a global entrypoint (`ServerView.entrypoint`).
+  const tool = server?.profile?.app?.tool ?? server?.entrypoint
   const title = server?.profile?.title ?? server?.label ?? connectionId
   return (
     <>
