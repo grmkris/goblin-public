@@ -37,6 +37,7 @@ import {
   ThreadHeadPart,
   TopicSeedPart,
 } from './drawn-parts.tsx'
+import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { McpToolPart } from './mcp-tool-part.tsx'
 import { OutcomeRow } from './outcome-row.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
@@ -51,14 +52,15 @@ function Aside({ children }: { readonly children: ReactNode }) {
   return <div className="px-3.5">{children}</div>
 }
 
-/** What a receipt says about a request to the owner. */
+/** What a receipt says about a request to the owner; a connection by its label. */
 function InteractionLine({ interaction }: { readonly interaction: Interaction }) {
+  const named = useConnectionLabels()
   if (interaction.kind === 'approval')
     return (
       <Receipt>
         <KeyRoundIcon aria-hidden />
         <span>
-          Asked to approve {interaction.connectionId} · {interaction.name}
+          Asked to approve {named(interaction.connectionId)} · {interaction.name}
         </span>
       </Receipt>
     )
@@ -67,7 +69,7 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
       <Receipt>
         <KeyRoundIcon aria-hidden />
         <span>
-          Asked to use {interaction.connectionId} · {interaction.name}
+          Asked to use {named(interaction.connectionId)} · {interaction.name}
         </span>
       </Receipt>
     )
@@ -76,7 +78,7 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
       <Receipt>
         <ExternalLinkIcon aria-hidden />
         <span>
-          Asked you to finish a step on {interaction.connectionId}’s site for {interaction.name}
+          Asked you to finish a step on {named(interaction.connectionId)}’s site for {interaction.name}
         </span>
       </Receipt>
     )
@@ -84,7 +86,7 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
     return (
       <Receipt>
         <KeyRoundIcon aria-hidden />
-        <span>Asked you to sign in to {interaction.connectionId} again with more access</span>
+        <span>Asked you to sign in to {named(interaction.connectionId)} again with more access</span>
       </Receipt>
     )
   if (interaction.kind === 'server')
@@ -164,6 +166,7 @@ function ServerLine({
   readonly calls: readonly ToolPart[]
   readonly canSwitchModel: boolean
 }) {
+  const named = useConnectionLabels()
   const live = calls.some(running)
   const elapsed = span(calls, live, useNow(live))
   const state = live ? 'running' : calls.some((call) => call.state === 'stopped') ? 'stopped' : 'done'
@@ -172,7 +175,7 @@ function ServerLine({
       <ToolCallTrigger>
         <ToolCallStatus state={state} />
         <ToolCallTitle>
-          Used <b className="font-medium text-foreground">{server}</b> · {calls.length} calls
+          Used <b className="font-medium text-foreground">{named(server)}</b> · {calls.length} calls
         </ToolCallTitle>
         <ToolCallMeta>{elapsed !== undefined && <Duration ms={elapsed} running={live} />}</ToolCallMeta>
       </ToolCallTrigger>
@@ -196,6 +199,7 @@ function WorkGroup({
   readonly part: Extract<Part, { readonly kind: 'work' }>
   readonly canSwitchModel: boolean
 }) {
+  const named = useConnectionLabels()
   const shown = useMemo(() => part.steps.filter((step) => step.kind !== 'working'), [part.steps])
   const lines = useMemo(() => stepLines(shown), [shown])
   const tools = shown.filter((step): step is ToolPart => step.kind === 'tool')
@@ -207,7 +211,11 @@ function WorkGroup({
       <ToolCallTrigger>
         <ToolCallStatus state={state} />
         <ToolCallTitle>
-          {part.live ? liveLabel(part.steps) : steps === 0 ? 'Thoughts' : `${steps} ${steps === 1 ? 'step' : 'steps'}`}
+          {part.live
+            ? liveLabel(part.steps, named)
+            : steps === 0
+              ? 'Thoughts'
+              : `${steps} ${steps === 1 ? 'step' : 'steps'}`}
         </ToolCallTitle>
         <ToolCallMeta>{elapsed !== undefined && <Duration ms={elapsed} running={part.live} />}</ToolCallMeta>
       </ToolCallTrigger>

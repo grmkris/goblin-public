@@ -237,12 +237,19 @@ const OWN_TOOLS: Readonly<Record<string, string>> = {
   skill_read: 'Read a skill',
 }
 
+/** How a connection is named to the owner: its label (`useConnectionLabels`), or its id where none is known. */
+export type Named = (connectionId: string) => string
+const asIs: Named = (connectionId) => connectionId
+
 /**
- * How a tool call reads as one line: "Used" and the server, then the tool; an `app_call` as the app and its member;
- * the agent's own tools in words.
+ * How a tool call reads as one line: "Used" and the connection by its label, then the tool; an `app_call` as the app
+ * and its member; the agent's own tools in words.
  */
-export function toolLine(part: ToolPart): { readonly lead: string; readonly server?: string; readonly tool?: string } {
-  if (part.target) return { lead: 'Used', server: part.target.connectionId, tool: part.target.name }
+export function toolLine(
+  part: ToolPart,
+  named: Named = asIs,
+): { readonly lead: string; readonly server?: string; readonly tool?: string } {
+  if (part.target) return { lead: 'Used', server: named(part.target.connectionId), tool: part.target.name }
   const { app, member } = part.call.arguments
   if (part.call.name === 'app_call' && isString(app) && isString(member))
     return { lead: 'Used', server: app, tool: member }

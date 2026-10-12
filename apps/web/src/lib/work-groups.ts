@@ -2,7 +2,7 @@
 // above its answer instead of fourteen. What the owner must see or act on stays where it is: a request to them, a call that
 // failed or was blocked, a subagent, an App build, a routine to confirm, what a search found, an App a call opened.
 import { interactionOf } from './interactions.ts'
-import { type Part, type ToolPart, type WorkStep, partKey } from './parts.ts'
+import { type Named, type Part, type ToolPart, type WorkStep, partKey } from './parts.ts'
 import { sourcesOf } from './sources.ts'
 import { subagentAction } from './threads.ts'
 
@@ -94,18 +94,18 @@ export function stepLines(steps: readonly WorkStep[]): StepLine[] {
  * What the folded line says while it is under way: the tool that is running, or how many are when several run at once
  * (parallel calls start together), else that the model is thinking. A call asked for and not yet started is not running.
  */
-export function liveLabel(steps: readonly WorkStep[]): string {
+export function liveLabel(steps: readonly WorkStep[], named: Named = (connectionId) => connectionId): string {
   const going = steps.filter((step): step is ToolPart => step.kind === 'tool' && step.state === 'running')
   const [only] = going
   if (only === undefined) return 'Thinking…'
   if (going.length === 1)
     return only.target
-      ? `Using ${only.target.connectionId} · ${only.target.name}`
+      ? `Using ${named(only.target.connectionId)} · ${only.target.name}`
       : `Using ${only.call.name || 'a tool'}`
   const servers = new Set(going.map((step) => step.target?.connectionId))
   const [server] = servers
   return servers.size === 1 && server !== undefined
-    ? `Using ${server} · ${going.length} tools`
+    ? `Using ${named(server)} · ${going.length} tools`
     : `Using ${going.length} tools`
 }
 

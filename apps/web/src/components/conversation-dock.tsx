@@ -5,6 +5,7 @@ import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@g
 import { RotateCcwIcon } from 'lucide-react'
 import { modelQuery, usageQuery } from '../agent/queries.ts'
 import { useStoredStates } from '../approvals/hooks.ts'
+import { useConnectionLabels } from '../mcp/hooks.ts'
 import { openInteractions, stillOpen, waitingOnOwner } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
@@ -166,10 +167,12 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
   const states = useStoredStates(asked)
   const waiting = useMemo(() => stillOpen(asked, states), [asked, states])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
+  const named = useConnectionLabels()
   const presence = presenceOf({
     status,
     projection,
     parts,
+    named,
     waiting: waitingOnOwner(waiting, states),
     exhausted: usage !== undefined && budgetFraction(usage) >= 1,
   })

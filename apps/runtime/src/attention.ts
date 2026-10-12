@@ -26,7 +26,40 @@ const addLabel = (details: Fields): string | undefined =>
   )
 
 type ToolResult = Extract<Message, { role: 'toolResult' }>
-type Ask = { readonly kind: Attention['kind']; readonly label: string }
+
+/**
+ * An ask about one connection's tool (a grant, more access): the connection's id and what follows it in the label, so
+ * the chat's description can name the connection by its label (`labelled`).
+ */
+type About = { readonly connection: string; readonly what: string }
+type Ask = { readonly kind: Attention['kind']; readonly label: string; readonly about?: About }
+
+/** An ask in a chat as attention, keeping what it is about until the chat's description names it. */
+export type OpenAsk = Attention & { readonly about?: About }
+
+/** An ask about `connection`: labelled by its id until `labelled` names it. */
+const about = (connection: string, what: string): Pick<Ask, 'label' | 'about'> => ({
+  label: label(`${connection} · ${what}`),
+  about: { connection, what },
+})
+
+/** Every connection's label the owner gave it (ADR 0041), by its id. */
+export const connectionLabels = <RunResult>(db: SQLiteAsyncDatabase<'sync', RunResult>): ReadonlyMap<string, string> =>
+  new Map(
+    db
+      .select()
+      .from(appMcpLabels)
+      .all()
+      .map((row) => [row.connectionId, row.label]),
+  )
+
+/** The asks with each connection named by the owner's label (ADR 0041); the id stays where none is known. */
+export const labelled = (asks: readonly OpenAsk[], labels: ReadonlyMap<string, string>): Attention[] =>
+  asks.map(({ about: target, ...ask }) =>
+    target === undefined
+      ? ask
+      : { ...ask, label: label(`${labels.get(target.connection) ?? target.connection} · ${target.what}`) },
+  )
 
 /** The first question's prompt, for a question's label. */
 const questionLabel = (details: Fields): string =>
@@ -42,10 +75,10 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
     result.isError || result.toolName !== 'ask_user' ? undefined : { kind: 'question', label: questionLabel(details) },
   'grant-required': (details, result) =>
     result.isError
-      ? { kind: 'grant', label: `${text(details.connectionId) ?? ''} · ${text(details.name) ?? ''}` }
+      ? { kind: 'grant', ...about(text(details.connectionId) ?? '', text(details.name) ?? '') }
       : undefined,
   'scope-required': (details, result) =>
-    result.isError ? { kind: 'access', label: `${text(details.connectionId) ?? ''} · more access` } : undefined,
+    result.isError ? { kind: 'access', ...about(text(details.connectionId) ?? '', 'more access') } : undefined,
   'not-in-topic': (details, result) => {
     const add = result.isError ? addLabel(details) : undefined
     return add === undefined ? undefined : { kind: 'setup', label: add }
@@ -56,7 +89,7 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
  * The owner ask a tool result carries, from goblin's own markers only: a remote result always carries an `origin`, so
  * a server's content cannot raise one. Held MCP calls are read from their store instead (`storedAsks`).
  */
-function askOf(entry: EntryRecord): Attention | undefined {
+function askOf(entry: EntryRecord): OpenAsk | undefined {
   for (const message of entry.model ?? []) {
     if (message.role !== 'toolResult') continue
     const details = record(message.details)
@@ -68,6 +101,7 @@ function askOf(entry: EntryRecord): Attention | undefined {
         since: Math.floor(message.timestamp / 1000),
         entry: Number(entry.id),
         label: label(ask.label),
+        ...(ask.about === undefined ? {} : { about: ask.about }),
       }
   }
   return undefined
@@ -134,7 +168,7 @@ const personaAnswer = Schema.decodeUnknownOption(PersonaAnswerData)
  * A Persona's answer in a chat's entries (`app.persona`, ADR 0041): its Persona, and the tool it waits for the owner to
  * allow, as an ask. Its held calls are read from their store (`storedAsks`); its next answer settles its ask.
  */
-function personaAsk(entry: EntryRecord): { readonly persona: number; readonly ask?: Attention } | undefined {
+function personaAsk(entry: EntryRecord): { readonly persona: number; readonly ask?: OpenAsk } | undefined {
   if (entry.kind !== 'app.persona') return undefined
   const answer = Option.getOrUndefined(personaAnswer(entry.data))
   if (answer === undefined) return undefined
@@ -142,11 +176,11 @@ function personaAsk(entry: EntryRecord): { readonly persona: number; readonly as
   // Held calls and URL requests are read from their stores; a grant or a sign-in waits in the answer itself.
   if (hold?.kind !== 'grant' && hold?.kind !== 'access') return { persona: answer.persona }
   const since = Math.floor((entry.model?.[0]?.timestamp ?? 0) / 1000)
-  const ask: Attention = {
+  const ask: OpenAsk = {
     kind: hold.kind,
     since,
     entry: Number(entry.id),
-    label: label(`${hold.connectionId} · ${hold.kind === 'grant' ? hold.name : 'more access'}`),
+    ...about(hold.connectionId, hold.kind === 'grant' ? hold.name : 'more access'),
     persona: answer.persona,
   }
   return { persona: answer.persona, ask }
@@ -156,7 +190,7 @@ function personaAsk(entry: EntryRecord): { readonly persona: number; readonly as
  * What still waits on the owner in a chat's own entries (oldest first): the asks since its newest user message, which
  * settles every ask before it, as the web's cards do (`lib/interactions.ts`); a Persona's ask until its next answer.
  */
-export function openAsks(entries: readonly EntryRecord[], before: readonly Attention[] = []): readonly Attention[] {
+export function openAsks(entries: readonly EntryRecord[], before: readonly OpenAsk[] = []): readonly OpenAsk[] {
   let open = [...before]
   for (const entry of entries) {
     if (entry.kind === 'pi.user') open = []

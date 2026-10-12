@@ -13,6 +13,7 @@ import {
 } from '@goblin/ui'
 import { elapsedMs, toolLine, type ToolPart } from '../../lib/parts.ts'
 import { outputBlocks, payloadView, type PayloadBlock } from '../../lib/tool-payload.ts'
+import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { useNow } from '../use-now.ts'
 import { ToolMarkdown } from './tool-markdown.tsx'
 
@@ -47,7 +48,7 @@ export function ToolCard({ part, children }: { readonly part: ToolPart; readonly
   const live = part.state === 'running' || part.state === 'pending'
   const now = useNow(live)
   const elapsed = elapsedMs(part, now)
-  const { lead, server, tool } = toolLine(part)
+  const { lead, server, tool } = toolLine(part, useConnectionLabels())
   const args = part.target?.arguments ?? part.call.arguments
   return (
     <ToolCall>

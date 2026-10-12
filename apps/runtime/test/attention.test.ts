@@ -1,7 +1,7 @@
 import type { EntryRecord } from '@earendil-works/pi-durable'
 import type { Message } from '@earendil-works/pi-ai'
 import { afterEach, describe, expect, it } from 'vitest'
-import { heldCall, openAsks, storedAsks } from '../src/attention.ts'
+import { heldCall, labelled, openAsks, storedAsks } from '../src/attention.ts'
 import { conversationId, entryId } from '../src/pi/context.ts'
 import { appMcpApprovals } from '../src/storage/mcp-approvals.ts'
 import { appMcpUrlRequests } from '../src/storage/mcp-url-requests.ts'
@@ -59,11 +59,19 @@ describe('attention (A5, ADR 0032)', () => {
     const access = result('mcp_call', true, { kind: 'scope-required', connectionId: 'notes', scope: 'notes:write' })
     const remote = result('mcp_call', true, { kind: 'grant-required', connectionId: 'x', name: 'y', origin: 'remote' })
     const settled = result('mcp_call', true, { kind: 'grant-required', connectionId: 'old', name: 'call' })
-    expect(openAsks([settled, user('go on'), question, grant, capability, access, remote])).toEqual([
+    const open = openAsks([settled, user('go on'), question, grant, capability, access, remote])
+    expect(labelled(open, new Map())).toEqual([
       { kind: 'question', since: question.id, entry: question.id, label: 'Which day?' },
       { kind: 'grant', since: grant.id, entry: grant.id, label: 'notes · write' },
       { kind: 'setup', since: capability.id, entry: capability.id, label: 'Add subagents to #Work' },
       { kind: 'access', since: access.id, entry: access.id, label: 'notes · more access' },
+    ])
+    // A connection is named by the owner's label where it has one (ADR 0041).
+    expect(labelled(open, new Map([['notes', 'Notes · Work']])).map((ask) => ask.label)).toEqual([
+      'Which day?',
+      'Notes · Work · write',
+      'Add subagents to #Work',
+      'Notes · Work · more access',
     ])
     expect(openAsks([user('answered')], openAsks([question]))).toEqual([])
     expect(openAsks([grant], openAsks([question])).map((ask) => ask.kind)).toEqual(['question', 'grant'])
@@ -154,9 +162,9 @@ describe('attention (A5, ADR 0032)', () => {
     const hold = { kind: 'grant', connectionId: 'sq', name: 'bid', fork: '90' }
     const asked = withData(answer(), 1, hold)
     const other = withData(answer(), 2, { ...hold, fork: '91' })
-    expect(openAsks([asked, other])).toEqual([
-      { kind: 'grant', since: asked.id, entry: asked.id, label: 'sq · bid', persona: 1 },
-      { kind: 'grant', since: other.id, entry: other.id, label: 'sq · bid', persona: 2 },
+    expect(labelled(openAsks([asked, other]), new Map([['sq', 'Sidequest · Demo']]))).toEqual([
+      { kind: 'grant', since: asked.id, entry: asked.id, label: 'Sidequest · Demo · bid', persona: 1 },
+      { kind: 'grant', since: other.id, entry: other.id, label: 'Sidequest · Demo · bid', persona: 2 },
     ])
     expect(openAsks([withData(answer(), 1)], openAsks([asked, other])).map((ask) => ask.persona)).toEqual([2])
   })

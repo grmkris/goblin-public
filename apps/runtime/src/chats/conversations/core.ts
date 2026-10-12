@@ -4,7 +4,7 @@ import type { PiHarness } from 'agents/harness/pi'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { storedAsks } from '../../attention.ts'
+import { connectionLabels, labelled, storedAsks } from '../../attention.ts'
 import { type PiTools, piToolsFor } from '../../setup/scope.ts'
 import { type AppError, InvalidInput, NotFound, attempt, attemptSync } from '../../http/errors.ts'
 import { BACKGROUND } from '../../pi/context.ts'
@@ -88,7 +88,11 @@ export const describe = Effect.fn('Conversations.describe')(function* (core: Reg
   const activity: ChatActivity = Option.isNone(found)
     ? { replies: 0, asks: [] }
     : yield* attempt(() => core.replies.stats(session, found.value, row.forkEntry ?? 0))
-  const attention = [...activity.asks, ...storedAsks(db, { id: row.chatId, session }, yield* Clock.currentTimeMillis)]
+  const labels = yield* attemptSync(() => connectionLabels(db))
+  const attention = [
+    ...labelled(activity.asks, labels),
+    ...storedAsks(db, { id: row.chatId, session }, yield* Clock.currentTimeMillis),
+  ]
   return {
     id: row.chatId,
     ...(row.role === 'primary' ? { primary: true } : {}),

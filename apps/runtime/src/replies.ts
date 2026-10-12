@@ -1,6 +1,5 @@
 import type { Conversation, EntryRecord } from '@earendil-works/pi-durable'
-import type { Attention } from '@goblin/contracts'
-import { openAsks } from './attention.ts'
+import { type OpenAsk, openAsks } from './attention.ts'
 import { BACKGROUND, entryId } from './pi/context.ts'
 import { type ReplyStats, replyStats } from './pi/transcript.ts'
 
@@ -12,7 +11,7 @@ const MAX_PAGES = 20
 type Entries = Pick<Conversation, 'entries'>
 
 /** What a chat's own entries say: its messages, and what in them still waits on the owner (ADR 0032). */
-export type ChatActivity = ReplyStats & { readonly asks: readonly Attention[] }
+export type ChatActivity = ReplyStats & { readonly asks: readonly OpenAsk[] }
 
 /** A thread's count so far, through its entry `through`. */
 type Tally = ChatActivity & { readonly through: number }

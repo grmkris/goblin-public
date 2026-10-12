@@ -31,6 +31,9 @@ const failure = (stopped?: true): Part => ({
 })
 const base = { status: 'connected' as const, parts: [], waiting: 0, exhausted: false }
 
+/** The owner's label for `myplan`; any other connection by its id. */
+const named = (connectionId: string) => (connectionId === 'myplan' ? 'MyPlan · Work' : connectionId)
+
 describe('the agent’s presence', () => {
   it('names a lost connection before anything the agent is doing', () => {
     expect(presenceOf({ ...base, status: 'reconnecting', projection: projection({ running: true }) })).toEqual({
@@ -54,6 +57,11 @@ describe('the agent’s presence', () => {
       state: 'tool',
       label: 'Using myplan · open',
     })
+    // The connection by the owner's label where one is known.
+    expect(
+      presenceOf({ ...base, projection: live, parts: [running({ connectionId: 'myplan', name: 'open' })], named })
+        .label,
+    ).toBe('Using MyPlan · Work · open')
     expect(presenceOf({ ...base, projection: live, parts: [running()] }).label).toBe('Using web_fetch')
     expect(presenceOf({ ...base, projection: { ...live, partial: 'Hel' } }).state).toBe('responding')
     expect(presenceOf({ ...base, projection: live }).state).toBe('thinking')

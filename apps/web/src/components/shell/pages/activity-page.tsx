@@ -61,7 +61,7 @@ function NeedRow({ need, now }: { readonly need: NeedsYou; readonly now: number 
       <ChatRow chat={need.chat.id}>
         <RowContents
           mark={<Icon aria-hidden />}
-          title={need.attention.label ?? ask.label}
+          title={need.attention.label === undefined ? ask.label : `${ask.label}: ${need.attention.label}`}
           meta={`${threadTitle(need.chat)} · ${relativeTime(need.attention.since, now)}`}
         />
       </ChatRow>
@@ -236,7 +236,7 @@ export function ActivityPage() {
                 key={
                   need.kind === 'app'
                     ? `app:${need.app.id}`
-                    : `${need.chat.id}:${need.attention.kind}:${need.attention.since}`
+                    : `${need.chat.id}:${need.attention.kind}:${need.attention.since}:${String(need.attention.entry ?? '')}:${need.attention.label ?? ''}`
                 }
                 need={need}
                 now={now}

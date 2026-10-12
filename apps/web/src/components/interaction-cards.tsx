@@ -189,7 +189,7 @@ export function GrantCard({
     void replying(async () => {
       if (allowed) await grant({ connectionId, name, allowed })
       await onAnswer(
-        allowed ? `Allowed ${connectionId} · ${name}. Continue.` : 'Not allowed.',
+        allowed ? `Allowed ${connection} · ${name}. Continue.` : 'Not allowed.',
         interactionOperation(interaction),
       )
     })
