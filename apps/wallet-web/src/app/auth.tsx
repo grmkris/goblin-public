@@ -7,8 +7,8 @@ import { createContext, use } from 'react'
 export type OwnerChain = EvmChain
 
 /**
- * Where an upgrade stands once the relay answered: `confirmed` when the chain shows the account delegating to the
- * DeleGator, `submitted` while the relay's transaction is still in flight. A refusal rejects instead.
+ * Where an upgrade stands once the Worker sent it: `confirmed` when the chain shows the account delegating to the
+ * DeleGator, `submitted` while its UserOperation is still in flight. A refusal rejects instead.
  */
 export type UpgradeOutcome = 'confirmed' | 'submitted'
 
@@ -19,7 +19,10 @@ export interface Auth {
   readonly getToken: () => Promise<string | null>
   readonly login: () => void
   readonly logout: () => void
-  /** Sign the owner's EIP-7702 authorization for `chain` and have the relay send it. */
+  /**
+   * Sign the owner's EIP-7702 authorization for `chain`, then the UserOperation that carries it (its gas paid in USDC
+   * from the owner's account), and have the Worker send it.
+   */
   readonly upgrade: (chain: OwnerChain) => Promise<UpgradeOutcome>
   /** Prepare the allowance on `chain`, rebuild and compare it, sign it, confirm it. */
   readonly signAllowance: (input: {

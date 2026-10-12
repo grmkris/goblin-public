@@ -21,6 +21,19 @@ export const allowancePrompt = (chainName: string, description: ReviewedAllowanc
   buttonText: 'Allow',
 })
 
+/** "$0.02": a USDC amount in base units, rounded up to the cent because it is an upper bound. */
+const atMostUsd = (units: bigint): string => {
+  const cents = (units + 9_999n) / 10_000n
+  return `$${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`
+}
+
+/** The second signature of the upgrade: the UserOperation that carries it, its gas paid in USDC from the account. */
+export const upgradePrompt = (maxFee: bigint): WalletPrompt => ({
+  title: 'Upgrade your account',
+  description: `One-time. Gas of at most ${atMostUsd(maxFee)} is paid in USDC from your account.`,
+  buttonText: 'Upgrade',
+})
+
 const DOMAIN_FIELDS = [
   ['name', 'string'],
   ['version', 'string'],
