@@ -3,9 +3,9 @@ import {
   type ApiCode,
   BILLING_REFUSALS,
   BillingRefused,
-  ERROR_COPY,
   ErrorEnvelope,
   codeOf,
+  failureCopy,
   statusOf,
 } from '@goblin/contracts/api'
 import { onlineManager } from '@tanstack/react-query'
@@ -86,7 +86,7 @@ const kindForStatus = (status: number | undefined): ErrorKind => {
 }
 /** A typed failure the API answered, as the contract describes it; the `ref` is the one the agent stamped. */
 const appView = (error: AppError): AppErrorView => {
-  const copy = ERROR_COPY[error._tag]
+  const copy = failureCopy(error)
   const code = codeOf(error._tag)
   const status = statusOf(error)
   return {
@@ -94,7 +94,7 @@ const appView = (error: AppError): AppErrorView => {
     code,
     status,
     message: copy.message,
-    recovery: 'recovery' in copy ? copy.recovery : undefined,
+    recovery: copy.recovery,
     retryable: gateway(status),
     ref: error.ref,
   }

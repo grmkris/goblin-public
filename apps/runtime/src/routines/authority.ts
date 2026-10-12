@@ -7,9 +7,12 @@ import { requireResident } from '../mcp/service.ts'
 import { runHandOver } from './store.ts'
 import { RoutineRuns, RoutineUsage } from './service.ts'
 
-/** The dedicated routine provider resolves this before every model dispatch, including recovery and compaction. */
+/**
+ * The dedicated routine provider resolves this before every model dispatch, including recovery and compaction: a run
+ * is a hand-over, so it needs a plan with them (Pro).
+ */
 export const requireRoutine = Effect.fn('routines.requireRoutine')(function* (runId: string) {
-  yield* requirePlan('routines')
+  yield* requirePlan('handOver')
   yield* requireResident
   const store = yield* RoutineRuns
   const at = yield* Clock.currentTimeMillis

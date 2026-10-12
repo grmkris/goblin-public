@@ -134,6 +134,20 @@ describe('the API error envelope', () => {
     })
   })
 
+  it('says which feature is part of Pro when the refusal names one, and keeps the feature through a decode', () => {
+    const handOver = new SubscriptionRequired({ subscribe: '/subscribe', feature: 'hand_over' })
+    expect(envelopeOf(handOver)).toEqual({
+      error: {
+        code: 'subscription_required',
+        message: 'Handing an event or a schedule to goblin or a Persona is part of Pro.',
+        recovery: 'Subscribe to Pro, or have it only tell you.',
+        subscribe: '/subscribe',
+        feature: 'hand_over',
+      },
+    })
+    expect(Schema.decodeUnknownSync(ApiErrors.subscriptionRequired)(envelopeOf(handOver))).toEqual(handOver)
+  })
+
   it('refuses a body whose code another status answers', () => {
     const conflict = envelopeOf(new Conflict({ reason: 'x' }))
     expect(Exit.isFailure(Schema.decodeUnknownExit(ApiErrors.notFound)(conflict))).toBe(true)

@@ -1,6 +1,7 @@
 /**
  * Adapted from myapps@8a69ec64: paid-through cancellation and bounded renewal grace, with no trial. A deployment may
- * give accounts without Pro a free plan (`FREE_DAILY_CREDITS`): the agent with fewer Credits, and no routines.
+ * give accounts without Pro a free plan (`FREE_DAILY_CREDITS`): the agent with fewer Credits, and routines that only
+ * tell the owner (ADR 0012, amended 2026-10-12).
  */
 export const PRO = {
   id: 'pro',
@@ -9,10 +10,22 @@ export const PRO = {
   /** Estimated Token Plan Credits a day (ADR 0026): about 2 million tokens at Alibaba's example rates. */
   dailyCredits: 800,
   routines: true,
+  /** A routine may hand its work to Goblin or a Persona, which runs the agent (ADR 0041). */
+  handOver: true,
   subagents: true,
 } as const
-/** What the free plan leaves out: routines (and so Telegram notices, which run as routines). */
-export const FREE = { id: 'free', routines: false } as const
+
+/** A feature the plan gates: the agent itself, routines (Tell me), a routine's hand-over, and subagents. */
+export type Feature = 'agent' | 'routines' | 'handOver' | 'subagents'
+
+/**
+ * What the free plan has of Pro's features: the agent, routines that tell the owner (Tell me: a notice in a Topic, and
+ * on Telegram if they want, with no model call) and subagents, but no hand-over, which runs the agent on its own.
+ */
+const FREE: Readonly<Record<Feature, boolean>> = { agent: true, routines: true, handOver: false, subagents: true }
+
+/** Whether the free plan includes `feature`; with none named, it is the agent. */
+export const freeIncludes = (feature: Feature | undefined): boolean => FREE[feature ?? 'agent']
 
 /** The free plan's daily Credits from the deployment's setting: a whole number up to Pro's, else none. */
 export const freeCredits = (value: string | undefined): number => {

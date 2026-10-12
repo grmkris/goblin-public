@@ -44,8 +44,14 @@ export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()('Budg
   resetsAt: Schema.Number,
   ref,
 }) {}
+/**
+ * The feature a `SubscriptionRequired` refused, when it was one the plan leaves out rather than the agent itself:
+ * `hand_over`, a routine handing its work to Goblin or a Persona (ADR 0012, amended 2026-10-12).
+ */
+export const PlanFeature = Schema.Literal('hand_over')
 export class SubscriptionRequired extends Schema.TaggedError<SubscriptionRequired>()('SubscriptionRequired', {
   subscribe: Schema.String,
+  feature: Schema.optionalKey(PlanFeature),
   ref,
 }) {}
 export class NeedsAuthorization extends Schema.TaggedError<NeedsAuthorization>()('NeedsAuthorization', {
@@ -121,6 +127,14 @@ export const ERROR_COPY = {
   Internal: { message: 'Something went wrong on our side.', recovery: 'Try again.' },
 } as const satisfies Record<AppErrorTag, { readonly message: string; readonly recovery?: string }>
 
+/** What a `SubscriptionRequired` for one feature says instead: what is part of Pro, and what the owner can do now. */
+const FEATURE_COPY = {
+  hand_over: {
+    message: 'Handing an event or a schedule to goblin or a Persona is part of Pro.',
+    recovery: 'Subscribe to Pro, or have it only tell you.',
+  },
+} as const satisfies Record<typeof PlanFeature.Type, { readonly message: string; readonly recovery: string }>
+
 /** `Tag` in lower_snake_case, as `codeOf` spells it; any string for a tag the type does not know. */
 type SnakeCase<Tag extends string, Done extends string = ''> = string extends Tag
   ? string
@@ -167,6 +181,7 @@ const DETAIL_FIELDS = {
   name: Schema.optionalKey(Schema.String),
   state: Schema.optionalKey(Schema.String),
   subscribe: Schema.optionalKey(Schema.String),
+  feature: Schema.optionalKey(PlanFeature),
   limit: Schema.optionalKey(Schema.Number),
   resetsAt: Schema.optionalKey(Schema.Number),
   rpcCode: Schema.optionalKey(Schema.Number),
@@ -186,11 +201,22 @@ export const codeOf = <const Tag extends string>(tag: Tag): SnakeCase<Tag> =>
   tag.replaceAll(/(?<=.)(?=[A-Z])/gu, '_').toLowerCase() as SnakeCase<Tag>
 const TAG_OF_CODE: ReadonlyMap<string, string> = new Map(Object.keys(ERROR_COPY).map((tag) => [codeOf(tag), tag]))
 
+/**
+ * A failure's fixed copy, as the API answers it and the web shows it: its tag's, or, for a feature the plan leaves out,
+ * that feature's.
+ */
+export const failureCopy = (
+  error: AppError | typeof AppError.Encoded,
+): { readonly message: string; readonly recovery?: string } =>
+  Predicate.isTagged(error, 'SubscriptionRequired') && error.feature !== undefined
+    ? FEATURE_COPY[error.feature]
+    : ERROR_COPY[error._tag]
+
 /** The envelope body of an encoded failure: its code and fixed copy, then its own safe fields. */
 const toWire = (encoded: typeof AppError.Encoded): ErrorEnvelope => {
   const { _tag, ...fields } = encoded
   const rpc = Predicate.hasProperty(fields, 'code') && Predicate.isNumber(fields.code) ? { rpcCode: fields.code } : {}
-  return { error: { ...fields, ...rpc, code: codeOf(_tag), ...ERROR_COPY[_tag] } }
+  return { error: { ...fields, ...rpc, code: codeOf(_tag), ...failureCopy(encoded) } }
 }
 
 /** The class's encoded form from a wire detail; the target schema validates it right after. */

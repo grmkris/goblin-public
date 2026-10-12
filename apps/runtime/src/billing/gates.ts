@@ -5,7 +5,7 @@ import * as Exit from 'effect/Exit'
 import * as Layer from 'effect/Layer'
 import { SubscriptionRequired } from '../http/errors.ts'
 import type { RuntimeEnv } from '../env.ts'
-import { FREE, freeCredits } from './plans.ts'
+import { type Feature, freeCredits, freeIncludes } from './plans.ts'
 import { planOf, type AccountPlan } from './reconcile.ts'
 import { makeBillingStore } from './store.ts'
 import type { Internal } from '../http/errors.ts'
@@ -13,9 +13,7 @@ import type { Internal } from '../http/errors.ts'
 export const billingMode = (env: RuntimeEnv) => (env.STAGE === 'prod' ? 'live_mode' : 'test_mode')
 /** The feature gate shared by Worker admission, budget, routines and subagents. */
 export interface EntitlementPolicy {
-  readonly require: (
-    feature?: 'agent' | 'routines' | 'subagents',
-  ) => Effect.Effect<AccountPlan, Internal | SubscriptionRequired>
+  readonly require: (feature?: Feature) => Effect.Effect<AccountPlan, Internal | SubscriptionRequired>
   readonly state: () => Effect.Effect<AccountPlan, Internal>
 }
 export const accountEntitlements = (env: RuntimeEnv, userId: () => string): EntitlementPolicy => {
@@ -32,19 +30,26 @@ export class Entitlements extends Context.Service<Entitlements, EntitlementPolic
 
 /**
  * The plan the agent keeps, `SubscriptionRequired` unless it is active and, when `feature` is named, includes it: the
- * free plan has no routines.
+ * free plan has routines that tell the owner, but no hand-over.
  */
 export const requirePlan = (
-  feature?: 'agent' | 'routines' | 'subagents',
+  feature?: Feature,
 ): Effect.Effect<AccountPlan, Internal | SubscriptionRequired, Entitlements> =>
   Entitlements.use((plans) => plans.require(feature))
-type Feature = 'agent' | 'routines' | 'subagents'
 
-/** `plan`, when it is active and includes `feature`; else `SubscriptionRequired`. */
+/**
+ * `plan`, when it is active and includes `feature`; else `SubscriptionRequired`, which names a hand-over when that is
+ * what the free plan lacks, so the owner reads why (ADR 0012, amended 2026-10-12).
+ */
 const included = (plan: AccountPlan, feature?: Feature) =>
-  plan.active && !(plan.source === 'free' && feature === 'routines' && !FREE.routines)
+  plan.active && !(plan.source === 'free' && !freeIncludes(feature))
     ? Effect.succeed(plan)
-    : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' }))
+    : Effect.fail(
+        new SubscriptionRequired({
+          subscribe: '/subscribe',
+          ...(plan.active && feature === 'handOver' ? { feature: 'hand_over' as const } : {}),
+        }),
+      )
 
 const activePlan = (state: Effect.Effect<AccountPlan, Internal>, feature?: Feature) =>
   Effect.flatMap(state, (plan) => included(plan, feature))
@@ -63,7 +68,7 @@ export const cachedPolicy = Effect.fn('Entitlements.cachedPolicy')(function* (po
     Exit.isSuccess(exit) && exit.value.active ? PLAN_TTL : Duration.zero
   const [state] = yield* Effect.cachedInvalidateWithTTL(policy.state(), keep)
   const [require] = yield* Effect.cachedInvalidateWithTTL(policy.require(), keep)
-  // The cached answer is the plan's; each feature is checked on it, so a free plan never passes for routines.
+  // The cached answer is the plan's; each feature is checked on it, so a free plan never passes for a hand-over.
   return Entitlements.of({
     state: () => state,
     require: (feature) => Effect.flatMap(require, (plan) => included(plan, feature)),

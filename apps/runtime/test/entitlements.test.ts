@@ -100,17 +100,25 @@ describe('requirePlan', () => {
     }),
   )
 
-  it.effect('lets a free plan use the agent but never routines, also from the kept answer', () =>
-    Effect.gen(function* () {
-      const free: AccountPlan = { ...PLAN, source: 'free', dailyCredits: 50, status: 'free' }
-      const plans = yield* cachedPolicy(counted([free]).policy)
-      expect(yield* plans.require()).toEqual(free)
-      expect(yield* plans.require('agent')).toEqual(free)
-      expect(yield* Effect.flip(plans.require('routines'))).toMatchObject({ _tag: 'SubscriptionRequired' })
-      // Pro keeps routines.
-      const pro = yield* cachedPolicy(counted([PLAN]).policy)
-      expect(yield* pro.require('routines')).toEqual(PLAN)
-    }),
+  it.effect(
+    'lets a free plan use the agent and routines that tell, but never a hand-over, also from the kept answer',
+    () =>
+      Effect.gen(function* () {
+        const free: AccountPlan = { ...PLAN, source: 'free', dailyCredits: 50, status: 'free' }
+        const plans = yield* cachedPolicy(counted([free]).policy)
+        expect(yield* plans.require()).toEqual(free)
+        expect(yield* plans.require('agent')).toEqual(free)
+        expect(yield* plans.require('routines')).toEqual(free)
+        // The refusal names the hand-over, so the owner reads that it is part of Pro.
+        expect(yield* Effect.flip(plans.require('handOver'))).toMatchObject({
+          _tag: 'SubscriptionRequired',
+          feature: 'hand_over',
+        })
+        // Pro keeps both.
+        const pro = yield* cachedPolicy(counted([PLAN]).policy)
+        expect(yield* pro.require('routines')).toEqual(PLAN)
+        expect(yield* pro.require('handOver')).toEqual(PLAN)
+      }),
   )
 })
 
