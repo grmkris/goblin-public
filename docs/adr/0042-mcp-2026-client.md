@@ -19,8 +19,9 @@ goblin is the client the owner controls, so it implements the client side of eac
 - After a 2026 connect, goblin opens `subscriptions/listen` for tool changes if the server advertises
   `tools.listChanged`.
 - On `notifications/tools/list_changed` it re-lists the tools in place, within the same bounds as at open.
-- It closes the stream 60 seconds after the connection's last use. The next use re-lists first, then listens again, so
-  nothing is missed.
+- It closes the stream 60 seconds after the owner's or the model's last use. The next such use re-lists first, then
+  listens again, so nothing is missed. goblin's own background work (Events polls, notices, agent-app jobs) never holds
+  it: in the showcase run every Events poll reopened a stream that idled out a minute later (amended 2026-10-12).
 - A call to a tool goblin does not list re-lists once before refusing.
 
 An open outbound stream keeps the agent's Durable Object awake and billed, and stops its WebSockets from hibernating.

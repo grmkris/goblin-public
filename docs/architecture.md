@@ -661,12 +661,16 @@ again, one flight per connection that lists once more while changes arrive, boun
 or overflows is never kept in part, and the connection is marked stale so its next use opens it again. A call (or a
 grant request) for a tool goblin does not list re-lists once before refusing. After a 2026 connect to a server that
 advertises `tools.listChanged`, goblin holds a `subscriptions/listen` stream and re-lists on each
-`notifications/tools/list_changed`. The stream closes 60 seconds after the connection's last use (`listenIdleMs`): an
-open outbound stream keeps the agent's Durable Object awake and its WebSockets from hibernating. The next use lists the
+`notifications/tools/list_changed`. Only the owner's and the model's use holds the stream (`McpUse` `foreground`):
+goblin's own background work (Events polls, notices, the channel, agent-app jobs, the skills learner) uses the
+connection without it. The stream closes 60 seconds after the last foreground use (`listenIdleMs`): an open outbound
+stream keeps the agent's Durable Object awake and its WebSockets from hibernating. The next foreground use lists the
 tools first, then listens again, so a change made while nothing listened is not missed. A server that refuses the
 stream, or ends it with a result (Sidequest does when the connection is revoked), is not asked again on that
-connection; one that drops it (a deploy) is listened to again at the next use. The SDK client's stray errors are logged
-by type only.
+connection; one that drops it (a deploy) or fails it on the way is asked again a minute later at the earliest. While a
+2026 connection does not listen, a foreground use lists its tools again once the list is a minute old. A connection is
+never closed for being idle while a request on it is under way. The SDK client's stray errors are logged by type
+only.
 
 **URL requests** (`mcp/url-asks.ts`, `mcp/url-request.ts`, `app_mcp_url_requests`). Only the model's own `mcp_call`
 (Goblin, a Persona, a routine run) declares URL elicitation, per request and only on a 2026 connection, and takes an

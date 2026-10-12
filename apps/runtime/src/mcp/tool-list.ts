@@ -12,15 +12,19 @@ import type { McpConnectionSnapshot } from './types.ts'
 // A connection's live tool list (ADR 0042): its tools re-listed in place, and the `subscriptions/listen` stream that
 // tells it when they change, held open only while the connection is in use.
 
-/** Waits until `connection` has gone unused for `ms`; each use in the meantime restarts the wait. */
-export const untilUnused = (connection: Connection, ms: number) =>
+/** Waits until `ms` have passed since the use `lastUse` reads; each use in the meantime restarts the wait. */
+export const untilUnused = (lastUse: () => number, ms: number) =>
   Effect.gen(function* () {
     let now = yield* Clock.currentTimeMillis
-    while (now < connection.usedAt + ms) {
-      yield* Effect.sleep(connection.usedAt + ms - now)
+    while (now < lastUse() + ms) {
+      yield* Effect.sleep(lastUse() + ms - now)
       now = yield* Clock.currentTimeMillis
     }
   })
+
+/** How long a stream that failed on the way waits before it is asked again; and how old a list is re-listed on use. */
+const LISTEN_RETRY_MS = 60_000
+const LIST_FRESH_MS = 60_000
 
 /** One whole list of the connection's tools, bounded as discovery is: the snapshot with those tools. */
 const listTools = (manager: Manager, connection: Connection) => {
@@ -53,6 +57,7 @@ export const refreshTools = (
         connection.toolsChanged = false
         connection.snapshot = yield* listTools(manager, connection)
       }
+      connection.listedAt = yield* Clock.currentTimeMillis
       return connection.snapshot
     }).pipe(
       Effect.tapError(() =>
@@ -88,9 +93,20 @@ const announcesTools = ({ snapshot }: Connection): boolean =>
   snapshot.protocolEra === 'modern' && snapshot.capabilities.tools?.listChanged === true
 
 /**
- * The listen stream, held until the connection has gone unused for the listen idle time or the server ends it; then
- * the next use lists the tools first. A server that refuses the stream, or ends it deliberately (it answers the listen
- * request, as Sidequest does when the connection is revoked), is not asked again on this connection.
+ * What a listen request that failed means: a server that refused it (a JSON-RPC error) is not asked again on this
+ * connection; one that failed on the way is asked again after a while, never on every use.
+ */
+const listenFailed = (connection: Connection, error: AppError) =>
+  Effect.gen(function* () {
+    if (error instanceof UpstreamMcp && error.reason === 'remote-rpc') connection.listen.refused = true
+    else connection.listen.retryAt = (yield* Clock.currentTimeMillis) + LISTEN_RETRY_MS
+  })
+
+/**
+ * The listen stream, held until the owner and the model have not used the connection for the listen idle time, or the
+ * server ends it; then the next such use lists the tools first. A server that refuses the stream, or ends it
+ * deliberately (it answers the listen request, as Sidequest does when the connection is revoked), is not asked again
+ * on this connection.
  */
 const holdStream = (manager: Manager, connection: Connection) => {
   const connectionId = connection.server.connectionId
@@ -98,22 +114,20 @@ const holdStream = (manager: Manager, connection: Connection) => {
     const subscription = yield* Effect.tryPromise({
       try: () => connection.client.listen({ toolsListChanged: true }, { timeout: manager.requestTimeoutMs }),
       catch: (error) => mapMcpError(error, connectionId),
-    }).pipe(
-      Effect.tapError(() =>
-        Effect.sync(() => {
-          connection.listen.refused = true
-        }),
-      ),
-    )
+    }).pipe(Effect.tapError((error) => listenFailed(connection, error)))
     // expected: closing is idempotent and only ends the stream; a close that fails leaves it to the client's close.
     const stop = Effect.promise(() => subscription.close().catch(() => undefined))
-    const unused = Effect.as(Effect.andThen(untilUnused(connection, manager.listenIdleMs), stop), 'local' as const)
+    const idle = untilUnused(() => connection.activeAt, manager.listenIdleMs)
+    const unused = Effect.as(Effect.andThen(idle, stop), 'local' as const)
     const ended = yield* Effect.raceFirst(
       Effect.promise(() => subscription.closed),
       unused,
     ).pipe(Effect.onInterrupt(() => stop))
     if (ended === 'graceful') connection.listen.refused = true
-    if (ended === 'remote') return yield* new UpstreamMcp({ connectionId, reason: 'transport' })
+    if (ended === 'remote') {
+      connection.listen.retryAt = (yield* Clock.currentTimeMillis) + LISTEN_RETRY_MS
+      return yield* new UpstreamMcp({ connectionId, reason: 'transport' })
+    }
   }).pipe(
     timed({ step: 'listen', connectionId }, manager.options.report),
     Effect.ensuring(
@@ -129,18 +143,26 @@ const holdStream = (manager: Manager, connection: Connection) => {
 }
 
 /**
- * On each use of a connection whose server announces tool changes: listens again if no stream is held, listing the
- * tools first when one closed since they were last listed, so a change made while nothing listened is not missed.
+ * On each use of a 2026 connection by the owner or the model: listens again if no stream is held and the server
+ * announces tool changes, listing the tools first when a stream closed since they were last listed, so a change made
+ * while nothing listened is not missed. A connection that cannot listen (the server announces nothing, refused a
+ * stream, or one failed a moment ago) lists its tools again when the list is over a minute old.
  */
 export const listenWhileUsed = (manager: Manager, connection: Connection): Effect.Effect<void> =>
   Effect.gen(function* () {
     const { listen } = connection
+    if (listen.held || connection.snapshot.protocolEra !== 'modern') return
+    const now = yield* Clock.currentTimeMillis
     const claimed = yield* Effect.sync(() => {
-      if (listen.held || listen.refused || !announcesTools(connection)) return false
+      if (listen.held || listen.refused || listen.retryAt > now || !announcesTools(connection)) return false
       listen.held = true
       return true
     })
-    if (!claimed) return
+    if (!claimed) {
+      // expected: a failed re-list marks the connection stale and is reported; this use goes on with what it has.
+      if (now - connection.listedAt > LIST_FRESH_MS) yield* Effect.ignore(refreshTools(manager, connection))
+      return
+    }
     if (listen.relist) {
       listen.relist = false
       // expected: a failed re-list marks the connection stale and is reported; this use goes on with what it has.

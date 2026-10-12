@@ -128,7 +128,7 @@ const draftServer = (teacher: Teacher, preferred: string | undefined, signal: Ab
     const ordered = preferred !== undefined && sources.includes(preferred) ? [preferred] : sources
     for (const connectionId of ordered) {
       if (!(yield* allowed(teacher, connectionId, DRAFT_TOOL))) continue
-      const takes = yield* teacher.connections.connect(connectionId, signalled(signal)).pipe(
+      const takes = yield* teacher.connections.connect(connectionId, { ...signalled(signal), use: 'background' }).pipe(
         Effect.map((snapshot) => snapshot.tools.some((tool) => tool.name === DRAFT_TOOL)),
         // expected: an unreachable server takes no draft now; the next answer asks it again
         Effect.catch(() => Effect.succeed(false)),

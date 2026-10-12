@@ -393,9 +393,10 @@ describe('the connection manager as a service (unit)', () => {
   })
 })
 
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 describe('a slow tool call (unit)', () => {
   const slowGrants = new MemoryGrants([{ connectionId: 'fixture', capability: 'tool', name: 'slow' }])
-  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
   /** A server whose one tool answers after `answerMs`, sending progress every `progressMs` when asked for it. */
   const slowServer = (answerMs: number, progressMs?: number) =>
     createMcpHandler(() => {
@@ -417,7 +418,11 @@ describe('a slow tool call (unit)', () => {
       })
       return server
     })
-  const slowManager = (answerMs: number, progressMs?: number, deadlines = { toolTimeoutMs: 80, toolDeadlineMs: 400 }) => {
+  const slowManager = (
+    answerMs: number,
+    progressMs?: number,
+    deadlines = { toolTimeoutMs: 80, toolDeadlineMs: 400 },
+  ) => {
     const official = slowServer(answerMs, progressMs)
     return managerOf({
       servers: [serverConfig],
@@ -460,6 +465,24 @@ describe('a slow tool call (unit)', () => {
       const started = Date.now()
       await expect(manager.connections.callTool('fixture', 'slow', {})).rejects.toMatchObject({ reason: 'timeout' })
       expect(Date.now() - started).toBeLessThan(2000)
+    } finally {
+      await manager.dispose()
+    }
+  })
+
+  it('never closes a connection for being idle while a call on it is under way', async () => {
+    const official = slowServer(250)
+    const manager = managerOf({
+      servers: [serverConfig],
+      allows: (grant) => slowGrants.allows(grant),
+      auth: () => ({ token: async () => 'fixture' }),
+      fetch: async (input, init) => official.fetch(new Request(input, init)),
+      idleMs: 60,
+    })
+    try {
+      const result = await manager.connections.callTool('fixture', 'slow', {})
+      expect(result.content).toEqual([{ type: 'text', text: 'done' }])
+      expect(Option.isSome(await manager.connections.snapshot('fixture'))).toBe(true)
     } finally {
       await manager.dispose()
     }

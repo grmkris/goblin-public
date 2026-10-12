@@ -149,12 +149,15 @@ const callTool = <A>(
   options: McpCallOptions,
   send: Send<A>,
 ) => {
-  const { caller = 'model', authorize, approvalId, approvalContext, runContext, ...request } = options
+  const { caller = 'model', authorize, approvalId, approvalContext, runContext, use, ...request } = options
   const { connectionId, name } = call
   const checks = toolGuards(manager, call, options)
+  // A plain model-caller call is goblin's own work (an agent app's job, a notice, the channel, the learner); the model's
+  // calls in a conversation and an approved dispatch say they are foreground.
+  const kind = use ?? (caller === 'model' ? 'background' : 'foreground')
   return Effect.gen(function* () {
     yield* checks.guard(false)
-    const live = yield* authorized(manager, connectionId, { capability: 'tool', name }, request)
+    const live = yield* authorized(manager, connectionId, { capability: 'tool', name }, request, kind)
     yield* checks.guard(false)
     yield* checks.granted
     // A tool goblin does not list may be one the server added since: list once more before refusing (ADR 0042).
@@ -182,7 +185,7 @@ const callTool = <A>(
 
 const readResource = (manager: Manager, connectionId: string, uri: string, max: number) =>
   Effect.gen(function* () {
-    const live = yield* authorized(manager, connectionId, { capability: 'resource', name: uri }, {})
+    const live = yield* authorized(manager, connectionId, { capability: 'resource', name: uri }, {}, 'foreground')
     if (live.snapshot.capabilities.resources === undefined)
       return yield* new UpstreamMcp({ connectionId, reason: 'unsupported' })
     return yield* remote(
@@ -222,7 +225,7 @@ const eventRequest = <S extends Schema.ConstraintDecoder<unknown>>(
   Effect.gen(function* () {
     yield* serverOf(manager, connectionId)
     yield* authorize
-    const live = yield* connectionOf(manager, connectionId, { timeout: EVENT_LIMITS.timeoutMs })
+    const live = yield* connectionOf(manager, connectionId, { timeout: EVENT_LIMITS.timeoutMs }, 'background')
     if (!offersEvents(live.snapshot)) return yield* new UpstreamMcp({ connectionId, reason: 'unsupported' })
     yield* authorize
     const standard = Schema.toStandardSchemaV1(schema)
@@ -242,7 +245,7 @@ const skillsConnection = (manager: Manager, connectionId: string, { authorize, .
     if (authorize !== undefined) yield* authorize(connectionId)
     if (manager.options.skillsEnabled?.(connectionId) !== true)
       return yield* new Forbidden({ reason: `skills are not enabled for ${connectionId}` })
-    return yield* connectionOf(manager, connectionId, request)
+    return yield* connectionOf(manager, connectionId, request, 'background')
   })
 
 /** One skills request whose every dispatch checks the caller's authority and the owner's switch again. */
@@ -326,7 +329,7 @@ const requests = (manager: Manager) => ({
       manager,
       frozen,
       args,
-      { ...call, caller: 'model' },
+      { use: 'foreground', ...call, caller: 'model' },
       modelCall(connectionId, answer),
     )
     if (outcome.kind === 'complete') return { kind: 'complete' as const, result: outcome.result }

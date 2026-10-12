@@ -15,9 +15,17 @@ import type { AppError } from '../http/errors.ts'
 import type { Grant } from './grants.ts'
 export type { McpServerConfig }
 export type McpCaller = 'model' | 'app' | 'human'
+/**
+ * Who a use of a connection is for: the owner or the model, waiting on it now (`foreground`), or work goblin does on
+ * its own (`background`: Events polls, notices, agent-app jobs, the skills learner). Only foreground use holds the
+ * connection's listen stream for tool changes.
+ */
+export type McpUse = 'foreground' | 'background'
 export type McpRequestOptions = RequestOptions & {
   /** Host metadata only. Strip before passing options to the remote SDK. */
   readonly runContext?: { readonly conversationId: string; readonly taskId: string }
+  /** Host metadata only, stripped like `runContext`; the caller's default when absent. */
+  readonly use?: McpUse
 }
 export type McpConnectionSnapshot = {
   readonly config: McpServerConfig

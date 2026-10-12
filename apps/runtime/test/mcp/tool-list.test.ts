@@ -189,6 +189,47 @@ describe('live tool lists over subscriptions/listen (unit, ADR 0042)', () => {
     }
   })
 
+  it("holds no stream for goblin's own background calls, only for the owner's and the model's use", async () => {
+    const { state, manager, dispose } = rolesServer({ listChanged: true })
+    try {
+      // A plain model-caller call is background work: an agent app's job, a notice, the channel.
+      await manager.connections.callTool('roles', 'whoami', {})
+      await manager.connections.callTool('roles', 'whoami', {})
+      expect(state.listens).toBe(0)
+      await manager.connections.connect('roles')
+      await until(() => state.listens === 1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('listens for a foreground caller that joins an open a background call started', async () => {
+    const { state, manager, dispose } = rolesServer({ listChanged: true })
+    try {
+      await Promise.all([manager.connections.callTool('roles', 'whoami', {}), manager.connections.connect('roles')])
+      await until(() => state.listens === 1)
+      expect(state.opened).toBe(1)
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('closes the stream when the owner and the model stop, though background calls go on', async () => {
+    const { state, manager, reports, dispose } = rolesServer({ listChanged: true, listenIdleMs: 60 })
+    try {
+      await manager.connections.connect('roles')
+      await until(() => state.listens === 1)
+      for (let call = 0; call < 8; call++) {
+        await manager.connections.callTool('roles', 'whoami', {})
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      await until(() => reports.some(({ step }) => step.step === 'listen'))
+      expect(state.listens).toBe(1)
+    } finally {
+      await dispose()
+    }
+  })
+
   it('never listens to a server that does not announce tool changes', async () => {
     const { state, manager, dispose } = rolesServer()
     try {

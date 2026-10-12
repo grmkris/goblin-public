@@ -61,6 +61,8 @@ const dispatch = (row: ApprovalRow) =>
     const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
     const result = yield* (yield* McpConnections).callTool(row.connectionId, row.name, args, {
       caller: row.caller,
+      // The owner just approved it: their use, which holds the connection's listen stream.
+      use: 'foreground',
       approvalId: row.id,
       ...(context === undefined
         ? {}

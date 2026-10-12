@@ -13,7 +13,7 @@ import { logClientError, timed } from './log.ts'
 import { ANSWERED, assertEndpoint, bounded, openRemote } from './remote.ts'
 import type { McpConnections } from './service.ts'
 import { listenWhileUsed, refreshTools, stopListening, untilUnused, watchTools } from './tool-list.ts'
-import type { McpConnectionSnapshot, McpManagerOptions, McpRequestOptions, McpServerConfig } from './types.ts'
+import type { McpConnectionSnapshot, McpManagerOptions, McpRequestOptions, McpServerConfig, McpUse } from './types.ts'
 
 // The connection manager's state and its connections' lifecycle; the requests over a connection, and the manager
 // itself, are in mcp/manager.ts.
@@ -28,6 +28,8 @@ export type ListenState = {
   watcher: Fiber.Fiber<void> | undefined
   /** The server refused a stream or ended one deliberately: it is not asked again on this connection. */
   refused: boolean
+  /** A stream failed on the way (the network, a timeout): not asked again before this Clock time. */
+  retryAt: number
   /** A stream closed since the tools were last listed: the next use lists them first. */
   relist: boolean
 }
@@ -44,8 +46,14 @@ export type Connection = {
   /** A re-list failed, so its tools are not known: the next use opens it again. */
   stale: boolean
   readonly listen: ListenState
-  /** When it was last used, in Clock milliseconds; it closes once idle that long. */
+  /** When it was last used by anyone, in Clock milliseconds; it closes once idle that long. */
   usedAt: number
+  /** When the owner or the model last used it; its listen stream closes once that is the listen idle time ago. */
+  activeAt: number
+  /** Requests under way on it: it is never closed for being idle while one is. */
+  inFlight: number
+  /** When its tools were last listed whole. */
+  listedAt: number
   /** Requests in a row that missed their deadline: one is a slow tool, two a connection that no longer answers. */
   timeouts: number
   /** The fiber that closes it when it has been idle long enough. */
@@ -106,10 +114,18 @@ export const close = (manager: Manager, connectionId: string): Effect.Effect<voi
     yield* closeClient(connection)
   })
 
-/** Waits until `connection` has gone unused for the idle time, then closes it unless it was replaced or closed. */
+/**
+ * Waits until `connection` has gone unused for the idle time with nothing under way on it, then closes it unless it was
+ * replaced or closed.
+ */
 const idleClose = (manager: Manager, connection: Connection) =>
   Effect.gen(function* () {
-    yield* untilUnused(connection, manager.idleMs)
+    yield* untilUnused(() => connection.usedAt, manager.idleMs)
+    while (connection.inFlight > 0) {
+      // A request under way stamps the connection when it ends, so the idle time starts again from then.
+      yield* Effect.sleep(manager.idleMs)
+      yield* untilUnused(() => connection.usedAt, manager.idleMs)
+    }
     if (manager.connections.get(connection.server.connectionId) !== connection) return
     manager.connections.delete(connection.server.connectionId)
     yield* stopListening(connection)
@@ -144,8 +160,11 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
       snapshot,
       toolsChanged: false,
       stale: false,
-      listen: { held: false, stream: undefined, watcher: undefined, refused: false, relist: false },
+      listen: { held: false, stream: undefined, watcher: undefined, refused: false, retryAt: 0, relist: false },
       usedAt,
+      activeAt: 0,
+      inFlight: 0,
+      listedAt: usedAt,
       timeouts: 0,
       idle: undefined,
     }
@@ -154,35 +173,46 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
     manager.connections.set(server.connectionId, connection)
     connection.idle = yield* Effect.forkIn(idleClose(manager, connection), manager.scope)
     yield* watchTools(manager, connection)
-    yield* listenWhileUsed(manager, connection)
     return connection
   })
 
 /**
- * The live connection, its idle time restarted and its listen stream held, or one flight (`mcp.connect:<server>`) that
- * opens it. A stale one (its tools could not be re-listed) is closed and opened again.
+ * One use of `connection`: its idle time restarts, and a foreground use holds its listen stream. Run after the
+ * connection is found or opened, so a foreground caller that joins a background caller's open still listens.
+ */
+const touch = (manager: Manager, connection: Connection, use: McpUse) =>
+  Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis
+    connection.usedAt = now
+    if (use === 'background') return
+    connection.activeAt = now
+    yield* listenWhileUsed(manager, connection)
+  })
+
+/**
+ * The live connection, used (`touch`), or one flight (`mcp.connect:<server>`) that opens it. A stale one (its tools
+ * could not be re-listed) is closed and opened again.
  */
 export const connectionOf = (
   manager: Manager,
   connectionId: string,
   request: RequestOptions,
+  use: McpUse = 'foreground',
 ): Effect.Effect<Connection, AppError> =>
   Effect.suspend(() => {
     const existing = manager.connections.get(connectionId)
     if (existing?.stale === true)
-      return Effect.andThen(close(manager, connectionId), connectionOf(manager, connectionId, request))
-    if (existing !== undefined)
-      return Effect.gen(function* () {
-        existing.usedAt = yield* Clock.currentTimeMillis
-        yield* listenWhileUsed(manager, existing)
-        return existing
-      })
-    return manager.flights.run(
-      `mcp.connect:${connectionId}`,
-      Effect.flatMap(serverOf(manager, connectionId), (server) => open(manager, server, request)).pipe(
-        timed({ step: 'connect', connectionId, sharedConnection: true }, manager.options.report),
-      ),
-    )
+      return Effect.andThen(close(manager, connectionId), connectionOf(manager, connectionId, request, use))
+    const live =
+      existing === undefined
+        ? manager.flights.run(
+            `mcp.connect:${connectionId}`,
+            Effect.flatMap(serverOf(manager, connectionId), (server) => open(manager, server, request)).pipe(
+              timed({ step: 'connect', connectionId, sharedConnection: true }, manager.options.report),
+            ),
+          )
+        : Effect.succeed(existing)
+    return Effect.tap(live, (connection) => touch(manager, connection, use))
   })
 
 /** A connection for a capability the owner granted; nothing is opened for one they did not. */
@@ -191,13 +221,14 @@ export const authorized = (
   connectionId: string,
   grant: { readonly capability: GrantCapability; readonly name: string },
   request: RequestOptions,
+  use: McpUse,
 ) =>
   Effect.gen(function* () {
     yield* serverOf(manager, connectionId)
     const { capability, name } = grant
     if (name === '' || !manager.options.allows({ connectionId, capability, name }))
       return yield* new GrantDenied({ connectionId, name })
-    return yield* connectionOf(manager, connectionId, request)
+    return yield* connectionOf(manager, connectionId, request, use)
   })
 
 /** Failures after which the connection is kept: the server answered, or the caller stopped waiting. */
@@ -222,10 +253,23 @@ export const remote = <A>(
   max = manager.maxResultBytes,
 ) => {
   const connectionId = connection.server.connectionId
-  return Effect.tryPromise({
-    try: async () => bounded(connectionId, await request(), max),
-    catch: (error) => mapMcpError(error, connectionId),
+  // Counted while under way, and the connection stamped used when it ends, so a long request is never closed under.
+  const ended = Effect.andThen(Clock.currentTimeMillis, (now) =>
+    Effect.sync(() => {
+      connection.inFlight -= 1
+      connection.usedAt = Math.max(connection.usedAt, now)
+    }),
+  )
+  return Effect.sync(() => {
+    connection.inFlight += 1
   }).pipe(
+    Effect.andThen(
+      Effect.tryPromise({
+        try: async () => bounded(connectionId, await request(), max),
+        catch: (error) => mapMcpError(error, connectionId),
+      }),
+    ),
+    Effect.ensuring(ended),
     Effect.tap(() =>
       Effect.sync(() => {
         connection.timeouts = 0
@@ -251,8 +295,8 @@ export const lifecycle = (manager: Manager) => ({
   snapshot: (connectionId: string) =>
     Effect.sync(() => Option.fromNullishOr(manager.connections.get(connectionId)?.snapshot)),
   connect: Effect.fn('McpConnections.connect')(function* (connectionId: string, options: McpRequestOptions = {}) {
-    const { runContext, ...request } = options
-    const opened = Effect.map(connectionOf(manager, connectionId, request), (live) => live.snapshot)
+    const { runContext, use, ...request } = options
+    const opened = Effect.map(connectionOf(manager, connectionId, request, use), (live) => live.snapshot)
     return yield* runContext === undefined
       ? opened
       : opened.pipe(timed({ step: 'connect', connectionId, scope: runContext }, manager.options.report))
@@ -261,8 +305,8 @@ export const lifecycle = (manager: Manager) => ({
     connectionId: string,
     options: McpRequestOptions = {},
   ) {
-    const { runContext: _, ...request } = options
-    return yield* refreshTools(manager, yield* connectionOf(manager, connectionId, request))
+    const { runContext: _, use, ...request } = options
+    return yield* refreshTools(manager, yield* connectionOf(manager, connectionId, request, use))
   }),
   reconnect: Effect.fn('McpConnections.reconnect')(function* (connectionId: string) {
     yield* close(manager, connectionId)
