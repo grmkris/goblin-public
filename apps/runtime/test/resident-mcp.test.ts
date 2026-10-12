@@ -97,9 +97,24 @@ const jobs = createMcpHandler(() => {
   return server
 })
 
+/** A gateway like mysi (ADR 0052): forty-five tools of three apps, each named `<service>_<tool>`. */
+const GATEWAY = ['mygram', 'myplan', 'mytab'].flatMap((service) =>
+  Array.from({ length: 15 }, (_, index) => ({
+    name: `${service}_tool_${String(index)}`,
+    description: index === 3 ? `Send a message through ${service}.` : `Tool ${String(index)} of ${service}.`,
+    inputSchema: { type: 'object' as const },
+  })),
+)
+const gateway = createMcpHandler(() => {
+  const server = lowLevelServer({ name: 'gateway', version: '1.0.0' }, { capabilities: { tools: {} } })
+  server.setRequestHandler('tools/list', () => ({ tools: GATEWAY }))
+  return server
+})
+
 const credentials = new MemoryCredentials()
 await credentials.saveTokens('notes', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
 await credentials.saveTokens('jobs', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
+await credentials.saveTokens('gateway', { access_token: 'fixture-token', token_type: 'bearer' }, 0)
 /** A call to `admin` is beyond the sign-in's scope: the server answers 403 `insufficient_scope` (ADR 0042). */
 const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
   const request = new Request(input, init)
@@ -109,13 +124,19 @@ const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
       status: 403,
       headers: { 'www-authenticate': 'Bearer error="insufficient_scope", scope="notes:read notes:admin"' },
     })
-  return new URL(request.url).hostname === 'jobs.test' ? jobs.fetch(request) : notes.fetch(request)
+  const host = new URL(request.url).hostname
+  return host === 'jobs.test'
+    ? jobs.fetch(request)
+    : host === 'gateway.test'
+      ? gateway.fetch(request)
+      : notes.fetch(request)
 }
 /** The MCP host over the notes server; each program run opens its connection and closes it when it ends. */
 const host = mcpHost({
   servers: [
     { connectionId: 'notes', endpoint: 'https://notes.test/mcp', label: 'Notes · Mine' },
     { connectionId: 'jobs', endpoint: 'https://jobs.test/mcp', label: 'Jobs' },
+    { connectionId: 'gateway', endpoint: 'https://gateway.test/mcp', label: 'mysi' },
   ],
   credentials,
   grants: new MemoryGrants([
@@ -263,6 +284,7 @@ describe('mcp_call and the owner grant (unit)', () => {
       servers: [
         { connectionId: 'notes', label: 'Notes · Mine', status: 'connected' },
         { connectionId: 'jobs', label: 'Jobs', status: 'connected' },
+        { connectionId: 'gateway', label: 'mysi', status: 'connected' },
       ],
     })
   })
@@ -340,6 +362,29 @@ describe('mcp_list keeps what the model reads small (unit)', () => {
       tools: [],
       unknown: ['panel'],
     })
+  })
+})
+
+describe('mcp_list by service, for a gateway of many apps (unit)', () => {
+  it('answers a connection with many prefixed tools with its services, then one service or a query', async () => {
+    expect(await listed({ connectionId: 'gateway' }, 7)).toEqual({
+      origin: 'gateway',
+      trusted: false,
+      services: ['mygram', 'myplan', 'mytab'].map((service) => ({
+        service,
+        tools: 15,
+        hint: `${service}_tool_0, ${service}_tool_1, ${service}_tool_2, ${service}_tool_3, …`,
+      })),
+      next: expect.stringContaining('`service`'),
+    })
+    const gram = toolsOf(await listed({ connectionId: 'gateway', service: 'mygram_' }, 7))
+    expect(gram).toHaveLength(15)
+    for (const tool of gram) expect(String(tool['name'])).toMatch(/^mygram_/u)
+    const sends = toolsOf(await listed({ connectionId: 'gateway', service: 'myplan', query: 'send MESSAGE' }, 7))
+    expect(sends).toEqual([{ name: 'myplan_tool_3', description: 'Send a message through myplan.', granted: false }])
+  })
+  it("still lists a large server's tools when their names fall into no services", async () => {
+    expect(toolsOf(await listed({ connectionId: 'jobs' }, 7))).toHaveLength(JOBS.length)
   })
 })
 

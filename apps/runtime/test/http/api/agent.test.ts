@@ -125,7 +125,7 @@ describe('the agent group served by the agent', () => {
     const refused = await fetch(json('PUT', '/api/agent/channel', { connectionId: 'myagent' }))
     expect(refused.status).toBe(400)
     expect(await refused.json()).toMatchObject({
-      error: { code: 'invalid_input', reason: 'myagent does not offer inbox, send_message, subscribe, unsubscribe' },
+      error: { code: 'invalid_input', reason: "myagent does not offer Telegram's inbox_read and message_send" },
     })
     const off = await fetch(json('DELETE', '/api/agent/channel'))
     expect(off.status).toBe(200)
