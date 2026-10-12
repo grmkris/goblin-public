@@ -1,4 +1,4 @@
-import type { AgentSigner } from '@goblin/wallet/contract'
+import type { AllowanceConfirm, AllowancePrepare, AgentSigner, Address, ChainSetup } from '@goblin/wallet/contract'
 import type { WalletEnv } from './env.ts'
 import { ledgerClient } from './ledger/durable.ts'
 import { failure } from './services/errors.ts'
@@ -11,7 +11,30 @@ export interface Owner {
 }
 
 /** The pieces other lanes provide: the owner's agent signer (lane S) and the payment rails (lane D). */
+/** The owner's allowance, built and verified by the delegation code (lane S) when it is wired. */
+export interface AllowancePort {
+  /** The exact ERC-7710 delegation for the owner to sign; the browser rebuilds and compares it. */
+  prepare(
+    owner: Owner & { address: Address; agent: Address },
+    request: typeof AllowancePrepare.Type,
+  ): Promise<{
+    typedData: unknown
+    delegationHash: string
+  }>
+  /** Verifies the owner's signature and stores the delegation where the agent redeems it from. */
+  confirm(
+    owner: Owner & { address: Address; agent: Address },
+    request: typeof AllowanceConfirm.Type,
+  ): Promise<NonNullable<ChainSetup['allowance']>>
+}
+
 export interface Wiring {
+  /** Creates the owner's agent wallet once (lane S's Privy code) and says where it is. */
+  readonly createAgent: (
+    env: WalletEnv,
+    owner: Owner & { address: Address },
+  ) => Promise<{ address: Address; walletId: string }>
+  readonly allowance: AllowancePort
   /** The owner's ledger Durable Object. */
   readonly ledger: (env: WalletEnv, owner: Owner) => { fetch(request: Request): Promise<Response> }
   readonly signer: (env: WalletEnv, owner: Owner) => Promise<AgentSigner | undefined>
@@ -36,7 +59,12 @@ export const unconfiguredRails: RailsPort = {
   upgrade: unavailable,
 }
 
+const notConfigured = (what: string) => (): Promise<never> =>
+  Promise.reject(failure('not_configured', `${what} is not configured on this deployment.`, 501))
+
 export const defaultWiring: Wiring = {
+  createAgent: notConfigured('The agent wallet'),
+  allowance: { prepare: notConfigured('The allowance'), confirm: notConfigured('The allowance') },
   ledger: (env, owner) => env.LEDGER.getByName(owner.userId),
   signer: () => Promise.resolve(undefined),
   rails: () => unconfiguredRails,

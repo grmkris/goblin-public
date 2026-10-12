@@ -171,7 +171,7 @@ export type DecideResult =
 export interface Decision {
   decision: 'approve' | 'decline'
   termsHash: string
-  remember?: boolean
+  remember?: boolean | undefined
 }
 
 /** Records the owner's decision, bound to the terms hash they saw. Approving does not reserve; the retry does. */

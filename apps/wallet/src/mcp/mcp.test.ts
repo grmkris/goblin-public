@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import * as Schema from 'effect/Schema'
 import { describe, expect, test } from 'vitest'
-import { unconfiguredRails, type Wiring } from '../context.ts'
+import { defaultWiring, unconfiguredRails, type Wiring } from '../context.ts'
 import { WalletLedger } from '../ledger/durable.ts'
 import type { RailsPort } from '../services/rails.ts'
 import { testEnv } from '../test-env.ts'
@@ -40,6 +40,7 @@ const rails: RailsPort = {
 }
 const ledgers = new Map<string, WalletLedger>()
 const wiring: Wiring = {
+  ...defaultWiring,
   ledger: (_env, owner) => {
     const ledger = ledgers.get(owner.userId) ?? ledgerFor()
     ledgers.set(owner.userId, ledger)
@@ -55,7 +56,7 @@ const authenticate: McpAuthenticator = (request) => {
     ownerUserId: 'did:privy:owner1',
     clientId: 'c1',
     clientName: 'Test client',
-    scopes: ['wallet'],
+    scopes: ['wallet:read', 'wallet:spend'],
     token: 'good',
   })
 }

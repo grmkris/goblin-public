@@ -1,7 +1,7 @@
 import { type LimitView, type Operation, type SpendResult } from '@goblin/wallet/contract'
 import { inputRequired, type ServerContext } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
-import type { WalletFailure } from '../services/errors.ts'
+import { failure, type WalletFailure } from '../services/errors.ts'
 import type { WalletServices } from '../services/index.ts'
 import { readLimits } from '../services/programs/status.ts'
 import type { SpendOutcome } from '../services/programs/spend.ts'
@@ -71,6 +71,15 @@ export async function handleSpend(
   ctx: ServerContext,
   program: Effect.Effect<SpendOutcome, WalletFailure, WalletServices>,
 ) {
+  if (!box.scopes.includes('wallet:spend'))
+    return refusal(
+      failure(
+        'insufficient_scope',
+        'This connection may read the wallet but not spend from it.',
+        403,
+        'Ask the owner to reconnect this client with spending allowed.',
+      ),
+    )
   const result = await box.run(
     Effect.gen(function* () {
       const outcome = yield* program

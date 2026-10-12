@@ -1,25 +1,19 @@
+import { createApi } from './api/index.ts'
 import type { WalletEnv } from './env.ts'
-import { apiError } from './http.ts'
-import { defaultWiring } from './context.ts'
-import { refuseAll } from './mcp/auth.ts'
+import { identityFor } from './identity.ts'
+import { oauthAuthenticator } from './mcp/oauth-auth.ts'
 import { createMcpEndpoint } from './mcp/handler.ts'
+import { authStore, handleOAuth } from './oauth/index.ts'
 import { createRouter } from './router.ts'
+import { productionWiring } from './wiring.ts'
 
 export { WalletLedger } from './ledger/durable.ts'
-
-/** A singleton for OAuth state. Filled in by the OAuth lane. */
-export class WalletAuth implements DurableObject {
-  fetch(): Response {
-    return apiError('not_found', 'The auth store has no routes yet.', 404)
-  }
-}
-
-const notYet = (): Promise<Response> => Promise.resolve(apiError('not_found', 'No such route.', 404))
+export { WalletAuth } from './oauth/index.ts'
 
 const route = createRouter({
-  oauth: () => Promise.resolve(undefined),
-  api: notYet,
-  mcp: createMcpEndpoint({ authenticate: refuseAll, wiring: defaultWiring }),
+  oauth: handleOAuth,
+  api: createApi({ identity: identityFor, auth: (env) => authStore(env.AUTH), wiring: productionWiring }),
+  mcp: createMcpEndpoint({ authenticate: oauthAuthenticator, wiring: productionWiring }),
 })
 
 export default {

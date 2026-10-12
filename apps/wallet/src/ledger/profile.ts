@@ -7,6 +7,8 @@ import { getState, putState } from './state.ts'
 export const Profile = Schema.Struct({
   ownerAddress: Schema.optional(Address),
   agentAddress: Schema.optional(Address),
+  /** Privy's id of the agent's server wallet. */
+  agentWalletId: Schema.optional(Schema.String),
   chains: Schema.Array(ChainSetup),
 })
 export type Profile = typeof Profile.Type
@@ -30,6 +32,7 @@ export function updateProfile(ctx: Ctx, patch: Partial<Profile>): Profile {
     ...current,
     ...(patch.ownerAddress === undefined ? {} : { ownerAddress: patch.ownerAddress }),
     ...(patch.agentAddress === undefined ? {} : { agentAddress: patch.agentAddress }),
+    ...(patch.agentWalletId === undefined ? {} : { agentWalletId: patch.agentWalletId }),
     chains,
   }
   putState(ctx, 'profile', JSON.stringify(next))

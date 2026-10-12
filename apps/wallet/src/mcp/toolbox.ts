@@ -10,4 +10,6 @@ export interface Toolbox {
   readonly era: 'legacy' | 'modern'
   /** The MCP client's name as the owner knows it, for the approval page. */
   readonly client: string
+  /** The OAuth scopes the connection holds: `wallet:read`, `wallet:spend`. */
+  readonly scopes: readonly string[]
 }

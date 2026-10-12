@@ -31,6 +31,7 @@ export function createMcpEndpoint(deps: McpDeps): (request: Request, env: Wallet
         run: (program) => runWallet(program, layer),
         era: ctx.era,
         client: principal.clientName,
+        scopes: principal.scopes,
       }),
     )
     return handler.fetch(request, {
