@@ -1,7 +1,7 @@
 import { recoverAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
-import { BASE } from '../chains/index.ts'
+import { ARBITRUM, BASE, TEMPO } from '../chains/index.ts'
 import type { UserOperation } from '../contract/signer.ts'
 import {
   accountGasLimits,
@@ -11,8 +11,10 @@ import {
   delegatorTypedData,
   executeBatch,
   paymasterAndData,
+  reviewOwnerUpgrade,
   toBundlerJson,
   toPrivyJson,
+  UPGRADE_FEE_CEILINGS,
 } from './index.ts'
 
 const account = privateKeyToAccount(`0x${'42'.repeat(32)}`)
@@ -84,5 +86,61 @@ describe('UserOperations for the DeleGator', () => {
       paymaster_data: '0x',
       call_gas_limit: '0x43537',
     })
+  })
+})
+
+/** The Worker's upgrade draft: the DeleGator's typed data as JSON, bigints as decimal strings. */
+const draftOf = (operation: UserOperation, entryPoint = ENTRY_POINT): unknown =>
+  JSON.parse(
+    JSON.stringify(delegatorTypedData(operation, BASE, entryPoint), (_key, value: unknown) =>
+      typeof value === 'bigint' ? value.toString() : value,
+    ),
+  )
+
+describe("reviewing the owner's upgrade before they sign it", () => {
+  const STRANGER = '0x3333333333333333333333333333333333333333'
+  const choice = { chain: BASE, owner: account.address, feeCeiling: UPGRADE_FEE_CEILINGS.base }
+  const approving = (spender: string, amount: bigint): UserOperation => ({
+    ...op,
+    callData: executeBatch([approvePaymaster(BASE, spender, amount)]),
+  })
+
+  test("a batch that only approves the paymaster within the ceiling passes, as exactly the DeleGator's typed data", () => {
+    const reviewed = reviewOwnerUpgrade(draftOf(op), choice)
+    expect(reviewed.maxFee).toBe(16_319n)
+    expect(reviewed.typedData).toEqual(draftOf(op))
+    // Ethereum's ceiling is higher: the same three dollars of gas pass there and not on Base.
+    const dear = draftOf(approving(PAYMASTER, 3_000_000n))
+    expect(reviewOwnerUpgrade(dear, { ...choice, feeCeiling: UPGRADE_FEE_CEILINGS.ethereum }).maxFee).toBe(3_000_000n)
+    expect(() => reviewOwnerUpgrade(dear, choice)).toThrow(/above the 0.1 USDC ceiling/u)
+  })
+
+  test.each([
+    ['another chain', draftOf(op), { ...choice, chain: ARBITRUM }],
+    ['a chain without UserOperations', draftOf(op), { ...choice, chain: TEMPO }],
+    ["someone else's account", draftOf(op), { ...choice, owner: STRANGER }],
+    ['another EntryPoint', draftOf(op, STRANGER), choice],
+    ['another paymaster taking the gas', draftOf({ ...op, paymaster: STRANGER }), choice],
+    ['an approval for someone else', draftOf(approving(STRANGER, 1n)), choice],
+    ['gas above the ceiling', draftOf(approving(PAYMASTER, 100_001n)), choice],
+    [
+      'a second call in the batch',
+      draftOf({
+        ...op,
+        callData: executeBatch([
+          approvePaymaster(BASE, PAYMASTER, 1n),
+          { target: BASE.usdc.address, value: 0n, callData: '0xa9059cbb' },
+        ]),
+      }),
+      choice,
+    ],
+    [
+      'a USDC call that is not an approval',
+      draftOf({ ...op, callData: executeBatch([{ target: BASE.usdc.address, value: 0n, callData: '0xa9059cbb' }]) }),
+      choice,
+    ],
+    ['something that is not typed data', 'sign me', choice],
+  ])('refuses %s', (_case, draft, against) => {
+    expect(() => reviewOwnerUpgrade(draft, against)).toThrow(/^upgrade_mismatch: /u)
   })
 })

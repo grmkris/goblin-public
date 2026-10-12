@@ -15,10 +15,14 @@ import {
   parseAbi,
   toHex,
 } from 'viem'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
+import { formatUnits } from '../amounts/index.ts'
 import { toAddress, toHex as asHex } from '../balances/hex.ts'
-import type { Chain } from '../chains/index.ts'
-import type { Address, Hex } from '../contract/ids.ts'
-import type { SignedAuthorization, UserOperation } from '../contract/signer.ts'
+import type { AccountAbstraction, Chain } from '../chains/index.ts'
+import { canonicalJson } from '../contract/hash.ts'
+import { Address, Hex } from '../contract/ids.ts'
+import type { SignedAuthorization, TypedDataJson, UserOperation } from '../contract/signer.ts'
 
 export type { UserOperation } from '../contract/signer.ts'
 
@@ -188,3 +192,103 @@ export const approvePaymaster = (chain: Chain, paymaster: Address, amount: bigin
   value: 0n,
   callData: encodeFunctionData({ abi: ERC20, functionName: 'approve', args: [toAddress(paymaster), amount] }),
 })
+
+/** The most USDC (base units) the owner's one-time upgrade may pay for its gas, per chain: Ethereum's costs far more. */
+export const UPGRADE_FEE_CEILINGS: Readonly<Record<'base' | 'ethereum' | 'arbitrum', bigint>> = {
+  base: 100_000n,
+  arbitrum: 100_000n,
+  ethereum: 3_000_000n,
+}
+
+const Decimal = Schema.String.check(Schema.isPattern(/^\d{1,78}$/u))
+const Word = Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{64}$/u))
+
+/** The owner's upgrade operation as the Worker sends it: `delegatorTypedData` as JSON, bigints as decimal strings. */
+const OwnerUpgradeTypedData = Schema.Struct({
+  domain: Schema.Struct({
+    name: Schema.Literal('EIP7702StatelessDeleGator'),
+    version: Schema.Literal('1'),
+    chainId: Schema.Number,
+    verifyingContract: Address,
+  }),
+  types: Schema.Unknown,
+  primaryType: Schema.Literal('PackedUserOperation'),
+  message: Schema.Struct({
+    sender: Address,
+    nonce: Decimal,
+    initCode: Schema.Literal('0x'),
+    callData: Hex,
+    accountGasLimits: Word,
+    preVerificationGas: Decimal,
+    gasFees: Word,
+    paymasterAndData: Hex,
+    entryPoint: Address,
+  }),
+})
+const decodeOwnerUpgrade = Schema.decodeUnknownOption(OwnerUpgradeTypedData)
+
+const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
+const mismatch = (what: string): Error => new Error(`upgrade_mismatch: ${what}; nothing was signed`)
+
+/** The amount of the batch's one call, USDC `approve(paymaster, amount)`; anything else in the batch is refused. */
+const paymasterApproval = (callData: Hex, chain: Chain, aa: AccountAbstraction): bigint => {
+  const calls = decodeBatch(callData)
+  const call = calls?.length === 1 ? calls[0] : undefined
+  if (call === undefined || !same(call.target, chain.usdc.address) || call.value !== 0n)
+    throw mismatch('the operation does more than approve its gas in USDC')
+  let approval: ReturnType<typeof decodeFunctionData<typeof ERC20>>
+  try {
+    approval = decodeFunctionData({ abi: ERC20, data: asHex(call.callData) })
+  } catch {
+    // expected: a USDC call that is not `approve` is refused like any other foreign call.
+    throw mismatch('the operation does more than approve its gas in USDC')
+  }
+  const [spender, amount] = approval.args
+  if (!same(spender, aa.paymaster)) throw mismatch("the gas approval is not for the chain's paymaster")
+  return amount
+}
+
+/** What the owner agreed to before the upgrade is signed: the chain, their own address, the most USDC for gas. */
+export interface OwnerUpgradeChoice {
+  readonly chain: Chain
+  readonly owner: Address
+  /** USDC base units; `UPGRADE_FEE_CEILINGS` per chain. */
+  readonly feeCeiling: bigint
+}
+
+export interface ReviewedOwnerUpgrade {
+  /** Rebuilt from the checked fields only: what the owner signs, never the server's object itself. */
+  readonly typedData: TypedDataJson
+  /** The most USDC (base units) the paymaster may take for the gas: the batch's approval. */
+  readonly maxFee: bigint
+}
+
+/**
+ * Checks the owner's EIP-7702 upgrade operation before they sign it: the DeleGator's domain on this chain with the
+ * owner's own address as verifying contract, the owner as sender, the chain's EntryPoint and paymaster, and a batch
+ * that only approves that paymaster for at most the fee ceiling in USDC. Throws `upgrade_mismatch: …` otherwise.
+ */
+export const reviewOwnerUpgrade = (typedData: unknown, choice: OwnerUpgradeChoice): ReviewedOwnerUpgrade => {
+  const { chain, owner } = choice
+  if (chain.aa === null) throw mismatch(`${chain.name} takes no UserOperations`)
+  const draft = Option.getOrUndefined(decodeOwnerUpgrade(typedData))
+  if (draft === undefined || canonicalJson(draft.types) !== canonicalJson({ PackedUserOperation: PACKED }))
+    throw mismatch('the draft is not a DeleGator UserOperation')
+  const { domain, message } = draft
+  if (domain.chainId !== chain.id || !same(domain.verifyingContract, owner) || !same(message.sender, owner))
+    throw mismatch(`the operation is not your account's on ${chain.name}`)
+  if (
+    !same(message.entryPoint, chain.aa.entryPoint) ||
+    !same(message.paymasterAndData.slice(0, 42), chain.aa.paymaster)
+  )
+    throw mismatch(`the operation names another EntryPoint or paymaster than ${chain.name}'s`)
+  const maxFee = paymasterApproval(message.callData, chain, chain.aa)
+  if (maxFee > choice.feeCeiling)
+    throw mismatch(
+      `its gas could cost up to ${formatUnits(maxFee, 6)} USDC, above the ${formatUnits(choice.feeCeiling, 6)} USDC ceiling`,
+    )
+  return {
+    typedData: { domain, types: { PackedUserOperation: PACKED }, primaryType: 'PackedUserOperation', message },
+    maxFee,
+  }
+}
