@@ -1,5 +1,5 @@
 import { mutationOptions } from '@tanstack/react-query'
-import { appClosedMutation, keepAppMutation } from '../../apps/queries.ts'
+import { appClosedMutation, keepAppMutation, openServerAppMutation } from '../../apps/queries.ts'
 import { markReadMutation, startThreadMutation, updateConversationMutation } from '../../conversations/queries.ts'
 import { undoMutation } from '../../organize/queries.ts'
 import { createPersonaMutation, updatePersonaMutation } from '../../personas/queries.ts'
@@ -19,6 +19,16 @@ export const keepWorkspaceAppMutation = mutationOptions({
   ...keepAppMutation,
   mutationKey: workspaceKeys.apps,
   onSuccess: (app, _keep, _context, { client }) => workspaceSync(client).appAnswered(app),
+})
+
+/**
+ * Opens a server's own App in its thread (ADR 0053). It shows once the server answers, and stays as answered until the
+ * feed agrees; the thread arrives with the feed.
+ */
+export const openWorkspaceServerAppMutation = mutationOptions({
+  ...openServerAppMutation,
+  mutationKey: workspaceKeys.apps,
+  onSuccess: (app, _connectionId, _context, { client }) => workspaceSync(client).appAnswered(app),
 })
 
 /**

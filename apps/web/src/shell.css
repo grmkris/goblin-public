@@ -770,6 +770,139 @@
   width: 1.25rem;
   height: 1.25rem;
 }
+/*
+ * Under the App page's bar (ADR 0053): the room the App's stage fills, with goblin's composer for the App's
+ * conversation floating over its bottom edge, and that conversation beside it once opened. The composer and the line
+ * above it cover the App (the stage clips itself to them), and the App is told how much they cover.
+ */
+.app-page-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.app-page-main {
+  --chat-gutter: 1rem;
+  --chat-column: 46rem;
+  --message-scroller-inset-x: max(var(--chat-gutter), var(--safe-left), var(--safe-right));
+  --message-scroller-inset-top: 0px;
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--background);
+}
+.app-page-main > .chat-dock {
+  padding-block-start: 0.625rem;
+  border-block-start: 1px solid var(--border);
+  background: var(--background);
+}
+/* The newest reply as one line over the composer: goblin's orb, the words, and a way to set it aside. */
+.app-chat-reply {
+  position: absolute;
+  z-index: var(--z-dock);
+  inset-inline: 0;
+  bottom: calc(var(--dock-height, 6rem) + var(--keyboard-inset, 0px) + 0.5rem);
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  width: min(var(--chat-column), calc(100% - 2 * var(--message-scroller-inset-x)));
+  margin-inline: auto;
+  padding: 0.25rem;
+  border-radius: 1rem;
+  background: var(--popover);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--foreground) 8%, transparent),
+    var(--shadow-2);
+  color: var(--popover-foreground);
+}
+.app-chat-reply-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  min-height: 2.5rem;
+  padding-inline: 0.625rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: var(--text-15);
+  text-align: start;
+  text-wrap: pretty;
+  touch-action: manipulation;
+  user-select: none;
+  transition: background-color 120ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .app-chat-reply-open:hover {
+    background: var(--muted);
+  }
+}
+.app-chat-reply-open:active {
+  background: var(--muted);
+}
+.app-chat-reply-open:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+@media (pointer: coarse) {
+  .app-chat-reply-open {
+    min-height: 2.75rem;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app-chat-reply {
+    transition:
+      opacity 200ms var(--ease-out),
+      translate 200ms var(--ease-out);
+  }
+  @starting-style {
+    .app-chat-reply {
+      opacity: 0;
+      translate: 0 0.5rem;
+    }
+  }
+}
+/* The conversation, once opened: beside the App on a wide screen, a sheet over its lower part on a phone. */
+.app-chat-panel {
+  position: relative;
+  z-index: var(--z-chrome);
+  display: flex;
+  flex: none;
+  width: 27rem;
+  border-inline-start: 1px solid var(--border);
+  background: var(--background);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app-chat-panel {
+    animation: panel-in 220ms var(--ease-out);
+  }
+}
+@media (max-width: 47.99rem) {
+  .app-chat-panel {
+    --safe-top: 0px;
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    width: auto;
+    height: min(85%, calc(100% - 3rem));
+    overflow: clip;
+    border-inline-start: 0;
+    border-start-start-radius: 1rem;
+    border-start-end-radius: 1rem;
+    box-shadow: var(--shadow-3);
+  }
+}
+@media (max-width: 47.99rem) and (prefers-reduced-motion: no-preference) {
+  .app-chat-panel {
+    animation: app-chat-up 280ms var(--ease-drawer);
+  }
+}
+@keyframes app-chat-up {
+  from {
+    translate: 0 100%;
+  }
+}
 /* A thread under its channel: set in past the channel's mark, a size smaller. */
 .sidebar-thread {
   padding-inline-start: 1.5rem;

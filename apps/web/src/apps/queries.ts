@@ -34,6 +34,14 @@ export const keepAppMutation = owner.apiMutation({
   mutationFn: (api, keep: CreateApp) => api.apps.create({ payload: keep }),
 })
 
+/**
+ * Opens connection `connectionId`'s own App (ADR 0053): the one thread kept for it, made or reopened, and the App kept
+ * there; the workspace feed shows both.
+ */
+export const openServerAppMutation = owner.apiMutation({
+  mutationFn: (api, connectionId: string) => api.apps.openServer({ payload: { connectionId } }),
+})
+
 /** Closes a kept App, or opens a closed one again; the workspace feed shows it. */
 export const appClosedMutation = owner.apiMutation({
   mutationFn: (api, { id, closed }: { readonly id: string; readonly closed: boolean }) =>

@@ -8,7 +8,7 @@ import type { AppView } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
 import { clipStage, clippingAncestors } from '../../lib/app-occlusion.ts'
 import { CHROME_HEIGHT, type Rect } from '../../lib/app-stage.ts'
-import { APP_MODES, type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
+import { type AppPlacement, inlineHeight } from '../../lib/host-context.ts'
 import { prefersReducedMotion } from '../../lib/motion.ts'
 import { atRest, type Motion, PLACE, stepSpring } from '../../lib/spring.ts'
 import { AppFrame, selectionOrigin } from './frame.tsx'
@@ -233,6 +233,33 @@ function StageOffers({ instance, origin }: { readonly instance: Instance; readon
   )
 }
 
+/**
+ * Where the App is and how much room it has: its place in the transcript (it picks its height up to most of the
+ * window), or its page, all of it, with what of its edges the chat bar and the screen cover (`covered`).
+ */
+function placementOf(
+  place: ReturnType<typeof useAppPlacement>,
+  box: { readonly width: number; readonly height: number },
+  covered: AppPlacement['insets'],
+): AppPlacement {
+  if (place.surface === 'inline')
+    return {
+      mode: 'inline',
+      available: place.modes,
+      width: box.width,
+      height: inlineHeight(10_000, window.innerHeight),
+      surface: 'inline',
+    }
+  return {
+    mode: 'fullscreen',
+    available: place.modes,
+    width: box.width,
+    height: box.height,
+    surface: 'page',
+    ...(covered === undefined ? {} : { insets: covered }),
+  }
+}
+
 /** The App's state revision, for an agent app (its frame gets each newer one). */
 const revisionOf = (instance: Instance) =>
   instance.app.source.kind === 'agent' ? { revision: instance.app.source.revision } : {}
@@ -277,13 +304,7 @@ function Stage({ instance }: { readonly instance: Instance }) {
     live.current.moving = live.current.seeded
     kick()
   }, [place.surface, kick])
-  const placement: AppPlacement = {
-    mode: place.paged ? 'fullscreen' : 'inline',
-    available: APP_MODES,
-    width: box.width,
-    height: place.surface === 'inline' ? inlineHeight(10_000, window.innerHeight) : box.height,
-    surface: place.surface,
-  }
+  const placement = placementOf(place, box, host.insets.get(id))
   return (
     <div ref={stage} className="app-stage" data-mode={surface} data-source={source} data-app={id} data-hidden="">
       {place.surface === 'inline' && <AppChrome instance={instance} onPage={place.page} />}

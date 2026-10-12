@@ -1,11 +1,13 @@
 // Which Apps are loaded, at most LIVE_APPS at a time, and the launch that loads one: an MCP App's resource and tool
-// result, or an agent app's release.
+// result, a server's own App's tool called as the owner (ADR 0053), or an agent app's release.
+import * as Data from 'effect/Data'
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { appLaunchQuery } from '../../apps/queries.ts'
+import { serverAppQuery } from '../../mcp/queries.ts'
 import { cancelledReason } from '../../lib/call-outcome.ts'
 import { record, records } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
@@ -25,7 +27,41 @@ function resultOf(details: unknown): CallToolResult {
   }
 }
 
-async function launch(queryClient: QueryClient, app: AppView): Promise<AppSelection> {
+/** A server's own App that offered no `ui://` resource when its tool answered: its place says so. */
+class NoServerApp extends Data.TaggedError('NoServerApp')<{ readonly message: string }> {
+  constructor(title: string) {
+    super({ message: `${title} did not offer its app` })
+  }
+}
+
+/** Whether `app` is a server's own App (ADR 0053): its tool is called as the owner on each open. */
+export const isServerApp = (app: AppView): boolean => app.source.kind === 'mcp' && app.source.entrypoint === true
+
+/** The panel a loaded server App was opened on (`focus`), if any. */
+const focusOf = (selection: AppSelection): unknown =>
+  selection.kind === 'mcp' ? selection.arguments['focus'] : undefined
+
+/**
+ * A server's own App: its tool called as the owner, as its card's Open always did (ADR 0043), opened on `focus` when
+ * one is named; the result is the server's own.
+ */
+async function launchServerApp(queryClient: QueryClient, app: AppView, focus?: string): Promise<AppSelection> {
+  if (app.source.kind !== 'mcp') throw new NoServerApp(app.title)
+  const { connectionId, tool } = app.source
+  const opened = await queryClient.query(serverAppQuery(connectionId, tool, focus))
+  if (opened.uri === undefined) throw new NoServerApp(app.title)
+  return {
+    kind: 'mcp',
+    connectionId,
+    uri: opened.uri,
+    arguments: focus === undefined ? {} : { focus },
+    // SAFETY: the runtime returned this body from the SDK-validated CallToolResult of this exact call.
+    result: opened.result as CallToolResult,
+  }
+}
+
+async function launch(queryClient: QueryClient, app: AppView, focus?: string): Promise<AppSelection> {
+  if (isServerApp(app)) return launchServerApp(queryClient, app, focus)
   const loaded = await queryClient.query(appLaunchQuery(app.id))
   if (loaded.kind === 'agent') return { kind: 'agent', id: app.id, launch: loaded }
   const cancelled = cancelledReason(loaded.result)
@@ -50,10 +86,10 @@ function useLaunch(setProblems: Dispatch<SetStateAction<ReadonlyMap<string, stri
   const queryClient = useQueryClient()
   const loading = useRef(new Set<string>())
   const load = useCallback(
-    (app: AppView, put: (selection: AppSelection) => void) => {
+    (app: AppView, put: (selection: AppSelection) => void, focus?: string) => {
       if (loading.current.has(app.id)) return
       loading.current.add(app.id)
-      launch(queryClient, app)
+      launch(queryClient, app, focus)
         .then(put)
         .catch((cause: unknown) =>
           setProblems((current) => withItem(current, app.id, messageOf(cause, 'load the app'))),
@@ -66,8 +102,9 @@ function useLaunch(setProblems: Dispatch<SetStateAction<ReadonlyMap<string, stri
 }
 
 /**
- * Loading and unloading: `show` launches an App once however often it is asked, the cap unloads the least recently
- * seen, and an App the feed reports closed (or gone) unloads everywhere.
+ * Loading and unloading: `show` launches an App once however often it is asked (a server's own App again when asked
+ * for another panel), the cap unloads the least recently seen, and an App the feed reports closed (or gone) unloads
+ * everywhere.
  */
 export function useResidency(apps: readonly AppView[]) {
   const [instances, setInstances] = useState<ReadonlyMap<string, Instance>>(new Map())
@@ -94,12 +131,17 @@ export function useResidency(apps: readonly AppView[]) {
     unload(evictions(residents, LIVE_APPS), true)
   }, [unload])
   const show = useCallback(
-    (app: AppView) => {
+    (app: AppView, focus?: string) => {
       seenAt.current.set(app.id, { seenAt: Date.now(), visible: true })
       setDormant((current) => (current.has(app.id) ? new Set([...current].filter((id) => id !== app.id)) : current))
-      if (latest.current.has(app.id) || loading.current.has(app.id)) return
+      const loaded = latest.current.get(app.id)
+      if (loaded !== undefined && isServerApp(app) && focusOf(loaded.selection) !== focus) {
+        load(app, (selection) => setInstances((current) => withItem(current, app.id, { app, selection })), focus)
+        return
+      }
+      if (loaded !== undefined || loading.current.has(app.id)) return
       setProblems((current) => without(current, [app.id]))
-      load(app, (selection) => setInstances((current) => withItem(current, app.id, { app, selection })))
+      load(app, (selection) => setInstances((current) => withItem(current, app.id, { app, selection })), focus)
     },
     [load, loading],
   )

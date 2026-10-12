@@ -5,7 +5,7 @@
 // resource and every call it makes go through the owner's grants, live, and an agent app's view calls only its own
 // actions (frame.tsx). An agent app's new release reloads its frame; a new state is pushed into it.
 import * as Data from 'effect/Data'
-import { type ReactNode, createContext, use, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
+import { type ReactNode, createContext, use, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { AppView } from '@goblin/contracts'
 import type { DownloadFile } from '../../lib/app-download.ts'
@@ -14,7 +14,8 @@ import { messageOf } from '../../lib/query/app-error.ts'
 import { useNavigation } from '../../lib/navigation.ts'
 import { useApps } from '../../lib/workspace/hooks.ts'
 import { closeWorkspaceAppMutation } from '../../lib/workspace/mutations.ts'
-import { type Instance, useInstancePatches, withItem } from './instance.ts'
+import type { AppPlacement } from '../../lib/host-context.ts'
+import { type Instance, useInstancePatches, withItem, without } from './instance.ts'
 import { useResidency } from './residency.ts'
 import { type SlotName, useKicks, useSlots } from './slot-registry.ts'
 
@@ -24,11 +25,15 @@ type Host = {
   readonly dormant: ReadonlySet<string>
   /** Why an App could not be loaded, by App. */
   readonly problems: ReadonlyMap<string, string>
-  /** Loads `app` (or, loaded already, marks it seen now). */
-  readonly show: (app: AppView) => void
+  /** Loads `app` (or, loaded already, marks it seen now); a server's own App on its `focus` panel, when named. */
+  readonly show: (app: AppView, focus?: string) => void
   /** Closes an App: its iframe and its page go, its place offers to show it again. */
   readonly close: (id: string) => void
   readonly setHeight: (id: string, height: number) => void
+  /** What covers the edges of an App's page (its chat bar, the screen's safe areas), by App, told to the App. */
+  readonly insets: ReadonlyMap<string, Insets>
+  /** Sets (or with undefined, forgets) what covers App `id`'s page. */
+  readonly setInsets: (id: string, insets: Insets | undefined) => void
   /** Keeps (or with '', drops) what the App shares with the owner's next message. */
   readonly setContext: (id: string, text: string) => void
   /** Offers a link the App asked to open, or withdraws it. */
@@ -47,6 +52,26 @@ type Host = {
   /** Tells the stages that a slot moved or resized; they re-measure on the next frame. */
   readonly kick: () => void
   readonly onKick: (listener: () => void) => () => void
+}
+
+/** The edges of an App's place that something of the host covers, in pixels. */
+export type Insets = NonNullable<AppPlacement['insets']>
+
+const sameInsets = (a: Insets | undefined, b: Insets | undefined) =>
+  a?.top === b?.top && a?.right === b?.right && a?.bottom === b?.bottom && a?.left === b?.left
+
+/** What covers each App's page, kept apart from its instance: a page measures it before its App has loaded. */
+function useInsets() {
+  const [insets, setAll] = useState<ReadonlyMap<string, Insets>>(new Map())
+  const setInsets = useCallback(
+    (id: string, next: Insets | undefined) =>
+      setAll((current) => {
+        if (sameInsets(current.get(id), next)) return current
+        return next === undefined ? without(current, [id]) : withItem(current, id, next)
+      }),
+    [],
+  )
+  return { insets, setInsets }
 }
 
 const HostContext = createContext<Host | undefined>(undefined)
@@ -86,6 +111,7 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
     [unload, setProblems, closing],
   )
   const { setHeight, setContext, setLink, setDownload, setMessage, dropMessage } = useInstancePatches(setInstances)
+  const { insets, setInsets } = useInsets()
   const offerMessage = useCallback(
     (id: string, receipt: QuestionAnswerReceipt): boolean => {
       const instance = outside.current.instances.get(id)
@@ -104,6 +130,8 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       show,
       close,
       setHeight,
+      insets,
+      setInsets,
       setContext,
       setLink,
       setDownload,
@@ -122,6 +150,8 @@ export function AppHost({ children }: { readonly children: ReactNode }) {
       show,
       close,
       setHeight,
+      insets,
+      setInsets,
       setContext,
       setLink,
       setDownload,

@@ -4,7 +4,7 @@
 // is assembled here from its launch and goblin's frame bundles (ADR 0021).
 import * as Data from 'effect/Data'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   type AppBridge,
   type McpUiDisplayMode,
@@ -37,7 +37,6 @@ import type { QuestionAnswerReceipt } from '../../lib/app-message.ts'
 import { isString, records } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
-import { useAppGrantAsks } from './grant-ask.tsx'
 import { LinkOffer } from './offers.tsx'
 import { browserZone } from '../../lib/format.ts'
 
@@ -274,10 +273,11 @@ export function AppFrame({
   useEffect(() => {
     if (revision !== undefined) push.current?.want(revision)
   }, [revision])
-  const { mode, width, height: room, surface } = placement
+  const { mode, width, height: room, surface, insets } = placement
+  const covered = insets === undefined ? '' : `${insets.top} ${insets.right} ${insets.bottom} ${insets.left}`
   useEffect(() => {
     bridge.current?.setHostContext(contextFor(current().placement))
-  }, [mode, width, room, surface])
+  }, [mode, width, room, surface, covered])
   return (
     <iframe
       ref={iframe}
@@ -323,105 +323,5 @@ export function McpApp({ selection, onClose }: { readonly selection: McpSelectio
         events={events}
       />
     </div>
-  )
-}
-
-type Room = { readonly width: number; readonly height: number }
-type Insets = NonNullable<AppPlacement['insets']>
-
-const px = (value: string): number => Math.round(Number.parseFloat(value) || 0)
-
-/** The device's safe-area insets in pixels, read through a probe (CSS knows them; script only through layout). */
-function safeInsets(host: HTMLElement): Insets {
-  const probe = document.createElement('div')
-  probe.style.cssText =
-    'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)'
-  host.appendChild(probe)
-  const style = getComputedStyle(probe)
-  const insets = {
-    top: px(style.paddingTop),
-    right: px(style.paddingRight),
-    bottom: px(style.paddingBottom),
-    left: px(style.paddingLeft),
-  }
-  probe.remove()
-  return insets
-}
-
-/**
- * An App given a page of its own (a connection's App, ADR 0043): it fills the room below the page's bar and is told
- * that room as it changes, in the page's one display mode. Nothing else on the page scrolls; the App scrolls itself.
- */
-export function McpAppPage({ selection, onClose }: { readonly selection: McpSelection; readonly onClose: () => void }) {
-  const [error, setError] = useState('')
-  const [link, setLink] = useState<URL>()
-  const [room, setRoom] = useState<Room & { readonly insets: Insets }>()
-  const box = useRef<HTMLDivElement>(null)
-  const grants = useAppGrantAsks(selection.connectionId)
-  useLayoutEffect(() => {
-    const node = box.current
-    if (node === null) return undefined
-    // The page reaches the screen's bottom (and sides in landscape), so the App is told which edge it must clear;
-    // the top is already cleared by the page bar.
-    const measure = () => {
-      const { width, height } = node.getBoundingClientRect()
-      const { right, bottom, left } = safeInsets(node)
-      setRoom((last) =>
-        last?.width === width &&
-        last.height === height &&
-        last.insets.bottom === bottom &&
-        last.insets.left === left &&
-        last.insets.right === right
-          ? last
-          : { width, height, insets: { top: 0, right, bottom, left } },
-      )
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [])
-  const events: FrameEvents = {
-    report: setError,
-    resize: () => undefined,
-    close: onClose,
-    requestMode: () => 'fullscreen',
-    share: () => undefined,
-    offerLink: setLink,
-    offerDownload: () => undefined,
-    askGrant: grants.ask,
-  }
-  return (
-    <>
-      {(error !== '' || link !== undefined || grants.card !== null) && (
-        <div className="flex flex-col gap-3 px-4 pt-3">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}. The ordinary tool result remains available.</AlertDescription>
-            </Alert>
-          )}
-          {link && (
-            <LinkOffer link={link} connectionId={selectionOrigin(selection)} onDone={() => setLink(undefined)} />
-          )}
-          {grants.card}
-        </div>
-      )}
-      <div ref={box} className="flex min-h-0 flex-1 flex-col">
-        {room !== undefined && (
-          <AppFrame
-            selection={selection}
-            placement={{
-              mode: 'fullscreen',
-              available: ['fullscreen'],
-              width: room.width,
-              height: room.height,
-              insets: room.insets,
-              surface: 'page',
-            }}
-            events={events}
-          />
-        )}
-      </div>
-    </>
   )
 }
