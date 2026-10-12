@@ -598,8 +598,8 @@ chat id for compatible readers.
 
 Every signed-in page sits beside the app's shell (`components/shell`, ADR 0036): a moss rail of places (Home,
 Threads, Activity and Tasks, each with a count of what waits there, and at its foot Apps, Connections, Settings and
-Sign out) and the sidebar of channels, both always shown on a desktop; on a
-phone they share a drawer from the left edge (`DrawerSide` in `@goblin/ui`, `tone="shell"`) that the page's top bar
+Sign out) and the sidebar of channels (then the Personas, the owner's pins and the agent apps), both always shown on a
+desktop; on a phone they share a drawer from the left edge (`DrawerSide` in `@goblin/ui`, `tone="shell"`) that the page's top bar
 opens and a swipe left closes. The rail's pages (`components/shell/pages`, over the pure `lib/rail.ts`): Threads lists every thread, unread first, the
 closed folded; Activity collects what needs the owner across Topics (each chat's `attention` from a server that
 reports it, and agent apps whose schedules need the owner), Tell me's notifications (unread first, with Mark all
@@ -710,13 +710,15 @@ words in place of the server's, the paid tool's rule, events, settings and tools
 the server's own read-only claim, each row opening to its raw name, hints and whole description. A `#connection-<id>`
 link opens its card. Cloudflare's API is the second, from the shelf, for publishing a page as a
 Worker: its resource offers only `user:read account:read`, so Connect and step-up add the profile's Workers scripts
-scopes to what the server offers (`signInScope` in `owner-servers.ts`), and its `execute` asks first. Its own App opens as a page from Open in its card's head, whatever the
-owner has allowed, `/connections/<id>/app` (`server-app.tsx`): its app tool called as the owner, rendered in the same
-sandboxed frame as any MCP App and trusted for nothing; it fills the pane under the page bar and is told that room,
-and its bottom and side safe-area insets, as a page (`McpAppPage` in `apps/frame.tsx`). A frame reloads only for a
-different App; a newer result of the same call reaches the live App through the bridge (`deliver` in
-`lib/app-bridge.ts`), so coming back to the page never loads it twice. On its page, an App that calls a tool the owner
-has not allowed gets the same Allow card as in a conversation. Until a
+scopes to what the server offers (`signInScope` in `owner-servers.ts`), and its `execute` asks first. Its own App opens from Open in its card's head or its pin, whatever the
+owner has allowed, `/connections/<id>/app` (`server-app.tsx`, ADR 0053): `POST /api/apps/servers` makes once (or
+reopens) the server's thread, an empty thread under Personal named after the server (thread operation
+`server-app:<connection>`), and keeps the App there (`entrypoint` on its source); the page then goes to `/a/<id>`, where
+`AppHost` loads it with its app tool called as the owner (`serverAppQuery`, on the panel `?focus=` names), rendered in
+the same sandboxed frame as any MCP App and trusted for nothing. Its one display mode is fullscreen. A frame reloads
+only for a different App (another `focus` is one); a newer result of the same call reaches the live App through the
+bridge (`deliver` in `lib/app-bridge.ts`). On its page, an App that calls a tool the owner has not allowed gets the
+same Allow card as in a conversation. Until a
 first-class server is connected, onboarding points to it: Activity's "Get started" row (`connect-offer.tsx`, Connect or
 Not now, the dismissal kept in the browser), the empty chat's line and the Pro welcome. Connections
 also offers a shelf of suggested servers (`mcp/suggested.ts`, ADR 0052), with source comments recording their
@@ -945,11 +947,26 @@ springs between these places (`lib/spring.ts`). It clips itself to the container
 bar and composer (`data-app-cover` inside the chat's `data-app-scope`) and to the thread panel lying over a channel
 (`data-app-overlay`, `lib/app-occlusion.ts`), which also keeps pointer events off what is hidden; text fades out under the same chrome through a mask on the transcript. An App
 loads when its place comes on screen; beyond six instances the least recently seen unloads to a stub
-(`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen: fullscreen is
-the App's page, `/a/<id>`, the main column under a bar with "Back to #channel". In its transcript the host's bar above
-an App opens its page or closes it; on its page the bar's menu brings it back in the conversation or closes it. Agent apps are listed in the sidebar's
-Apps section and on the Apps page (`/apps`, `/apps/<name>`: `components/apps-page.tsx`, `components/app-manage.tsx`). Grant cards, link offers and context sharing remain
+(`lib/app-residency.ts`), while one on screen never does. The advertised modes are inline and fullscreen (ADR 0053, no
+picture-in-picture): fullscreen is the App's page, `/a/<id>`, the main column under a bar with "Back to #channel", the
+App's name, its menu (Pin to sidebar, Back in the conversation) and Close. On the page goblin's composer for the App's
+conversation (`ConversationDock`) floats over the room's bottom edge with the agent's presence on it; it and the line
+above it are `data-app-cover` in the page's `data-app-scope`, so the stage clips itself to them, and the App is told
+what they cover as `safeAreaInsets.bottom` (with the sides' safe areas), its `containerDimensions` the whole room
+(`host.insets`, `components/apps/page.tsx`). A reply finished while the page is open shows as one line over the
+composer (`lib/app-chat.ts`); a tap opens the conversation beside the App, or in a sheet over its lower part on a phone
+(`data-app-overlay`), as the thread panel shows it. In its transcript the host's bar above an App pins it, opens its
+page or closes it. Agent apps are listed in the sidebar's Apps section and on the Apps page (`/apps`, `/apps/<name>`:
+`components/apps-page.tsx`, `components/app-manage.tsx`). Grant cards, link offers and context sharing remain
 host-drawn, per App.
+
+The sidebar's Pinned section (ADR 0053, `components/shell/sidebar.tsx` over the pure `lib/pins.ts`) shows the owner's
+pins, whole servers (they open the server's own App) and single App views, in their order. They are one revisioned row
+in the agent (`app_sidebar`, `sidebar/`), read and edited through `GET` and `POST /api/sidebar` and carried on the
+workspace feed (`sidebar`), so every device follows. A connected server with its own App shows pinned until the pins
+change; an edit first stores those (`adopt`) and the row remembers them (`seen`), so an unpin sticks. An edit made from
+an older revision answers `stale`, and the browser makes it once more from the pins it brings. Removing a connection
+(`mcp.removed`) or deleting an App (`apps.removed`) takes its pin.
 
 The App learns the host context (`lib/host-context.ts`): theme, our tokens as MCP Apps style variables, device,
 locale and time zone, its display mode, surface, the modes on offer, and its measured box. The host re-sends it when these change.

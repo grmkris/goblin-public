@@ -2,7 +2,8 @@
 
 Accepted 2026-10-09 with the owner (Topics round 4). Supersedes ADR 0019 (panes for everything) and what remained of
 ADR 0016's layout, with their Trellis license and credit terms, which end with the dependency. Builds on ADRs 0017,
-0020, 0021, 0029 and 0030; the runtime pieces it draws are ADRs 0032 to 0035.
+0020, 0021, 0029 and 0030; the runtime pieces it draws are ADRs 0032 to 0035. ADR 0053 amends the sidebar (the owner's
+synced pins in place of the automatic services) and an App's page (goblin's composer stays at its bottom).
 
 **Three columns, as Slack has them.** A narrow moss-green rail of places: Home (the channels), then the app's other
 places, and at its foot Apps, Connections, Settings and Sign out. Beside it a sidebar: the Topics as `#channels`

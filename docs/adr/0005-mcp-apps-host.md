@@ -1,7 +1,8 @@
 # One live MCP App on a stage, told about its host, trusted for nothing
 
 Accepted 2026-10-04 with the owner. The one live App, its side panel, phone sheet and picture-in-picture are superseded
-by ADR 0020 (durable Apps, one iframe per instance); the sandbox, host context, offers and grants stand.
+by ADR 0020 (durable Apps, one iframe per instance); the sandbox, host context, offers and grants stand. ADR 0053 keeps
+the modes to inline and fullscreen (no picture-in-picture) and adds what covers an App's page to its host context.
 
 **One App, one iframe, never moved.** The chat view keeps at most one live App. Its iframe sits in a fixed stage that
 stays put in the DOM, because re-parenting an iframe reloads it. MyPlan's panel holds a live editing session, and a

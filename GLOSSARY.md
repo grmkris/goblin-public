@@ -209,7 +209,18 @@ A skill the agent proposed to the owner's skills library after a correction; the
 
 **MCP App**:
 A sandboxed `ui://` resource served through the MCP connection that answered its tool call. One live App moves
-between its place in the transcript and its page (`/a/<id>`) without reloading.
+between its place in the transcript and its page (`/a/<id>`), where goblin's composer stays at the bottom, without
+reloading.
+
+**Server App**:
+A connection's own App (its global entrypoint), opened from its pin or its card. It lives in one thread of its own and
+opens full screen (ADR 0053).
+_Avoid_: service, entrypoint (for the App)
+
+**Pin**:
+A server or one App view the owner keeps in the sidebar's Pinned list, in their order, on every device. A connected
+server with its own App is pinned until the owner unpins it. Pinning grants nothing.
+_Avoid_: favourite, bookmark
 
 **Agent app**:
 A small program the agent wrote and goblin runs (ADR 0021): durable state, actions and views the agent calls with

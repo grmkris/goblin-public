@@ -93,8 +93,9 @@ an app's home conversation moves its home to main; the app and its schedules go 
 `GET`, `POST` (`AgentAppChange`) and `DELETE` (`DeleteAgentApp`) on `/api/agent-apps/:name`; the build card's Allow is
 a `power` change.
 
-**Full screen with the chat.** *Fill the workspace* (ADR 0020) becomes *Full screen with the chat*, for both kinds of
-App: the App's page fills the workspace with its conversation docked on the right (about 30% of the width, resizable,
+**Full screen with the chat.** (Amended by ADR 0053: an App's page keeps goblin's composer over its bottom edge and
+opens the conversation beside it, or in a sheet on a phone; the docked chat below went with the panes in ADR 0036.)
+*Fill the workspace* (ADR 0020) becomes *Full screen with the chat*, for both kinds of App: the App's page fills the workspace with its conversation docked on the right (about 30% of the width, resizable,
 folded away with *Hide chat*, a dot on *Chat* while it has unread replies). The dock is a preference of the device. On a
 phone the App fills the screen and its conversation opens in a sheet from the bottom, half the screen or nearly all of
 it. The conversation's own pane moves into the dock or the sheet, so its stream and draft go on.
