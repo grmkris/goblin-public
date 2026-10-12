@@ -1,4 +1,4 @@
-import { type RefObject, useMemo } from 'react'
+import { type ReactNode, type RefObject, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AppContext, ComposerSelection, UsageToday } from '@goblin/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
@@ -6,6 +6,7 @@ import { RotateCcwIcon } from 'lucide-react'
 import { modelQuery, usageQuery } from '../agent/queries.ts'
 import { useStoredStates } from '../approvals/hooks.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
+import { WALLET_NEEDED } from '../lib/query/app-error.ts'
 import { openInteractions, stillOpen, waitingOnOwner } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
@@ -19,6 +20,7 @@ import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker } from './model-picker.tsx'
 import { SetupButton } from './topic-setup.tsx'
+import { FinishSetupRow, FundGoblinCard } from './start/setup-cards.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
 
@@ -126,6 +128,7 @@ function ComposerContext({
  */
 function DockCards({
   notices,
+  setup,
   open,
   waiting,
   id,
@@ -135,6 +138,8 @@ function DockCards({
 }: {
   readonly queue: Parameters<typeof QueuedMessages>[0]['inputs']
   readonly notices: readonly string[]
+  /** First-run Start's place here: what is left before goblin can answer, or the way back to it (ADR 0048). */
+  readonly setup: ReactNode
   readonly open: boolean
   readonly waiting: ReturnType<typeof openInteractions>
   readonly id: string
@@ -143,6 +148,7 @@ function DockCards({
 }) {
   return (
     <div className="dock-cards">
+      {setup}
       {notices.map((text, index) => (
         <Notice key={`${index}:${text}`} text={text} />
       ))}
@@ -223,7 +229,9 @@ export function ConversationDock({
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
       <DockCards
-        notices={[notice, projection?.queueNotice ?? '', ...notices]}
+        // Start's own card says what the free plan waits for; its refusal would only repeat it.
+        notices={[notice, projection?.queueNotice ?? '', ...notices].filter((text) => !text.startsWith(WALLET_NEEDED))}
+        setup={closed === undefined && (usage?.limit === 0 ? <FundGoblinCard /> : <FinishSetupRow />)}
         open={closed === undefined}
         waiting={waiting}
         id={id}

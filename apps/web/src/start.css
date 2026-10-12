@@ -528,3 +528,109 @@
     transition: none;
   }
 }
+
+/* Start's place in the chat (components/start/setup-cards.tsx): what is left before goblin answers, or the way back. */
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 1rem;
+  border-radius: var(--radius-xl);
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 4px 16px oklch(0 0 0 / 0.06);
+  pointer-events: auto;
+}
+.setup-card-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-15);
+  font-weight: 600;
+}
+.setup-card-title > svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--attention);
+}
+.setup-card-why {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  text-wrap: pretty;
+}
+.setup-card-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+}
+.setup-card-steps > li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.setup-card-steps > li[data-done] {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+  text-decoration-color: var(--hairline);
+}
+.setup-card-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+}
+li[data-done] > .setup-card-mark {
+  border-color: var(--success);
+  color: var(--success);
+}
+.setup-card-mark > svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+.setup-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  align-self: flex-start;
+  padding-inline: 0.75rem 0.25rem;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--hairline);
+  font-size: 0.875rem;
+  pointer-events: auto;
+}
+.setup-row-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.setup-row-count {
+  color: var(--muted-foreground);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.setup-row-close {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  color: var(--muted-foreground);
+}
+.setup-row-close:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.setup-row-close > svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
