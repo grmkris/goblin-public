@@ -148,6 +148,20 @@ describe('the API error envelope', () => {
     expect(Schema.decodeUnknownSync(ApiErrors.subscriptionRequired)(envelopeOf(handOver))).toEqual(handOver)
   })
 
+  it('says goblin needs Pro to answer an account without a plan, and keeps `chat` through a decode', () => {
+    const chat = new SubscriptionRequired({ subscribe: '/subscribe', feature: 'chat' })
+    expect(envelopeOf(chat)).toEqual({
+      error: {
+        code: 'subscription_required',
+        message: 'goblin answers once you have goblin Pro.',
+        recovery: 'Pick a day pass or monthly. If a day pass could not be paid, add funds in your Goblin Wallet.',
+        subscribe: '/subscribe',
+        feature: 'chat',
+      },
+    })
+    expect(Schema.decodeUnknownSync(ApiErrors.subscriptionRequired)(envelopeOf(chat))).toEqual(chat)
+  })
+
   it('says an MCP server that was not reached could not be, and to try again', () => {
     for (const reason of ['transport', 'timeout'] as const)
       expect(envelopeOf(new UpstreamMcp({ connectionId: 'kiwi', reason })).error.message).toBe(

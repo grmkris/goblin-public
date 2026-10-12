@@ -45,10 +45,11 @@ export class BudgetExhausted extends Schema.TaggedError<BudgetExhausted>()('Budg
   ref,
 }) {}
 /**
- * The feature a `SubscriptionRequired` refused, when it was one the plan leaves out rather than the agent itself:
- * `hand_over`, a routine handing its work to Goblin or a Persona (ADR 0012, amended 2026-10-12).
+ * What a `SubscriptionRequired` refused: `chat`, goblin itself, for an account without a plan (ADR 0054, amended
+ * 2026-10-13: there is no free plan); `hand_over`, a routine handing its work to Goblin or a Persona (ADR 0012, amended
+ * 2026-10-12), which a plan may leave out.
  */
-export const PlanFeature = Schema.Literal('hand_over')
+export const PlanFeature = Schema.Literals(['chat', 'hand_over'])
 export class SubscriptionRequired extends Schema.TaggedError<SubscriptionRequired>()('SubscriptionRequired', {
   subscribe: Schema.String,
   feature: Schema.optionalKey(PlanFeature),
@@ -129,6 +130,10 @@ export const ERROR_COPY = {
 
 /** What a `SubscriptionRequired` for one feature says instead: what is part of Pro, and what the owner can do now. */
 const FEATURE_COPY = {
+  chat: {
+    message: 'goblin answers once you have goblin Pro.',
+    recovery: 'Pick a day pass or monthly. If a day pass could not be paid, add funds in your Goblin Wallet.',
+  },
   hand_over: {
     message: 'Handing an event or a schedule to goblin or a Persona is part of Pro.',
     recovery: 'Subscribe to Pro, or have it only tell you.',

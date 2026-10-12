@@ -1,7 +1,7 @@
 import * as Schema from 'effect/Schema'
 import * as HttpApiEndpoint from 'effect/http-api/HttpApiEndpoint'
 import * as HttpApiGroup from 'effect/http-api/HttpApiGroup'
-import { BillingState, WalletReceipt } from '../billing.ts'
+import { BillingId, BillingState, WalletReceipt } from '../billing.ts'
 import { API_ERRORS, statusEnvelope } from './errors.ts'
 
 /**
@@ -91,8 +91,14 @@ const Refusals = {
 const CheckoutStarted = Schema.Struct({ checkoutUrl: Schema.String, sessionId: Schema.String })
 /** The payment provider's portal, where the owner manages or cancels their subscription. */
 const PortalLink = Schema.Struct({ url: Schema.String })
-/** Where the owner goes back to once the subscription is signed: a path of this app, `/` when absent. */
-const WalletStart = Schema.Struct({ return: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))) })
+/**
+ * How to pay for Pro (the day pass or monthly), and where the owner goes back to once it is signed: a path of this app,
+ * `/` when absent.
+ */
+const WalletStart = Schema.Struct({
+  plan: BillingId,
+  return: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
+})
 /** The Goblin Wallet's page where the owner signs the subscription once. */
 const WalletStarted = Schema.Struct({ signUrl: Schema.String })
 /** The subscription the wallet sent the owner back with. */
@@ -107,10 +113,13 @@ const WalletConfirm = Schema.Struct({ subscription: Schema.String.check(Schema.i
  * - `checkout`: `POST /api/billing/checkout` opens a Pro checkout for the signed-in account; any body is ignored.
  * - `portal`: `POST /api/billing/portal`, the provider's portal for an account that has paid before.
  *   Both answer `card_disabled` unless the deployment turns the card checkout on.
- * - `walletStart`: `POST /api/billing/wallet/start` asks the Goblin Wallet for a Pro subscription the owner signs once
- *   (ADR 0054) and answers where to sign it; the wallet sends the owner back to `/subscribe/success`.
- * - `walletConfirm`: `POST /api/billing/wallet/confirm` reads the signed subscription, takes the first period's payment
- *   and answers its receipt; repeating it answers the same receipt.
+ * - `walletStart`: `POST /api/billing/wallet/start` asks the Goblin Wallet for Pro as a subscription the owner signs
+ *   once (ADR 0054), paid by the day pass or monthly (`plan`), and answers where to sign it; the wallet sends the owner
+ *   back to `/subscribe/success`. An account with Pro is refused, except a day pass moving to monthly.
+ * - `walletConfirm`: `POST /api/billing/wallet/confirm` reads the signed subscription and turns Pro on: a monthly one
+ *   takes the first period's payment and answers its receipt; a day pass takes nothing (the first message of each UTC
+ *   day pays for it), except after a day it could not pay, when it takes that day's payment. Repeating it answers the
+ *   same receipt.
  */
 export class BillingGroup extends HttpApiGroup.make('billing').add(
   HttpApiEndpoint.get('state', '/billing/state', { success: BillingState, error: API_ERRORS }),

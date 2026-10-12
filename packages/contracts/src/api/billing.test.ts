@@ -20,7 +20,10 @@ const STATE = {
   cancelAtPeriodEnd: false,
   mode: null,
   plan: null,
-  priceCents: 1000,
+  catalog: [
+    { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
+    { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
+  ],
 } as const
 
 /** The account API with handlers that refuse as asked: `refuse` is the code the next billing write answers. */
@@ -78,6 +81,22 @@ describe('the account API', () => {
     expect(await response.json()).toEqual({
       error: { code: 'no_customer', message: BILLING_REFUSALS.no_customer.message },
     })
+  })
+
+  it('starts a wallet subscription for the day pass or monthly, and refuses a start that names neither', async () => {
+    expect(await client((api) => api.billing.walletStart({ payload: { plan: 'day', return: '/c/main' } }))).toEqual({
+      signUrl: 'https://wallet.test/subscribe/x',
+    })
+    for (const body of [{}, { plan: 'pro' }, { plan: 'month', return: `/${'a'.repeat(512)}` }]) {
+      const response = await server.handler(
+        new Request('http://account.test/api/billing/wallet/start', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      )
+      expect(response.status, JSON.stringify(body)).toBe(400)
+    }
   })
 
   it('decodes the plan, an admission failure, a revocation and a report', async () => {
