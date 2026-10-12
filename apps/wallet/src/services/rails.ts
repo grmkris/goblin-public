@@ -1,7 +1,6 @@
 import type {
   ChainBalance,
   LimitView,
-  ExecuteQuoteInput,
   Operation,
   Payment,
   Quote,
@@ -61,8 +60,6 @@ export interface RailsPort {
   /** Relays the owner's signed EIP-7702 authorization. */
   upgrade(request: UpgradeRequest): Promise<Operation>
 }
-
-export type { ExecuteQuoteInput }
 
 export class Rails extends Context.Service<
   Rails,

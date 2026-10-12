@@ -1,5 +1,5 @@
 // A small history router: five owner pages and two deep links that goblin and the OAuth flow open.
-import { type MouseEvent, type ReactNode, useEffect, useSyncExternalStore } from 'react'
+import { type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
 
 const listeners = new Set<() => void>()
 const subscribe = (listener: () => void): (() => void) => {
@@ -48,9 +48,4 @@ export function Link({
       {children}
     </a>
   )
-}
-
-export function Redirect({ to }: { readonly to: string }) {
-  useEffect(() => navigate(to, { replace: true }), [to])
-  return null
 }

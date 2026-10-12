@@ -23,6 +23,3 @@ export const challenge = (request: Request): Response => {
   headers.set('www-authenticate', `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`)
   return new Response(response.body, { status: 401, headers })
 }
-
-/** Until OAuth is wired, nobody is let in. */
-export const refuseAll: McpAuthenticator = (request) => Promise.resolve(challenge(request))

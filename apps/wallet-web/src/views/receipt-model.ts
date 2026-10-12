@@ -39,10 +39,6 @@ const PAYMENT_LABEL: Record<OperationStatus, string> = {
   cancelled: 'Not paid',
 }
 
-/** Whether money may have left: a payment that settled, or one whose outcome is unknown. */
-export const mayHavePaid = (status: OperationStatus): boolean =>
-  status === 'confirmed' || status === 'delivered' || status === 'uncertain'
-
 export function paymentStep(operation: Operation): Step {
   const { status } = operation
   const detail =

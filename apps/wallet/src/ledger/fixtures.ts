@@ -5,7 +5,6 @@ import { LedgerStore } from './store.ts'
 
 /** Test helpers: an in-memory ledger on a controllable clock. */
 export const T0 = Date.parse('2026-10-12T10:00:00.000Z')
-export const AGENT = '0x1111111111111111111111111111111111111111'
 export const EXA = '0x2222222222222222222222222222222222222222'
 export const STRANGER = '0x3333333333333333333333333333333333333333'
 

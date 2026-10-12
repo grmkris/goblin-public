@@ -4,9 +4,6 @@
  * sees a server key.
  */
 export { PrivyRoot } from './root.tsx'
-export { ownerAddress, useOwner, type Owner } from './owner.ts'
-export { FlowFailure, type FlowState, type FlowStep } from './flow.ts'
-export { useUpgradeAccount, type UpgradeAccount } from './upgrade.ts'
-export { useSignAllowance, type SignAllowance } from './allowance.ts'
-export { useApprove, type Approve } from './approve.ts'
-export { allowancePrompt, walletTypedData, type WalletPrompt } from './prompts.ts'
+export { useOwner } from './owner.ts'
+export { useUpgradeAccount } from './upgrade.ts'
+export { useSignAllowance } from './allowance.ts'

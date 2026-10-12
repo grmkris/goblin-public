@@ -2,12 +2,6 @@
 // implementation lives in src/privy/** (lane S) and is mounted by `main.tsx`; `fixture-auth.tsx` stands in for demos.
 import { createContext, use } from 'react'
 
-export interface ActionState {
-  readonly pending: boolean
-  /** A sentence saying what went wrong and what to do; absent while fine. */
-  readonly error?: string
-}
-
 export interface Auth {
   readonly status: 'loading' | 'signed-out' | 'ready'
   readonly address?: string

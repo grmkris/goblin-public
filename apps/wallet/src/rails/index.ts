@@ -6,8 +6,7 @@ import { quoteTransfer, transfer } from './transfer.ts'
 import { upgrade } from './upgrade.ts'
 import { allowances, balances } from './views.ts'
 
-export type { RailsDeps, RailsProfile, StoredAllowance } from './deps.ts'
-export { RailError } from './deps.ts'
+export type { RailsDeps, StoredAllowance } from './deps.ts'
 
 /** The payment rails the spend program calls: x402 and MPP fetches, transfers, swaps, bridges, balances, the relay. */
 export const createRails = (deps: RailsDeps): RailsPort => ({
