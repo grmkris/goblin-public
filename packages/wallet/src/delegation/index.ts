@@ -44,16 +44,16 @@ export {
   type SignedAllowance,
 } from './allowance.ts'
 export {
-  MAX_PERIODS,
-  MAX_PERIOD_DAYS,
   buildSubscription,
   confirmSubscription,
   periodAt,
+  periodCount,
   periodSeconds,
   periodStart,
   prepareSubscription,
   reviewSubscription,
   revokeCall,
+  subscriptionStart,
   type PreparedSubscription,
   type ReviewedSubscription,
   type SignedSubscription,
