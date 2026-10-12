@@ -31,6 +31,20 @@ export const checkoutMutation = account.apiMutation({ mutationFn: (api, _: void)
 /** The payment provider's portal for an account that has paid before. */
 export const portalMutation = account.apiMutation({ mutationFn: (api, _: void) => api.billing.portal() })
 
+/** Asks the Goblin Wallet for Pro as a subscription signed once (ADR 0054); the page goes to sign it. */
+export const walletStartMutation = account.apiMutation({
+  mutationFn: (api, back: string | undefined) =>
+    api.billing.walletStart({ payload: back === undefined ? {} : { return: back } }),
+})
+/** Back from signing: the first payment, taken once; the plan is read again once it is paid. */
+export const walletConfirmMutation = mutationOptions({
+  ...account.apiMutation({
+    mutationFn: (api, subscription: string) => api.billing.walletConfirm({ payload: { subscription } }),
+  }),
+  onSuccess: (receipt, _subscription, _result, { client }) =>
+    receipt.status === 'paid' ? client.invalidateQueries({ queryKey: accountKeys.billing }) : undefined,
+})
+
 /** The MCP clients the owner let use their agent. */
 export const clientsQuery = account.apiQuery({ queryKey: accountKeys.clients, queryFn: (api) => api.clients.list() })
 
