@@ -9,7 +9,8 @@ import { Chats } from '../chats/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import type { SetupScope } from '../setup/scope.ts'
 import { Setups } from '../setup/service.ts'
-import { type GrantDenied, NotFound, type ScopeRequired } from '../http/errors.ts'
+import { type GrantDenied, NotFound, type ScopeRequired, UpstreamMcp } from '../http/errors.ts'
+import { describeError } from '../telemetry/attributes.ts'
 import { offersEvents, toolAppResource, toolOffered } from '../mcp/remote.ts'
 import { grantRequiredResult, mcpModelResult, scopeRequiredResult } from '../mcp/extension.ts'
 import { named } from '../mcp/labels.ts'
@@ -172,6 +173,15 @@ function offered(
     }))
 }
 
+/**
+ * What the model reads of a failed call. A call that timed out or lost its connection may still have reached the
+ * server, so it is told to look before calling again: in the showcase run it sent a slow `create_agent` twice.
+ */
+const callFailure = (cause: unknown): string =>
+  cause instanceof UpstreamMcp && (cause.reason === 'timeout' || cause.reason === 'transport')
+    ? `${describeError(cause)}. The call may have reached the server and taken effect: check its state with a read-only tool before calling it again, and never repeat a paid or one-time action blind.`
+    : describeError(cause)
+
 const requestFor = (api: ToolExecutionApi, signal: AbortSignal | undefined): McpRequestOptions => ({
   runContext: { conversationId: String(api.conversationId), taskId: String(api.taskId) },
   ...(signal === undefined ? {} : { signal }),
@@ -246,6 +256,7 @@ export function residentMcpExtension(run: RunProgram) {
         // (content blocks, `details.structuredContent`, `_meta` and the origin), so it is returned as it is.
         output: Schema.Json,
         replay: 'unsafe',
+        failure: callFailure,
         // Switched off in this conversation: nothing is called, not even the grant check or a connection.
         execute: async (input, api, context) =>
           run(

@@ -4,9 +4,11 @@ import {
   OAuthError,
   ProtocolError,
   SdkError,
+  SdkErrorCode,
   SdkHttpError,
   UnauthorizedError,
 } from '@modelcontextprotocol/client'
+import * as Predicate from 'effect/Predicate'
 import { type AppError, Internal, NeedsAuthorization, ScopeRequired, UpstreamMcp, toAppError } from '../http/errors.ts'
 
 /**
@@ -37,6 +39,10 @@ export const challengeScope = (scope: string | undefined): string =>
     .join(' ')
     .slice(0, SCOPE_CHARS)
 
+/** A request timeout's data names the deadline it missed: one request's (`timeout`) or the whole call's. */
+const missedDeadline = (data: unknown): boolean =>
+  Predicate.isObject(data) && ('timeout' in data || 'maxTotalTimeout' in data)
+
 /**
  * Map an SDK or transport failure to a safe `UpstreamMcp`, or a call beyond the granted scope to `ScopeRequired`; app
  * errors raised by our own code pass through. The remote payload, token, request and response are never retained.
@@ -47,8 +53,9 @@ export const mapMcpError = (error: unknown, connectionId: string): AppError => {
   if (UnauthorizedError.isInstance(error)) return new UpstreamMcp({ connectionId, reason: 'unauthorized' })
   if (ProtocolError.isInstance(error)) return new UpstreamMcp({ connectionId, reason: 'remote-rpc', code: error.code })
   if (SdkHttpError.isInstance(error)) return new UpstreamMcp({ connectionId, reason: 'transport' })
-  if (SdkError.isInstance(error) && /timeout/iu.test(error.message))
-    return new UpstreamMcp({ connectionId, reason: 'timeout' })
+  // The SDK reports a caller's abort as a timeout too; only a deadline it (or goblin) set carries how long it was.
+  if (SdkError.isInstance(error) && error.code === SdkErrorCode.RequestTimeout)
+    return new UpstreamMcp({ connectionId, reason: missedDeadline(error.data) ? 'timeout' : 'cancelled' })
   if (error instanceof DOMException && error.name === 'AbortError')
     return new UpstreamMcp({ connectionId, reason: 'cancelled' })
   const known = toAppError(error)

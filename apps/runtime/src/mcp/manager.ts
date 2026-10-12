@@ -1,5 +1,12 @@
-import type { ReadResourceResult, RequestOptions, Tool } from '@modelcontextprotocol/client'
+import {
+  type ReadResourceResult,
+  type RequestOptions,
+  SdkError,
+  SdkErrorCode,
+  type Tool,
+} from '@modelcontextprotocol/client'
 import * as Effect from 'effect/Effect'
+import * as Fiber from 'effect/Fiber'
 import * as Schema from 'effect/Schema'
 import { type AppError, Conflict, Forbidden, GrantDenied, NotFound, UpstreamMcp, attemptSync } from '../http/errors.ts'
 import { type SkillEntry, skillsListStandard } from '../skills/protocol.ts'
@@ -91,6 +98,41 @@ const modelCall =
     return { kind: 'complete', result: await plainCall(live, tool, args, guarded) }
   }
 
+/** Asking for progress gives the server a token; each notification it sends restarts the call's deadline. */
+const ignoreProgress = () => undefined
+
+/**
+ * One tool call's request: it may go `toolTimeoutMs` without an answer, restarted by each progress notification, and
+ * `toolDeadlineMs` in all. The whole-call deadline aborts the request, which the SDK's own total limit would leave
+ * open; a caller's explicit timeout and abort signal still apply.
+ */
+const withDeadline = <A, E, R>(
+  manager: Manager,
+  request: RequestOptions,
+  send: (options: RequestOptions) => Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    const ms = manager.toolDeadlineMs
+    const deadline = new AbortController()
+    const missed = new SdkError(SdkErrorCode.RequestTimeout, 'Maximum total timeout exceeded', { maxTotalTimeout: ms })
+    const timer = yield* Effect.forkIn(
+      Effect.andThen(
+        Effect.sleep(ms),
+        Effect.sync(() => deadline.abort(missed)),
+      ),
+      manager.scope,
+    )
+    const signal = request.signal === undefined ? deadline.signal : AbortSignal.any([request.signal, deadline.signal])
+    const options = {
+      timeout: manager.toolTimeoutMs,
+      resetTimeoutOnProgress: true,
+      onprogress: ignoreProgress,
+      ...request,
+      signal,
+    }
+    return yield* send(options).pipe(Effect.ensuring(Fiber.interrupt(timer)))
+  })
+
 const callTool = <A>(
   manager: Manager,
   call: ToolCall,
@@ -113,9 +155,9 @@ const callTool = <A>(
     const tool = listed.tools.find((item) => item.name === name)
     if (tool === undefined || !toolOffered(tool, caller)) return yield* new NotFound({ what: `tool ${name}` })
     yield* fits(connectionId, args, manager.maxResultBytes)
-    return yield* remote(manager, live, () =>
-      manager.dispatch.request(checks.dispatch, { timeout: manager.requestTimeoutMs, ...request }, (guarded) =>
-        send(live, tool, checks.frozen(), guarded),
+    return yield* withDeadline(manager, request, (deadlined) =>
+      remote(manager, live, () =>
+        manager.dispatch.request(checks.dispatch, deadlined, (guarded) => send(live, tool, checks.frozen(), guarded)),
       ),
     )
   }).pipe(

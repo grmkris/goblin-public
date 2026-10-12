@@ -4,7 +4,7 @@ import * as Effect from 'effect/Effect'
 import * as Fiber from 'effect/Fiber'
 import * as Option from 'effect/Option'
 import type * as Scope from 'effect/Scope'
-import { type AppError, GrantDenied, Internal, NotFound, attemptSync } from '../http/errors.ts'
+import { type AppError, GrantDenied, Internal, NotFound, type UpstreamMcp, attemptSync } from '../http/errors.ts'
 import { SingleFlight } from '../observability/single-flight.ts'
 import { DispatchGuards } from './dispatch.ts'
 import { mapMcpError } from './errors.ts'
@@ -46,6 +46,8 @@ export type Connection = {
   readonly listen: ListenState
   /** When it was last used, in Clock milliseconds; it closes once idle that long. */
   usedAt: number
+  /** Requests in a row that missed their deadline: one is a slow tool, two a connection that no longer answers. */
+  timeouts: number
   /** The fiber that closes it when it has been idle long enough. */
   idle: Fiber.Fiber<void> | undefined
 }
@@ -60,6 +62,9 @@ export type Manager = {
   readonly dispatch: DispatchGuards
   readonly openTimeoutMs: number
   readonly requestTimeoutMs: number
+  /** One tool call's deadline without an answer or progress, and its deadline in all (types.ts). */
+  readonly toolTimeoutMs: number
+  readonly toolDeadlineMs: number
   readonly maxPages: number
   readonly maxResultBytes: number
   readonly idleMs: number
@@ -141,6 +146,7 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
       stale: false,
       listen: { held: false, stream: undefined, watcher: undefined, refused: false, relist: false },
       usedAt,
+      timeouts: 0,
       idle: undefined,
     }
     // oxlint-disable-next-line unicorn/prefer-add-event-listener -- the SDK Client reports errors only through onerror.
@@ -194,6 +200,20 @@ export const authorized = (
     return yield* connectionOf(manager, connectionId, request)
   })
 
+/** Failures after which the connection is kept: the server answered, or the caller stopped waiting. */
+const KEPT: ReadonlySet<UpstreamMcp['reason']> = new Set([...ANSWERED, 'cancelled'])
+
+/** What a failed request means for its connection: kept, or dropped so the next call reconnects. */
+const afterFailure = (manager: Manager, connection: Connection, error: UpstreamMcp) => {
+  if (KEPT.has(error.reason)) return Effect.void
+  // One slow tool is not a broken connection; a second missed deadline in a row is.
+  if (error.reason === 'timeout') {
+    connection.timeouts += 1
+    if (connection.timeouts < 2) return Effect.void
+  }
+  return close(manager, connection.server.connectionId)
+}
+
 /** One remote request; a transport or auth failure drops the cached connection so the next call reconnects. */
 export const remote = <A>(
   manager: Manager,
@@ -206,9 +226,12 @@ export const remote = <A>(
     try: async () => bounded(connectionId, await request(), max),
     catch: (error) => mapMcpError(error, connectionId),
   }).pipe(
-    Effect.tapErrorTag('UpstreamMcp', (error) =>
-      ANSWERED.has(error.reason) ? Effect.void : close(manager, connectionId),
+    Effect.tap(() =>
+      Effect.sync(() => {
+        connection.timeouts = 0
+      }),
     ),
+    Effect.tapErrorTag('UpstreamMcp', (error) => afterFailure(manager, connection, error)),
   )
 }
 
@@ -278,6 +301,8 @@ export const managerState = Effect.fnUntraced(function* (options: McpManagerOpti
     dispatch: new DispatchGuards(),
     openTimeoutMs: options.timeoutMs ?? 10_000,
     requestTimeoutMs: options.timeoutMs ?? 30_000,
+    toolTimeoutMs: options.toolTimeoutMs ?? 90_000,
+    toolDeadlineMs: options.toolDeadlineMs ?? 300_000,
     maxPages: options.maxPages ?? 64,
     maxResultBytes: options.maxResultBytes ?? 1_048_576,
     idleMs: options.idleMs ?? 300_000,

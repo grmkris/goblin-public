@@ -58,6 +58,12 @@ export type McpManagerOptions = {
   readonly maxSkillFileBytes?: number
   /** HTML app bundles are host-only; ordinary resources and model results retain maxResultBytes. */
   readonly maxAppResourceBytes?: number
+  /**
+   * How long one tool call may go without an answer or a progress notification (default 90 s); a server that reports
+   * progress extends it, up to `toolDeadlineMs` in all (default 5 minutes).
+   */
+  readonly toolTimeoutMs?: number
+  readonly toolDeadlineMs?: number
   /** Close a connection this long after its last use (default 5 minutes). */
   readonly idleMs?: number
   /**

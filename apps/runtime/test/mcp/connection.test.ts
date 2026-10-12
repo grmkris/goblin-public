@@ -393,6 +393,95 @@ describe('the connection manager as a service (unit)', () => {
   })
 })
 
+describe('a slow tool call (unit)', () => {
+  const slowGrants = new MemoryGrants([{ connectionId: 'fixture', capability: 'tool', name: 'slow' }])
+  const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+  /** A server whose one tool answers after `answerMs`, sending progress every `progressMs` when asked for it. */
+  const slowServer = (answerMs: number, progressMs?: number) =>
+    createMcpHandler(() => {
+      const server = lowLevelServer({ name: 'slow', version: '1.0.0' }, { capabilities: { tools: {} } })
+      server.setRequestHandler('tools/list', () => ({
+        tools: [{ name: 'slow', inputSchema: { type: 'object', properties: {} } }],
+      }))
+      server.setRequestHandler('tools/call', async (_request, ctx) => {
+        const token = ctx.mcpReq._meta?.progressToken
+        const started = Date.now()
+        let progress = 0
+        while (Date.now() - started < answerMs && !ctx.mcpReq.signal.aborted) {
+          await pause(progressMs ?? answerMs)
+          progress += 1
+          if (progressMs !== undefined && token !== undefined)
+            await ctx.mcpReq.notify({ method: 'notifications/progress', params: { progressToken: token, progress } })
+        }
+        return { content: [{ type: 'text', text: 'done' }] }
+      })
+      return server
+    })
+  const slowManager = (answerMs: number, progressMs?: number, deadlines = { toolTimeoutMs: 80, toolDeadlineMs: 400 }) => {
+    const official = slowServer(answerMs, progressMs)
+    return managerOf({
+      servers: [serverConfig],
+      allows: (grant) => slowGrants.allows(grant),
+      auth: () => ({ token: async () => 'fixture' }),
+      fetch: async (input, init) => official.fetch(new Request(input, init)),
+      ...deadlines,
+    })
+  }
+
+  it('answers a missed deadline as a timeout and keeps the connection until a second one in a row', async () => {
+    const manager = slowManager(300)
+    try {
+      const opened = await manager.connections.connect('fixture')
+      await expect(manager.connections.callTool('fixture', 'slow', {})).rejects.toMatchObject({
+        _tag: 'UpstreamMcp',
+        reason: 'timeout',
+      })
+      expect(await manager.connections.snapshot('fixture')).toEqual(Option.some(opened))
+      await expect(manager.connections.callTool('fixture', 'slow', {})).rejects.toMatchObject({ reason: 'timeout' })
+      expect(await manager.connections.snapshot('fixture')).toEqual(Option.none())
+    } finally {
+      await manager.dispose()
+    }
+  })
+
+  it('lets a server that reports progress run past the deadline of one wait', async () => {
+    const manager = slowManager(240, 40)
+    try {
+      const result = await manager.connections.callTool('fixture', 'slow', {})
+      expect(result.content).toEqual([{ type: 'text', text: 'done' }])
+    } finally {
+      await manager.dispose()
+    }
+  })
+
+  it('ends a call that keeps reporting progress at its deadline in all', async () => {
+    const manager = slowManager(5000, 30, { toolTimeoutMs: 80, toolDeadlineMs: 200 })
+    try {
+      const started = Date.now()
+      await expect(manager.connections.callTool('fixture', 'slow', {})).rejects.toMatchObject({ reason: 'timeout' })
+      expect(Date.now() - started).toBeLessThan(2000)
+    } finally {
+      await manager.dispose()
+    }
+  })
+
+  it('answers a caller who stops waiting as cancelled, not as a timeout, and keeps the connection', async () => {
+    const manager = slowManager(300)
+    try {
+      const opened = await manager.connections.connect('fixture')
+      const stop = new AbortController()
+      setTimeout(() => stop.abort(), 20)
+      await expect(manager.connections.callTool('fixture', 'slow', {}, { signal: stop.signal })).rejects.toMatchObject({
+        _tag: 'UpstreamMcp',
+        reason: 'cancelled',
+      })
+      expect(await manager.connections.snapshot('fixture')).toEqual(Option.some(opened))
+    } finally {
+      await manager.dispose()
+    }
+  })
+})
+
 describe('the size of a result as the host carries it (unit)', () => {
   it('counts UTF-8 bytes of the JSON, and tells a value JSON cannot hold from one that is merely large', () => {
     expect(encodedSize({ text: 'é' })).toBe(new TextEncoder().encode('{"text":"é"}').byteLength)

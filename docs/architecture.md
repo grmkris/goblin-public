@@ -633,6 +633,12 @@ OAuth error, a refused flow, a 401) marks the server `needs_auth` and the owner 
 transport and keeps the credentials for the next call (`mcp/errors.ts` `isOAuthRejection`). Results are bounded (1 MiB,
 16 MiB for App HTML); a result JSON cannot hold is `unsupported`, not over the limit.
 
+A tool call may go 90 seconds without an answer; it asks for progress, and each progress notification the server
+sends restarts that wait, up to five minutes in all, when goblin aborts the request (`withDeadline`). A missed deadline
+is `UpstreamMcp` `timeout`, a caller who stopped waiting `cancelled` (`mcp/errors.ts` reads the SDK's timeout data).
+Neither drops the connection; a second timeout in a row does. A call that timed out or lost its connection may still
+have run, so `mcp_call` tells the model to check the server's state before calling it again.
+
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
 resource. An App's switch (`PUT /api/mcp/app-grants`, `McpGrants.setApp`) grants an App as a whole: exactly the
 tools that declare its `ui://` resource, including the ones only the App may call, and the resource itself.
