@@ -7,13 +7,7 @@
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { type ChainKey, chainByKey } from '../chains/index.ts'
-import type {
-  AgentSigner,
-  SignedAuthorization,
-  TransactionFees,
-  TypedDataJson,
-  UserOperation,
-} from '../contract/signer.ts'
+import type { AgentSigner, SignedAuthorization, TypedDataJson, UserOperation } from '../contract/signer.ts'
 import type { Address, Hex } from '../contract/ids.ts'
 import { type PrivyClient, privyError } from '../privy/client.ts'
 import { walletRpc } from '../privy/wallets.ts'
@@ -29,7 +23,6 @@ export interface PrivyAgentConfig {
 }
 
 const SIGNATURE = /^0x[0-9a-fA-F]{130}$/u
-const HASH = /^0x[0-9a-fA-F]{64}$/u
 const WORD = /^0x[0-9a-fA-F]{64}$/u
 const TEMPO_SIGNED = /^0x76[0-9a-fA-F]+$/u
 
@@ -93,43 +86,6 @@ export class PrivyAgentSigner implements TempoAgent {
       input.operationKey,
     )
     return field(data, 'signature', SIGNATURE, 'invalid_signature_response')
-  }
-
-  /** Privy signs and broadcasts from the agent wallet; resolves with the transaction hash. */
-  async sendTransaction(input: {
-    chain: ChainKey
-    to: Address
-    data: Hex
-    value?: bigint
-    fees?: TransactionFees
-    operationKey: string
-  }): Promise<Hex> {
-    const chain = chainByKey(input.chain, this.#config.live)
-    const { fees } = input
-    const data = await this.#rpc(
-      {
-        method: 'eth_sendTransaction',
-        caip2: chain.caip2,
-        chain_type: 'ethereum',
-        params: {
-          transaction: {
-            to: input.to,
-            data: input.data,
-            value: `0x${(input.value ?? 0n).toString(16)}`,
-            chain_id: chain.id,
-            ...(fees === undefined
-              ? {}
-              : {
-                  gas_limit: `0x${fees.gasLimit.toString(16)}`,
-                  max_fee_per_gas: `0x${fees.maxFeePerGas.toString(16)}`,
-                  max_priority_fee_per_gas: `0x${fees.maxPriorityFeePerGas.toString(16)}`,
-                }),
-          },
-        },
-      },
-      input.operationKey,
-    )
-    return field(data, 'hash', HASH, 'invalid_send_response')
   }
 
   /** An EIP-7702 authorization from the agent wallet (the policy allows only the MetaMask DeleGator). */

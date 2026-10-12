@@ -9,15 +9,15 @@
  */
 import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
-import { decodeFunctionData, encodeFunctionData, parseAbi } from 'viem'
+import { decodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
-import { erc20Balance } from '../balances/erc20.ts'
-import { toAddress, toHex } from '../balances/hex.ts'
-import { field, type JsonRpc, type WaitOptions } from '../balances/rpc.ts'
-import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
-import { ensureUsdc, type TopUp } from '../balances/transfer.ts'
+import { toHex } from '../balances/hex.ts'
+import { field } from '../balances/rpc.ts'
+import { sendCalls } from '../balances/agent-send.ts'
+import type { EvmChain } from '../balances/send.ts'
+import type { AgentRoute } from '../balances/transfer.ts'
 import { ARBITRUM, BASE, ETHEREUM, TEMPO, type Chain } from '../chains/index.ts'
-import type { AgentSigner, ChainKey } from '../contract/index.ts'
+import type { ChainKey } from '../contract/index.ts'
 
 /** Relay's depository: the same address on every chain Relay serves. */
 export const RELAY_DEPOSITORY = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
@@ -244,25 +244,22 @@ export const quoteBridge = async (input: BridgeQuoteInput): Promise<FrozenBridge
 
 export type RelayDelivery = 'delivered' | 'pending' | 'failed'
 
-export interface ExecuteBridgeInput {
+export interface ExecuteBridgeInput extends Omit<AgentRoute, 'chain'> {
   readonly bridge: FrozenBridge
-  readonly agent: AgentSigner
-  readonly rpc: JsonRpc
   readonly operationKey: string
-  readonly wait?: WaitOptions
   readonly fetchFn?: typeof fetch
   readonly now?: () => Date
-  /** The owner's allowance on the origin chain: the deposit's shortfall is redeemed before anything is signed. */
-  readonly topUp?: TopUp | undefined
   /** Status polls after the deposit confirms; default 10 at 3 s. */
   readonly statusAttempts?: number
   readonly sleep?: (ms: number) => Promise<void>
 }
 
 export interface BridgeResult {
-  /** The deposit transaction on the origin chain. */
-  readonly txHash: string
-  readonly explorerUrl: string
+  /** The UserOperation that approved and deposited on the origin chain. */
+  readonly userOpHash: string
+  /** Its bundle transaction, once mined. */
+  readonly txHash?: string | undefined
+  readonly explorerUrl?: string | undefined
   readonly status: 'success' | 'reverted' | 'pending'
   readonly delivery: RelayDelivery
   readonly detail: string
@@ -320,97 +317,31 @@ const assertRunnable = (input: ExecuteBridgeInput): Chain => {
 }
 
 /**
- * The agent must hold the deposit before the approval is signed: an EVM origin's shortfall comes from the owner's
- * allowance, exactly as for a transfer; then the balance is checked so an empty wallet never signs an approval.
+ * Executes a frozen bridge as one UserOperation on the origin chain: the deposit's shortfall (plus the gas) redeemed
+ * from the owner's allowance, the exact approval and the deposit, together or not at all; then Relay's delivery.
  */
-const fundDeposit = async (input: ExecuteBridgeInput, origin: Chain): Promise<void> => {
-  const { bridge } = input
-  const amount = BigInt(bridge.amountIn)
-  if (input.topUp !== undefined)
-    await ensureUsdc({
-      chain: bridge.from,
-      amount,
-      operationKey: input.operationKey,
-      agent: input.agent,
-      rpc: input.rpc,
-      topUp: input.topUp,
-      wait: input.wait,
-    })
-  if ((await erc20Balance(input.rpc, origin.usdc.address, input.agent.address)) < amount)
-    throw new BridgeError(
-      'insufficient_funds',
-      `The agent wallet holds less ${origin.usdc.symbol} than the bridge sends.`,
-    )
-}
-
-const ALLOWANCE = parseAbi(['function allowance(address owner, address spender) view returns (uint256)'])
-const pauseFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
-/**
- * Waits until the RPC shows the depository's fresh allowance: a load-balanced node behind the approval's block would
- * answer the deposit's simulation with a revert. Giving up is a plain failure; the deposit is not signed yet.
- */
-const untilApproved = async (input: ExecuteBridgeInput, origin: Chain): Promise<void> => {
-  const data = encodeFunctionData({
-    abi: ALLOWANCE,
-    functionName: 'allowance',
-    args: [toAddress(input.agent.address), toAddress(RELAY_DEPOSITORY)],
-  })
-  for (let attempt = 0; attempt < (input.wait?.attempts ?? 10); attempt += 1) {
-    // expected: an unanswered or unreadable read counts as not visible yet; the loop asks again.
-    const raw = await input.rpc('eth_call', [{ to: origin.usdc.address, data }, 'latest']).catch(() => '0x')
-    const shown = /^0x[0-9a-fA-F]{64}$/u.test(String(raw)) ? BigInt(String(raw)) : 0n
-    if (shown >= BigInt(input.bridge.amountIn)) return
-    await (input.wait?.sleep ?? pauseFor)(input.wait?.intervalMs ?? 1000)
-  }
-  throw new TransferError(
-    'rpc_unavailable',
-    'The approval landed but the chain did not show it in time; nothing was bridged. Try again.',
-  )
-}
-
-/** Executes a frozen bridge: funding, the approval (if quoted), the deposit, then Relay's delivery status. */
 export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeResult> => {
   const { bridge } = input
   const origin = assertRunnable(input)
-  await fundDeposit(input, origin)
-  const context = { agent: input.agent, rpc: input.rpc, chain: bridge.from, wait: input.wait }
-  let deposit: { hash: string; status: 'success' | 'reverted' | 'pending' } | undefined
-  for (const step of bridge.steps) {
-    const sent = await sendSimulated(context, {
-      key: `${input.operationKey}:${step.id}`,
-      to: step.to,
-      data: toHex(step.data),
-    })
-    if (sent.status !== 'success' && step.id === 'approve')
-      throw new TransferError(
-        sent.status === 'pending' ? 'uncertain' : 'reverted',
-        'The approval did not confirm.',
-        sent.status === 'pending',
-      )
-    if (step.id === 'approve') await untilApproved(input, origin)
-    if (step.id === 'deposit') deposit = sent
+  const calls = bridge.steps.map((step) => ({ target: step.to, value: 0n, callData: toHex(step.data) }))
+  const sent = await sendCalls(
+    { ...input, chain: bridge.from },
+    { key: `${input.operationKey}:deposit`, calls, spends: BigInt(bridge.amountIn) },
+  )
+  const sentFields = {
+    userOpHash: sent.userOpHash,
+    txHash: sent.txHash,
+    ...(sent.txHash === undefined ? {} : { explorerUrl: `${origin.explorerUrl}/tx/${sent.txHash}` }),
   }
-  if (deposit === undefined) throw new BridgeError('bad_quote', 'The quote has no deposit step.')
-  const explorerUrl = `${origin.explorerUrl}/tx/${deposit.hash}`
-  if (deposit.status !== 'success') {
-    return {
-      txHash: deposit.hash,
-      explorerUrl,
-      status: deposit.status,
-      delivery: 'pending',
-      detail: deposit.status,
-      destinationTxHashes: [],
-    }
-  }
+  if (sent.status !== 'success')
+    return { ...sentFields, status: sent.status, delivery: 'pending', detail: sent.status, destinationTxHashes: [] }
   const landed = await relayDelivery(bridge.requestId, {
     fetchFn: input.fetchFn,
     attempts: input.statusAttempts,
     sleep: input.sleep,
   })
   return {
-    txHash: deposit.hash,
-    explorerUrl,
+    ...sentFields,
     status: 'success',
     delivery: landed.delivery,
     detail: landed.detail,

@@ -1,70 +1,20 @@
 import { decodeFunctionData, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { BASE, BASE_SEPOLIA } from '../chains/index.ts'
-import type { AgentSigner, TransactionFees } from '../contract/index.ts'
+import { fakeBundler, fakeNode, localAgent, TEST_FEE_BOUND, TEST_TX, TEST_USEROP_HASH } from '../bundler/testing.ts'
+import { BASE } from '../chains/index.ts'
+import type { AgentSigner } from '../contract/index.ts'
 import { toHex } from './hex.ts'
-import { field, httpJsonRpc, JsonRpcError, type JsonRpc } from './rpc.ts'
-import { transferUsdc, TransferError, type TopUp } from './transfer.ts'
+import { JsonRpcError, type JsonRpc } from './rpc.ts'
+import { ensureUsdc, transferUsdc, type TopUp } from './transfer.ts'
 
-const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
 const RECIPIENT = '0xB98eF29eb2be19Ae646A8FC0248255B90A332dbC'
-const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
-const erc20 = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
-
-interface Sent {
-  to: string
-  data: string
-  key: string
-  fees?: TransactionFees | undefined
-}
-
-const down: JsonRpc = () => Promise.reject(new JsonRpcError('eth_getBalance', 'HTTP 429'))
-
-const harness = (options: {
-  held: bigint
-  gas?: bigint
-  revertWith?: string
-  mined?: boolean
-  baseFee?: bigint
-  /** How many balance reads after the top-up still show the old balance (a lagging RPC node). */
-  staleReads?: number
-}) => {
-  const sent: Sent[] = []
-  let stale = options.staleReads ?? 0
-  const agent: AgentSigner = {
-    address: AGENT,
-    signTypedData: () => Promise.reject(new Error('unused')),
-    signAuthorization: () => Promise.reject(new Error('unused')),
-    sendTransaction: async ({ to, data, fees, operationKey }) => {
-      sent.push({ to, data, key: operationKey, fees })
-      return toHex(`0x${sent.length.toString(16).padStart(64, '0')}`)
-    },
-  }
-  const rpc: JsonRpc = async (method, params) => {
-    switch (method) {
-      case 'eth_getBalance':
-        return word(options.gas ?? 1_000_000_000_000_000n)
-      case 'eth_call': {
-        const to = String(field(params[0], 'to'))
-        if (options.revertWith !== undefined && to === BASE.delegation.manager) throw new Error(options.revertWith)
-        // After the top-up is sent the agent holds what it asked for, once the node has caught up.
-        if (sent.some((s) => s.to === BASE.delegation.manager) && (stale -= 1) < 0) return word(10n ** 12n)
-        return word(options.held)
-      }
-      case 'eth_getTransactionReceipt':
-        return options.mined === false ? null : { status: '0x1' }
-      case 'eth_estimateGas':
-        return '0x186a0'
-      case 'eth_getBlockByNumber':
-        return { baseFeePerGas: `0x${(options.baseFee ?? 10_000_000n).toString(16)}` }
-      case 'eth_maxPriorityFeePerGas':
-        return '0xf4240'
-      default:
-        throw new Error(`unexpected ${method}`)
-    }
-  }
-  return { agent, rpc, sent }
-}
+const erc20 = parseAbi([
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function approve(address spender, uint256 amount) returns (bool)',
+])
+const agent = localAgent()
+const instant = { sleep: async () => undefined, attempts: 2 }
+const down: JsonRpc = () => Promise.reject(new JsonRpcError('eth_call', 'HTTP 429'))
 
 const topUp = (available: bigint): TopUp & { asked: bigint[] } => {
   const asked: bigint[] = []
@@ -78,164 +28,129 @@ const topUp = (available: bigint): TopUp & { asked: bigint[] } => {
   }
 }
 
-const base = {
-  live: true,
-  chain: 'base',
-  to: RECIPIENT,
-  operationKey: 'op-tr-evm-1',
-  wait: { sleep: async () => undefined, attempts: 2 },
-} as const
+const route = (usdc: bigint, options: { delegated?: boolean; bundler?: ReturnType<typeof fakeBundler> } = {}) => {
+  const bundler = options.bundler ?? fakeBundler()
+  const rpc = fakeNode({
+    usdc: () => usdc,
+    ...(options.delegated === undefined ? {} : { delegated: options.delegated }),
+  })
+  return {
+    bundler,
+    input: {
+      live: true,
+      chain: 'base',
+      to: RECIPIENT,
+      operationKey: 'op-tr-evm-1',
+      agent,
+      rpc,
+      bundler: bundler.rpc,
+      wait: instant,
+    } as const,
+  }
+}
 
-describe('EVM transfer', () => {
-  test('pays directly when the agent holds enough', async () => {
-    const h = harness({ held: 5_000_000n })
-    const result = await transferUsdc({ ...base, amount: 2_000_000n, agent: h.agent, rpc: h.rpc })
-    expect(h.sent).toHaveLength(1)
-    expect(h.sent[0]?.to).toBe(BASE.usdc.address)
-    expect(decodeFunctionData({ abi: erc20, data: toHex(h.sent[0]?.data ?? '0x') }).args).toEqual([
-      RECIPIENT,
-      2_000_000n,
-    ])
-    expect(result).toMatchObject({
+const decoded = (call: { callData: string }) => decodeFunctionData({ abi: erc20, data: toHex(call.callData) })
+
+describe('an EVM transfer is one UserOperation from the agent, its gas paid in USDC', () => {
+  test('pays directly when the agent holds the amount plus the gas: the transfer, then the paymaster approval', async () => {
+    const { bundler, input } = route(5_000_000n)
+    const result = await transferUsdc({ ...input, amount: 2_000_000n })
+    expect(result).toEqual({
+      userOpHash: TEST_USEROP_HASH,
+      txHash: TEST_TX,
       status: 'success',
-      explorerUrl: expect.stringContaining('https://basescan.org/tx/0x'),
+      explorerUrl: `${BASE.explorerUrl}/tx/${TEST_TX}`,
     })
-    expect(result.topUpTxHash).toBeUndefined()
+    const [batch] = bundler.batches
+    expect(batch?.map((call) => decoded(call).functionName)).toEqual(['transfer', 'approve'])
+    expect(decoded(batch?.[0] ?? { callData: '0x' }).args).toEqual([RECIPIENT, 2_000_000n])
+    expect(decoded(batch?.[1] ?? { callData: '0x' }).args[1]).toBe(TEST_FEE_BOUND)
   })
 
-  test('redeems exactly the shortfall from the owner allowance, then pays', async () => {
-    const h = harness({ held: 500_000n })
-    const top = topUp(10_000_000n)
-    const result = await transferUsdc({ ...base, amount: 2_000_000n, agent: h.agent, rpc: h.rpc, topUp: top })
-    expect(top.asked).toEqual([1_500_000n])
-    expect(h.sent.map((s) => s.to)).toEqual([BASE.delegation.manager, BASE.usdc.address])
-    expect(h.sent.map((s) => s.key)).toEqual(['op-tr-evm-1:topup', 'op-tr-evm-1:pay'])
-    expect(result.topUpAmount).toBe(1_500_000n)
+  test("tops up exactly the shortfall plus the gas from the owner's allowance, in the same operation", async () => {
+    const { bundler, input } = route(500_000n)
+    const top = topUp(20_000_000n)
+    const result = await transferUsdc({ ...input, amount: 2_000_000n, topUp: top })
+    expect(top.asked.at(-1)).toBe(2_000_000n - 500_000n + TEST_FEE_BOUND)
+    expect(result.topUpAmount).toBe(2_000_000n - 500_000n + TEST_FEE_BOUND)
+    const [batch] = bundler.batches
+    expect(batch?.[0]).toEqual({ target: BASE.delegation.manager, value: 0n, callData: '0xdeadbeef' })
+    expect(batch?.length).toBe(3)
   })
 
-  test('after a top-up, waits for a lagging node to show the new balance, or fails before paying', async () => {
-    const slept: number[] = []
-    const wait = { attempts: 4, sleep: async (ms: number) => void slept.push(ms) }
-    const lagging = harness({ held: 0n, staleReads: 2 })
-    const paid = await transferUsdc({
-      ...base,
-      amount: 1_000_000n,
-      agent: lagging.agent,
-      rpc: lagging.rpc,
-      topUp: topUp(10_000_000n),
-      wait,
+  test('refuses before signing when the allowance cannot cover it, or there is no allowance', async () => {
+    const short = route(500_000n)
+    await expect(transferUsdc({ ...short.input, amount: 2_000_000n, topUp: topUp(1_000_000n) })).rejects.toMatchObject({
+      code: 'allowance_exhausted',
     })
-    expect(lagging.sent.map((s) => s.key)).toEqual(['op-tr-evm-1:topup', 'op-tr-evm-1:pay'])
-    expect(paid.status).toBe('success')
-    expect(slept.length).toBeGreaterThan(0)
-    const stuck = harness({ held: 0n, staleReads: 99 })
-    await expect(
-      transferUsdc({
-        ...base,
-        amount: 1_000_000n,
-        agent: stuck.agent,
-        rpc: stuck.rpc,
-        topUp: topUp(10_000_000n),
-        wait,
-      }),
-    ).rejects.toMatchObject({ code: 'rpc_unavailable', uncertain: false })
-    expect(stuck.sent.map((s) => s.key)).toEqual(['op-tr-evm-1:topup'])
-  })
-
-  test('refuses before sending when there is no allowance to cover the shortfall', async () => {
-    const h = harness({ held: 0n })
-    await expect(
-      transferUsdc({ ...base, amount: 2_000_000n, agent: h.agent, rpc: h.rpc, topUp: topUp(1_000_000n) }),
-    ).rejects.toMatchObject({ code: 'allowance_exhausted' })
-    await expect(transferUsdc({ ...base, amount: 2_000_000n, agent: h.agent, rpc: h.rpc })).rejects.toMatchObject({
+    expect(short.bundler.methods).not.toContain('eth_sendUserOperation')
+    await expect(transferUsdc({ ...route(500_000n).input, amount: 2_000_000n })).rejects.toMatchObject({
       code: 'insufficient_funds',
     })
-    expect(h.sent).toHaveLength(0)
   })
 
-  test('maps the enforcer revert to an allowance error before broadcasting', async () => {
-    const h = harness({
-      held: 0n,
-      revertWith: 'execution reverted: ERC20PeriodTransferEnforcer:transfer-amount-exceeded',
+  test("the chain's own refusal, in the wallet's words, before anything is signed", async () => {
+    const bundler = fakeBundler({
+      refuse: {
+        method: 'eth_estimateUserOperationGas',
+        message: 'reverted: ERC20PeriodTransferEnforcer:transfer-amount-exceeded',
+      },
     })
-    const failure = transferUsdc({ ...base, amount: 2_000_000n, agent: h.agent, rpc: h.rpc, topUp: topUp(9_000_000n) })
-    await expect(failure).rejects.toBeInstanceOf(TransferError)
-    await expect(failure).rejects.toMatchObject({ code: 'allowance_exhausted', uncertain: false })
-    expect(h.sent).toHaveLength(0)
-  })
-
-  test('a node that does not answer before signing fails the transfer, and nothing is sent', async () => {
-    const h = harness({ held: 5_000_000n })
-    await expect(transferUsdc({ ...base, amount: 1n, agent: h.agent, rpc: down })).rejects.toMatchObject({
-      code: 'rpc_unavailable',
-      uncertain: false,
+    const { input } = route(500_000n, { bundler })
+    await expect(transferUsdc({ ...input, amount: 2_000_000n, topUp: topUp(9_000_000n) })).rejects.toMatchObject({
+      code: 'allowance_exhausted',
     })
-    expect(h.sent).toHaveLength(0)
   })
 
-  test('a busy node (429) is asked again before giving up', async () => {
-    const statuses = [429, 429, 200]
-    const fetchFn = Object.assign(
-      () =>
-        Promise.resolve(
-          new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x1' }), { status: statuses.shift() ?? 200 }),
-        ),
-      { preconnect: () => undefined },
-    )
-    await expect(httpJsonRpc('https://node.test', fetchFn, [0, 0])('eth_chainId', [])).resolves.toBe('0x1')
+  test("the agent's first operation carries its 7702 authorization; once delegated, none", async () => {
+    const fresh = route(5_000_000n, { delegated: false })
+    await transferUsdc({ ...fresh.input, amount: 1n })
+    expect(fresh.bundler.authorizations).toEqual([
+      expect.objectContaining({ address: BASE.delegation.delegator, chainId: '0x2105', nonce: '0x5' }),
+    ])
+    const upgraded = route(5_000_000n)
+    await transferUsdc({ ...upgraded.input, amount: 1n })
+    expect(upgraded.bundler.authorizations).toEqual([])
   })
 
-  test('needs gas, and reports a missing receipt as pending', async () => {
-    const dry = harness({ held: 5_000_000n, gas: 0n })
-    await expect(transferUsdc({ ...base, amount: 1n, agent: dry.agent, rpc: dry.rpc })).rejects.toMatchObject({
-      code: 'no_gas',
+  test('a batch not mined in time is pending with no transaction yet; a mined revert is reverted', async () => {
+    const slow = route(5_000_000n, { bundler: fakeBundler({ receipt: 'none' }) })
+    expect(await transferUsdc({ ...slow.input, amount: 1n })).toEqual({
+      userOpHash: TEST_USEROP_HASH,
+      status: 'pending',
     })
-    const slow = harness({ held: 5_000_000n, mined: false })
-    expect((await transferUsdc({ ...base, amount: 1n, agent: slow.agent, rpc: slow.rpc })).status).toBe('pending')
+    const reverted = route(5_000_000n, { bundler: fakeBundler({ receipt: 'reverted' }) })
+    expect((await transferUsdc({ ...reverted.input, amount: 1n })).status).toBe('reverted')
   })
 
-  test('a signer failure is uncertain', async () => {
-    const h = harness({ held: 5_000_000n })
-    const agent: AgentSigner = { ...h.agent, sendTransaction: () => Promise.reject(new Error('timeout')) }
-    await expect(transferUsdc({ ...base, amount: 1n, agent, rpc: h.rpc })).rejects.toMatchObject({
-      code: 'uncertain',
-      uncertain: true,
-    })
-    expect(toHex('0x')).toBe('0x')
-  })
-
-  test('refuses a zero transfer and a transfer to the agent itself, before anything is signed', async () => {
-    const h = harness({ held: 5_000_000n })
-    await expect(transferUsdc({ ...base, amount: 0n, agent: h.agent, rpc: h.rpc })).rejects.toMatchObject({
+  test('refuses a zero transfer, paying itself, a testnet, a dead node and a signer that will not sign', async () => {
+    const { input } = route(5_000_000n)
+    await expect(transferUsdc({ ...input, amount: 0n })).rejects.toMatchObject({ code: 'invalid_amount' })
+    await expect(transferUsdc({ ...input, to: agent.address.toLowerCase(), amount: 1n })).rejects.toMatchObject({
       code: 'invalid_amount',
     })
-    await expect(
-      transferUsdc({ ...base, to: AGENT.toLowerCase(), amount: 1n, agent: h.agent, rpc: h.rpc }),
-    ).rejects.toMatchObject({ code: 'invalid_amount' })
-    expect(h.sent).toHaveLength(0)
-  })
-
-  test('refuses a transaction whose fee is above the chain ceiling, before signing', async () => {
-    // 100k gas × 1.3 × (2 × 1000 gwei + tip) is far above Base's ceiling.
-    const h = harness({ held: 5_000_000n, baseFee: 1_000_000_000_000n })
-    await expect(transferUsdc({ ...base, amount: 1n, agent: h.agent, rpc: h.rpc })).rejects.toMatchObject({
-      code: 'fee_ceiling',
-      uncertain: false,
+    await expect(transferUsdc({ ...input, live: false, amount: 1n })).rejects.toMatchObject({ code: 'unsupported' })
+    await expect(transferUsdc({ ...input, rpc: down, amount: 1n })).rejects.toMatchObject({ code: 'rpc_unavailable' })
+    const refusing: AgentSigner = { ...agent, signUserOperation: () => Promise.reject(new Error('policy')) }
+    const watched = route(5_000_000n)
+    await expect(transferUsdc({ ...watched.input, agent: refusing, amount: 1n })).rejects.toMatchObject({
+      code: 'signer_refused',
     })
-    expect(h.sent).toHaveLength(0)
+    expect(watched.bundler.methods).not.toContain('eth_sendUserOperation')
   })
+})
 
-  test('signs with the fee bounds the ceiling allowed: padded gas, twice the base fee plus the tip', async () => {
-    const h = harness({ held: 5_000_000n })
-    await transferUsdc({ ...base, amount: 1n, agent: h.agent, rpc: h.rpc })
-    // 100k gas × 1.3, 2 × 0.01 gwei + 0.001 gwei.
-    expect(h.sent[0]?.fees).toEqual({ gasLimit: 130_000n, maxFeePerGas: 21_000_000n, maxPriorityFeePerGas: 1_000_000n })
-  })
-
-  test('pays the testnet token on the testnet when the wallet is not live', async () => {
-    const h = harness({ held: 5_000_000n })
-    const result = await transferUsdc({ ...base, live: false, amount: 1n, agent: h.agent, rpc: h.rpc })
-    expect(h.sent[0]?.to).toBe(BASE_SEPOLIA.usdc.address)
-    expect(result.explorerUrl).toContain('sepolia.basescan.org/tx/')
+describe('funding an off-chain payment (x402)', () => {
+  test('does nothing when the agent holds enough; otherwise one top-up operation, then waits for the balance', async () => {
+    const enough = route(5_000_000n)
+    expect(await ensureUsdc({ ...enough.input, amount: 1_000_000n })).toEqual({})
+    expect(enough.bundler.methods).toEqual([])
+    let held = 100_000n
+    const bundler = fakeBundler()
+    const top = topUp(9_000_000n)
+    const rpc = fakeNode({ usdc: () => (bundler.batches.length > 0 ? (held = 2_000_000n) : held) })
+    const funded = await ensureUsdc({ ...enough.input, rpc, bundler: bundler.rpc, topUp: top, amount: 1_000_000n })
+    expect(funded).toEqual({ topUpTxHash: TEST_TX, topUpAmount: 1_000_000n - 100_000n + TEST_FEE_BOUND })
+    expect(bundler.batches[0]?.length).toBe(2)
   })
 })

@@ -41,7 +41,7 @@ export const fakeAgent = () => {
   const agent: TempoAgent = {
     address: local.address,
     signTypedData: () => Promise.reject(new Error('not used')),
-    sendTransaction: () => Promise.reject(new Error('not used')),
+    signUserOperation: () => Promise.reject(new Error('not used')),
     signAuthorization: () => Promise.reject(new Error('not used')),
     signTempoTransaction: async ({ transaction }) => {
       signed.push(transaction)

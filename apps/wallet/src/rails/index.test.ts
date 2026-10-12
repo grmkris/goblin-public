@@ -1,4 +1,5 @@
-import { field, type JsonRpc } from '@goblin/wallet/balances'
+import { field, JsonRpcError, type JsonRpc } from '@goblin/wallet/balances'
+import { fakeBundler, fakeNode, localAgent, TEST_TX, TEST_USEROP_HASH } from '@goblin/wallet/bundler/testing'
 import { BASE } from '@goblin/wallet/chains'
 import type { AgentSigner, Operation, ServiceRule, Terms, UserOperation } from '@goblin/wallet/contract'
 import { DEFAULT_SERVICES, termsHash } from '@goblin/wallet/contract'
@@ -59,12 +60,16 @@ const signer = (): AgentSigner & { sent: string[] } => {
     address: AGENT,
     signTypedData: async () => `0x${'11'.repeat(65)}`,
     signAuthorization: () => Promise.reject(new Error('unused')),
-    sendTransaction: async ({ to }) => {
-      sent.push(to)
-      return `0x${sent.length.toString(16).padStart(64, '0')}`
+    signUserOperation: async ({ userOp }) => {
+      sent.push(userOp.sender)
+      return `0x${'22'.repeat(65)}`
     },
   }
 }
+
+/** Rails whose agent really signs UserOperations, against a fake node and Pimlico. */
+const agentDeps = (usdc: () => bigint, bundler = fakeBundler(), overrides: Partial<RailsDeps> = {}) =>
+  deps({ signer: localAgent(), rpcFor: () => fakeNode({ usdc }), bundlerFor: () => bundler.rpc, ...overrides })
 
 const deps = (overrides: Partial<RailsDeps> = {}): RailsDeps => ({
   live: true,
@@ -215,32 +220,17 @@ describe('paid fetch', () => {
 
   test('after an allowance top-up, the x402 payment waits for the new balance to settle before it signs', async () => {
     const slept: number[] = []
-    let toppedUp = false
-    const empty: JsonRpc = async (method) => {
-      if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
-      // Once the top-up's receipt is in, the agent holds the USDC it asked for.
-      if (method === 'eth_call' && toppedUp) return word(10_000_000n)
-      if (method === 'eth_getBlockByNumber') return { baseFeePerGas: '0x989680' }
-      if (method === 'eth_estimateGas') return '0x186a0'
-      if (method === 'eth_maxPriorityFeePerGas') return '0xf4240'
-      return method === 'eth_getBalance' ? word(10n ** 15n) : word(0n)
-    }
+    const bundler = fakeBundler()
     const rails = createRails(
-      deps({
-        rpcFor: () => empty,
-        topUp: async () => ({
-          redeemCalldata: () => {
-            toppedUp = true
-            return '0xfeed'
-          },
-          available: async () => 20_000_000n,
-        }),
+      agentDeps(() => (bundler.batches.length > 0 ? 10_000_000n : 0n), bundler, {
+        topUp: async () => ({ redeemCalldata: () => '0xfeed', available: async () => 20_000_000n }),
         wait: { attempts: 2, sleep: async (ms) => void slept.push(ms) },
         fetchFn: exaFetch(),
       }),
     )
     const terms = await rails.quotePaidFetch(EXA, {}, 'x402')
     expect(await rails.payPaidFetch(operation(terms), EXA, {})).toMatchObject({ outcome: 'settled' })
+    expect(bundler.batches).toHaveLength(1)
     expect(slept).toContain(TOP_UP_SETTLE_MS)
   })
 
@@ -291,42 +281,41 @@ describe('transfer', () => {
     await expect(rails.quoteTransfer({ ...input, token: 'PEPE' })).rejects.toThrow(/not a token/u)
   })
 
-  test('pays from the agent balance, or reports why it cannot', async () => {
-    const rich: JsonRpc = async (method) =>
-      method === 'eth_getTransactionReceipt' ? { status: '0x1' } : word(5_000_000n)
-    const rails = createRails(deps({ rpcFor: () => rich }))
+  test('pays from the agent balance in one UserOperation, or reports why it cannot', async () => {
+    const rails = createRails(agentDeps(() => 5_000_000n))
     const terms = await rails.quoteTransfer(input)
     const outcome = await rails.transfer(operation(terms))
     expect(outcome).toMatchObject({
       outcome: 'settled',
-      payment: { rail: 'transfer', explorerUrl: expect.stringContaining('basescan.org/tx/') },
+      payment: {
+        rail: 'transfer',
+        userOpHash: TEST_USEROP_HASH,
+        txHash: TEST_TX,
+        explorerUrl: expect.stringContaining('basescan.org/tx/'),
+      },
     })
-    const poor: JsonRpc = async (method) => (method === 'eth_getBalance' ? word(10n ** 15n) : word(0n))
-    const broke = await createRails(deps({ rpcFor: () => poor })).transfer(operation(terms))
+    const broke = await createRails(agentDeps(() => 0n)).transfer(operation(terms))
     expect(broke).toMatchObject({ outcome: 'failed', reason: expect.stringContaining('holds') })
   })
 
-  test('a transfer still unconfirmed is uncertain and keeps its transaction for a later check', async () => {
-    const unmined: JsonRpc = async (method) => (method === 'eth_getTransactionReceipt' ? null : word(5_000_000n))
-    const rails = createRails(deps({ rpcFor: () => unmined }))
+  test('a transfer not mined in time is uncertain and keeps its UserOperation for a later check', async () => {
+    const rails = createRails(agentDeps(() => 5_000_000n, fakeBundler({ receipt: 'none' })))
     const outcome = await rails.transfer(operation(await rails.quoteTransfer(input)))
-    expect(outcome).toMatchObject({
-      outcome: 'uncertain',
-      payment: {
-        rail: 'transfer',
-        txHash: expect.stringMatching(/^0x/u),
-        explorerUrl: expect.stringContaining('/tx/'),
-      },
-    })
+    expect(outcome).toMatchObject({ outcome: 'uncertain', payment: { rail: 'transfer', userOpHash: TEST_USEROP_HASH } })
     expect(outcome.outcome === 'uncertain' && outcome.payment?.settledAt).toBeFalsy()
   })
 
-  test('a signer that fails mid-send is uncertain', async () => {
-    const rich: JsonRpc = async () => word(5_000_000n)
-    const flaky: AgentSigner = { ...signer(), sendTransaction: () => Promise.reject(new Error('timeout')) }
-    const rails = createRails(deps({ signer: flaky, rpcFor: () => rich }))
-    const outcome = await rails.transfer(operation(await rails.quoteTransfer(input)))
-    expect(outcome.outcome).toBe('uncertain')
+  test('a signer that will not sign has sent nothing; a bundler that never answers the send may have', async () => {
+    const refusing = { ...localAgent(), signUserOperation: () => Promise.reject(new Error('policy')) }
+    const rails = createRails(agentDeps(() => 5_000_000n, fakeBundler(), { signer: refusing }))
+    expect((await rails.transfer(operation(await rails.quoteTransfer(input)))).outcome).toBe('failed')
+    const silent = fakeBundler()
+    const dropping: JsonRpc = (method, params) =>
+      method === 'eth_sendUserOperation'
+        ? Promise.reject(new JsonRpcError(method, 'HTTP 504'))
+        : silent.rpc(method, params)
+    const lost = createRails(agentDeps(() => 5_000_000n, { ...silent, rpc: dropping }))
+    expect((await lost.transfer(operation(await lost.quoteTransfer(input)))).outcome).toBe('uncertain')
   })
 })
 
@@ -626,6 +615,18 @@ describe('check', () => {
       found: 'unknown',
       reason: expect.stringContaining('could still settle'),
     })
+  })
+
+  test("a UserOperation: the bundler's receipt decides, since the bundle's own transaction succeeds either way", async () => {
+    const sent = uncertainOp('transfer', { rail: 'transfer', userOpHash: TEST_USEROP_HASH })
+    const ask = (receipt: 'success' | 'reverted' | 'none') =>
+      createRails(deps({ bundlerFor: () => fakeBundler({ receipt }).rpc })).check(sent)
+    expect(await ask('success')).toMatchObject({
+      found: 'paid',
+      payment: { userOpHash: TEST_USEROP_HASH, txHash: TEST_TX },
+    })
+    expect(await ask('reverted')).toMatchObject({ found: 'not_paid' })
+    expect(await ask('none')).toMatchObject({ found: 'unknown' })
   })
 
   test('nothing recorded to ask about is not known', async () => {

@@ -7,15 +7,16 @@
  */
 import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
-import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
+import { encodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
 import { toAddress, toHex } from '../balances/hex.ts'
 import { erc20Balance } from '../balances/erc20.ts'
-import { field, quantity, type JsonRpc, type WaitOptions } from '../balances/rpc.ts'
-import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
-import { ensureUsdc, type TopUp } from '../balances/transfer.ts'
+import { field, quantity } from '../balances/rpc.ts'
+import { sendCalls } from '../balances/agent-send.ts'
+import type { EvmChain } from '../balances/send.ts'
+import type { AgentRoute } from '../balances/transfer.ts'
+import type { Call } from '../userop/index.ts'
 import { BASE } from '../chains/index.ts'
-import type { AgentSigner } from '../contract/index.ts'
 import { swapCalldataMismatch } from './verify.ts'
 
 /** The LI.FI Diamond: the only contract a swap transaction may call (same address on Base and the other EVM chains). */
@@ -234,78 +235,40 @@ const ERC20 = parseAbi([
   'function approve(address spender, uint256 amount) returns (bool)',
 ])
 
-export interface ExecuteSwapInput {
+export interface ExecuteSwapInput extends Omit<AgentRoute, 'chain'> {
   readonly swap: FrozenSwap
-  readonly agent: AgentSigner
-  readonly rpc: JsonRpc
   readonly operationKey: string
-  readonly wait?: WaitOptions
   readonly now?: () => Date
-  /** The owner's allowance on Base: a USDC sale's shortfall is redeemed before the swap is signed. */
-  readonly topUp?: TopUp | undefined
 }
 
 export interface SwapResult {
-  readonly txHash: string
+  readonly userOpHash: string
+  /** The bundle's transaction, once mined. */
+  readonly txHash?: string | undefined
   readonly status: 'success' | 'reverted' | 'pending'
-  readonly explorerUrl: string
-  readonly approvalTxHash?: string
+  readonly explorerUrl?: string | undefined
 }
 
-const readAllowance = async (input: ExecuteSwapInput): Promise<bigint> => {
-  const { swap } = input
-  const data = encodeFunctionData({
-    abi: ERC20,
-    functionName: 'allowance',
-    args: [toAddress(swap.agent), toAddress(swap.approvalAddress)],
-  })
-  const result = await input.rpc('eth_call', [{ to: swap.sell.address, data }, 'latest'])
-  return decodeFunctionResult({ abi: ERC20, functionName: 'allowance', data: toHex(String(result)) })
-}
-
-const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
-/**
- * Waits until the RPC shows the new approval: a load-balanced node behind the approval's block would answer the swap's
- * simulation with a revert. Giving up is a plain failure; nothing of the swap itself is signed yet.
- */
-const untilApproved = async (input: ExecuteSwapInput, amount: bigint): Promise<void> => {
-  for (let attempt = 0; attempt < (input.wait?.attempts ?? 10); attempt += 1) {
-    // expected: an unanswered read counts as not visible yet; the loop asks again.
-    if ((await readAllowance(input).catch(() => 0n)) >= amount) return
-    await (input.wait?.sleep ?? pause)(input.wait?.intervalMs ?? 1000)
+/** The swap's calls: the exact approval when it sells a token, then the quoted transaction, unchanged. */
+const swapCalls = (swap: FrozenSwap): Call[] => {
+  const trade: Call = {
+    target: swap.transaction.to,
+    value: BigInt(swap.transaction.value),
+    callData: toHex(swap.transaction.data),
   }
-  throw new TransferError(
-    'rpc_unavailable',
-    'The approval landed but the chain did not show it in time; nothing was swapped. Try again.',
-  )
-}
-
-const ensureApproval = async (input: ExecuteSwapInput): Promise<string | undefined> => {
-  const { swap } = input
-  if (swap.sell.address === NATIVE) return undefined
-  const amount = BigInt(swap.sellAmount)
-  if ((await readAllowance(input)) >= amount) return undefined
+  if (swap.sell.address === NATIVE) return [trade]
   const approve = encodeFunctionData({
     abi: ERC20,
     functionName: 'approve',
-    args: [toAddress(swap.approvalAddress), amount],
+    args: [toAddress(swap.approvalAddress), BigInt(swap.sellAmount)],
   })
-  const sent = await sendSimulated(
-    { ...input, chain: BASE_KEY },
-    { key: `${input.operationKey}:approve`, to: swap.sell.address, data: approve },
-  )
-  if (sent.status !== 'success')
-    throw new TransferError(
-      sent.status === 'pending' ? 'uncertain' : 'reverted',
-      'The approval did not confirm.',
-      sent.status === 'pending',
-    )
-  await untilApproved(input, amount)
-  return sent.hash
+  return [{ target: swap.sell.address, value: 0n, callData: approve }, trade]
 }
 
-/** Executes a frozen swap: approval for the exact amount if needed, then the quoted transaction, unchanged. */
+/**
+ * Executes a frozen swap as one UserOperation: a USDC sale's shortfall is redeemed from the owner's allowance in the
+ * same batch, then the exact approval and the quoted transaction; they land together or not at all.
+ */
 export const executeSwap = async (input: ExecuteSwapInput): Promise<SwapResult> => {
   const { swap } = input
   if ((input.now ?? (() => new Date()))().getTime() > Date.parse(swap.expiresAt))
@@ -314,36 +277,23 @@ export const executeSwap = async (input: ExecuteSwapInput): Promise<SwapResult> 
     throw new SwapError('bad_quote', 'The frozen quote does not match this wallet; ask for a new one.')
   verifySwap(swap)
   const sellAmount = BigInt(swap.sellAmount)
-  if (input.topUp !== undefined && swap.sell.address.toLowerCase() === BASE.usdc.address.toLowerCase())
-    await ensureUsdc({
-      chain: 'base',
-      amount: sellAmount,
-      operationKey: input.operationKey,
-      agent: input.agent,
-      rpc: input.rpc,
-      topUp: input.topUp,
-      wait: input.wait,
-    })
-  const held =
-    swap.sell.address === NATIVE
-      ? quantity(await input.rpc('eth_getBalance', [swap.agent, 'latest']))
-      : await erc20Balance(input.rpc, swap.sell.address, swap.agent)
-  if (held < sellAmount)
-    throw new SwapError('insufficient_funds', `The agent wallet holds less ${swap.sell.symbol} than the swap sells.`)
-  const approvalTxHash = await ensureApproval(input)
-  const sent = await sendSimulated(
-    { ...input, chain: 'base' },
-    {
-      key: `${input.operationKey}:swap`,
-      to: swap.transaction.to,
-      data: toHex(swap.transaction.data),
-      value: BigInt(swap.transaction.value),
-    },
+  const sellsUsdc = swap.sell.address.toLowerCase() === BASE.usdc.address.toLowerCase()
+  if (!sellsUsdc) {
+    const held =
+      swap.sell.address === NATIVE
+        ? quantity(await input.rpc('eth_getBalance', [swap.agent, 'latest']))
+        : await erc20Balance(input.rpc, swap.sell.address, swap.agent)
+    if (held < sellAmount)
+      throw new SwapError('insufficient_funds', `The agent wallet holds less ${swap.sell.symbol} than the swap sells.`)
+  }
+  const sent = await sendCalls(
+    { ...input, chain: BASE_KEY },
+    { key: `${input.operationKey}:swap`, calls: swapCalls(swap), spends: sellsUsdc ? sellAmount : 0n },
   )
   return {
-    txHash: sent.hash,
+    userOpHash: sent.userOpHash,
+    txHash: sent.txHash,
     status: sent.status,
-    explorerUrl: `${BASE.explorerUrl}/tx/${sent.hash}`,
-    ...(approvalTxHash === undefined ? {} : { approvalTxHash }),
+    ...(sent.txHash === undefined ? {} : { explorerUrl: `${BASE.explorerUrl}/tx/${sent.txHash}` }),
   }
 }

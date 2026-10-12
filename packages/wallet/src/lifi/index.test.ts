@@ -1,14 +1,19 @@
 import { decodeFunctionData, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { toHex } from '../balances/hex.ts'
-import { field, type JsonRpc } from '../balances/rpc.ts'
-import type { AgentSigner } from '../contract/index.ts'
-import quoteFixture from './fixtures/base-usdc-eth.json' with { type: 'json' }
+import type { TopUp } from '../balances/transfer.ts'
+import { fakeBundler, fakeNode, localAgent, TEST_FEE_BOUND } from '../bundler/testing.ts'
+import { BASE } from '../chains/index.ts'
+import recorded from './fixtures/base-usdc-eth.json' with { type: 'json' }
 import { executeSwap, LIFI_DIAMOND, quoteSwap, SwapError, type FrozenSwap } from './index.ts'
 
-const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
+/** The recorded quote was for another agent; it is re-addressed to a local account so its operations really sign. */
+const signer = localAgent()
+const AGENT = signer.address
+const quoteFixture: typeof recorded = JSON.parse(
+  JSON.stringify(recorded).replaceAll(/03582783c8e71b0c2D3b607E0FBdec7402f76F77/giu, AGENT.slice(2).toLowerCase()),
+)
 const OTHER = '0x2222222222222222222222222222222222222222'
-const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
 const NOW = new Date('2026-10-12T06:00:00Z')
 const erc20 = parseAbi(['function approve(address spender, uint256 amount) returns (bool)'])
 
@@ -108,88 +113,56 @@ describe('LI.FI calldata', () => {
     }
     const h = harness({ held: 5_000_000n })
     await expect(run(tampered, h)).rejects.toMatchObject({ code: 'bad_quote' })
-    expect(h.sent).toHaveLength(0)
+    expect(h.bundler.methods).toHaveLength(0)
   })
 })
 
-interface Sent {
-  to: string
-  data: string
-  value?: bigint
-  key: string
-}
+const harness = (options: { held: bigint }) => ({
+  bundler: fakeBundler(),
+  rpc: fakeNode({ usdc: () => options.held }),
+})
 
-/** A quiet Base fee market: 300k gas at 0.01 gwei. */
-const FEES: Record<string, unknown> = {
-  eth_estimateGas: '0x493e0',
-  eth_getBlockByNumber: { baseFeePerGas: '0x989680' },
-  eth_maxPriorityFeePerGas: '0x186a0',
-}
-
-/** `staleReads`: allowance reads after the approval that still show the old value (a lagging RPC node). */
-const harness = (options: { held: bigint; allowance?: bigint; staleReads?: number }) => {
-  const sent: Sent[] = []
-  let stale = options.staleReads ?? 0
-  const agent: AgentSigner = {
-    address: AGENT,
-    signTypedData: () => Promise.reject(new Error('unused')),
-    signAuthorization: () => Promise.reject(new Error('unused')),
-    sendTransaction: async ({ to, data, value, operationKey }) => {
-      sent.push({ to, data, key: operationKey, ...(value === undefined ? {} : { value }) })
-      return toHex(`0x${sent.length.toString(16).padStart(64, '0')}`)
-    },
-  }
-  const rpc: JsonRpc = async (method, params) => {
-    if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
-    if (method in FEES) return FEES[method]
-    if (method === 'eth_call') {
-      const data = String(field(params[0], 'data'))
-      if (!data.startsWith('0xdd62ed3e')) return word(options.held)
-      const approved = sent.some((s) => s.key.endsWith(':approve')) && (stale -= 1) < 0
-      return word(approved ? 10n ** 12n : (options.allowance ?? 0n))
-    }
-    throw new Error(`unexpected ${method}`)
-  }
-  return { agent, rpc, sent }
-}
-
-const run = (swap: FrozenSwap, h: ReturnType<typeof harness>, now = NOW) =>
+const run = (swap: FrozenSwap, h: ReturnType<typeof harness>, now = NOW, topUp?: TopUp) =>
   executeSwap({
     swap,
-    agent: h.agent,
+    live: true,
+    agent: signer,
     rpc: h.rpc,
+    bundler: h.bundler.rpc,
     operationKey: 'op-swap-0001',
     wait: { sleep: async () => undefined, attempts: 2 },
     now: () => now,
+    ...(topUp === undefined ? {} : { topUp }),
   })
 
 describe('LI.FI execute', () => {
-  test('approves the exact amount, then sends the quoted calldata unchanged', async () => {
+  test('one operation: the exact approval, the quoted calldata unchanged, then the paymaster approval', async () => {
     const swap = await quote()
     const h = harness({ held: 5_000_000n })
     const result = await run(swap, h)
-    expect(h.sent.map((s) => s.key)).toEqual(['op-swap-0001:approve', 'op-swap-0001:swap'])
-    expect(decodeFunctionData({ abi: erc20, data: toHex(h.sent[0]?.data ?? '0x') }).args).toEqual([
+    const [batch] = h.bundler.batches
+    expect(batch?.length).toBe(3)
+    expect(decodeFunctionData({ abi: erc20, data: toHex(batch?.[0]?.callData ?? '0x') }).args).toEqual([
       LIFI_DIAMOND,
       1_000_000n,
     ])
-    expect(h.sent[1]).toMatchObject({ to: LIFI_DIAMOND, data: swap.transaction.data })
+    expect(batch?.[1]).toMatchObject({ target: LIFI_DIAMOND, callData: swap.transaction.data })
     expect(result).toMatchObject({ status: 'success', explorerUrl: expect.stringContaining('basescan.org/tx/') })
   })
 
-  test('waits for a lagging node to show the approval before simulating the swap, or fails having swapped nothing', async () => {
-    const lagging = harness({ held: 5_000_000n, staleReads: 1 })
-    expect((await run(await quote(), lagging)).status).toBe('success')
-    expect(lagging.sent.map((s) => s.key)).toEqual(['op-swap-0001:approve', 'op-swap-0001:swap'])
-    const stuck = harness({ held: 5_000_000n, staleReads: 99 })
-    await expect(run(await quote(), stuck)).rejects.toMatchObject({ code: 'rpc_unavailable', uncertain: false })
-    expect(stuck.sent.map((s) => s.key)).toEqual(['op-swap-0001:approve'])
-  })
-
-  test('skips the approval when the allowance already covers it', async () => {
-    const h = harness({ held: 5_000_000n, allowance: 2_000_000n })
-    await run(await quote(), h)
-    expect(h.sent).toHaveLength(1)
+  test("a USDC sale the agent cannot cover redeems the shortfall plus the gas from the owner's allowance first", async () => {
+    const asked: bigint[] = []
+    const topUp: TopUp = {
+      available: async () => 9_000_000n,
+      redeemCalldata: (amount) => {
+        asked.push(amount)
+        return '0xdeadbeef'
+      },
+    }
+    const h = harness({ held: 0n })
+    await run(await quote(), h, NOW, topUp)
+    expect(asked.at(-1)).toBe(1_000_000n + TEST_FEE_BOUND)
+    expect(h.bundler.batches[0]?.[0]).toEqual({ target: BASE.delegation.manager, value: 0n, callData: '0xdeadbeef' })
   })
 
   test('refuses an expired quote and a wallet that holds too little, sending nothing', async () => {
@@ -198,6 +171,7 @@ describe('LI.FI execute', () => {
     await expect(run(swap, h, new Date('2026-10-12T06:05:00Z'))).rejects.toMatchObject({ code: 'expired' })
     const poor = harness({ held: 100n })
     await expect(run(swap, poor)).rejects.toMatchObject({ code: 'insufficient_funds' })
-    expect(h.sent.length + poor.sent.length).toBe(0)
+    expect(h.bundler.methods.length + poor.bundler.methods.length).toBeLessThan(6)
+    expect([...h.bundler.methods, ...poor.bundler.methods]).not.toContain('eth_sendUserOperation')
   })
 })

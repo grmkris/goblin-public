@@ -3,7 +3,7 @@ import { transferUsdc, TransferError, type EvmChain } from '@goblin/wallet/balan
 import { BridgeError } from '@goblin/wallet/bridge'
 import { SwapError } from '@goblin/wallet/lifi'
 import { chainByKey } from '@goblin/wallet/chains'
-import type { ChainKey, Operation, Payment, Terms, TransferInput } from '@goblin/wallet/contract'
+import type { AgentSigner, ChainKey, Operation, Payment, Terms, TransferInput } from '@goblin/wallet/contract'
 import { isTempoAgent, TempoError, transferTempoUsdc } from '@goblin/wallet/tempo'
 import type { PayOutcome } from '../services/rails.ts'
 import { RailError, type RailsDeps } from './deps.ts'
@@ -49,6 +49,33 @@ const termsOf = (input: TransferInput, token: ReturnType<typeof tokenOf>, deps: 
   }
 }
 
+/** The route of an agent send on `chain`: its node, Pimlico's bundler there, the owner's allowance, the waits. */
+export const agentRoute = async (deps: RailsDeps, chain: EvmChain, agent: AgentSigner) => {
+  const topUp = await deps.topUp?.(chain)
+  const bundler = deps.bundlerFor?.(chain)
+  return {
+    live: deps.live,
+    agent,
+    rpc: deps.rpcFor(chain),
+    ...(bundler === undefined ? {} : { bundler }),
+    ...(topUp === undefined ? {} : { topUp }),
+    ...(deps.wait === undefined ? {} : { wait: deps.wait }),
+  }
+}
+
+/** What a sent UserOperation records: its hash, its transaction once mined, and when it settled. */
+export const sentPayment = (
+  rail: Payment['rail'],
+  sent: { userOpHash: string; txHash?: string | undefined; explorerUrl?: string | undefined },
+  settledAt?: Date,
+): Payment => ({
+  rail,
+  userOpHash: sent.userOpHash,
+  ...(sent.txHash === undefined ? {} : { txHash: sent.txHash }),
+  ...(sent.explorerUrl === undefined ? {} : { explorerUrl: sent.explorerUrl }),
+  ...(settledAt === undefined ? {} : { settledAt: settledAt.toISOString() }),
+})
+
 const explorerPayment = (rail: Payment['rail'], url: string, txHash: string, now: Date): Payment => ({
   rail,
   txHash,
@@ -75,29 +102,24 @@ export const outcomeOfError = (error: unknown): PayOutcome => {
 }
 
 const evmTransfer = async (operation: Operation, deps: RailsDeps, chain: EvmChain): Promise<PayOutcome> => {
-  const { signer, topUp } = { signer: deps.signer, topUp: await deps.topUp?.(chain) }
+  const { signer } = deps
   if (signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
   const { terms } = operation
   const result = await transferUsdc({
-    live: deps.live,
+    ...(await agentRoute(deps, chain, signer)),
     chain,
     to: terms.recipient,
     amount: parseUnits(terms.amount, terms.token.decimals),
     operationKey: operation.id,
-    agent: signer,
-    rpc: deps.rpcFor(chain),
-    ...(topUp === undefined ? {} : { topUp }),
-    ...(deps.wait === undefined ? {} : { wait: deps.wait }),
   })
   if (result.status === 'pending')
     return {
       outcome: 'uncertain',
       reason: 'The transfer was sent but has not confirmed yet.',
-      payment: { rail: 'transfer', txHash: result.txHash, explorerUrl: result.explorerUrl },
+      payment: sentPayment('transfer', result),
     }
   if (result.status === 'reverted') return { outcome: 'failed', reason: 'The chain rejected the transfer.' }
-  const now = (deps.now ?? (() => new Date()))()
-  return { outcome: 'settled', payment: explorerPayment('transfer', result.explorerUrl, result.txHash, now) }
+  return { outcome: 'settled', payment: sentPayment('transfer', result, (deps.now ?? (() => new Date()))()) }
 }
 
 const tempoTransfer = async (operation: Operation, deps: RailsDeps): Promise<PayOutcome> => {

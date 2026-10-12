@@ -18,7 +18,8 @@
     "./bridge": "./src/bridge/index.ts",
     "./balances": "./src/balances/index.ts",
     "./userop": "./src/userop/index.ts",
-    "./bundler": "./src/bundler/index.ts"
+    "./bundler": "./src/bundler/index.ts",
+    "./bundler/testing": "./src/bundler/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

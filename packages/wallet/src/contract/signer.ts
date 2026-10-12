@@ -19,16 +19,6 @@ export interface SignedAuthorization {
 }
 
 /**
- * Fee bounds for a signed transaction, in wei. The wallet's fee-ceiling check computes them, so the fee the signer signs
- * is the one the ceiling allowed.
- */
-export interface TransactionFees {
-  readonly gasLimit: bigint
-  readonly maxFeePerGas: bigint
-  readonly maxPriorityFeePerGas: bigint
-}
-
-/**
  * An ERC-4337 v0.7 UserOperation in its unpacked form (quantities as bigints). The DeleGator validates its signature
  * over its own EIP-712 `PackedUserOperation` digest (`@goblin/wallet/userop` `delegatorDigest`).
  */
@@ -56,16 +46,11 @@ export interface UserOperation {
 export interface AgentSigner {
   readonly address: Address
   signTypedData(input: { chain: ChainKey; typedData: TypedDataJson; operationKey: string }): Promise<Hex>
-  /** Signs and broadcasts a transaction from the agent wallet; resolves with the transaction hash. */
-  sendTransaction(input: {
-    chain: ChainKey
-    to: Address
-    data: Hex
-    value?: bigint
-    /** When given, the signed transaction carries exactly these fee bounds instead of the signer's own choice. */
-    fees?: TransactionFees
-    operationKey: string
-  }): Promise<Hex>
+  /**
+   * Signs (never sends) a UserOperation from the agent's 7702-upgraded address: every EVM action of the agent is one,
+   * its gas paid in USDC by the paymaster. Resolves with the signature over the DeleGator's digest.
+   */
+  signUserOperation(input: { chain: ChainKey; userOp: UserOperation; operationKey: string }): Promise<Hex>
   signAuthorization(input: {
     chain: ChainKey
     contract: Address

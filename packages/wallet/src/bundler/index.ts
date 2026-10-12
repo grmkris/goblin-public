@@ -34,8 +34,11 @@ export interface PrepareInput {
   readonly node: JsonRpc
   readonly bundler: JsonRpc
   readonly sender: Address
-  /** The batch, without the paymaster's approval (prepare appends it). */
-  readonly calls: readonly Call[]
+  /**
+   * The batch, without the paymaster's approval (prepare appends it). A function gets the fee bound it is built for:
+   * first the ceiling (for the estimate), then the bound itself, so a top-up can pull exactly the gas it needs.
+   */
+  readonly calls: readonly Call[] | ((feeBound: bigint) => readonly Call[] | Promise<readonly Call[]>)
   /** The sender's 7702 authorization, when its code does not delegate to the DeleGator yet. */
   readonly authorization?: SignedAuthorization | undefined
   /** The most USDC (base units) the gas may cost; above it nothing is prepared. */
@@ -147,11 +150,14 @@ export const prepareUserOp = async (input: PrepareInput): Promise<PreparedUserOp
   )
   const quote = await quoteUsdc(input, aa)
   const fast = field(await ask(input.bundler, 'pimlico_getUserOperationGasPrice', []), 'fast')
-  const batch = (fee: bigint) => executeBatch([...input.calls, approvePaymaster(input.chain, aa.paymaster, fee)])
+  const { calls } = input
+  const callsFor = typeof calls === 'function' ? calls : () => calls
+  const batch = async (fee: bigint) =>
+    executeBatch([...(await callsFor(fee)), approvePaymaster(input.chain, aa.paymaster, fee)])
   let op: UserOperation = {
     sender: input.sender,
     nonce,
-    callData: batch(input.feeCeiling),
+    callData: await batch(input.feeCeiling),
     callGasLimit: 0n,
     verificationGasLimit: 0n,
     preVerificationGas: 0n,
@@ -179,7 +185,7 @@ export const prepareUserOp = async (input: PrepareInput): Promise<PreparedUserOp
       'fee_ceiling',
       `Gas would cost up to ${formatUnits(feeBound, 6)} USDC, above the ${formatUnits(input.feeCeiling, 6)} USDC ceiling; nothing was signed.`,
     )
-  op = { ...op, callData: batch(feeBound) }
+  op = { ...op, callData: await batch(feeBound) }
   op = withPaymaster(op, await ask(input.bundler, 'pm_getPaymasterData', params(input, aa, op)))
   return { op, authorization: input.authorization, entryPoint: aa.entryPoint, feeBound }
 }
@@ -221,6 +227,22 @@ export const userOpReceipt = async (
   }
 }
 
+/**
+ * Hands the signed operation to the bundler once. A refusal (an error object) means nothing was sent; no answer at all
+ * means it may have been taken, so the outcome is unknown and nothing retries it.
+ */
+const sendOnce = async (bundler: JsonRpc, op: UserOperation, prepared: PreparedUserOp): Promise<unknown> => {
+  try {
+    return await bundler('eth_sendUserOperation', [toBundlerJson(op, prepared.authorization), prepared.entryPoint])
+  } catch (error) {
+    if (error instanceof JsonRpcError && error.code !== undefined) {
+      const reason = explainRevert(error.message)
+      throw new TransferError(reason.code, `${reason.text} (${error.message.slice(0, 160)})`)
+    }
+    throw new TransferError('uncertain', 'The bundler did not answer the send; the operation may have gone out.', true)
+  }
+}
+
 /** Sends a signed operation and waits for it; a bundler that refuses it means nothing was sent. */
 export const submitUserOp = async (input: SubmitInput): Promise<SubmittedUserOp> => {
   const { prepared } = input
@@ -231,10 +253,7 @@ export const submitUserOp = async (input: SubmitInput): Promise<SubmittedUserOp>
   })
   if (signer.toLowerCase() !== op.sender.toLowerCase())
     throw new TransferError('bad_signature', 'The signature is not from the sending account; nothing was sent.')
-  const sent = await ask(input.bundler, 'eth_sendUserOperation', [
-    toBundlerJson(op, prepared.authorization),
-    prepared.entryPoint,
-  ])
+  const sent = await sendOnce(input.bundler, op, prepared)
   if (typeof sent !== 'string' || !HASH.test(sent))
     throw new TransferError('uncertain', 'The bundler gave no operation hash; it may have been sent.', true)
   const userOpHash = sent

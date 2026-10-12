@@ -11,7 +11,7 @@ const signer: AgentSigner = {
   address: AGENT,
   signTypedData: () => Promise.reject(new Error('unused')),
   signAuthorization: () => Promise.reject(new Error('unused')),
-  sendTransaction: () => Promise.reject(new Error('nothing may be signed here')),
+  signUserOperation: () => Promise.reject(new Error('nothing may be signed here')),
 }
 
 const deps = (live: boolean): RailsDeps => ({

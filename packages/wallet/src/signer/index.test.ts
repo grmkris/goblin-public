@@ -270,37 +270,35 @@ describe('the Privy agent signer', () => {
     expect(privy.seen).toHaveLength(1)
   })
 
-  test('sendTransaction names the chain by CAIP-2 and the value in hex; the hash is checked', async () => {
-    const privy = await fakePrivy(() => Response.json({ data: { hash: `0x${'4'.repeat(64)}`, caip2: 'eip155:8453' } }))
-    const hash = await signerOf(privy.client).sendTransaction({
-      chain: 'base',
-      to: BASE.delegation.manager,
-      data: '0xcafe',
-      operationKey: 'op-5',
-    })
-    expect(hash).toBe(`0x${'4'.repeat(64)}`)
-    expect(privy.seen[0]?.body).toEqual({
-      method: 'eth_sendTransaction',
-      caip2: 'eip155:8453',
-      chain_type: 'ethereum',
-      params: { transaction: { to: BASE.delegation.manager, data: '0xcafe', value: '0x0', chain_id: 8453 } },
-    })
-    await signerOf(privy.client).sendTransaction({
-      chain: 'base',
-      to: BASE.delegation.manager,
-      data: '0xcafe',
-      fees: { gasLimit: 130_000n, maxFeePerGas: 21_000_000n, maxPriorityFeePerGas: 1_000_000n },
-      operationKey: 'op-5b',
-    })
-    expect(privy.seen[1]?.body).toMatchObject({
+  test('signUserOperation asks Privy to sign for the DeleGator on the chain, in its snake-case form', async () => {
+    const privy = await fakePrivy(() => Response.json({ data: { signature: `0x${'ab'.repeat(65)}` } }))
+    const userOp = {
+      sender: AGENT,
+      nonce: 3n,
+      callData: '0xcafe',
+      callGasLimit: 10n,
+      verificationGasLimit: 11n,
+      preVerificationGas: 12n,
+      maxFeePerGas: 13n,
+      maxPriorityFeePerGas: 14n,
+      signature: '0x',
+    }
+    const signature = await signerOf(privy.client).signUserOperation({ chain: 'base', userOp, operationKey: 'op-5' })
+    expect(signature).toMatch(/^0x[0-9a-f]{130}$/u)
+    expect(privy.seen[0]?.body).toMatchObject({
+      method: 'eth_signUserOperation',
       params: {
-        transaction: { gas_limit: '0x1fbd0', max_fee_per_gas: '0x1406f40', max_priority_fee_per_gas: '0xf4240' },
+        contract: BASE.delegation.delegator,
+        chain_id: '0x2105',
+        user_operation: {
+          sender: AGENT,
+          nonce: '0x3',
+          call_data: '0xcafe',
+          call_gas_limit: '0xa',
+          paymaster_data: '0x',
+        },
       },
     })
-    const bad = await fakePrivy(() => Response.json({ data: { hash: 'pending' } }))
-    await expect(
-      signerOf(bad.client).sendTransaction({ chain: 'base', to: AGENT, data: '0x', value: 1n, operationKey: 'op-6' }),
-    ).rejects.toMatchObject({ code: 'invalid_send_response' })
   })
 
   test('7702 authorizations come back for exactly the contract, chain and nonce asked for', async () => {

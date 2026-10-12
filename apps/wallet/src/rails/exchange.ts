@@ -2,10 +2,10 @@ import { formatUnits, parseUnits } from '@goblin/wallet/amounts'
 import { decodeFrozenSwap, executeSwap, quoteSwap, type FrozenSwap } from '@goblin/wallet/lifi'
 import { decodeFrozenBridge, executeBridge, quoteBridge, type FrozenBridge } from '@goblin/wallet/bridge'
 import { ARBITRUM, BASE, ETHEREUM, TEMPO } from '@goblin/wallet/chains'
-import type { BridgeQuoteInput, Operation, Payment, SwapQuoteInput } from '@goblin/wallet/contract'
+import type { BridgeQuoteInput, Operation, SwapQuoteInput } from '@goblin/wallet/contract'
 import type { FrozenQuote, PayOutcome } from '../services/rails.ts'
 import { RailError, type RailsDeps } from './deps.ts'
-import { outcomeOfError } from './transfer.ts'
+import { agentRoute, outcomeOfError, sentPayment } from './transfer.ts'
 
 const CHAINS = { base: BASE, ethereum: ETHEREUM, arbitrum: ARBITRUM, tempo: TEMPO } as const
 
@@ -100,13 +100,6 @@ export const swapQuote = async (input: SwapQuoteInput, deps: RailsDeps): Promise
   }
 }
 
-const paymentOf = (rail: Payment['rail'], explorerUrl: string, txHash: string, now: Date): Payment => ({
-  rail,
-  txHash,
-  explorerUrl,
-  settledAt: now.toISOString(),
-})
-
 export const swapExecute = async (operation: Operation, payload: unknown, deps: RailsDeps): Promise<PayOutcome> => {
   if (deps.signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
   const { signer } = deps
@@ -119,23 +112,19 @@ export const swapExecute = async (operation: Operation, payload: unknown, deps: 
   if (isOutcome(swap)) return swap
   try {
     const result = await executeSwap({
+      ...(await agentRoute(deps, 'base', signer)),
       swap,
-      agent: deps.signer,
-      rpc: deps.rpcFor('base'),
-      topUp: await deps.topUp?.('base'),
       operationKey: operation.id,
-      ...(deps.wait === undefined ? {} : { wait: deps.wait }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
     })
     if (result.status === 'pending')
       return {
         outcome: 'uncertain',
         reason: 'The swap was sent but has not confirmed yet.',
-        payment: { rail: 'lifi', txHash: result.txHash, explorerUrl: result.explorerUrl },
+        payment: sentPayment('lifi', result),
       }
     if (result.status === 'reverted') return { outcome: 'failed', reason: 'The chain rejected the swap.' }
-    const now = (deps.now ?? (() => new Date()))()
-    return { outcome: 'settled', payment: paymentOf('lifi', result.explorerUrl, result.txHash, now) }
+    return { outcome: 'settled', payment: sentPayment('lifi', result, (deps.now ?? (() => new Date()))()) }
   } catch (error) {
     // expected: every failure is mapped to an outcome the spend program acts on (failed or uncertain).
     return outcomeOfError(error)
@@ -194,12 +183,9 @@ export const bridgeExecute = async (operation: Operation, payload: unknown, deps
   if (isOutcome(bridge)) return bridge
   try {
     const result = await executeBridge({
+      ...(await agentRoute(deps, bridge.from, signer)),
       bridge,
-      agent: deps.signer,
-      rpc: deps.rpcFor(bridge.from),
-      topUp: await deps.topUp?.(bridge.from),
       operationKey: operation.id,
-      ...(deps.wait === undefined ? {} : { wait: deps.wait }),
       ...(deps.fetchFn === undefined ? {} : { fetchFn: deps.fetchFn }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
     })
@@ -207,13 +193,12 @@ export const bridgeExecute = async (operation: Operation, payload: unknown, deps
       return {
         outcome: 'uncertain',
         reason: 'The bridge deposit was sent but has not confirmed yet.',
-        payment: { rail: 'relay', txHash: result.txHash, explorerUrl: result.explorerUrl },
+        payment: sentPayment('relay', result),
       }
     if (result.status === 'reverted') return { outcome: 'failed', reason: 'The chain rejected the bridge deposit.' }
-    const now = (deps.now ?? (() => new Date()))()
     return {
       outcome: 'settled',
-      payment: paymentOf('relay', result.explorerUrl, result.txHash, now),
+      payment: sentPayment('relay', result, (deps.now ?? (() => new Date()))()),
       delivery: { status: result.delivery, detail: `Relay: ${result.detail}` },
     }
   } catch (error) {

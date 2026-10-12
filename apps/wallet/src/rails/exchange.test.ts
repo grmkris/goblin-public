@@ -11,9 +11,9 @@ const signer: AgentSigner = {
   address: AGENT,
   signTypedData: () => Promise.reject(new Error('unused')),
   signAuthorization: () => Promise.reject(new Error('unused')),
-  sendTransaction: async ({ to }) => {
-    sent.push(to)
-    return `0x${'00'.repeat(32)}`
+  signUserOperation: async ({ userOp }) => {
+    sent.push(userOp.sender)
+    return `0x${'00'.repeat(65)}`
   },
 }
 

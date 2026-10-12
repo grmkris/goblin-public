@@ -6,7 +6,7 @@ import { isTempoAgent, payMpp, probeMpp, TempoError } from '@goblin/wallet/tempo
 import { payX402, probeX402, X402Error } from '@goblin/wallet/x402'
 import type { PaidResponse, PayOutcome } from '../services/rails.ts'
 import { RailError, type RailsDeps } from './deps.ts'
-import { outcomeOfError } from './transfer.ts'
+import { agentRoute, outcomeOfError } from './transfer.ts'
 
 /** The request a service call becomes: a JSON body for POST, query parameters for GET. */
 export const requestOf = (service: ServiceRule, args: Record<string, unknown>) => {
@@ -190,14 +190,10 @@ export const payPaidFetch = async (
   try {
     if (terms.rail === 'x402') {
       const funded = await ensureUsdc({
-        live: deps.live,
+        ...(await agentRoute(deps, 'base', signer)),
         chain: 'base',
         amount: BigInt(atomic(terms)),
         operationKey: operation.id,
-        agent: signer,
-        rpc: deps.rpcFor('base'),
-        topUp: await deps.topUp?.('base'),
-        wait: deps.wait,
       })
       if (funded.topUpTxHash !== undefined) await (deps.wait?.sleep ?? pause)(TOP_UP_SETTLE_MS)
       const paid = await payX402({

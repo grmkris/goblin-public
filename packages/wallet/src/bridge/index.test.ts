@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import { toHex } from '../balances/hex.ts'
-import { field, type JsonRpc } from '../balances/rpc.ts'
-import type { AgentSigner } from '../contract/index.ts'
-import quoteFixture from './fixtures/base-tempo.json' with { type: 'json' }
+import type { TopUp } from '../balances/transfer.ts'
+import { fakeBundler, fakeNode, localAgent, TEST_FEE_BOUND } from '../bundler/testing.ts'
+import recorded from './fixtures/base-tempo.json' with { type: 'json' }
 import {
   depositStatus,
   executeBridge,
@@ -14,7 +13,12 @@ import {
 } from './index.ts'
 import { ARBITRUM, BASE, TEMPO } from '../chains/index.ts'
 
-const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
+/** The recorded quote was for another agent; it is re-addressed to a local account so its operations really sign. */
+const signer = localAgent()
+const AGENT = signer.address
+const quoteFixture: typeof recorded = JSON.parse(
+  JSON.stringify(recorded).replaceAll(/03582783c8e71b0c2D3b607E0FBdec7402f76F77/giu, AGENT.slice(2).toLowerCase()),
+)
 const NOW = new Date('2026-10-12T06:00:00Z')
 
 const relayFetch =
@@ -157,72 +161,39 @@ describe('Relay bridge quote', () => {
   })
 })
 
-/** A quiet Base fee market: 100k gas at 0.01 gwei. */
-const FEES: Record<string, unknown> = {
-  eth_estimateGas: '0x186a0',
-  eth_getBlockByNumber: { baseFeePerGas: '0x989680' },
-  eth_maxPriorityFeePerGas: '0x186a0',
-}
+const lower = (call: { target: string; callData: string }) => [call.target.toLowerCase(), call.callData.toLowerCase()]
 
-const BALANCE_OF = '0x70a08231'
-const ALLOWANCE_OF = '0xdd62ed3e'
-const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
-
-/** A Base node; the agent holds `usdc` base units (10 USDC unless told otherwise). */
-const nodeWith =
-  (usdc: bigint): JsonRpc =>
-  async (method, params) => {
-    if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
-    if (method === 'eth_getBalance') return word(10n ** 15n)
-    if (method in FEES) return FEES[method]
-    if (method === 'eth_call') {
-      const data = String(field(params[0], 'data'))
-      // The depository's allowance shows as soon as it is asked for: this node never lags.
-      if (data.startsWith(ALLOWANCE_OF)) return word(10n ** 12n)
-      return data.startsWith(BALANCE_OF) ? word(usdc) : '0x'
-    }
-    throw new Error(`unexpected ${String(field({}, 'x'))}${method}`)
-  }
-
-const fakeRpc = nodeWith(10_000_000n)
-
-const harness = () => {
-  const sent: { to: string; key: string }[] = []
-  const agent: AgentSigner = {
-    address: AGENT,
-    signTypedData: () => Promise.reject(new Error('unused')),
-    signAuthorization: () => Promise.reject(new Error('unused')),
-    sendTransaction: async ({ to, operationKey }) => {
-      sent.push({ to, key: operationKey })
-      return toHex(`0x${sent.length.toString(16).padStart(64, '0')}`)
-    },
-  }
-  const rpc = fakeRpc
-  return { agent, rpc, sent }
-}
+const harness = (usdc = 10_000_000n) => ({ bundler: fakeBundler(), rpc: fakeNode({ usdc: () => usdc }) })
 
 const statusFetch = (statuses: string[]) => async () =>
   Response.json({ status: statuses.shift() ?? 'pending', txHashes: [`0x${'cd'.repeat(32)}`] })
 
-const run = (bridge: FrozenBridge, h: ReturnType<typeof harness>, statuses: string[], now = NOW) =>
+const run = (bridge: FrozenBridge, h: ReturnType<typeof harness>, statuses: string[], now = NOW, topUp?: TopUp) =>
   executeBridge({
     bridge,
-    agent: h.agent,
+    live: true,
+    agent: signer,
     rpc: h.rpc,
+    bundler: h.bundler.rpc,
     operationKey: 'op-bridge-0001',
     wait: { sleep: async () => undefined, attempts: 2 },
     fetchFn: statusFetch(statuses),
     sleep: async () => undefined,
     statusAttempts: 3,
     now: () => now,
+    ...(topUp === undefined ? {} : { topUp }),
   })
 
 describe('Relay bridge execute', () => {
-  test('runs approve then deposit and reports delivery once Relay says success', async () => {
+  test('one operation: the approval and the deposit, unchanged; delivery reported once Relay says success', async () => {
     const bridge = await quote()
     const h = harness()
     const result = await run(bridge, h, ['waiting', 'pending', 'success'])
-    expect(h.sent.map((s) => s.key)).toEqual(['op-bridge-0001:approve', 'op-bridge-0001:deposit'])
+    const [batch] = h.bundler.batches
+    expect(batch?.slice(0, 2).map(lower)).toEqual(
+      bridge.steps.map((step) => [step.to.toLowerCase(), step.data.toLowerCase()]),
+    )
+    expect(batch?.length).toBe(3)
     expect(result).toMatchObject({
       status: 'success',
       delivery: 'delivered',
@@ -247,68 +218,33 @@ describe('Relay bridge execute', () => {
     )
     const h = harness()
     await expect(run({ ...bridge, steps }, h, [])).rejects.toMatchObject({ code: 'bad_quote' })
-    expect(h.sent).toHaveLength(0)
+    expect(h.bundler.methods).toHaveLength(0)
   })
 
-  test('an empty agent signs nothing; with an allowance it redeems the deposit first', async () => {
+  test('an empty agent sends nothing; with an allowance it redeems the deposit plus the gas in the same operation', async () => {
     const bridge = await quote()
-    const empty = { ...harness(), rpc: nodeWith(0n) }
+    const empty = harness(0n)
     await expect(run(bridge, empty, ['success'])).rejects.toMatchObject({ code: 'insufficient_funds' })
-    expect(empty.sent).toEqual([])
-    let redeemed = false
-    const node = nodeWith(0n)
-    const funded = {
-      ...harness(),
-      rpc: (async (method, params) =>
-        redeemed && method === 'eth_call' && String(field(params[0], 'data')).startsWith(BALANCE_OF)
-          ? word(10_000_000n)
-          : node(method, params)) satisfies JsonRpc,
-    }
-    const topUp = {
-      redeemCalldata: () => {
-        redeemed = true
-        return '0xfeed' as const
+    expect(empty.bundler.methods).not.toContain('eth_sendUserOperation')
+    const asked: bigint[] = []
+    const topUp: TopUp = {
+      redeemCalldata: (amount) => {
+        asked.push(amount)
+        return '0xfeed'
       },
       available: async () => 20_000_000n,
     }
-    const result = await executeBridge({
-      bridge,
-      agent: funded.agent,
-      rpc: funded.rpc,
-      operationKey: 'op-bridge-0001',
-      topUp,
-      wait: { sleep: async () => undefined, attempts: 2 },
-      fetchFn: statusFetch(['success']),
-      sleep: async () => undefined,
-      statusAttempts: 3,
-      now: () => NOW,
-    })
+    const funded = harness(0n)
+    const result = await run(bridge, funded, ['success'], NOW, topUp)
     expect(result.status).toBe('success')
-    expect(funded.sent.map((s) => s.key)).toEqual([
-      'op-bridge-0001:topup',
-      'op-bridge-0001:approve',
-      'op-bridge-0001:deposit',
-    ])
-  })
-
-  test('an approval the node never shows stops before the deposit is signed', async () => {
-    const bridge = await quote()
-    const node = fakeRpc
-    const stuck = {
-      ...harness(),
-      rpc: (async (method, params) =>
-        method === 'eth_call' && String(field(params[0], 'data')).startsWith(ALLOWANCE_OF)
-          ? word(0n)
-          : node(method, params)) satisfies JsonRpc,
-    }
-    await expect(run(bridge, stuck, ['success'])).rejects.toMatchObject({ code: 'rpc_unavailable', uncertain: false })
-    expect(stuck.sent.map((s) => s.key)).toEqual(['op-bridge-0001:approve'])
+    expect(asked.at(-1)).toBe(2_000_000n + TEST_FEE_BOUND)
+    expect(funded.bundler.batches[0]?.[0]).toEqual({ target: BASE.delegation.manager, value: 0n, callData: '0xfeed' })
   })
 
   test('refuses an expired quote without sending', async () => {
     const h = harness()
     await expect(run(await quote(), h, [], new Date('2026-10-12T06:10:00Z'))).rejects.toMatchObject({ code: 'expired' })
-    expect(h.sent).toHaveLength(0)
+    expect(h.bundler.methods).toHaveLength(0)
   })
 })
 

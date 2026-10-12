@@ -42,7 +42,7 @@ const agent = () => {
       const domain = { ...typedData.domain, chainId: BigInt(String(typedData.domain['chainId'])) }
       return account.signTypedData({ domain, types: typedData.types, primaryType: typedData.primaryType, message })
     },
-    sendTransaction: async () => {
+    signUserOperation: async () => {
       throw new Error('not used')
     },
     signAuthorization: async () => {
