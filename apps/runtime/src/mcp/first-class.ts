@@ -313,6 +313,14 @@ const WALLET: Profile = {
 
 const PROFILES: readonly Profile[] = [MERCATOR, CLOUDFLARE, WALLET]
 
+/**
+ * The Goblin Wallet's own setup page for the connection at `endpoint`: it runs the wallet's setup (and adding funds)
+ * and returns to `back`, an address on goblin. It is on the endpoint's origin, which is goblin's own configuration,
+ * never a site the server names; the wallet returns only to the origin of a client the owner connected.
+ */
+export const walletSetupUrl = (endpoint: string, back: string): string =>
+  `${new URL('/setup', new URL(endpoint).origin).href}?return=${encodeURIComponent(back)}`
+
 /** The profile of the server at `endpoint`, when goblin supports it first-class. */
 export const profileOf = (endpoint: string): Profile | undefined =>
   PROFILES.find((profile) => profile.endpoints.includes(endpoint))

@@ -10,21 +10,21 @@ import { useState } from 'react'
 import { onboardingQuery } from '../../onboarding/queries.ts'
 import { PageSection } from '../page-section.tsx'
 
-/** The steps that let goblin answer, in order, as the card names them. */
-const ANSWER_STEPS: readonly { readonly id: OnboardingStep; readonly text: (view: OnboardingView) => string }[] = [
-  { id: 'wallet', text: () => 'Connect your Goblin Wallet' },
-  { id: 'funds', text: (view) => `Add $${view.wallet.needs} or more to it` },
+/** What lets goblin answer, in order, as the card names it: each a part of the wallet step, done or not. */
+const ANSWER_PARTS: readonly {
+  readonly text: (wallet: OnboardingView['wallet']) => string
+  readonly done: (wallet: OnboardingView['wallet']) => boolean
+}[] = [
+  { text: () => 'Connect your Goblin Wallet', done: (wallet) => wallet.allowed },
+  { text: () => 'Finish its setup in the wallet', done: (wallet) => wallet.ready },
+  { text: (wallet) => `Add $${wallet.needs} or more to it`, done: (wallet) => wallet.funded },
 ]
-
-/** Where Continue setup goes: the first step still to do. */
-const firstOpen = (view: OnboardingView, among: readonly OnboardingStep[]): OnboardingStep =>
-  view.steps.find((step) => among.includes(step.id) && !step.done)?.id ?? 'funds'
 
 /** goblin cannot answer yet: what is left, and the way to finish it. The message the owner wrote stays where it is. */
 export function FundGoblinCard() {
   const view = useQuery(onboardingQuery).data
   if (view === undefined) return null
-  const done = (id: OnboardingStep) => view.steps.find((step) => step.id === id)?.done === true
+  const { wallet } = view
   return (
     <section className="setup-card" aria-labelledby="fund-goblin-title">
       <p id="fund-goblin-title" className="setup-card-title">
@@ -35,33 +35,36 @@ export function FundGoblinCard() {
         Your plan&apos;s Credits start once your Goblin Wallet holds ${view.wallet.needs}. Your message stays here.
       </p>
       <ol className="setup-card-steps">
-        {ANSWER_STEPS.map((step) => (
-          <li key={step.id} {...(done(step.id) ? { 'data-done': true } : {})}>
-            <span className="setup-card-mark" aria-hidden>
-              {done(step.id) && <CheckIcon />}
-            </span>
-            {step.text(view)}
-            {done(step.id) && <span className="sr-only"> (done)</span>}
-          </li>
-        ))}
+        {ANSWER_PARTS.map((part) => {
+          const done = part.done(wallet)
+          return (
+            <li key={part.text(wallet)} {...(done ? { 'data-done': true } : {})}>
+              <span className="setup-card-mark" aria-hidden>
+                {done && <CheckIcon />}
+              </span>
+              {part.text(wallet)}
+              {done && <span className="sr-only"> (done)</span>}
+            </li>
+          )
+        })}
       </ol>
-      <Button
-        size="sm"
-        nativeButton={false}
-        render={<Link to="/start/$step" params={{ step: firstOpen(view, ['wallet', 'funds']) }} />}
-      >
+      <Button size="sm" nativeButton={false} render={<Link to="/start/$step" params={{ step: 'wallet' }} />}>
         Continue setup
       </Button>
     </section>
   )
 }
 
+/** The steps a skipped Start still counts as left: the welcome and the kickoff are no tasks to come back to. */
+const leftOf = (view: OnboardingView) =>
+  view.steps.filter((step) => !step.done && step.id !== 'welcome' && step.id !== 'goblin')
+
 /** Start was skipped and something is left: one quiet line back to it, which the owner can put away for this visit. */
 export function FinishSetupRow() {
   const view = useQuery(onboardingQuery).data
   const [hidden, setHidden] = useState(false)
   if (view === undefined || hidden || view.status !== 'skipped') return null
-  const left = view.steps.filter((step) => !step.done && step.id !== 'goblin')
+  const left = leftOf(view)
   if (left.length === 0) return null
   return (
     <div className="setup-row">
@@ -85,7 +88,7 @@ export function SetupSettingsCard() {
       <CardHeader>
         <CardTitle>Set up goblin</CardTitle>
         <CardDescription>
-          Your Goblin Wallet and its funds, how goblin pays for its model, Mercator and your other services.
+          Your Goblin Wallet, the outside services goblin reaches (Mercator first), and what goblin is for.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -97,7 +100,7 @@ export function SetupSettingsCard() {
                   ? 'Reading your setup…'
                   : left.length === 0
                     ? 'All set'
-                    : `${String(left.length)} steps left`}
+                    : `${String(left.length)} ${left.length === 1 ? 'step' : 'steps'} left`}
               </span>
             </span>
             <Button
@@ -117,11 +120,9 @@ export function SetupSettingsCard() {
 
 /** Each step as Activity's checklist names it. */
 const STEP_NAMES: Readonly<Record<OnboardingStep, string>> = {
-  wallet: 'Connect your Goblin Wallet',
-  funds: 'Add funds to it',
-  pay: 'Choose how goblin pays',
-  mercator: 'Connect Mercator',
-  more: 'Add more services',
+  welcome: 'See what goblin is',
+  wallet: 'Set up and fund your Goblin Wallet',
+  services: 'Connect outside services, Mercator first',
   goblin: 'Tell goblin what it is for',
 }
 

@@ -1,6 +1,7 @@
 // First-run Start (ADR 0048): one task per screen before the chats, on the rail's own green. The panel lists the steps
-// (each a link; a sign-in Start began comes back to its step); the task says why, offers one action, and shows when it
-// is done. Finishing narrows the panel into the rail as the chat appears: the one motion of the page.
+// (each a link; a sign-in Start began comes back to its step), and on a phone narrows to a band with a count and one
+// segment per step; the task says why, offers one action, and shows when it is done. Finishing narrows the panel into
+// the rail as the chat appears: the one motion of the page.
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ONBOARDING_STEPS, PRIMARY_CHAT, type OnboardingStep, type OnboardingView } from '@goblin/contracts'
@@ -12,13 +13,15 @@ import { messageOf } from '../../lib/query/app-error.ts'
 import { reportUnexpected } from '../../lib/unexpected.ts'
 import { changeOnboardingMutation, onboardingQuery } from '../../onboarding/queries.ts'
 import { messageBody } from '../use-conversation.ts'
-import { FundsStep, GoblinStep, MercatorStep, MoreStep, PayStep, STEP_TEXT, WalletStep } from './steps.tsx'
+import { GoblinStep, STEP_TEXT, ServicesStep, WalletStep, WelcomeStep } from './steps.tsx'
 
 /** How a sign-in Start began came back (the callback's own words): connected, or why not. */
 export type StartSearch = { readonly connected?: string; readonly error?: string; readonly ref?: string }
 
 /** How long the panel takes to become the rail (`--start-leave` in start.css). */
 const LEAVE_MS = 320
+/** How often the wallet step reads the wallet again while it is not set up and funded (ms). */
+const WALLET_POLL_MS = 10_000
 
 /** Opens the chat, after the panel has narrowed into the rail (at once when the owner asks for less motion). */
 function useLeave(): { readonly leaving: boolean; readonly leave: () => void } {
@@ -35,12 +38,16 @@ function useLeave(): { readonly leaving: boolean; readonly leave: () => void } {
   return { leaving, leave }
 }
 
+/** Whether step `id` is done, once Start's state is read. */
+const isDone = (view: OnboardingView | undefined, id: OnboardingStep): boolean =>
+  view?.steps.find((each) => each.id === id)?.done === true
+
 /** The step list on the panel: done, here, or still to do, each a link. */
 function StepList({ view, step }: { readonly view: OnboardingView | undefined; readonly step: OnboardingStep }) {
   return (
     <ol className="start-steps">
       {ONBOARDING_STEPS.map((id, index) => {
-        const done = view?.steps.find((each) => each.id === id)?.done === true
+        const done = isDone(view, id)
         return (
           <li key={id}>
             <Link
@@ -65,7 +72,22 @@ function StepList({ view, step }: { readonly view: OnboardingView | undefined; r
   )
 }
 
-/** The green panel: goblin's mark, the steps (a count and a bar on a phone), and the way out. */
+/** On a phone: one segment per step, filled once done, marked where the owner is. The count says it in words. */
+function StepSegments({ view, step }: { readonly view: OnboardingView | undefined; readonly step: OnboardingStep }) {
+  return (
+    <ol className="start-segments" aria-hidden>
+      {ONBOARDING_STEPS.map((id) => (
+        <li
+          key={id}
+          {...(id === step ? { 'data-current': true } : {})}
+          {...(isDone(view, id) ? { 'data-done': true } : {})}
+        />
+      ))}
+    </ol>
+  )
+}
+
+/** The green panel: goblin's mark, the steps (a count and its segments on a phone), and the way out. */
 function StartPanel({
   view,
   step,
@@ -86,9 +108,12 @@ function StartPanel({
       </div>
       <StepList view={view} step={step} />
       <p className="start-count">
-        Step {index + 1} of {ONBOARDING_STEPS.length}
+        <span className="start-count-of">
+          {index + 1} of {ONBOARDING_STEPS.length}
+        </span>
+        <span>{STEP_TEXT[step].label}</span>
       </p>
-      <progress className="start-progress" aria-hidden value={index + 1} max={ONBOARDING_STEPS.length} />
+      <StepSegments view={view} step={step} />
       <button type="button" className="start-skip" onClick={onSkip}>
         Skip setup
       </button>
@@ -123,13 +148,16 @@ function StepBody({
   step,
   read,
   starting,
+  onWelcome,
   onStart,
 }: {
   readonly step: OnboardingStep
   readonly read: { readonly data: OnboardingView | undefined; readonly error: unknown }
   readonly starting: boolean
+  readonly onWelcome: () => void
   readonly onStart: (text: string) => void
 }) {
+  if (step === 'welcome') return <WelcomeStep onContinue={onWelcome} />
   const view = read.data
   if (view === undefined)
     return read.error === null ? (
@@ -143,72 +171,92 @@ function StepBody({
       </Receipt>
     )
   if (step === 'wallet') return <WalletStep view={view} />
-  if (step === 'funds') return <FundsStep view={view} />
-  if (step === 'pay') return <PayStep />
-  if (step === 'mercator') return <MercatorStep view={view} />
-  if (step === 'more') return <MoreStep />
+  if (step === 'services') return <ServicesStep view={view} />
   return <GoblinStep view={view} pending={starting} onStart={onStart} />
 }
 
-/** Back on the left; on (or skip this step) on the right; the last step finishes instead. */
+/**
+ * Back on the left; on (or skip this step) on the right, filled only when it is the screen's one action. The welcome
+ * has its own button, and the last step finishes instead.
+ */
 function StartNav({
   step,
-  done,
+  view,
   finishing,
+  onNext,
   onFinish,
 }: {
   readonly step: OnboardingStep
-  readonly done: boolean
+  readonly view: OnboardingView | undefined
   readonly finishing: boolean
+  readonly onNext: () => void
   readonly onFinish: () => void
 }) {
   const navigate = useNavigate()
-  const change = useMutation(changeOnboardingMutation)
-  const index = ONBOARDING_STEPS.indexOf(step)
-  const to = (other: OnboardingStep | undefined) => {
-    if (other !== undefined) navigate({ to: '/start/$step', params: { step: other } }).catch(reportUnexpected)
-  }
-  const next = () => {
-    // How goblin pays and more services are the owner's word; the agent reads the rest from the servers.
-    if (step === 'pay' || step === 'more') change.mutate({ step })
-    to(ONBOARDING_STEPS[index + 1])
-  }
+  if (step === 'welcome') return null
+  const back = ONBOARDING_STEPS[ONBOARDING_STEPS.indexOf(step) - 1]
+  const next =
+    step === 'goblin' ? (
+      <Button variant="ghost" pending={finishing} onClick={onFinish}>
+        Finish without it
+      </Button>
+    ) : step === 'wallet' ? (
+      <Button variant={view?.wallet.funded === true ? 'default' : 'ghost'} onClick={onNext}>
+        {view?.wallet.funded === true ? 'Continue' : 'Skip this step'}
+      </Button>
+    ) : (
+      <Button variant={view?.mercator.allowed === true ? 'default' : 'outline'} onClick={onNext}>
+        Continue
+      </Button>
+    )
   return (
     <footer className="start-nav">
-      {index > 0 ? (
-        <Button variant="ghost" onClick={() => to(ONBOARDING_STEPS[index - 1])}>
+      {back === undefined ? (
+        <span />
+      ) : (
+        <Button
+          variant="ghost"
+          onClick={() => {
+            navigate({ to: '/start/$step', params: { step: back } }).catch(reportUnexpected)
+          }}
+        >
           Back
         </Button>
-      ) : (
-        <span />
       )}
-      {step === 'goblin' ? (
-        <Button variant="ghost" pending={finishing} onClick={onFinish}>
-          Finish without it
-        </Button>
-      ) : (
-        <Button variant={done ? 'default' : 'ghost'} onClick={next}>
-          {done ? 'Continue' : 'Skip this step'}
-        </Button>
-      )}
+      {next}
     </footer>
   )
 }
 
 export function StartPage({ step, search }: { readonly step: OnboardingStep; readonly search: StartSearch }) {
-  const read = useQuery({ ...onboardingQuery, refetchInterval: step === 'funds' ? 15_000 : false })
+  // The wallet step reads the wallet again while it is not set up and funded, so coming back from it shows the change.
+  const read = useQuery({
+    ...onboardingQuery,
+    refetchInterval: (query) =>
+      step === 'wallet' && query.state.data?.wallet.funded !== true ? WALLET_POLL_MS : false,
+  })
+  const navigate = useNavigate()
   const change = useMutation(changeOnboardingMutation)
   const submit = useMutation(submitMutation)
   const { leaving, leave } = useLeave()
   const index = ONBOARDING_STEPS.indexOf(step)
-  const done = read.data?.steps[index]?.done === true || step === 'pay' || step === 'more'
+  const following = ONBOARDING_STEPS[index + 1]
+  const next = () => {
+    // The welcome and services are the owner's word; the agent reads the wallet from the wallet.
+    if (step === 'welcome' || step === 'services') change.mutate({ step })
+    if (following !== undefined) navigate({ to: '/start/$step', params: { step: following } }).catch(reportUnexpected)
+  }
   const finish = async (kickoff?: string) => {
+    // The kickoff is recorded before its message goes, so the first model request already sees it.
+    await change.mutateAsync({ status: 'done', step: 'goblin', ...(kickoff === undefined ? {} : { kickoff: true }) })
     if (kickoff !== undefined)
       await submit.mutateAsync({ id: PRIMARY_CHAT, message: messageBody(kickoff, crypto.randomUUID()) })
-    await change.mutateAsync({ status: 'done', step: 'goblin', ...(kickoff === undefined ? {} : { kickoff: true }) })
     leave()
   }
   const failure = submit.error ?? change.error
+  // Which way Start is finishing: with the kickoff (Start with this) or without it (Finish without it).
+  const kicking = change.isPending && change.variables?.kickoff === true
+  const finishing = change.isPending && change.variables?.status === 'done' && !kicking
   return (
     <div className="start" {...(leaving ? { 'data-leaving': true } : {})}>
       <StartPanel
@@ -222,19 +270,20 @@ export function StartPage({ step, search }: { readonly step: OnboardingStep; rea
           <p>{STEP_TEXT[step].why}</p>
         </header>
         <ReturnNotice search={search} />
-        <StepBody step={step} read={read} starting={submit.isPending} onStart={(kickoff) => void finish(kickoff)} />
+        <StepBody
+          step={step}
+          read={read}
+          starting={kicking || submit.isPending}
+          onWelcome={next}
+          onStart={(kickoff) => void finish(kickoff)}
+        />
         {failure !== null && (
           <Receipt tone="error">
             <CircleAlertIcon aria-hidden />
             <span>{messageOf(failure, 'finish setting up')}</span>
           </Receipt>
         )}
-        <StartNav
-          step={step}
-          done={done}
-          finishing={change.isPending && !submit.isPending}
-          onFinish={() => void finish()}
-        />
+        <StartNav step={step} view={read.data} finishing={finishing} onNext={next} onFinish={() => void finish()} />
       </section>
     </div>
   )

@@ -7,9 +7,10 @@ import { ApiErrors } from './errors.ts'
 /**
  * First-run Start (ADR 0048). Paths are relative to the API's `/api` prefix.
  *
- * - `state`: `GET /api/onboarding/status`, whether Start stands before the chats, from what the agent knows locally.
+ * - `state`: `GET /api/onboarding/status`, whether Start stands before the chats and its first open step; a kept answer
+ *   is read locally, a derived one reads the wallet.
  * - `view`: `GET /api/onboarding`, every step's state, reading the wallet's and Mercator's status as the owner.
- * - `change`: `PUT /api/onboarding`, the owner finishes, skips or reopens Start, or goes through a step.
+ * - `change`: `PUT /api/onboarding`, the owner finishes or skips Start, goes through a step, or sends the kickoff.
  * - `connect`: `POST /api/onboarding/connect`, a sign-in that comes back to Start's step (and may allow the server's
  *   recommended tools); answered as `POST /api/mcp/:id/connect` is.
  */

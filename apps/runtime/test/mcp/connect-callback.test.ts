@@ -62,8 +62,8 @@ describe('the outbound sign-in callback', () => {
     expect(allowing.target).toBe('https://goblin.test/start/wallet?connected=notes')
     expect(allowing.allowed).toContain('wallet_status')
     expect(allowing.allowed).toContain('pay_challenge')
-    const choosing = await callback('state=s1&code=c1', undefined, true, { step: 'more', recommend: false })
-    expect(choosing).toMatchObject({ target: 'https://goblin.test/start/more?connected=notes', allowed: [] })
+    const choosing = await callback('state=s1&code=c1', undefined, true, { step: 'services', recommend: false })
+    expect(choosing).toMatchObject({ target: 'https://goblin.test/start/services?connected=notes', allowed: [] })
   })
 
   it("answers the authorization server's error, or an incomplete callback, without finishing anything", async () => {

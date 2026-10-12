@@ -1,19 +1,33 @@
-import { OnboardingStep, type OnboardingChange, type OnboardingStatus } from '@goblin/contracts'
+import { OnboardingStep, type OnboardingChange } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { appOnboarding, appOnboardingConnects } from '../storage/onboarding.ts'
 
-/** What the owner did with Start: its status, the steps they went through, and when they sent the kickoff. */
+/** Start's status once it is kept: the owner finished or skipped it, or it was found complete. */
+type KeptStatus = 'done' | 'skipped'
+
+/**
+ * What the owner did with Start: its kept status (none while Start is derived from the servers), the steps they went
+ * through, and when they sent the kickoff.
+ */
 export type OnboardingRecord = {
-  readonly status: OnboardingStatus
+  readonly status: KeptStatus | undefined
   readonly steps: readonly OnboardingStep[]
   readonly kickoffAt: number | undefined
 }
 
-const decodeSteps = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(OnboardingStep)))
+const decodeStrings = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Schema.String)))
 const decodeStep = Schema.decodeUnknownOption(OnboardingStep)
+const isStep = Schema.is(OnboardingStep)
+
+/** The steps a row records, leniently: an id Start no longer has (an older Start's) is dropped, never a failure. */
+const stepsOf = (json: string): readonly OnboardingStep[] =>
+  Option.match(decodeStrings(json), {
+    onNone: () => [],
+    onSome: (ids) => [...new Set(ids.filter(isStep))],
+  })
 
 /** Where a sign-in Start began comes back to, and whether to allow the server's recommended tools then. */
 export type StartedConnect = { readonly step: OnboardingStep; readonly recommend: boolean }
@@ -23,7 +37,8 @@ export type StartedConnect = { readonly step: OnboardingStep; readonly recommend
  * pending authorization lives: the wallet's consent includes its setup and funding, which can take a while.
  */
 const CONNECT_FRESH = 60 * 60
-const decodeStatus = Schema.decodeUnknownOption(Schema.Literals(['open', 'done', 'skipped']))
+/** `open` in the row is no kept status: Start is derived. */
+const decodeKept = Schema.decodeUnknownOption(Schema.Literals(['done', 'skipped']))
 
 /** Start's one row (ADR 0048). Nothing is stored until the owner acts, so an untouched Start is derived instead. */
 export class OnboardingStore {
@@ -36,26 +51,32 @@ export class OnboardingStore {
     const row = this.#db.select().from(appOnboarding).where(eq(appOnboarding.id, 1)).get()
     if (row === undefined) return undefined
     return {
-      status: Option.getOrElse(decodeStatus(row.status), () => 'open' as const),
-      steps: Option.getOrElse(decodeSteps(row.steps), () => []),
+      status: Option.getOrUndefined(decodeKept(row.status)),
+      steps: stepsOf(row.steps),
       kickoffAt: row.kickoffAt ?? undefined,
     }
   }
 
   /**
-   * Applies the owner's change in one statement: a new status, a step they went through (kept once), the kickoff's
-   * time (kept from the first). A change without a status keeps the current one, `open` when there was none.
+   * Applies the owner's change in one statement: a status (`open` forgets the kept one, so Start is derived again), a
+   * step they went through (kept once), the kickoff's time (kept from the first). Only a status changes the status: a
+   * step or the kickoff alone leaves it as it was, so going through a step never pins Start open.
    */
   apply(change: OnboardingChange, now: number): OnboardingRecord {
     const current = this.get()
     const steps = [...(current?.steps ?? [])]
     if (change.step !== undefined && !steps.includes(change.step)) steps.push(change.step)
+    const status = change.status === undefined ? current?.status : change.status === 'open' ? undefined : change.status
     const next: OnboardingRecord = {
-      status: change.status ?? current?.status ?? 'open',
+      status,
       steps,
       kickoffAt: current?.kickoffAt ?? (change.kickoff === true ? now : undefined),
     }
-    const values = { status: next.status, steps: JSON.stringify(next.steps), kickoffAt: next.kickoffAt ?? null }
+    const values = {
+      status: next.status ?? 'open',
+      steps: JSON.stringify(next.steps),
+      kickoffAt: next.kickoffAt ?? null,
+    }
     this.#db
       .insert(appOnboarding)
       .values({ id: 1, ...values, updatedAt: now })

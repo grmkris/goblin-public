@@ -33,6 +33,9 @@ const WAYS: readonly Way[] = [
   },
 ]
 
+/** How goblin pays in mode `mode`, in the words the choices use: "Credits first, then your wallet". */
+export const payModeTitle = (mode: PayMode): string => WAYS.find((way) => way.mode === mode)?.title ?? mode
+
 /** The ways this stage offers: all three while it sells a paid route, else the Credits alone. */
 export const waysOf = (pay: PayChoice): readonly Way[] =>
   pay.routes.length === 0 ? WAYS.filter((way) => way.mode === 'credits') : WAYS
@@ -101,7 +104,8 @@ function Choice({
 
 /**
  * How goblin pays for its model, as choices: the ways the stage sells, the route paid calls take, and whether the wallet
- * can pay now. Settings' card and first-run Start's step both show it. Nothing while the stage sells only Credits.
+ * can pay now. Settings' card and first-run Start's wallet step (under Change) both show it. Nothing while the stage
+ * sells only Credits.
  */
 export function PayModeChoices() {
   const pay = useQuery(payQuery).data

@@ -1,8 +1,10 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 /**
- * First-run Start (ADR 0048): one row, written once the owner acts on it. `steps` is a JSON array of the steps the
- * owner went through that the agent cannot read from anywhere else (how goblin pays, more services, the kickoff).
+ * First-run Start (ADR 0048): one row, written once the owner acts on it. `status` is `done` or `skipped` once kept (the
+ * owner said so, or Start was found complete) and `open` while it is derived from the servers. `steps` is a JSON array
+ * of the steps the owner went through that the agent cannot read from anywhere else (welcome, services, the kickoff);
+ * an id an older Start had is ignored.
  */
 export const appOnboarding = sqliteTable('app_onboarding', {
   id: integer('id').primaryKey().notNull(),

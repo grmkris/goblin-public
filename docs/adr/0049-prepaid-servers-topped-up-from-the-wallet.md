@@ -54,7 +54,7 @@ again, and it is funded.
 **The owner sees every top-up.** Each one that goes out writes an Activity notification and a line in the job's chat,
 "Moved $5.00 to Mercator from your Goblin Wallet" (a notice, `routines/notices.ts`). A content-free `top_up` flow step
 records how it ended. Mercator's card in Connections shows its balance and the rule, "goblin tops it up from your
-Goblin Wallet: up to $5 a top-up and $20 a day without asking", with Change (`PrepaidLine`, which Start's Mercator step
+Goblin Wallet: up to $5 a top-up and $20 a day without asking", with Change (`PrepaidLine`, which Start's services step
 reuses).
 
 ## Consequences
