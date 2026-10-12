@@ -166,3 +166,17 @@ export const chainById = (id: number): Chain | undefined => CHAINS.find((candida
 
 /** A chain by its CAIP-2 id ("eip155:8453"), the form x402 and the wallet contract use. */
 export const chainByCaip2 = (caip2: string): Chain | undefined => CHAINS.find((candidate) => candidate.caip2 === caip2)
+
+/** The chains a wallet operation names (the contract's `ChainKey`). */
+export type ChainKey = 'base' | 'ethereum' | 'arbitrum' | 'tempo'
+
+const MAINNETS: Readonly<Record<ChainKey, Chain>> = { base: BASE, ethereum: ETHEREUM, arbitrum: ARBITRUM, tempo: TEMPO }
+const TESTNETS: Readonly<Record<ChainKey, Chain>> = {
+  base: BASE_SEPOLIA,
+  ethereum: SEPOLIA,
+  arbitrum: ARBITRUM_SEPOLIA,
+  tempo: TEMPO_MODERATO,
+}
+
+/** The chain a key names: the mainnet when the wallet is live (`WALLET_LIVE=1`), its testnet otherwise. */
+export const chainByKey = (key: ChainKey, live: boolean): Chain => (live ? MAINNETS : TESTNETS)[key]
