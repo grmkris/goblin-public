@@ -26,6 +26,11 @@ export interface SpendPlan {
   readonly capUsd?: string
   /** The spend goes to a service the owner has not allowed yet. */
   readonly newService?: boolean
+  /**
+   * The terms hash this plan was built for (a frozen swap or bridge quote). The stored operation must carry the same
+   * hash before anything is signed, so a payload is never paid under another operation's terms.
+   */
+  readonly boundTermsHash?: string
 }
 
 export type SpendOutcome =
@@ -56,6 +61,13 @@ const ledgerCall = <A>(call: (api: LedgerApi) => Promise<A>) =>
 const FINISHED = new Set(['delivered', 'confirmed', 'failed', 'declined', 'expired', 'cancelled'])
 const IN_FLIGHT = new Set(['signing', 'submitted', 'uncertain'])
 
+const reused = failure(
+  'operation_id_reused',
+  'This operation_id was already used with different arguments.',
+  409,
+  'Use a new operation_id for a different request.',
+)
+
 /** Quote, freeze, check the cap and open the operation. */
 const open = (plan: SpendPlan) =>
   Effect.gen(function* () {
@@ -79,6 +91,8 @@ const open = (plan: SpendPlan) =>
       api.begin({ id: plan.operationId, argsHash: plan.argsHash, terms, termsHash: hash, client: plan.client }),
     )
     if (begun.kind === 'refused') return yield* failure(begun.code, begun.reason, 403)
+    // A racing call with other arguments won the id between the lookup and the begin: this one must not run.
+    if (begun.kind === 'conflict') return yield* reused
     return begun.operation
   })
 
@@ -134,7 +148,14 @@ const record = (id: string, outcome: PayOutcome) => {
 /** Signs and pays a reserved operation, then records what happened. */
 const execute = (plan: SpendPlan, reserved: Operation) =>
   Effect.gen(function* () {
+    if (plan.boundTermsHash !== undefined && plan.boundTermsHash !== reserved.termsHash)
+      return yield* failure(
+        'operation_id_reused',
+        'This operation_id belongs to other terms than the quote being executed. Nothing was spent.',
+        409,
+      )
     const moved = yield* ledgerCall((api) => api.signing(plan.operationId))
+    if (!moved.ok && 'reason' in moved) return yield* refuse(moved.code, moved.reason)
     if (!moved.ok) return { kind: 'done', operation: moved.operation ?? reserved, replay: true } satisfies SpendOutcome
     const outcome = yield* payOnce(plan, moved.operation)
     const recorded = yield* record(plan.operationId, outcome)
@@ -156,13 +177,7 @@ const execute = (plan: SpendPlan, reserved: Operation) =>
 export const runSpend = (plan: SpendPlan) =>
   Effect.gen(function* () {
     const seen = yield* ledgerCall((api) => api.lookup(plan.operationId, plan.argsHash))
-    if (seen.kind === 'conflict')
-      return yield* failure(
-        'operation_id_reused',
-        'This operation_id was already used with different arguments.',
-        409,
-        'Use a new operation_id for a different request.',
-      )
+    if (seen.kind === 'conflict') return yield* reused
     const operation = seen.kind === 'replay' ? seen.operation : yield* open(plan)
     if (FINISHED.has(operation.status) || IN_FLIGHT.has(operation.status))
       return { kind: 'done', operation, replay: true } satisfies SpendOutcome

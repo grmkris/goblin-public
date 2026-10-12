@@ -7,7 +7,7 @@ import { ledgerClient, LedgerObject } from '../../ledger/durable.ts'
 import { runWallet } from '../../runtime.ts'
 import { walletLayer } from '../index.ts'
 import type { PayOutcome, RailsPort } from '../rails.ts'
-import { paidFetchPlan, transferPlan } from './plans.ts'
+import { executeQuotePlan, freezeQuote, paidFetchPlan, transferPlan } from './plans.ts'
 import { runSpend } from './spend.ts'
 
 const T0 = Date.parse('2026-10-12T10:00:00.000Z')
@@ -37,10 +37,10 @@ interface Harness {
   ledger: ReturnType<typeof ledgerClient>
 }
 
-function harness(): Harness {
+function harness(wrap: (ledger: Harness['ledger']) => Harness['ledger'] = (ledger) => ledger): Harness {
   const clock = { now: T0 }
   const db = new DatabaseSync(':memory:')
-  const ledger = ledgerClient(
+  const inner = ledgerClient(
     new LedgerObject(
       {
         storage: {
@@ -51,6 +51,7 @@ function harness(): Harness {
       () => clock.now,
     ),
   )
+  const ledger = wrap(inner)
   const paid: Operation[] = []
   const state: Harness['next'] = {
     terms: terms('0.007'),
@@ -66,6 +67,18 @@ function harness(): Harness {
     payPaidFetch: pay,
     quoteTransfer: () => Promise.resolve(state.terms),
     transfer: pay,
+    swapQuote: () =>
+      Promise.resolve({
+        quote: {
+          quote_id: 'quote-swap-001',
+          summary: 'swap 1 USDC',
+          amountUsd: '1',
+          expiresAt: new Date(T0 + 300_000).toISOString(),
+        },
+        terms: terms('1', { kind: 'swap', rail: 'lifi', recipient: EXA, subject: 'swap' }),
+        payload: { route: 'a' },
+      }),
+    swapExecute: pay,
   }
   const layer = walletLayer({ ledger, signer: undefined, rails, origin: 'https://wallet.test' })
   return {
@@ -279,5 +292,124 @@ describe('approvals in the spend program', () => {
       failure: { code: 'revoked', status: 403 },
     })
     expect(h.paid).toHaveLength(0)
+  })
+})
+
+// SAFETY: the fake rail ignores its input; only the frozen answer matters.
+const SWAP_INPUT = {} as Parameters<RailsPort['swapQuote']>[0]
+
+/** A ledger whose lookup saw nothing: the loser of a begin race looked the id up before the winner began. */
+const racing = (ledger: Harness['ledger']): Harness['ledger'] => ({
+  ...ledger,
+  lookup: () => Promise.resolve({ kind: 'none' }),
+})
+
+describe('operation identity under races (finding 1)', () => {
+  test('a call that lost the begin race to other arguments is rejected, not handed the winner', async () => {
+    const h = harness(racing)
+    await h.ledger.begin({
+      id: 'op-race-00001',
+      argsHash: 'the-winners-args',
+      terms: terms('0.001'),
+      termsHash: '0xwinner',
+      client: 'winner',
+    })
+    const result = await h.run(spendFetch(fetchInput('op-race-00001')))
+    expect(result).toMatchObject({ ok: false, failure: { code: 'operation_id_reused', status: 409 } })
+    expect(h.paid).toHaveLength(0)
+  })
+
+  test('a quote payload is never paid under another quote operation terms', async () => {
+    const h = harness()
+    await h.run(freezeQuote('swap', (port) => port.swapQuote(SWAP_INPUT)))
+    const input = { quote_id: 'quote-swap-001', max_usd: '2', operation_id: 'op-bound-0001' }
+    const plan = await h.run(executeQuotePlan('swap', input, 'Test client'))
+    if (!plan.ok) throw new Error('no plan')
+    // The id was already begun by the same args hash but with different frozen terms.
+    await h.ledger.begin({
+      id: 'op-bound-0001',
+      argsHash: plan.value.argsHash,
+      terms: terms('0.5', { kind: 'swap', rail: 'lifi', subject: 'swap' }),
+      termsHash: '0xother',
+      client: 'c',
+    })
+    const result = await h.run(runSpend(plan.value))
+    expect(result).toMatchObject({ ok: false, failure: { code: 'operation_id_reused' } })
+    expect(h.paid).toHaveLength(0)
+  })
+})
+
+describe('signing re-checks authority (finding 8)', () => {
+  const reservedFetch = async (h: Harness, id: string) => {
+    const plan = await h.run(paidFetchPlan(fetchInput(id), 'Test client'))
+    if (!plan.ok) throw new Error('no plan')
+    const hash = `0x${'a'.repeat(64)}`
+    await h.ledger.begin({ id, argsHash: plan.value.argsHash, terms: terms('0.007'), termsHash: hash, client: 'c' })
+    await h.ledger.reserve(id)
+    return plan.value
+  }
+
+  test('a reservation left unsigned past the grant expiry does not sign on retry', async () => {
+    const h = harness()
+    const plan = await reservedFetch(h, 'op-lapsed-0001')
+    h.clock.now = T0 + 8 * 24 * 3_600_000
+    const result = await h.run(runSpend(plan))
+    expect(result).toMatchObject({ ok: false, failure: { code: 'grant_expired' } })
+    expect(h.paid).toHaveLength(0)
+    expect((await h.ledger.operation('op-lapsed-0001'))?.status).toBe('failed')
+  })
+
+  test('a stale reservation is re-admitted under the current window when it signs', async () => {
+    const h = harness()
+    const plan = await reservedFetch(h, 'op-stale-00001')
+    h.clock.now = T0 + 50 * 60_000
+    await h.ledger.setLimits({ perCall: '5', perHour: '20', perWeek: '50', expiresAt: '2026-11-30T00:00:00.000Z' })
+    // terms expire after an hour in this harness; stay inside it but past most of the hour window
+    const result = await h.run(runSpend(plan))
+    expect(result).toMatchObject({ ok: true, value: { operation: { status: 'delivered' } } })
+    h.clock.now = T0 + 70 * 60_000
+    const hour = (await h.ledger.limitViews()).find((limit) => limit.period === 'hour')
+    expect(hour?.used).toBe('0.007')
+  })
+
+  test('limits that shrank since reserving leave no room: the spend is refused and released', async () => {
+    const h = harness()
+    const plan = await reservedFetch(h, 'op-shrunk-0001')
+    await h.ledger.setLimits({
+      perCall: '0.001',
+      perHour: '0.002',
+      perWeek: '0.003',
+      expiresAt: '2026-11-30T00:00:00.000Z',
+    })
+    const result = await h.run(runSpend(plan))
+    expect(result).toMatchObject({ ok: false, failure: { code: 'over_limit' } })
+    expect(h.paid).toHaveLength(0)
+    expect((await h.ledger.limitViews()).find((limit) => limit.period === 'hour')?.used).toBe('0')
+  })
+})
+
+describe('quote execution replays before it needs a live quote (finding 10)', () => {
+  test('a lost reply after payment returns the existing outcome once the quote has expired', async () => {
+    const h = harness()
+    await h.run(freezeQuote('swap', (port) => port.swapQuote(SWAP_INPUT)))
+    const input = { quote_id: 'quote-swap-001', max_usd: '2', operation_id: 'op-replay-0001' }
+    const execute = Effect.gen(function* () {
+      return yield* runSpend(yield* executeQuotePlan('swap', input, 'Test client'))
+    })
+    expect(await h.run(execute)).toMatchObject({ ok: true, value: { operation: { status: 'delivered' } } })
+    h.clock.now = T0 + 10 * 60_000
+    expect(await h.run(execute)).toMatchObject({
+      ok: true,
+      value: { replay: true, operation: { status: 'delivered' } },
+    })
+    expect(h.paid).toHaveLength(1)
+    const fresh = { ...input, operation_id: 'op-replay-0002' }
+    expect(
+      await h.run(
+        Effect.gen(function* () {
+          return yield* runSpend(yield* executeQuotePlan('swap', fresh, 'Test client'))
+        }),
+      ),
+    ).toMatchObject({ ok: false, failure: { code: 'quote_expired' } })
   })
 })

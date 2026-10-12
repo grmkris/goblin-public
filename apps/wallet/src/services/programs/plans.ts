@@ -1,4 +1,10 @@
-import type { ExecuteQuoteInput, PaidFetchInput, Quote, TransferInput } from '@goblin/wallet/contract'
+import {
+  type ExecuteQuoteInput,
+  type PaidFetchInput,
+  type Quote,
+  termsHash,
+  type TransferInput,
+} from '@goblin/wallet/contract'
 import * as Effect from 'effect/Effect'
 import { failure } from '../errors.ts'
 import { Ledger } from '../ledger.ts'
@@ -54,11 +60,19 @@ export const transferPlan = (input: TransferInput, client: string) =>
     return plan
   })
 
-/** `swap_execute` and `bridge_execute`: the frozen quote's terms, never re-derived from new arguments. */
+/**
+ * `swap_execute` and `bridge_execute`: the frozen quote's terms, never re-derived from new arguments. A live quote is
+ * required only to start a new operation: an operation the ledger already has is replayed (finished or in flight)
+ * whatever has become of its quote, so a lost reply never turns into `quote_expired` and a second payment.
+ */
 export const executeQuotePlan = (kind: 'swap' | 'bridge', input: ExecuteQuoteInput, client: string) =>
   Effect.gen(function* () {
-    const stored = yield* (yield* Ledger).use((api) => api.getQuote(input.quote_id))
-    if (stored === undefined || stored.kind !== kind)
+    const ledger = yield* Ledger
+    const argsHash = yield* Effect.promise(() => argsHashOf(`${kind}_execute`, input))
+    const seen = yield* ledger.use((api) => api.lookup(input.operation_id, argsHash))
+    const stored = yield* ledger.use((api) => api.getQuote(input.quote_id, true))
+    const live = (yield* ledger.use((api) => api.getQuote(input.quote_id))) !== undefined
+    if (stored === undefined || stored.kind !== kind || (seen.kind === 'none' && !live))
       return yield* failure(
         'quote_expired',
         `No live ${kind} quote ${input.quote_id}.`,
@@ -67,10 +81,11 @@ export const executeQuotePlan = (kind: 'swap' | 'bridge', input: ExecuteQuoteInp
       )
     const plan: SpendPlan = {
       operationId: input.operation_id,
-      argsHash: yield* Effect.promise(() => argsHashOf(`${kind}_execute`, input)),
+      argsHash,
       maxUsd: input.max_usd,
       client,
       exempt: yield* ownAddresses,
+      boundTermsHash: yield* Effect.promise(() => termsHash(stored.terms)),
       quote: () => Promise.resolve(stored.terms),
       pay: (port, operation) =>
         kind === 'swap' ? port.swapExecute(operation, stored.payload) : port.bridgeExecute(operation, stored.payload),
