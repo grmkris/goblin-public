@@ -4,7 +4,7 @@
 // is assembled here from its launch and goblin's frame bundles (ADR 0021).
 import * as Data from 'effect/Data'
 import { type QueryClient, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import {
   type AppBridge,
   type McpUiDisplayMode,
@@ -300,5 +300,65 @@ export function McpApp({ selection, onClose }: { readonly selection: McpSelectio
         events={events}
       />
     </div>
+  )
+}
+
+type Room = { readonly width: number; readonly height: number }
+
+/**
+ * An App given a page of its own (a connection's App, ADR 0043): it fills the room below the page's bar and is told
+ * that room as it changes, in the page's one display mode. Nothing else on the page scrolls; the App scrolls itself.
+ */
+export function McpAppPage({ selection, onClose }: { readonly selection: McpSelection; readonly onClose: () => void }) {
+  const [error, setError] = useState('')
+  const [link, setLink] = useState<URL>()
+  const [room, setRoom] = useState<Room>()
+  const box = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const node = box.current
+    if (node === null) return undefined
+    const measure = () => {
+      const { width, height } = node.getBoundingClientRect()
+      setRoom((last) => (last?.width === width && last.height === height ? last : { width, height }))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+  const events: FrameEvents = {
+    report: setError,
+    resize: () => undefined,
+    close: onClose,
+    requestMode: () => 'fullscreen',
+    share: () => undefined,
+    offerLink: setLink,
+    offerDownload: () => undefined,
+    askGrant: async () => false,
+  }
+  return (
+    <>
+      {(error !== '' || link !== undefined) && (
+        <div className="flex flex-col gap-3 px-4 pt-3">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}. The ordinary tool result remains available.</AlertDescription>
+            </Alert>
+          )}
+          {link && (
+            <LinkOffer link={link} connectionId={selectionOrigin(selection)} onDone={() => setLink(undefined)} />
+          )}
+        </div>
+      )}
+      <div ref={box} className="flex min-h-0 flex-1 flex-col">
+        {room !== undefined && (
+          <AppFrame
+            selection={selection}
+            placement={{ mode: 'fullscreen', available: ['fullscreen'], ...room, surface: 'page' }}
+            events={events}
+          />
+        )}
+      </div>
+    </>
   )
 }
