@@ -44,7 +44,10 @@ export function ConnectionsPage() {
         <Async query={connections}>
           {(rows) =>
             rows.length === 0 ? (
-              <EmptyState title="Nothing is connected" description="Add goblin or another MCP client below." />
+              <EmptyState
+                title="No agent is connected yet"
+                description="Connect goblin or any MCP client with the URL below. It works whenever you are ready."
+              />
             ) : (
               <RowList>
                 <ul className="divide-y divide-border">
@@ -61,7 +64,7 @@ export function ConnectionsPage() {
           }
         </Async>
       </Section>
-      <Section title="Add a client">
+      <Section title="Connect your agent">
         <ConnectPanel />
       </Section>
       <Section title="Stop all agent access">

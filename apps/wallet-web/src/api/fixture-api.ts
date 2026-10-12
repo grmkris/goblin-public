@@ -8,6 +8,7 @@ import {
   type DepositAddress,
   type DepositRequest,
   type DepositStatus,
+  type LimitView,
   type Me,
   type PolicyChange,
   termsHash,
@@ -81,6 +82,24 @@ function simulate(world: World): FixtureApi['simulate'] {
         ...world.me,
         chains: withSetup(world.me.chains, chain, { upgraded: true, allowance }),
         ...(limits === undefined ? {} : { limits }),
+      }
+      // The chain's enforcer now reports the allowance, untouched for this hour.
+      const onchain: LimitView = {
+        layer: 'onchain',
+        period: 'hour',
+        limit: perHour,
+        used: '0',
+        remaining: perHour,
+        chain,
+        enforcedBy: 'MetaMask ERC20PeriodTransfer enforcer',
+        periodEndsAt: new Date(Date.now() + 3_600_000).toISOString(),
+      }
+      const others = world.status.limits.filter((limit) => !(limit.layer === 'onchain' && limit.chain === chain))
+      // With an allowance on Base the server reports payments ready, as it would.
+      world.status = {
+        ...world.status,
+        status: { ...world.status.status, paid: 'ready', funding: 'ready' },
+        limits: [...others, onchain],
       }
     },
   }

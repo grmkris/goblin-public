@@ -3,7 +3,7 @@
 import { Button } from '@goblin/ui'
 import type { ChainSetup, Operation, WalletStatusResult } from '@goblin/wallet/contract'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { useActivity, useMe, useStatus } from '../api/queries.tsx'
+import { useActivity, useConnections, useMe, useStatus } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
 import { Async } from '../ui/async.tsx'
 import { EmptyState, Page, Section } from '../ui/page.tsx'
@@ -72,6 +72,20 @@ function attentionAction(item: Attention) {
   )
 }
 
+/** Connecting never gated setup, so Home says when no agent is connected yet and where to do it. */
+function ConnectNudge() {
+  const connections = useConnections()
+  if (connections.data === undefined || connections.data.length > 0) return null
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl bg-card px-4 py-3 text-card-foreground ring-1 ring-foreground/10">
+      <span className="text-sm">No agent is connected yet.</span>
+      <Button size="sm" variant="outline" nativeButton={false} render={<Link to="/connections" />}>
+        Connect your agent
+      </Button>
+    </div>
+  )
+}
+
 function Overview({
   status,
   setups,
@@ -129,6 +143,7 @@ export function HomePage() {
   return (
     <Page title="Home" description="What your agent can spend, what needs you, and what it did.">
       {activity.data !== undefined && <AttentionList items={attentionOf(activity.data)} actionFor={attentionAction} />}
+      <ConnectNudge />
       <Async query={status} rows={3}>
         {(data) =>
           data === undefined ? (
