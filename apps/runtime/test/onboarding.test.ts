@@ -133,7 +133,7 @@ describe('first-run Start (ADR 0048)', () => {
     }).pipe(Effect.provide(start([], []))),
   )
 
-  it('remembers where a sign-in Start began comes back to, once, and not after half an hour', () => {
+  it('remembers where a sign-in Start began comes back to, once, and not after an hour', () => {
     const { db, close } = chatDatabase()
     closes.push(close)
     const store = new OnboardingStore(durable(db))
@@ -142,7 +142,9 @@ describe('first-run Start (ADR 0048)', () => {
     expect(store.takeConnect('wallet', 1200)).toEqual({ step: 'funds', recommend: false })
     expect(store.takeConnect('wallet', 1200)).toBeUndefined()
     store.noteConnect('mercator', { step: 'mercator', recommend: true }, 1000)
-    expect(store.takeConnect('mercator', 1000 + 31 * 60)).toBeUndefined()
+    expect(store.takeConnect('mercator', 1000 + 59 * 60)).toEqual({ step: 'mercator', recommend: true })
+    store.noteConnect('mercator', { step: 'mercator', recommend: true }, 1000)
+    expect(store.takeConnect('mercator', 1000 + 61 * 60)).toBeUndefined()
   })
 
   it.effect('tells goblin in main only what setup misses, one line each, and nothing once it is all there', () =>

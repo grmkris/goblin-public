@@ -7,8 +7,11 @@ import type { CredentialCipher } from './cipher.ts'
 export type ConnectionStatus = 'connected' | 'needs_auth' | 'disconnected'
 export type InvalidationScope = 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'
 
-/** Pending authorizations older than this are refused at the callback. */
-export const PENDING_TTL_SECONDS = 600
+/**
+ * Pending authorizations older than this are refused at the callback. An hour, not ten minutes: the Goblin Wallet's
+ * consent now walks the owner through its setup and adding funds before it comes back (ADR 0048), which takes longer.
+ */
+export const PENDING_TTL_SECONDS = 60 * 60
 
 // Each reader parses a value this store wrote with JSON.stringify of the same SDK type; the SDK revalidates it.
 const readClient = (json: string): StoredOAuthClientInformation =>

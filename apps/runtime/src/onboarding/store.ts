@@ -18,8 +18,11 @@ const decodeStep = Schema.decodeUnknownOption(OnboardingStep)
 /** Where a sign-in Start began comes back to, and whether to allow the server's recommended tools then. */
 export type StartedConnect = { readonly step: OnboardingStep; readonly recommend: boolean }
 
-/** A sign-in noted longer ago than this (seconds) comes back to Connections, as any other does. */
-const CONNECT_FRESH = 30 * 60
+/**
+ * A sign-in noted longer ago than this (seconds) comes back to Connections, as any other does. An hour, as long as the
+ * pending authorization lives: the wallet's consent includes its setup and funding, which can take a while.
+ */
+const CONNECT_FRESH = 60 * 60
 const decodeStatus = Schema.decodeUnknownOption(Schema.Literals(['open', 'done', 'skipped']))
 
 /** Start's one row (ADR 0048). Nothing is stored until the owner acts, so an untouched Start is derived instead. */
@@ -71,7 +74,7 @@ export class OnboardingStore {
       .run()
   }
 
-  /** Takes the note for `connectionId`: it is gone afterwards, and none comes back for one older than half an hour. */
+  /** Takes the note for `connectionId`: it is gone afterwards, and none comes back for one older than an hour. */
   takeConnect(connectionId: string, now: number): StartedConnect | undefined {
     const row = this.#db
       .delete(appOnboardingConnects)

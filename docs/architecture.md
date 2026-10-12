@@ -232,7 +232,7 @@ the wallet pays from (`WalletStatus.payFrom`) as a QR code and as text, and open
 - An untouched Start is open until the wallet holds `GOBLIN_FREE_WALLET_USD` and Mercator is in.
 
 **Sign-ins.** `POST /api/onboarding/connect` notes the step and whether to allow the server's recommended tools
-(`app_onboarding_connects`, half an hour). The OAuth callback (`mcp/program.ts` `connectCallback`) takes the note,
+(`app_onboarding_connects`, an hour). The OAuth callback (`mcp/program.ts` `connectCallback`) takes the note,
 allows the tools and redirects to `/start/<step>` rather than Connections.
 
 **In the chat.**
@@ -719,8 +719,8 @@ its registry, name and version. The owner connects each server from the Connecti
    `StoredOAuthProvider`: discovery, dynamic client registration, PKCE. Only a flow needing consent returns a remote
    authorization URL; otherwise it returns `{}`. A server the open try cannot reach answers that transport failure;
    no sign-in starts for it.
-2. The remote server redirects to `/api/mcp/oauth/callback`. The pending state is single-use and expires after ten
-   minutes; the code is exchanged and the tokens stored.
+2. The remote server redirects to `/api/mcp/oauth/callback`. The pending state is single-use and expires after an
+   hour (the wallet's consent includes its setup and funding); the code is exchanged and the tokens stored.
 3. Client registration and tokens are AES-GCM encrypted at rest (`GOBLIN_CREDENTIAL_KEY`, bound to server ID and
    purpose); discovery metadata is stored in plain JSON.
 
