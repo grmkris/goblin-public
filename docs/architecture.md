@@ -634,7 +634,8 @@ Allow recommended (`POST /api/mcp/:id/recommended`, `mcp/first-class-owner.ts`) 
 the server does not list now is skipped. Cloudflare's API is the second, from the shelf, for publishing a page as a
 Worker: its resource offers only `user:read account:read`, so Connect and step-up add the profile's Workers scripts
 scopes to what the server offers (`signInScope` in `owner-servers.ts`), and its `execute` asks first. Its own App opens as a page, `/connections/<id>/app` (`server-app.tsx`): its
-app tool called as the owner, rendered in the same sandboxed frame as any MCP App and trusted for nothing. Until a
+app tool called as the owner, rendered in the same sandboxed frame as any MCP App and trusted for nothing; it fills the
+pane under the page bar and is told that room as a page (`McpAppPage` in `apps/frame.tsx`). Until a
 first-class server is connected, onboarding points to it: Activity's "Get started" row (`connect-offer.tsx`, Connect or
 Not now, the dismissal kept in the browser), the empty chat's line and the Pro welcome. Connections
 also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
@@ -683,7 +684,9 @@ have run, so `mcp_call` tells the model to check the server's state before calli
 Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool grant also grants its `ui://` App
 resource. An App's switch (`PUT /api/mcp/app-grants`, `McpGrants.setApp`) grants an App as a whole: exactly the
 tools that declare its `ui://` resource, including the ones only the App may call, and the resource itself.
-Connections (`components/tool-grants.tsx`) lists those tools under the switch, each still adjustable, and offers Allow
+Connections (`components/tool-grants.tsx`) names the App from its resource, says how many of its tools a partly
+allowed App has, lists those tools under the switch, each still adjustable (an allowed tool's call policy is a select:
+runs without asking, or asks first), and offers Allow
 all and None, which send the same exact grants one at a time, skip (and count) a tool the server no longer offers, then
 read the list again; the card says how it went. Granting a tool goblin has not listed lists the tools once more first;
 taking a grant back always works, even for a tool the server dropped or while it cannot be reached. When a connection's
@@ -1776,6 +1779,13 @@ runtime calls for MPP inference. It hands over the service's 402 `WWW-Authentica
 charge like any spend, signs it in Tempo's sponsored form (the service's fee payer pays the fee) and returns the
 credential, never fetching. The operation stays uncertain, its amount held, until the caller reports the service's
 `Payment-Receipt`, which settles it only when Tempo shows the agent's transfer under that challenge's memo.
+
+`wallet_status` counts as spendable only the funds the agent can reach: its own wallet's, and the owner's on a chain an
+allowance (or Tempo access key) covers, under the tightest layer. A chain whose RPC fails is listed in `unread` with no
+rows, never as a zero balance, and turns a "no" into "not verified". The dashboard App and the owner's Home share one
+overview of that answer (`apps/wallet-web/src/views/money.ts`, `ui/overview.tsx`): what the agent can spend and where,
+operations that need the owner (each row opens to payment, delivery and evidence), limits grouped by the layer that
+enforces them, and balances as a chain-by-token table.
 
 ## Release and public source
 
