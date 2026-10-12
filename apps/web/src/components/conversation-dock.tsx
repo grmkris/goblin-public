@@ -236,12 +236,15 @@ export function ConversationDock({
   const { projection, notice, send, stop, removeQueued, report } = conversation
   const sendOwn = withSharedContext(useSharedContext(id), send, onStartThread)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
+  // No Credits today and no wallet to pay instead (ADR 0047, 0048): goblin cannot answer until setup is done.
+  const pay = useQuery(payQuery).data
+  const cannotAnswer = usage?.limit === 0 && (pay === undefined || !walletPaysWhenSpent(pay))
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
       <DockCards
         // Start's own card says what the free plan waits for; its refusal would only repeat it.
         notices={[notice, projection?.queueNotice ?? '', ...notices].filter((text) => !text.startsWith(WALLET_NEEDED))}
-        setup={closed === undefined && (usage?.limit === 0 ? <FundGoblinCard /> : <FinishSetupRow />)}
+        setup={closed === undefined && (cannotAnswer ? <FundGoblinCard /> : <FinishSetupRow />)}
         open={closed === undefined}
         waiting={waiting}
         id={id}

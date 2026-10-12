@@ -11,6 +11,7 @@ import { QueryBoundary } from '../../lib/query/query-boundary.tsx'
 import { serversQuery } from '../../mcp/queries.ts'
 import { startAddMutation } from '../../onboarding/queries.ts'
 import { SuggestedServers } from '../server-add.tsx'
+import { PayModeChoices } from '../inference-card.tsx'
 import { ConnectServer } from './connect-server.tsx'
 import { QrCode } from './qr-code.tsx'
 
@@ -279,29 +280,21 @@ export function GoblinStep({
   )
 }
 
-/** How goblin pays: Credits first, then the wallet, per call (ADR 0047); the choice itself lives in Settings. */
+/** How goblin pays for its model (ADR 0047): the same choices as Settings, with what each one means first. */
 export function PayStep() {
   const billing = useBilling().state
   return (
     <div className="start-action">
-      <ol className="start-ways">
-        <li>
-          <span className="start-way-name">Credits first</span>
-          <span className="start-way-about">
-            {billing === undefined
-              ? 'Your plan’s daily Credits'
-              : `${String(billing.dailyCredits)} Credits a day on your plan`}
-            , used before anything is paid.
-          </span>
-        </li>
-        <li>
-          <span className="start-way-name">Then your wallet</span>
-          <span className="start-way-about">
-            About $0.02 a call, paid from the address you funded, only after they run out.
-          </span>
-        </li>
-      </ol>
-      <p className="start-note">You can change this any time in Settings, under How goblin pays for its model.</p>
+      <p className="start-note">
+        {billing === undefined
+          ? 'Your plan’s daily Credits'
+          : `${String(billing.dailyCredits)} Credits a day on your plan`}{' '}
+        come first. A paid call costs about $0.02, from the address you funded. You can change this any time in
+        Settings.
+      </p>
+      <div className="start-pay">
+        <PayModeChoices />
+      </div>
     </div>
   )
 }

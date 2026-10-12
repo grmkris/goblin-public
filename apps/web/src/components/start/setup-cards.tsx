@@ -8,6 +8,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } fro
 import { CheckIcon, WalletIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { onboardingQuery } from '../../onboarding/queries.ts'
+import { PageSection } from '../page-section.tsx'
 
 /** The steps that let goblin answer, in order, as the card names them. */
 const ANSWER_STEPS: readonly { readonly id: OnboardingStep; readonly text: (view: OnboardingView) => string }[] = [
@@ -111,5 +112,38 @@ export function SetupSettingsCard() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/** Each step as Activity's checklist names it. */
+const STEP_NAMES: Readonly<Record<OnboardingStep, string>> = {
+  wallet: 'Connect your Goblin Wallet',
+  funds: 'Add funds to it',
+  pay: 'Choose how goblin pays',
+  mercator: 'Connect Mercator',
+  more: 'Add more services',
+  goblin: 'Tell goblin what it is for',
+}
+
+/** Activity's Get started: first-run Start's steps, each a way back to it, while any is left. */
+export function StartChecklist({ view }: { readonly view: OnboardingView | undefined }) {
+  if (view === undefined || view.steps.every((step) => step.done)) return null
+  const left = view.steps.filter((step) => !step.done).length
+  return (
+    <PageSection id="get-started" title="Get started" count={left}>
+      <ul className="list-rows setup-list">
+        {view.steps.map((step) => (
+          <li key={step.id} {...(step.done ? { 'data-done': true } : {})}>
+            <Link className="setup-list-row" to="/start/$step" params={{ step: step.id }}>
+              <span className="setup-card-mark" aria-hidden>
+                {step.done && <CheckIcon />}
+              </span>
+              <span>{STEP_NAMES[step.id]}</span>
+              {step.done && <span className="sr-only"> (done)</span>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </PageSection>
   )
 }

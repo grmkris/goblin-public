@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PayChoice, UsageToday } from '@goblin/contracts'
 import { routesOf, waysOf } from '../src/components/inference-card.tsx'
-import { offersPay } from '../src/components/connect-offer.tsx'
 import { payingPerCall, walletPaysWhenSpent } from '../src/lib/pay.ts'
 
 const PAY: PayChoice = { mode: 'credits-then-wallet', route: 'goblin', routes: ['goblin', 'tempo'], walletReady: true }
@@ -32,13 +31,5 @@ describe('how goblin pays for its model (ADR 0047)', () => {
     expect(payingPerCall({ ...PAY, mode: 'credits' }, day(200, 200))).toBe(false)
     expect(payingPerCall(undefined, day(200, 200))).toBe(false)
     expect(walletPaysWhenSpent({ ...PAY, mode: 'credits' })).toBe(false)
-  })
-
-  it('offers to set up the wallet while a way would pay from it and it cannot yet, never on Credits only', () => {
-    expect(offersPay({ ...PAY, walletReady: false })).toBe(true)
-    expect(offersPay(PAY)).toBe(false)
-    expect(offersPay({ ...PAY, mode: 'credits', walletReady: false })).toBe(false)
-    expect(offersPay({ ...PAY, mode: 'credits', routes: [], walletReady: false })).toBe(false)
-    expect(offersPay(undefined)).toBe(false)
   })
 })

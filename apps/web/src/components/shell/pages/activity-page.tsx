@@ -30,7 +30,8 @@ import { useMinute } from '../../use-now.ts'
 import { undoRefusal } from '../organize.ts'
 import { messageOf } from '../../../lib/query/app-error.ts'
 import { ChatRow, RowContents } from './chat-link.tsx'
-import { ConnectOffers, useConnectOffers } from '../../connect-offer.tsx'
+import { StartChecklist } from '../../start/setup-cards.tsx'
+import { onboardingQuery } from '../../../onboarding/queries.ts'
 import { relativeTime } from '../../../lib/format.ts'
 
 const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundIcon; readonly label: string }>> = {
@@ -235,12 +236,13 @@ export function ActivityPage() {
   const needs = needsYou(conversations, useApps())
   const unread = unreadChats(conversations)
   const offers = (useQuery(serversQuery).data ?? []).filter((server) => server.events === 'open')
-  const connects = useConnectOffers()
-  if (needs.length + offers.length + connects.count + notifications.length + receipts.length + unread.length === 0)
+  const setup = useQuery(onboardingQuery).data
+  const setupLeft = setup?.steps.filter((step) => !step.done).length ?? 0
+  if (needs.length + offers.length + setupLeft + notifications.length + receipts.length + unread.length === 0)
     return <p className="page-empty">Nothing needs you.</p>
   return (
     <div className="page-stack">
-      <ConnectOffers connects={connects} />
+      <StartChecklist view={setup} />
       {needs.length > 0 && (
         <PageSection id="needs" title="Needs you" count={needs.length}>
           <ul className="list-rows">

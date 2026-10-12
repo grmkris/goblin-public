@@ -99,8 +99,11 @@ function Choice({
   )
 }
 
-/** The owner's choice of how goblin pays for its model, in Settings. */
-export function InferenceCard() {
+/**
+ * How goblin pays for its model, as choices: the ways the stage sells, the route paid calls take, and whether the wallet
+ * can pay now. Settings' card and first-run Start's step both show it. Nothing while the stage sells only Credits.
+ */
+export function PayModeChoices() {
   const pay = useQuery(payQuery).data
   const choose = useMutation(choosePayMutation)
   if (pay === undefined) return null
@@ -110,6 +113,51 @@ export function InferenceCard() {
   const pick = (change: Partial<{ readonly mode: PayMode; readonly route: PayRoute }>) =>
     choose.mutate({ mode: pay.mode, route: pay.route, ...change })
   return (
+    <>
+      <fieldset className="pay-choices">
+        <legend className="sr-only">How goblin pays for its model</legend>
+        {ways.map((way) => (
+          <Choice
+            key={way.mode}
+            name="pay-mode"
+            checked={pay.mode === way.mode}
+            title={way.title}
+            about={way.about}
+            onChange={() => pick({ mode: way.mode })}
+          />
+        ))}
+      </fieldset>
+      {routes.length > 0 && (
+        <fieldset className="pay-choices pay-routes">
+          <legend className="grant-group-title">Paid calls go through</legend>
+          {routes.map((route) => (
+            <Choice
+              key={route}
+              name="pay-route"
+              checked={pay.route === route}
+              title={ROUTES[route].title}
+              about={ROUTES[route].about}
+              onChange={() => pick({ route })}
+            />
+          ))}
+        </fieldset>
+      )}
+      {pay.mode !== 'credits' && <WalletNote ready={pay.walletReady} />}
+      {choose.error !== null && (
+        <Receipt tone="error">
+          <CircleAlertIcon aria-hidden />
+          <span>{messageOf(choose.error, 'change how goblin pays')}</span>
+        </Receipt>
+      )}
+    </>
+  )
+}
+
+/** The owner's choice of how goblin pays for its model, in Settings. */
+export function InferenceCard() {
+  const pay = useQuery(payQuery).data
+  if (pay === undefined || waysOf(pay).length < 2) return null
+  return (
     <Card id="inference">
       <CardHeader>
         <CardTitle>How goblin pays for its model</CardTitle>
@@ -117,41 +165,7 @@ export function InferenceCard() {
       </CardHeader>
       <CardContent>
         <div className="card-body">
-          <fieldset className="pay-choices">
-            <legend className="sr-only">How goblin pays for its model</legend>
-            {ways.map((way) => (
-              <Choice
-                key={way.mode}
-                name="pay-mode"
-                checked={pay.mode === way.mode}
-                title={way.title}
-                about={way.about}
-                onChange={() => pick({ mode: way.mode })}
-              />
-            ))}
-          </fieldset>
-          {routes.length > 0 && (
-            <fieldset className="pay-choices pay-routes">
-              <legend className="grant-group-title">Paid calls go through</legend>
-              {routes.map((route) => (
-                <Choice
-                  key={route}
-                  name="pay-route"
-                  checked={pay.route === route}
-                  title={ROUTES[route].title}
-                  about={ROUTES[route].about}
-                  onChange={() => pick({ route })}
-                />
-              ))}
-            </fieldset>
-          )}
-          {pay.mode !== 'credits' && <WalletNote ready={pay.walletReady} />}
-          {choose.error !== null && (
-            <Receipt tone="error">
-              <CircleAlertIcon aria-hidden />
-              <span>{messageOf(choose.error, 'change how goblin pays')}</span>
-            </Receipt>
-          )}
+          <PayModeChoices />
         </div>
       </CardContent>
     </Card>
