@@ -24,6 +24,7 @@ import {
   serverOf,
 } from './connections.ts'
 import { EVENT_LIMITS } from './events/store.ts'
+import { appHtmlOf, blobBound } from './app-html.ts'
 import { offersEvents, offersSkills, toolOffered } from './remote.ts'
 import { refreshTools } from './tool-list.ts'
 import type { EventMethod } from './service.ts'
@@ -196,17 +197,33 @@ const readResource = (manager: Manager, connectionId: string, uri: string, max: 
     )
   })
 
-/** Only the owner's Apps host uses the larger HTML bundle bound; no model result takes this path. */
+/**
+ * Only the owner's Apps host uses the larger HTML bundle bound; no model result takes this path. The HTML may arrive as
+ * `text` or as a base64 `blob`: the decoded bytes are bounded and the host gets it as `text` either way.
+ */
 const readAppResource = (manager: Manager, connectionId: string, uri: string) =>
   Effect.gen(function* () {
     if (!uri.startsWith('ui://')) return yield* new UpstreamMcp({ connectionId, reason: 'unsupported' })
-    const result = yield* readResource(manager, connectionId, uri, manager.options.maxAppResourceBytes ?? 16_777_216)
+    const max = manager.options.maxAppResourceBytes ?? 16_777_216
+    const result = yield* readResource(manager, connectionId, uri, blobBound(max))
     const content = result.contents[0]
     const html =
-      content !== undefined && 'text' in content && /^text\/html(?:\s*;[^\r\n]*)?$/iu.test(content.mimeType ?? '')
+      content !== undefined &&
+      ('text' in content || 'blob' in content) &&
+      /^text\/html(?:\s*;[^\r\n]*)?$/iu.test(content.mimeType ?? '')
     if (result.contents.length !== 1 || content?.uri !== uri || !html)
       return yield* new UpstreamMcp({ connectionId, reason: 'unsupported' })
-    return result
+    const decoded = appHtmlOf(content, max)
+    if ('failure' in decoded)
+      return yield* new UpstreamMcp({
+        connectionId,
+        reason: decoded.failure === 'too-large' ? 'content-limit' : 'unsupported',
+      })
+    const { uri: resource, mimeType, _meta } = content
+    return {
+      ...result,
+      contents: [{ uri: resource, mimeType, ...(_meta === undefined ? {} : { _meta }), text: decoded.html }],
+    }
   })
 
 /** One draft Events request: what the caller's `authorize` checks, before it connects and again before it is sent. */

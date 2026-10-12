@@ -3,6 +3,8 @@ import {
   agentAppCsp,
   agentAppHtml,
   appCsp,
+  appResourceHtml,
+  MAX_APP_HTML_BYTES,
   appSandbox,
   isSandboxMessage,
   sandboxHtml,
@@ -115,5 +117,24 @@ describe("an agent app's frame", () => {
     expect(sandboxProxy('http://localhost:18971')).toContain(
       "script-src 'unsafe-inline' https: http://localhost:18971;",
     )
+  })
+})
+
+describe('an App resource as text or base64 blob', () => {
+  const blobOf = (bytes: Uint8Array) => btoa(String.fromCodePoint(...bytes))
+  it('reads text as it is', () => {
+    expect(appResourceHtml({ text: '<p>héllo</p>' })).toBe('<p>héllo</p>')
+  })
+  it('round-trips multibyte UTF-8 from a blob', () => {
+    const html = '<title>héllo – 世界 🙂</title>'
+    expect(appResourceHtml({ blob: blobOf(new TextEncoder().encode(html)) })).toBe(html)
+  })
+  it('refuses bad base64, invalid UTF-8 and oversize with plain messages', () => {
+    expect(() => appResourceHtml({ blob: '!!!' })).toThrow('not valid base64')
+    expect(() => appResourceHtml({ blob: 'YWJjZA' })).toThrow('not valid base64')
+    expect(() => appResourceHtml({ blob: blobOf(new Uint8Array([0xff, 0xfe, 0x41])) })).toThrow('not valid UTF-8')
+    expect(() => appResourceHtml({})).toThrow('not valid base64')
+    expect(() => appResourceHtml({ text: 'x'.repeat(MAX_APP_HTML_BYTES + 1) })).toThrow('too large')
+    expect(() => appResourceHtml({ blob: 'AAAA'.repeat(MAX_APP_HTML_BYTES / 3 + 1) })).toThrow('too large')
   })
 })

@@ -119,3 +119,31 @@ window.addEventListener('message',event=>{
 window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/sandbox-proxy-ready',params:{}},hostOrigin);
 </script></body></html>`
 }
+
+/** The most App HTML goblin takes from a resource, as decoded bytes (the runtime bounds the same). */
+export const MAX_APP_HTML_BYTES = 16_777_216
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/u
+
+/**
+ * An App resource's HTML: its `text`, or its base64 `blob` decoded as strict UTF-8. The decoded size is bounded, and a
+ * blob that is not base64 or not valid UTF-8 is an error with a plain message, never mangled HTML.
+ */
+export function appResourceHtml(content: { readonly text?: unknown; readonly blob?: unknown }): string {
+  if (isString(content.text)) {
+    if (new TextEncoder().encode(content.text).byteLength > MAX_APP_HTML_BYTES) throw new Error('The App is too large')
+    return content.text
+  }
+  const blob = content.blob
+  if (!isString(blob) || blob.length % 4 !== 0 || !BASE64.test(blob))
+    throw new Error('The App resource is not valid base64')
+  const padding = blob.endsWith('==') ? 2 : blob.endsWith('=') ? 1 : 0
+  if ((blob.length / 4) * 3 - padding > MAX_APP_HTML_BYTES) throw new Error('The App is too large')
+  const bytes = Uint8Array.from(atob(blob), (char) => char.codePointAt(0) ?? 0)
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes)
+  } catch {
+    // expected: the fatal decoder throws on invalid UTF-8, which is reported as this plain message
+    throw new Error('The App resource is not valid UTF-8')
+  }
+}

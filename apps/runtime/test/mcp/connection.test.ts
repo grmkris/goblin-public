@@ -24,7 +24,12 @@ const grants = new MemoryGrants([
   { connectionId: 'fixture', capability: 'tool', name: 'read' },
   { connectionId: 'fixture', capability: 'resource', name: 'ui://fixture/view.html' },
 ])
-type ResourceFixture = { readonly text?: string; readonly mimeType?: string; readonly returnedUri?: string }
+type ResourceFixture = {
+  readonly text?: string
+  readonly blob?: string
+  readonly mimeType?: string
+  readonly returnedUri?: string
+}
 const handler = (resourceTemplates = true, resource: ResourceFixture = {}) =>
   createMcpHandler(() => {
     const server = lowLevelServer({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {}, resources: {} } })
@@ -51,7 +56,9 @@ const handler = (resourceTemplates = true, resource: ResourceFixture = {}) =>
       contents: [
         {
           uri: resource.returnedUri ?? request.params.uri,
-          text: resource.text ?? '<!doctype html><title>Fixture</title>',
+          ...(resource.blob === undefined
+            ? { text: resource.text ?? '<!doctype html><title>Fixture</title>' }
+            : { blob: resource.blob }),
           mimeType: resource.mimeType ?? 'text/html;profile=mcp-app',
         },
       ],
@@ -278,7 +285,7 @@ describe('official MCP SDK host interoperability (unit)', () => {
     }
   })
   it('enforces the separate App byte bound on UTF-8 HTML', async () => {
-    const manager = makeManager(undefined, true, { text: 'é'.repeat(1024) }, 2048)
+    const manager = makeManager(undefined, true, { text: 'é'.repeat(1100) }, 2048)
     try {
       await expect(manager.connections.readResource('fixture', 'ui://fixture/view.html', 'app')).rejects.toMatchObject({
         reason: 'content-limit',
@@ -286,6 +293,41 @@ describe('official MCP SDK host interoperability (unit)', () => {
     } finally {
       await manager.dispose()
     }
+  })
+  describe('a base64 blob App bundle', () => {
+    const base64 = (bytes: Uint8Array) => btoa(String.fromCodePoint(...bytes))
+    const read = async (resource: ResourceFixture, max?: number) => {
+      const manager = makeManager(undefined, true, resource, max)
+      try {
+        return await manager.connections.readResource('fixture', 'ui://fixture/view.html', 'app')
+      } finally {
+        await manager.dispose()
+      }
+    }
+    it('decodes multibyte UTF-8 and hands the host text', async () => {
+      const html = '<!doctype html><title>héllo – 世界 🙂</title>'
+      const app = await read({ blob: base64(new TextEncoder().encode(html)) })
+      expect(app.contents[0]).toMatchObject({ uri: 'ui://fixture/view.html', text: html })
+      expect(app.contents[0]).not.toHaveProperty('blob')
+    })
+    it('bounds the decoded size, not the base64 size', async () => {
+      const bytes = new TextEncoder().encode('é'.repeat(1000))
+      await expect(read({ blob: base64(bytes) }, 2000)).resolves.toBeDefined()
+      await expect(read({ blob: base64(bytes) }, 1999)).rejects.toMatchObject({ reason: 'content-limit' })
+    })
+    it.each([
+      ['unpadded base64', 'YWJjZA'],
+      ['invalid UTF-8', base64(new Uint8Array([0xff, 0xfe, 0x41]))],
+    ])('rejects %s', async (_case, blob) => {
+      await expect(read({ blob })).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'unsupported' })
+    })
+    it('refuses a blob that is not base64 at all (the SDK already does)', async () => {
+      await expect(read({ blob: '!!!not base64!!!' })).rejects.toMatchObject({ _tag: 'UpstreamMcp' })
+    })
+    it('still reads plain text', async () => {
+      const app = await read({ text: '<p>plain</p>' })
+      expect(app.contents[0]).toMatchObject({ text: '<p>plain</p>' })
+    })
   })
   it('rejects non-HTML App results and responses for a different resource', async () => {
     const nonHtml = makeManager(undefined, true, { mimeType: 'application/json' })

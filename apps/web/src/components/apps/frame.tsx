@@ -14,7 +14,14 @@ import {
 import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
 import type { AgentAppLaunch } from '@goblin/contracts'
 import { Alert, AlertDescription } from '@goblin/ui'
-import { agentAppHtml, appSandbox, isSandboxMessage, sandboxHtml, sandboxProxy } from '../../lib/app-sandbox.ts'
+import {
+  agentAppHtml,
+  appResourceHtml,
+  appSandbox,
+  isSandboxMessage,
+  sandboxHtml,
+  sandboxProxy,
+} from '../../lib/app-sandbox.ts'
 import {
   appCallMutation,
   appDiagnosticMutation,
@@ -27,7 +34,7 @@ import { type AppCalls, createAppBridge } from '../../lib/app-bridge.ts'
 import type { StatePush } from '../../lib/agent-app-bridge.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
 import type { QuestionAnswerReceipt } from '../../lib/app-message.ts'
-import { isString, records, text } from '../../lib/values.ts'
+import { isString, records } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
 import { LinkOffer } from './offers.tsx'
@@ -126,12 +133,15 @@ async function appHtml(selection: AppSelection, calls: AppCalls): Promise<string
   const content = records(data.contents).find(
     (item) =>
       item.uri === selection.uri &&
-      isString(item.text) &&
+      (isString(item.text) || isString(item.blob)) &&
       (item.mimeType === 'text/html;profile=mcp-app' || item.mimeType === 'text/html'),
   )
-  if (!content || !isString(content.text))
-    throw new FrameFailure('The server did not provide a supported App HTML resource')
-  return sandboxHtml(text(content.text), content._meta)
+  if (!content) throw new FrameFailure('The server did not provide a supported App HTML resource')
+  try {
+    return sandboxHtml(appResourceHtml(content), content._meta)
+  } catch (error) {
+    throw new FrameFailure(error instanceof Error ? error.message : 'The App resource could not be read')
+  }
 }
 
 async function attachApp(
