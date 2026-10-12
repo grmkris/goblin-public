@@ -59,6 +59,8 @@ export const WalletStatusResult = Schema.Struct({
   limits: Schema.Array(LimitView),
   /** The latest operations, newest first, for the App's activity list. */
   recent: Schema.optional(Schema.Array(Operation).check(Schema.isMaxLength(10))),
+  /** The owner's wallet app, where a waiting spend is approved (`/approve/<operation id>`) and limits are changed. */
+  site: Schema.optional(Text(256)),
   checkedAt: Instant,
 })
 export type WalletStatusResult = typeof WalletStatusResult.Type

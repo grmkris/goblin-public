@@ -2,13 +2,13 @@
 // activity and limits as tabs. Pure of the host: it renders what it is given and calls back for the two things only
 // the host can do. Owner actions (funding, allowances, approvals) live in the wallet site, so here they are named.
 import type { Operation, WalletStatusResult } from '@goblin/wallet/contract'
-import { Button, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '@goblin/ui'
-import { Maximize2, Minimize2, RefreshCw } from 'lucide-react'
+import { Button, buttonVariants, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '@goblin/ui'
+import { ExternalLink, Maximize2, Minimize2, RefreshCw } from 'lucide-react'
 import { LimitMeter, ReceiptRow, timeAgo } from '../ui/index.ts'
 import { EmptyState, RowList, Section } from '../ui/page.tsx'
 import { NEXT_LABEL } from './overview-copy.ts'
 import { attentionOf, balanceGroups, boundariesOf, limitOrder, nextActionOf, spendingOf } from './overview-model.ts'
-import type { NextAction } from './overview-model.ts'
+import type { Attention, NextAction } from './overview-model.ts'
 import {
   AttentionList,
   BalanceGroups,
@@ -28,6 +28,7 @@ const IN_WALLET: Record<Exclude<NextAction, 'refresh' | 'wait'>, string> = {
 
 function Header({
   checkedAt,
+  site,
   refreshing,
   refreshError,
   fullscreen,
@@ -35,6 +36,7 @@ function Header({
   onToggleFullscreen,
 }: {
   readonly checkedAt: string
+  readonly site: string | undefined
   readonly refreshing: boolean
   readonly refreshError: string | undefined
   readonly fullscreen: boolean
@@ -60,6 +62,16 @@ function Header({
         >
           {refreshing ? <Spinner /> : <RefreshCw aria-hidden />}
         </Button>
+        {site !== undefined && (
+          <a
+            href={site}
+            aria-label="Open the wallet site"
+            title="Open the wallet site"
+            className={buttonVariants({ variant: 'ghost', size: 'icon' })}
+          >
+            <ExternalLink aria-hidden />
+          </a>
+        )}
         {onToggleFullscreen !== undefined && (
           <Button
             type="button"
@@ -73,6 +85,27 @@ function Header({
         )}
       </div>
     </header>
+  )
+}
+
+/** A waiting spend's way forward: its Approve page on the wallet site, opened through the host like every link. */
+const approvalFor = (site: string | undefined) => (item: Attention) =>
+  item.kind !== 'approval' ? undefined : site === undefined ? (
+    <span className="text-xs text-muted-foreground">Approve it in your wallet</span>
+  ) : (
+    <a href={`${site}/approve/${encodeURIComponent(item.operation.id)}`} className={buttonVariants({ size: 'sm' })}>
+      Review and approve
+      <ExternalLink aria-hidden data-icon="inline-end" />
+    </a>
+  )
+
+/** A link the host would not open, named so the owner can open it themselves. */
+function RefusedLink({ link }: { readonly link: string | undefined }) {
+  if (link === undefined) return null
+  return (
+    <p role="status" className="text-sm text-muted-foreground">
+      The host did not open {new URL(link).host}. Open it yourself: {link}
+    </p>
   )
 }
 
@@ -106,6 +139,7 @@ export function Dashboard({
   recent,
   refreshing,
   refreshError,
+  refusedLink,
   fullscreen,
   onRefresh,
   onToggleFullscreen,
@@ -114,6 +148,8 @@ export function Dashboard({
   readonly recent: readonly Operation[]
   readonly refreshing: boolean
   readonly refreshError: string | undefined
+  /** The last link the host would not open, named so the owner can open it themselves. */
+  readonly refusedLink: string | undefined
   readonly fullscreen: boolean
   readonly onRefresh: () => void
   /** Absent when the host offers no full screen. */
@@ -126,18 +162,15 @@ export function Dashboard({
     <>
       <Header
         checkedAt={status.checkedAt}
+        site={status.site}
         refreshing={refreshing}
         refreshError={refreshError}
         fullscreen={fullscreen}
         onRefresh={onRefresh}
         onToggleFullscreen={onToggleFullscreen}
       />
-      <AttentionList
-        items={attentionOf(recent)}
-        actionFor={(item) =>
-          item.kind === 'approval' && <span className="text-xs text-muted-foreground">Approve it in your wallet</span>
-        }
-      />
+      <RefusedLink link={refusedLink} />
+      <AttentionList items={attentionOf(recent)} actionFor={approvalFor(status.site)} />
       <SpendingSummary
         spending={spending}
         action={step === undefined ? undefined : <NextStep action={step} onRefresh={onRefresh} />}

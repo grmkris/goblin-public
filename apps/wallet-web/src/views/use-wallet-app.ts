@@ -15,6 +15,8 @@ export interface WalletApp {
   readonly result: CallToolResult | undefined
   /** The host cancelled the call that this view was waiting on. */
   readonly cancelled: boolean
+  /** The last link the host refused to open, so the view can say so instead of doing nothing. */
+  readonly refusedLink: string | undefined
 }
 
 export function useWalletApp(name: string): WalletApp {
@@ -23,6 +25,7 @@ export function useWalletApp(name: string): WalletApp {
   const [input, setInput] = useState<Record<string, unknown> | undefined>()
   const [result, setResult] = useState<CallToolResult | undefined>()
   const [cancelled, setCancelled] = useState(false)
+  const [refusedLink, setRefusedLink] = useState<string>()
   const { app, isConnected, error } = useApp({
     appInfo: { name, version: '1.0.0' },
     capabilities: {},
@@ -49,15 +52,18 @@ export function useWalletApp(name: string): WalletApp {
       const link = event.target instanceof Element ? event.target.closest('a[href]') : null
       if (link === null || !(link instanceof HTMLAnchorElement) || !link.href.startsWith('https://')) return
       event.preventDefault()
+      setRefusedLink(undefined)
       try {
-        await app.openLink({ url: link.href })
+        const answer = await app.openLink({ url: link.href })
+        if (answer.isError === true) setRefusedLink(link.href)
       } catch {
-        // expected: the host may refuse a link; the click then simply does nothing, as it would in any sandboxed frame
+        // expected: the host may refuse a link; the view says which, rather than the click doing nothing
+        setRefusedLink(link.href)
       }
     }
     const listener = (event: MouseEvent) => void onClick(event)
     document.addEventListener('click', listener)
     return () => document.removeEventListener('click', listener)
   }, [app])
-  return { app, error, context, input, result, cancelled }
+  return { app, error, context, input, result, cancelled, refusedLink }
 }

@@ -7,7 +7,7 @@ import { mount } from './mount.tsx'
 import { useWalletApp } from './use-wallet-app.ts'
 
 function DashboardView() {
-  const { app, error, context, result, cancelled } = useWalletApp('Goblin Wallet')
+  const { app, error, context, result, cancelled, refusedLink } = useWalletApp('Goblin Wallet')
   const [refreshed, setRefreshed] = useState<{ readonly from: unknown; readonly result: typeof result }>()
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string>()
@@ -46,6 +46,7 @@ function DashboardView() {
           recent={recentOf(shown)}
           refreshing={refreshing}
           refreshError={refreshError}
+          refusedLink={refusedLink}
           fullscreen={context?.displayMode === 'fullscreen'}
           onRefresh={() => void refresh()}
           onToggleFullscreen={

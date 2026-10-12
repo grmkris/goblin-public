@@ -3,6 +3,7 @@ import * as Clock from 'effect/Clock'
 import * as DateTime from 'effect/DateTime'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
+import { Approvals } from '../approvals.ts'
 import { Ledger } from '../ledger.ts'
 import { type BalanceRead, Rails } from '../rails.ts'
 import { deriveStatus } from './derive-status.ts'
@@ -24,6 +25,7 @@ export const readLimits = Effect.gen(function* () {
 export const readStatus = Effect.gen(function* () {
   const ledger = yield* Ledger
   const rails = yield* Rails
+  const { site } = yield* Approvals
   const now = yield* Clock.currentTimeMillis
   const profile = yield* ledger.use((api) => api.profile())
   const grant = yield* ledger.use((api) => api.limits())
@@ -53,6 +55,7 @@ export const readStatus = Effect.gen(function* () {
     ...(unread.length === 0 ? {} : { unread }),
     limits,
     recent,
+    site,
     checkedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
   }
   return result
