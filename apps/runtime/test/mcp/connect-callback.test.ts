@@ -3,34 +3,67 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import { describe, expect, it } from 'vitest'
 import { connectCallback } from '../../src/mcp/program.ts'
-import { McpServers, Resident } from '../../src/mcp/service.ts'
+import { McpConnections, McpGrants, McpServers, Resident } from '../../src/mcp/service.ts'
+import { Onboarding } from '../../src/onboarding/service.ts'
+import type { StartedConnect } from '../../src/onboarding/store.ts'
 import { plans, stub } from '../http/api/fixture.ts'
 
-/** The callback over a plan, resident authority that counts renewals, and a host whose `finishConnect` is `finish`. */
+/**
+ * The callback over a plan, resident authority that counts renewals, a host whose `finishConnect` is `finish`, and the
+ * note first-run Start left for the sign-in (none unless `started`); the tools it allowed are counted.
+ */
 const callback = async (
   query: string,
   finish: (state: string) => Effect.Effect<string, InvalidInput> = () => Effect.succeed('notes'),
   active = true,
+  started?: StartedConnect,
 ) => {
   const renewals: number[] = []
   const finished: string[] = []
+  const allowed: string[] = []
   const services = Layer.mergeAll(
     plans(active),
     stub(Resident, { renew: () => Effect.sync(() => void renewals.push(1)) }),
     stub(McpServers, {
       finishConnect: (state: string) => Effect.tap(finish(state), () => Effect.sync(() => void finished.push(state))),
     }),
+    stub(Onboarding, { takeConnect: () => Effect.succeed(started) }),
+    // SAFETY: allowing recommended tools reads only the server's endpoint, to find its first-class profile.
+    stub(McpConnections, { server: () => Effect.succeed({ endpoint: 'https://wallet.goblin.surf/mcp' } as never) }),
+    stub(McpGrants, {
+      setTool: (_connectionId: string, name: string) =>
+        Effect.as(
+          Effect.sync(() => void allowed.push(name)),
+          [],
+        ),
+      setAskFirst: () => Effect.succeed([]),
+      list: () => Effect.succeed([]),
+    }),
   )
   const target = await Effect.runPromise(
     connectCallback(new URLSearchParams(query), 'https://goblin.test').pipe(Effect.provide(services)),
   )
-  return { target: target.href, renewals: renewals.length, finished }
+  return { target: target.href, renewals: renewals.length, finished, allowed }
 }
 
 describe('the outbound sign-in callback', () => {
   it('lands on Connections with the connected server after the owner admission', async () => {
     const result = await callback('state=s1&code=c1&iss=https://auth.test')
-    expect(result).toEqual({ target: 'https://goblin.test/connections?connected=notes', renewals: 1, finished: ['s1'] })
+    expect(result).toEqual({
+      target: 'https://goblin.test/connections?connected=notes',
+      renewals: 1,
+      finished: ['s1'],
+      allowed: [],
+    })
+  })
+
+  it("goes back to first-run Start's step, allowing the server's recommended tools when the owner left that ticked", async () => {
+    const allowing = await callback('state=s1&code=c1', undefined, true, { step: 'wallet', recommend: true })
+    expect(allowing.target).toBe('https://goblin.test/start/wallet?connected=notes')
+    expect(allowing.allowed).toContain('wallet_status')
+    expect(allowing.allowed).toContain('pay_challenge')
+    const choosing = await callback('state=s1&code=c1', undefined, true, { step: 'more', recommend: false })
+    expect(choosing).toMatchObject({ target: 'https://goblin.test/start/more?connected=notes', allowed: [] })
   })
 
   it("answers the authorization server's error, or an incomplete callback, without finishing anything", async () => {
@@ -42,6 +75,7 @@ describe('the outbound sign-in callback', () => {
       target: 'https://goblin.test/connections?error=authorization_failed',
       renewals: 0,
       finished: [],
+      allowed: [],
     })
   })
 
@@ -53,6 +87,7 @@ describe('the outbound sign-in callback', () => {
       target: 'https://goblin.test/connections?error=SubscriptionRequired',
       renewals: 0,
       finished: [],
+      allowed: [],
     })
     const broken = await callback('state=s1&code=c1', () => Effect.die(new Error('broken')))
     expect(broken.target).toBe('https://goblin.test/connections?error=Internal')

@@ -9,7 +9,8 @@ import { McpConnections, McpGrants, McpServers } from '../src/mcp/service.ts'
 import { changeOnboarding, onboardingState, onboardingView } from '../src/onboarding/program.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { stub } from './http/api/fixture.ts'
-import { chatDatabase, sqliteDb } from './chats-sqlite.ts'
+import { OnboardingStore } from '../src/onboarding/store.ts'
+import { chatDatabase, durable, sqliteDb } from './chats-sqlite.ts'
 
 const WALLET = 'https://wallet.goblin.surf/mcp'
 const MERCATOR = 'https://mercator.sh/mcp/auth'
@@ -118,4 +119,16 @@ describe('first-run Start (ADR 0048)', () => {
       expect(finished).toMatchObject({ status: 'done', kickoff: true })
     }).pipe(Effect.provide(start([], []))),
   )
+
+  it('remembers where a sign-in Start began comes back to, once, and not after half an hour', () => {
+    const { db, close } = chatDatabase()
+    closes.push(close)
+    const store = new OnboardingStore(durable(db))
+    store.noteConnect('wallet', { step: 'wallet', recommend: true }, 1000)
+    store.noteConnect('wallet', { step: 'funds', recommend: false }, 1100)
+    expect(store.takeConnect('wallet', 1200)).toEqual({ step: 'funds', recommend: false })
+    expect(store.takeConnect('wallet', 1200)).toBeUndefined()
+    store.noteConnect('mercator', { step: 'mercator', recommend: true }, 1000)
+    expect(store.takeConnect('mercator', 1000 + 31 * 60)).toBeUndefined()
+  })
 })

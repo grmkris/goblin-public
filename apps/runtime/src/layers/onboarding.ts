@@ -15,6 +15,12 @@ export const OnboardingLive = Layer.effect(
       change: Effect.fn('Onboarding.change')(function* (change, now) {
         return yield* attemptSync(() => store.apply(change, now))
       }),
+      noteConnect: Effect.fn('Onboarding.noteConnect')(function* (connectionId, started, now) {
+        return yield* attemptSync(() => store.noteConnect(connectionId, started, now))
+      }),
+      takeConnect: Effect.fn('Onboarding.takeConnect')(function* (connectionId, now) {
+        return yield* attemptSync(() => store.takeConnect(connectionId, now))
+      }),
     })
   }),
 )

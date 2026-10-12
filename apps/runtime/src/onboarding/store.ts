@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
-import { appOnboarding } from '../storage/onboarding.ts'
+import { appOnboarding, appOnboardingConnects } from '../storage/onboarding.ts'
 
 /** What the owner did with Start: its status, the steps they went through, and when they sent the kickoff. */
 export type OnboardingRecord = {
@@ -13,6 +13,13 @@ export type OnboardingRecord = {
 }
 
 const decodeSteps = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(OnboardingStep)))
+const decodeStep = Schema.decodeUnknownOption(OnboardingStep)
+
+/** Where a sign-in Start began comes back to, and whether to allow the server's recommended tools then. */
+export type StartedConnect = { readonly step: OnboardingStep; readonly recommend: boolean }
+
+/** A sign-in noted longer ago than this (seconds) comes back to Connections, as any other does. */
+const CONNECT_FRESH = 30 * 60
 const decodeStatus = Schema.decodeUnknownOption(Schema.Literals(['open', 'done', 'skipped']))
 
 /** Start's one row (ADR 0048). Nothing is stored until the owner acts, so an untouched Start is derived instead. */
@@ -52,5 +59,26 @@ export class OnboardingStore {
       .onConflictDoUpdate({ target: appOnboarding.id, set: { ...values, updatedAt: now } })
       .run()
     return next
+  }
+
+  /** Notes that Start sent the owner to sign in to `connectionId`, replacing an earlier note for it. */
+  noteConnect(connectionId: string, started: StartedConnect, now: number): void {
+    const values = { step: started.step, recommend: started.recommend ? 1 : 0, createdAt: now }
+    this.#db
+      .insert(appOnboardingConnects)
+      .values({ connectionId, ...values })
+      .onConflictDoUpdate({ target: appOnboardingConnects.connectionId, set: values })
+      .run()
+  }
+
+  /** Takes the note for `connectionId`: it is gone afterwards, and none comes back for one older than half an hour. */
+  takeConnect(connectionId: string, now: number): StartedConnect | undefined {
+    const row = this.#db
+      .delete(appOnboardingConnects)
+      .where(eq(appOnboardingConnects.connectionId, connectionId))
+      .returning()
+      .get()
+    if (row === undefined || now - row.createdAt > CONNECT_FRESH) return undefined
+    return Option.getOrUndefined(Option.map(decodeStep(row.step), (step) => ({ step, recommend: row.recommend === 1 })))
   }
 }

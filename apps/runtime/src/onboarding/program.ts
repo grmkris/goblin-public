@@ -1,11 +1,12 @@
 import type { Grant, OnboardingStep, OnboardingView, ServerView, WalletStatus } from '@goblin/contracts'
-import { ONBOARDING_STEPS, type OnboardingChange } from '@goblin/contracts'
+import { ONBOARDING_STEPS, type OnboardingChange, type OnboardingConnect } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { epochSeconds } from '../clock.ts'
 import { freeWalletUsd, stablecoinDollars } from '../layers/budget.ts'
 import { profileOf } from '../mcp/first-class.ts'
-import { serverStatus } from '../mcp/first-class-owner.ts'
+import { allowRecommended, serverStatus } from '../mcp/first-class-owner.ts'
 import { McpGrants, McpServers } from '../mcp/service.ts'
+import { reportAndRecover } from '../observability/report.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { Onboarding } from './service.ts'
 import type { OnboardingRecord } from './store.ts'
@@ -121,4 +122,29 @@ export const changeOnboarding = (change: OnboardingChange) =>
     const now = yield* epochSeconds
     yield* Onboarding.use((onboarding) => onboarding.change(change, now))
     return yield* onboardingView
+  })
+
+/**
+ * After a sign-in Start began comes back: the server's recommended tools allowed if the owner left that ticked, and
+ * the step to return to. None for a sign-in Start did not begin, which comes back to Connections as before.
+ */
+export const connectedFromStart = (connectionId: string) =>
+  Effect.gen(function* () {
+    const now = yield* epochSeconds
+    const started = yield* Onboarding.use((onboarding) => onboarding.takeConnect(connectionId, now))
+    if (started === undefined) return undefined
+    if (started.recommend)
+      yield* allowRecommended(connectionId).pipe(reportAndRecover('onboarding.allowRecommended', undefined))
+    return started.step
+  })
+
+/** Start signs the owner in to a server and notes where to bring them back; connected at once, it is done now. */
+export const startConnect = (request: OnboardingConnect) =>
+  Effect.gen(function* () {
+    const now = yield* epochSeconds
+    const { connectionId, step, recommend } = request
+    yield* Onboarding.use((onboarding) => onboarding.noteConnect(connectionId, { step, recommend }, now))
+    const started = yield* McpServers.use((servers) => servers.beginConnect(connectionId))
+    if (started.authorizationUrl === undefined) yield* connectedFromStart(connectionId)
+    return started
   })

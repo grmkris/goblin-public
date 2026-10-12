@@ -56,3 +56,14 @@ export const OnboardingChange = Schema.Struct({
   kickoff: Schema.optional(Schema.Literal(true)),
 })
 export type OnboardingChange = typeof OnboardingChange.Type
+
+/**
+ * `POST /api/onboarding/connect`: Start signs the owner in to `connectionId` and brings them back to `step`; with
+ * `recommend`, the server's recommended tools are allowed once it is connected (the owner unticks it to choose later).
+ */
+export const OnboardingConnect = Schema.Struct({
+  connectionId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+  step: OnboardingStep,
+  recommend: Schema.Boolean,
+})
+export type OnboardingConnect = typeof OnboardingConnect.Type

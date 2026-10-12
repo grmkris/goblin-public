@@ -13,6 +13,7 @@ import { Approvals, Events, Spending, UrlRequests } from '../../../src/mcp/servi
 import { SpendStore } from '../../../src/mcp/spend.ts'
 import { spendingOver, urlRequestsOver } from '../../../src/layers/mcp.ts'
 import { CredentialCipher } from '../../../src/mcp/cipher.ts'
+import { Onboarding } from '../../../src/onboarding/service.ts'
 import { McpUrlRequestStore } from '../../../src/mcp/url-requests.ts'
 import { durable } from '../../chats-sqlite.ts'
 import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
@@ -135,6 +136,8 @@ const fixture = async () => {
           stub(PiSessions),
           stub(RoutineControl),
           stub(RoutineUsage),
+          // A sign-in first-run Start began comes back to its step (ADR 0048); none is noted here.
+          stub(Onboarding, { takeConnect: () => Effect.succeed(undefined) }),
         ),
       ),
     ),

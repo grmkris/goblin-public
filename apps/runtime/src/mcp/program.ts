@@ -1,7 +1,9 @@
 import * as Cause from 'effect/Cause'
 import * as Effect from 'effect/Effect'
+import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
-import { Entitlements, requirePlan } from '../billing/gates.ts'
+import { requirePlan } from '../billing/gates.ts'
+import { connectedFromStart } from '../onboarding/program.ts'
 import { Events, McpServers, Resident } from './service.ts'
 import type { Stage } from './suggested.ts'
 
@@ -40,10 +42,7 @@ export const disconnectOwnerServer = (connectionId: string) =>
  * stopped it. Finishing is an owner request: owner admission checks the plan and, as for every raw endpoint, does not
  * renew resident authority.
  */
-export const connectCallback = (
-  params: URLSearchParams,
-  appUrl: string,
-): Effect.Effect<URL, never, Entitlements | Resident | McpServers> =>
+export const connectCallback = (params: URLSearchParams, appUrl: string) =>
   Effect.gen(function* () {
     const target = new URL('/connections', appUrl)
     const state = params.get('state')
@@ -58,17 +57,21 @@ export const connectCallback = (
       yield* Resident.use((resident) => resident.renew())
       return yield* McpServers.use((servers) => servers.finishConnect(state, code, issuer))
     })
-    return yield* finish.pipe(
-      Effect.matchCause({
-        onSuccess: (connectionId) => {
-          target.searchParams.set('connected', connectionId)
-          return target
-        },
-        onFailure: (cause) => {
-          const failed = Option.match(Cause.findErrorOption(cause), { onNone: () => 'Internal', onSome: (e) => e._tag })
-          target.searchParams.set('error', failed)
-          return target
-        },
-      }),
+    const finished = yield* Effect.exit(finish)
+    if (Exit.isFailure(finished)) {
+      const failed = Option.match(Cause.findErrorOption(finished.cause), {
+        onNone: () => 'Internal',
+        onSome: (e) => e._tag,
+      })
+      target.searchParams.set('error', failed)
+      return target
+    }
+    // A sign-in first-run Start began goes back to its step (ADR 0048); its tools are allowed first if the owner asked.
+    const step = yield* connectedFromStart(finished.value).pipe(
+      // expected: a note that cannot be read sends the owner to Connections, connected all the same
+      Effect.orElseSucceed(() => undefined),
     )
+    const back = step === undefined ? target : new URL(`/start/${step}`, appUrl)
+    back.searchParams.set('connected', finished.value)
+    return back
   })
