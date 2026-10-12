@@ -167,9 +167,9 @@ const METHOD: Readonly<Record<AgentSendForm, string>> = {
 const named = (what: string, form: AgentSendForm, chainId: number): string =>
   `${what}${form === 'userop' ? ' userOp' : ''} on ${chainId}`
 
-/** The owner's allowance: `redeemDelegations` on the DelegationManager, no value attached. */
-const redeemRule = (chain: Chain, form: AgentSendForm): PolicyRule => ({
-  name: named('Redeem allowance', form, chain.id),
+/** The owner's allowance (or a subscription): `redeemDelegations` on the DelegationManager, no value attached. */
+const redeemRule = (chain: Chain, form: AgentSendForm, what = 'Redeem allowance'): PolicyRule => ({
+  name: named(what, form, chain.id),
   method: METHOD[form],
   action: 'ALLOW',
   conditions: [
@@ -302,23 +302,45 @@ export const agentPolicy = (input: AgentPolicyInput): PolicyDocument => {
     name: AGENT_POLICY_NAME,
     chain_type: 'ethereum',
     owner_id: input.ownerId,
+    rules: [...perChain, ...routes, ...accountRules([...delegators][0] ?? '')],
+  }
+}
+
+/** Every wallet's last two rules: EIP-7702 only to the MetaMask DeleGator, and private key export denied. */
+const accountRules = (delegator: string): PolicyRule[] => [
+  {
+    name: 'Allow DeleGator upgrade',
+    method: 'eth_sign7702Authorization',
+    action: 'ALLOW',
+    conditions: [{ field_source: 'ethereum_7702_authorization', field: 'contract', operator: 'eq', value: delegator }],
+  },
+  { name: 'Deny export', method: 'exportPrivateKey', action: 'DENY', conditions: [] },
+]
+
+/** Privy refuses policy names of 50 characters or more. */
+export const COLLECTOR_POLICY_NAME = 'Goblin Wallet collector v1'
+
+/**
+ * The policy the collector's signer is held to (ADR 0054): goblin's collector, a server wallet the project's admins own,
+ * signs only UserOperations that redeem a delegation on the DelegationManager (a subscription, whose caveats pin the
+ * recipient to the collector itself and cap each period) and approve the chain's ERC-20 paymaster for at most the gas
+ * ceiling in USDC, plus its own one-time EIP-7702 upgrade to the DeleGator. It never transfers, approves a route or
+ * signs typed data; the admins move what it collects outside this policy.
+ */
+export const collectorPolicy = (input: {
+  readonly ownerId: string
+  readonly chains: readonly Chain[]
+}): PolicyDocument => {
+  const delegators = new Set(input.chains.map((chain) => chain.delegation.delegator))
+  if (delegators.size !== 1) throw new Error('invalid_policy: the chains must share one DeleGator deployment')
+  return {
+    version: '1.0',
+    name: COLLECTOR_POLICY_NAME,
+    chain_type: 'ethereum',
+    owner_id: input.ownerId,
     rules: [
-      ...perChain,
-      ...routes,
-      {
-        name: 'Allow DeleGator upgrade',
-        method: 'eth_sign7702Authorization',
-        action: 'ALLOW',
-        conditions: [
-          {
-            field_source: 'ethereum_7702_authorization',
-            field: 'contract',
-            operator: 'eq',
-            value: [...delegators][0] ?? '',
-          },
-        ],
-      },
-      { name: 'Deny export', method: 'exportPrivateKey', action: 'DENY', conditions: [] },
+      ...input.chains.flatMap((chain) => [redeemRule(chain, 'userop', 'Redeem subscription'), ...paymasterRule(chain)]),
+      ...accountRules([...delegators][0] ?? ''),
     ],
   }
 }

@@ -228,20 +228,42 @@ const OwnerUpgradeTypedData = Schema.Struct({
 const decodeOwnerUpgrade = Schema.decodeUnknownOption(OwnerUpgradeTypedData)
 
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
-const mismatch = (what: string): Error => new Error(`upgrade_mismatch: ${what}; nothing was signed`)
+const sameCall = (a: Call, b: Call | undefined): boolean =>
+  b !== undefined && same(a.target, b.target) && a.value === b.value && same(a.callData, b.callData)
 
-/** The amount of the batch's one call, USDC `approve(paymaster, amount)`; anything else in the batch is refused. */
-const paymasterApproval = (callData: Hex, chain: Chain, aa: AccountAbstraction): bigint => {
+/** A review's refusal: `code: what; nothing was signed`. */
+const refusal = (code: string) => (what: string) => new Error(`${code}: ${what}; nothing was signed`)
+
+/**
+ * The amount of the batch's last call, USDC `approve(paymaster, amount)`, after exactly `expected` before it; anything
+ * else in the batch is refused.
+ */
+const paymasterApproval = (
+  callData: Hex,
+  chain: Chain,
+  aa: AccountAbstraction,
+  expected: readonly Call[],
+  mismatch: (what: string) => Error,
+): bigint => {
+  const foreign =
+    expected.length === 0
+      ? 'the operation does more than approve its gas in USDC'
+      : 'the operation does more than you asked'
   const calls = decodeBatch(callData)
-  const call = calls?.length === 1 ? calls[0] : undefined
-  if (call === undefined || !same(call.target, chain.usdc.address) || call.value !== 0n)
-    throw mismatch('the operation does more than approve its gas in USDC')
+  if (
+    calls === undefined ||
+    calls.length !== expected.length + 1 ||
+    expected.some((call, index) => !sameCall(call, calls[index]))
+  )
+    throw mismatch(foreign)
+  const call = calls.at(-1)
+  if (call === undefined || !same(call.target, chain.usdc.address) || call.value !== 0n) throw mismatch(foreign)
   let approval: ReturnType<typeof decodeFunctionData<typeof ERC20>>
   try {
     approval = decodeFunctionData({ abi: ERC20, data: asHex(call.callData) })
   } catch {
     // expected: a USDC call that is not `approve` is refused like any other foreign call.
-    throw mismatch('the operation does more than approve its gas in USDC')
+    throw mismatch(foreign)
   }
   const [spender, amount] = approval.args
   if (!same(spender, aa.paymaster)) throw mismatch("the gas approval is not for the chain's paymaster")
@@ -263,12 +285,13 @@ export interface ReviewedOwnerUpgrade {
   readonly maxFee: bigint
 }
 
-/**
- * Checks the owner's EIP-7702 upgrade operation before they sign it: the DeleGator's domain on this chain with the
- * owner's own address as verifying contract, the owner as sender, the chain's EntryPoint and paymaster, and a batch
- * that only approves that paymaster for at most the fee ceiling in USDC. Throws `upgrade_mismatch: …` otherwise.
- */
-export const reviewOwnerUpgrade = (typedData: unknown, choice: OwnerUpgradeChoice): ReviewedOwnerUpgrade => {
+/** The owner's operation checked against what they agreed to: `calls`, then the gas approval, nothing else. */
+const reviewOwner = (
+  typedData: unknown,
+  choice: OwnerUpgradeChoice,
+  calls: readonly Call[],
+  mismatch: (what: string) => Error,
+): ReviewedOwnerUpgrade => {
   const { chain, owner } = choice
   if (chain.aa === null) throw mismatch(`${chain.name} takes no UserOperations`)
   const draft = Option.getOrUndefined(decodeOwnerUpgrade(typedData))
@@ -282,7 +305,7 @@ export const reviewOwnerUpgrade = (typedData: unknown, choice: OwnerUpgradeChoic
     !same(message.paymasterAndData.slice(0, 42), chain.aa.paymaster)
   )
     throw mismatch(`the operation names another EntryPoint or paymaster than ${chain.name}'s`)
-  const maxFee = paymasterApproval(message.callData, chain, chain.aa)
+  const maxFee = paymasterApproval(message.callData, chain, chain.aa, calls, mismatch)
   if (maxFee > choice.feeCeiling)
     throw mismatch(
       `its gas could cost up to ${formatUnits(maxFee, 6)} USDC, above the ${formatUnits(choice.feeCeiling, 6)} USDC ceiling`,
@@ -292,3 +315,22 @@ export const reviewOwnerUpgrade = (typedData: unknown, choice: OwnerUpgradeChoic
     maxFee,
   }
 }
+
+/**
+ * Checks the owner's EIP-7702 upgrade operation before they sign it: the DeleGator's domain on this chain with the
+ * owner's own address as verifying contract, the owner as sender, the chain's EntryPoint and paymaster, and a batch
+ * that only approves that paymaster for at most the fee ceiling in USDC. Throws `upgrade_mismatch: …` otherwise.
+ */
+export const reviewOwnerUpgrade = (typedData: unknown, choice: OwnerUpgradeChoice): ReviewedOwnerUpgrade =>
+  reviewOwner(typedData, choice, [], refusal('upgrade_mismatch'))
+
+/**
+ * Checks any other operation of the owner's own account the same way (a subscription's cancellation): its batch must
+ * be exactly `calls`, rebuilt in the browser from what the owner chose, then the gas approval. Throws
+ * `operation_mismatch: …` otherwise.
+ */
+export const reviewOwnerCalls = (
+  typedData: unknown,
+  choice: OwnerUpgradeChoice,
+  calls: readonly Call[],
+): ReviewedOwnerUpgrade => reviewOwner(typedData, choice, calls, refusal('operation_mismatch'))

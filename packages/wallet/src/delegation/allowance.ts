@@ -43,9 +43,9 @@ export const ALLOWANCE_PERIOD_S = 3600
 export const ONCE_VALIDITY_S = 600
 export const MAX_ALLOWANCE_DAYS = 30
 /** The period starts a minute before it is prepared, so a redemption right after signing never meets an earlier block. */
-const START_LEAD_S = 60
+export const START_LEAD_S = 60
 /** How old a prepared allowance may be when the owner reviews it. */
-const REVIEW_WINDOW_S = 300
+export const REVIEW_WINDOW_S = 300
 
 const TRANSFER_SELECTOR = toFunctionSelector('function transfer(address to, uint256 amount)')
 
@@ -160,7 +160,7 @@ export interface PreparedAllowance {
   readonly expiresAt: string
 }
 
-const randomSalt = (): bigint =>
+export const randomSalt = (): bigint =>
   BigInt(
     `0x${Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
   )
@@ -200,11 +200,29 @@ export const confirmAllowance = async (
   prepared: PreparedAllowance,
   owner: Address,
   signature: Hex,
-): Promise<SignedAllowance> => {
+): Promise<SignedAllowance> => ({
+  delegation: await signedDelegation(chain, prepared, owner, signature, 'allowance_mismatch'),
+  delegationHash: prepared.delegationHash,
+  perHour: prepared.perHour,
+  expiresAt: prepared.expiresAt,
+})
+
+/**
+ * A prepared delegation with the owner's signature attached, once it still hashes to itself, names the owner as its
+ * delegator and the signature recovers to the owner (the stateless DeleGator checks the account's own key). `code`
+ * prefixes the refusal (`allowance_mismatch`, `subscription_mismatch`).
+ */
+export const signedDelegation = async (
+  chain: Chain,
+  prepared: { readonly chainId: number; readonly delegationHash: Hex; readonly delegation: DelegationJson },
+  owner: Address,
+  signature: Hex,
+  code: string,
+): Promise<DelegationJson> => {
   const delegation = fromDelegationJson(prepared.delegation)
   if (prepared.chainId !== chain.id || delegationHash(delegation) !== prepared.delegationHash)
-    throw new Error('allowance_mismatch: the prepared allowance changed')
-  if (!isAddressEqual(delegation.delegator, owner)) throw new Error('allowance_mismatch: another owner prepared this')
+    throw new Error(`${code}: the prepared delegation changed`)
+  if (!isAddressEqual(delegation.delegator, owner)) throw new Error(`${code}: another owner prepared this`)
   const recovered = await recoverTypedDataAddress({
     domain: delegationDomain(chain),
     types: DELEGATION_TYPES,
@@ -219,12 +237,7 @@ export const confirmAllowance = async (
     signature,
   })
   if (!isAddressEqual(recovered, owner)) throw new Error('invalid_signature: the signature is not the owner wallet')
-  return {
-    delegation: { ...prepared.delegation, signature },
-    delegationHash: prepared.delegationHash,
-    perHour: prepared.perHour,
-    expiresAt: prepared.expiresAt,
-  }
+  return { ...prepared.delegation, signature }
 }
 
 /** The agent's redemption: `amount` base units of the chain's USDC from the owner to the agent. */
@@ -248,15 +261,19 @@ const Draft = Schema.Struct({
   primaryType: Schema.Literal('Delegation'),
   message: DraftMessage,
 })
-const decodeDraft = Schema.decodeUnknownOption(Draft)
+export const decodeDraft = Schema.decodeUnknownOption(Draft)
 
 /** The period's start, read from the draft's ERC20PeriodTransfer terms (the last of their four words). */
-const draftStart = (chain: Chain, caveats: readonly { enforcer: string; terms: string }[]): number => {
+export const draftStart = (
+  chain: Chain,
+  caveats: readonly { enforcer: string; terms: string }[],
+  code = 'allowance_mismatch',
+): number => {
   const period = caveats.find(
     (item) => item.enforcer.toLowerCase() === chain.delegation.enforcers.erc20PeriodTransfer.toLowerCase(),
   )
   if (period === undefined || period.terms.length !== 2 + 2 * (20 + 32 * 3))
-    throw new Error('allowance_mismatch: the allowance has no period terms')
+    throw new Error(`${code}: the draft has no period terms`)
   return Number(BigInt(`0x${period.terms.slice(-64)}`))
 }
 

@@ -1,4 +1,7 @@
-/** ERC-7710 delegations (MetaMask Delegation Framework v1.3.0): the encoders and the owner's allowance to the agent. */
+/**
+ * ERC-7710 delegations (MetaMask Delegation Framework v1.3.0): the encoders, the owner's allowance to the agent and a
+ * subscription to a merchant's collector.
+ */
 export {
   DELEGATION_TYPES,
   ROOT_AUTHORITY,
@@ -40,3 +43,20 @@ export {
   type ReviewedAllowance,
   type SignedAllowance,
 } from './allowance.ts'
+export {
+  MAX_PERIODS,
+  MAX_PERIOD_DAYS,
+  buildSubscription,
+  confirmSubscription,
+  periodAt,
+  periodSeconds,
+  periodStart,
+  prepareSubscription,
+  reviewSubscription,
+  revokeCall,
+  type PreparedSubscription,
+  type ReviewedSubscription,
+  type SignedSubscription,
+  type SubscriptionChoice,
+  type SubscriptionTerms,
+} from './subscription.ts'
