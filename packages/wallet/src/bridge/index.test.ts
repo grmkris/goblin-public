@@ -155,12 +155,21 @@ const FEES: Record<string, unknown> = {
   eth_maxPriorityFeePerGas: '0x186a0',
 }
 
-const fakeRpc: JsonRpc = async (method) => {
-  if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
-  if (method in FEES) return FEES[method]
-  if (method === 'eth_call') return '0x'
-  throw new Error(`unexpected ${String(field({}, 'x'))}${method}`)
-}
+const BALANCE_OF = '0x70a08231'
+const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
+
+/** A Base node; the agent holds `usdc` base units (10 USDC unless told otherwise). */
+const nodeWith =
+  (usdc: bigint): JsonRpc =>
+  async (method, params) => {
+    if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
+    if (method === 'eth_getBalance') return word(10n ** 15n)
+    if (method in FEES) return FEES[method]
+    if (method === 'eth_call') return String(field(params[0], 'data')).startsWith(BALANCE_OF) ? word(usdc) : '0x'
+    throw new Error(`unexpected ${String(field({}, 'x'))}${method}`)
+  }
+
+const fakeRpc = nodeWith(10_000_000n)
 
 const harness = () => {
   const sent: { to: string; key: string }[] = []
@@ -224,6 +233,47 @@ describe('Relay bridge execute', () => {
     const h = harness()
     await expect(run({ ...bridge, steps }, h, [])).rejects.toMatchObject({ code: 'bad_quote' })
     expect(h.sent).toHaveLength(0)
+  })
+
+  test('an empty agent signs nothing; with an allowance it redeems the deposit first', async () => {
+    const bridge = await quote()
+    const empty = { ...harness(), rpc: nodeWith(0n) }
+    await expect(run(bridge, empty, ['success'])).rejects.toMatchObject({ code: 'insufficient_funds' })
+    expect(empty.sent).toEqual([])
+    let redeemed = false
+    const node = nodeWith(0n)
+    const funded = {
+      ...harness(),
+      rpc: (async (method, params) =>
+        redeemed && method === 'eth_call' && String(field(params[0], 'data')).startsWith(BALANCE_OF)
+          ? word(10_000_000n)
+          : node(method, params)) satisfies JsonRpc,
+    }
+    const topUp = {
+      redeemCalldata: () => {
+        redeemed = true
+        return '0xfeed' as const
+      },
+      available: async () => 20_000_000n,
+    }
+    const result = await executeBridge({
+      bridge,
+      agent: funded.agent,
+      rpc: funded.rpc,
+      operationKey: 'op-bridge-0001',
+      topUp,
+      wait: { sleep: async () => undefined, attempts: 2 },
+      fetchFn: statusFetch(['success']),
+      sleep: async () => undefined,
+      statusAttempts: 3,
+      now: () => NOW,
+    })
+    expect(result.status).toBe('success')
+    expect(funded.sent.map((s) => s.key)).toEqual([
+      'op-bridge-0001:topup',
+      'op-bridge-0001:approve',
+      'op-bridge-0001:deposit',
+    ])
   })
 
   test('refuses an expired quote without sending', async () => {

@@ -13,6 +13,7 @@ import { toAddress, toHex } from '../balances/hex.ts'
 import { erc20Balance } from '../balances/erc20.ts'
 import { field, quantity, type JsonRpc, type WaitOptions } from '../balances/rpc.ts'
 import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
+import { ensureUsdc, type TopUp } from '../balances/transfer.ts'
 import { BASE } from '../chains/index.ts'
 import type { AgentSigner } from '../contract/index.ts'
 import { swapCalldataMismatch } from './verify.ts'
@@ -240,6 +241,8 @@ export interface ExecuteSwapInput {
   readonly operationKey: string
   readonly wait?: WaitOptions
   readonly now?: () => Date
+  /** The owner's allowance on Base: a USDC sale's shortfall is redeemed before the swap is signed. */
+  readonly topUp?: TopUp | undefined
 }
 
 export interface SwapResult {
@@ -287,6 +290,16 @@ export const executeSwap = async (input: ExecuteSwapInput): Promise<SwapResult> 
     throw new SwapError('bad_quote', 'The frozen quote does not match this wallet; ask for a new one.')
   verifySwap(swap)
   const sellAmount = BigInt(swap.sellAmount)
+  if (input.topUp !== undefined && swap.sell.address.toLowerCase() === BASE.usdc.address.toLowerCase())
+    await ensureUsdc({
+      chain: 'base',
+      amount: sellAmount,
+      operationKey: input.operationKey,
+      agent: input.agent,
+      rpc: input.rpc,
+      topUp: input.topUp,
+      wait: input.wait,
+    })
   const held =
     swap.sell.address === NATIVE
       ? quantity(await input.rpc('eth_getBalance', [swap.agent, 'latest']))

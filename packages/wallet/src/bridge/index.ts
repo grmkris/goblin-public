@@ -11,9 +11,11 @@ import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
 import { decodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
+import { erc20Balance } from '../balances/erc20.ts'
 import { toHex } from '../balances/hex.ts'
 import { field, type JsonRpc, type WaitOptions } from '../balances/rpc.ts'
 import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
+import { ensureUsdc, type TopUp } from '../balances/transfer.ts'
 import { ARBITRUM, BASE, ETHEREUM, TEMPO, type Chain } from '../chains/index.ts'
 import type { AgentSigner, ChainKey } from '../contract/index.ts'
 
@@ -250,6 +252,8 @@ export interface ExecuteBridgeInput {
   readonly wait?: WaitOptions
   readonly fetchFn?: typeof fetch
   readonly now?: () => Date
+  /** The owner's allowance on the origin chain: the deposit's shortfall is redeemed before anything is signed. */
+  readonly topUp?: TopUp | undefined
   /** Status polls after the deposit confirms; default 10 at 3 s. */
   readonly statusAttempts?: number
   readonly sleep?: (ms: number) => Promise<void>
@@ -315,10 +319,35 @@ const assertRunnable = (input: ExecuteBridgeInput): Chain => {
   return origin
 }
 
-/** Executes a frozen bridge: the approval (if quoted), the deposit, then Relay's delivery status. */
+/**
+ * The agent must hold the deposit before the approval is signed: an EVM origin's shortfall comes from the owner's
+ * allowance, exactly as for a transfer; then the balance is checked so an empty wallet never signs an approval.
+ */
+const fundDeposit = async (input: ExecuteBridgeInput, origin: Chain): Promise<void> => {
+  const { bridge } = input
+  const amount = BigInt(bridge.amountIn)
+  if (input.topUp !== undefined)
+    await ensureUsdc({
+      chain: bridge.from,
+      amount,
+      operationKey: input.operationKey,
+      agent: input.agent,
+      rpc: input.rpc,
+      topUp: input.topUp,
+      wait: input.wait,
+    })
+  if ((await erc20Balance(input.rpc, origin.usdc.address, input.agent.address)) < amount)
+    throw new BridgeError(
+      'insufficient_funds',
+      `The agent wallet holds less ${origin.usdc.symbol} than the bridge sends.`,
+    )
+}
+
+/** Executes a frozen bridge: funding, the approval (if quoted), the deposit, then Relay's delivery status. */
 export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeResult> => {
   const { bridge } = input
   const origin = assertRunnable(input)
+  await fundDeposit(input, origin)
   const context = { agent: input.agent, rpc: input.rpc, chain: bridge.from, wait: input.wait }
   let deposit: { hash: string; status: 'success' | 'reverted' | 'pending' } | undefined
   for (const step of bridge.steps) {
