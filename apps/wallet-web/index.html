@@ -3,7 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fbfaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#161616" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Wallet" />
     <title>Goblin Wallet</title>
+    <script>
+      ;(function () {
+        try {
+          var m = matchMedia('(prefers-color-scheme: dark)')
+          var a = function () {
+            var r = document.documentElement
+            r.classList.toggle('dark', m.matches)
+            r.style.colorScheme = m.matches ? 'dark' : 'light'
+          }
+          a()
+          m.addEventListener('change', a)
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

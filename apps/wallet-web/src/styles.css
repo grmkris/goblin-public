@@ -1,2 +1,32 @@
 @layer theme, base, components, app, utilities;
 @import '@goblin/ui/styles.css';
+
+/* Native feel on a phone: the root paints the theme's background first, the page never bounces behind its fixed bars,
+   chrome is not selectable text, and a tap shows no grey flash. */
+@layer app {
+  html {
+    background: var(--background);
+    -webkit-text-size-adjust: 100%;
+  }
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  [role='button'],
+  nav a {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+  /* Inputs stay at 16px on touch so iOS does not zoom on focus. */
+  @media (pointer: coarse) {
+    input,
+    select,
+    textarea {
+      font-size: max(16px, 1em);
+    }
+  }
+}
