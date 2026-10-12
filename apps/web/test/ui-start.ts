@@ -156,20 +156,31 @@ async function drive(browser: Browser, origin: string, label: string, options: B
       if (pathname === '/api/mcp/suggested')
         return json([
           {
-            id: 'myplan',
-            title: 'MyPlan',
-            description: 'Your notes, plans and canvases.',
-            endpoint: 'https://myplan.lol/mcp',
+            id: 'mysi',
+            title: 'mysi',
+            description: 'Your my* apps in one connection: notes, browsers, Telegram, email, skills and terminals.',
+            endpoint: 'https://mysi.lol/mcp?codemode=off',
+            group: 'yours',
             signIn: true,
             added: false,
           },
           {
-            id: 'mytab',
-            title: 'MyTab',
-            description: 'A real browser goblin can drive.',
-            endpoint: 'https://mytab.lol/mcp',
-            signIn: true,
+            id: 'kiwi',
+            title: 'Kiwi.com',
+            description: 'Flight search across airlines, with prices and a booking link for each option.',
+            endpoint: 'https://mcp.kiwi.com',
+            group: 'travel',
+            signIn: false,
             added: false,
+          },
+          {
+            id: 'excalidraw',
+            title: 'Excalidraw',
+            description: 'Hand-drawn diagrams your agent sketches, live in the chat.',
+            endpoint: 'https://mcp.excalidraw.com/mcp',
+            group: 'apps',
+            signIn: false,
+            added: true,
           },
         ])
       return route.fulfill({ status: 404, json: { error: { code: 'not_found', message: 'not here' } } })
