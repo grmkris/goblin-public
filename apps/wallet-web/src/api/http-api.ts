@@ -39,9 +39,21 @@ type Call = <R extends Route>(
   options?: { readonly params?: Record<string, string>; readonly body?: unknown },
 ) => Promise<R['response']['Type']>
 
+/**
+ * Privy can answer no token for a moment right after a page load, while it refreshes the session (the consent page
+ * opened by an OAuth redirect showed "signed out" this way). Ask a few times before deciding the owner is signed out.
+ */
+async function tokenOf(getToken: () => Promise<string | null>, tries = 4, waitMs = 400): Promise<string | null> {
+  for (let attempt = 1; ; attempt++) {
+    const token = await getToken()
+    if (token !== null || attempt >= tries) return token
+    await new Promise((resolve) => setTimeout(resolve, waitMs))
+  }
+}
+
 function makeCall(getToken: () => Promise<string | null>): Call {
   return async (route, options = {}) => {
-    const token = await getToken()
+    const token = await tokenOf(getToken)
     if (token === null) throw failureOf('signed_out', 'You are signed out.', 'Sign in again.')
     const path = route.path.replace(/:(\w+)/gu, (_, name: string) => encodeURIComponent(options.params?.[name] ?? ''))
     const response = await fetch(path, {

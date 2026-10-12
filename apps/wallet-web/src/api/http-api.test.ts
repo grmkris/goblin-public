@@ -38,6 +38,15 @@ describe('createHttpApi', () => {
     await expect(createHttpApi(token).me()).rejects.toThrow()
   })
 
+  it('waits for a token that arrives a moment after the page loads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(json([]))),
+    )
+    const tokens: (string | null)[] = [null, null, 'late']
+    await expect(createHttpApi(() => Promise.resolve(tokens.shift() ?? 'late')).connections()).resolves.toEqual([])
+  })
+
   it('does not call out when signed out', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
