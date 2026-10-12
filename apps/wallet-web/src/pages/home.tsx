@@ -6,6 +6,7 @@ import { Link } from '../app/router.tsx'
 import { AddressChip, Amount, ChainBadge, formatUsd, LimitMeter, ReceiptRow, timeUntil } from '../ui/index.ts'
 import { Async } from '../ui/async.tsx'
 import { EmptyState, Page, RowList, Section } from '../ui/page.tsx'
+import { OtherNetworks } from './other-networks.tsx'
 
 const HOLDER = { owner: 'Your account', agent: 'Agent wallet' } as const
 
@@ -139,6 +140,7 @@ export function HomePage() {
           }
         </Async>
       </Section>
+      <OtherNetworks />
     </Page>
   )
 }
