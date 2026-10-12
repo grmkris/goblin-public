@@ -41,8 +41,8 @@ function YourAddress({ owner }: { readonly owner: string }) {
         <CopyButton text={owner} label="Copy your address" />
       </div>
       <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
-        Send USDC (or ETH) on Base, Arbitrum or Ethereum to this address. It is the same address on every EVM chain.
-        Sent on Base, it works right away.
+        Send USDC on Base to this address: it works right away, and its gas is paid in USDC too. It is the same address
+        on every EVM chain. ETH, or USDC on another chain? Get a deposit address below and it arrives as USDC.
       </p>
     </div>
   )
