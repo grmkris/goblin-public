@@ -1,8 +1,12 @@
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@goblin/ui'
-import { useMe } from '../api/queries.tsx'
+import { useConnections, useMe } from '../api/queries.tsx'
 import { ActivityPage } from '../pages/activity.tsx'
 import { HomePage } from '../pages/home.tsx'
-import { Async } from '../ui/async.tsx'
+import { OnboardingPage, readSkipped } from '../pages/onboarding.tsx'
+import { setupProgress } from '../pages/progress.ts'
+import { SignInPage } from '../pages/sign-in.tsx'
+import { Async, LoadingBlock } from '../ui/async.tsx'
+import { useAuth } from './auth.tsx'
 import { useLocation } from './router.tsx'
 import { Shell } from './shell.tsx'
 
@@ -25,16 +29,30 @@ function Routes() {
   return <HomePage />
 }
 
-/** The signed-in app: the shell around whichever page the location names. */
-export function App({ onSignOut }: { readonly onSignOut: () => void }) {
+/** Setup first: until the wallet is created, upgraded, allowed and connected (or skipped), every page is the wizard. */
+function SignedIn() {
+  const auth = useAuth()
   const me = useMe()
+  const connections = useConnections()
   return (
     <Async query={me} rows={2}>
       {(data) => (
-        <Shell owner={data.owner} onSignOut={onSignOut}>
-          <Routes />
+        <Shell owner={data.owner} onSignOut={auth.logout}>
+          {connections.isPending ? (
+            <LoadingBlock rows={2} />
+          ) : setupProgress(data, (connections.data?.length ?? 0) > 0, readSkipped()) === 'done' ? (
+            <Routes />
+          ) : (
+            <OnboardingPage me={data} />
+          )}
         </Shell>
       )}
     </Async>
   )
+}
+
+export function App() {
+  const auth = useAuth()
+  if (auth.status !== 'ready') return <SignInPage />
+  return <SignedIn />
 }

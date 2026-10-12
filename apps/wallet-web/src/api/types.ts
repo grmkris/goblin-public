@@ -24,6 +24,8 @@ export interface WalletApi {
   readonly me: () => Promise<Me>
   /** Balances per chain and holder; absent routes answer `undefined` and Home says so. */
   readonly status: () => Promise<WalletStatusResult | undefined>
+  /** Create the owner's agent wallet; idempotent. */
+  readonly createAgent: () => Promise<Me>
   readonly limits: () => Promise<readonly LimitView[]>
   readonly setLimits: (limits: WalletLimits) => Promise<WalletLimits>
   readonly activity: () => Promise<readonly Operation[]>

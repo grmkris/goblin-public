@@ -23,9 +23,9 @@ export function useApi(): WalletApi {
   return api
 }
 
-export const useMe = () => {
+export const useMe = (enabled = true) => {
   const api = useApi()
-  return useQuery({ queryKey: ['me'], queryFn: api.me })
+  return useQuery({ queryKey: ['me'], queryFn: api.me, enabled })
 }
 export const useStatus = () => {
   const api = useApi()
@@ -101,5 +101,14 @@ export function useRevokeAll() {
     onSuccess: async () => {
       await client.invalidateQueries()
     },
+  })
+}
+
+export function useCreateAgent() {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: api.createAgent,
+    onSuccess: (me) => client.setQueryData(['me'], me),
   })
 }
