@@ -2,6 +2,13 @@ import { McpServer } from '@modelcontextprotocol/server'
 import { registerAllowances } from './tools/allowances.ts'
 import { registerBalances } from './tools/balances.ts'
 import { registerOperation } from './tools/operation.ts'
+import { registerBridgeExecute } from './tools/bridge-execute.ts'
+import { registerBridgeQuote } from './tools/bridge-quote.ts'
+import { registerPaidFetch } from './tools/paid-fetch.ts'
+import { registerPolicyChange } from './tools/policy-change.ts'
+import { registerSwapExecute } from './tools/swap-execute.ts'
+import { registerSwapQuote } from './tools/swap-quote.ts'
+import { registerTransfer } from './tools/transfer.ts'
 import { registerReceipt } from './tools/receipt.ts'
 import { registerServices } from './tools/services.ts'
 import { registerWalletStatus } from './tools/wallet-status.ts'
@@ -19,5 +26,12 @@ export function walletServer(box: Toolbox): McpServer {
   registerServices(server, box)
   registerOperation(server, box)
   registerReceipt(server, box)
+  registerPaidFetch(server, box)
+  registerTransfer(server, box)
+  registerSwapQuote(server, box)
+  registerSwapExecute(server, box)
+  registerBridgeQuote(server, box)
+  registerBridgeExecute(server, box)
+  registerPolicyChange(server, box)
   return server
 }

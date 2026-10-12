@@ -4,9 +4,9 @@ import * as Effect from 'effect/Effect'
 import { failure } from '../../services/errors.ts'
 import { readOperation } from '../../services/programs/operation.ts'
 import { answer, refusal } from '../results.ts'
+import { describeOperation } from '../spend-reply.ts'
 import { standard } from '../standard.ts'
 import type { Toolbox } from '../toolbox.ts'
-import { describeOperation } from './operation.ts'
 
 const receiptOf = (operationId: string) =>
   Effect.gen(function* () {

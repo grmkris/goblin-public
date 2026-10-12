@@ -145,3 +145,93 @@ describe('the MCP endpoint', () => {
     expect(result).toMatchObject({ isError: true, structuredContent: { error: { code: 'unknown_operation' } } })
   })
 })
+
+describe('the paid tools over MCP', () => {
+  const quoting: RailsPort = {
+    ...rails,
+    quotePaidFetch: () =>
+      Promise.resolve({
+        kind: 'paid_fetch',
+        chain: 'base',
+        rail: 'x402',
+        subject: 'exa.search',
+        token: { symbol: 'USDC', address: USDC, decimals: 6 },
+        amount: '0.007',
+        amountUsd: '0.007',
+        recipient: OWNER,
+        request: { method: 'POST', url: 'https://api.exa.ai/search' },
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      }),
+    payPaidFetch: () =>
+      Promise.resolve({
+        outcome: 'settled',
+        payment: { rail: 'x402', reference: 'r1' },
+        delivery: { status: 'ok' },
+        response: { status: 200, contentType: 'application/json', body: { results: ['a'] }, truncated: false },
+      }),
+    quoteTransfer: () =>
+      Promise.resolve({
+        kind: 'transfer',
+        chain: 'base',
+        rail: 'transfer',
+        subject: 'transfer',
+        token: { symbol: 'USDC', address: USDC, decimals: 6 },
+        amount: '1',
+        amountUsd: '1',
+        recipient: '0x3333333333333333333333333333333333333333',
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      }),
+  }
+  const paying = createMcpEndpoint({ authenticate, wiring: { ...wiring, rails: () => quoting } })
+  const callPaying = (name: string, args: Record<string, unknown>) =>
+    paying(
+      new Request('https://wallet.test/mcp', {
+        method: 'POST',
+        headers: {
+          host: 'wallet.test',
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          authorization: 'Bearer good',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+      }),
+      testEnv(),
+    ).then(resultOf)
+
+  test('paid_fetch pays, returns the bounded response and the limits left', async () => {
+    const result = await callPaying('paid_fetch', {
+      service: 'exa.search',
+      args: { query: 'x' },
+      max_usd: '0.05',
+      operation_id: 'op-mcp-fetch-1',
+    })
+    expect(result.content?.[0]?.text).toContain('delivered')
+    expect(result.structuredContent).toMatchObject({
+      operation: { status: 'delivered' },
+      response: { status: 200 },
+      limits: expect.arrayContaining([expect.objectContaining({ layer: 'ledger', period: 'hour' })]),
+    })
+  })
+
+  test('a transfer to a new recipient answers with the approval link on a client that cannot be asked', async () => {
+    const result = await callPaying('transfer', {
+      chain: 'base',
+      token: 'USDC',
+      to: '0x3333333333333333333333333333333333333333',
+      amount: '1',
+      max_usd: '2',
+      operation_id: 'op-mcp-xfer-01',
+    })
+    expect(result.isError).toBeUndefined()
+    expect(result.content?.[0]?.text).toContain('https://wallet.test/approve/op-mcp-xfer-01')
+    expect(result.structuredContent).toMatchObject({
+      approveUrl: 'https://wallet.test/approve/op-mcp-xfer-01',
+      operation: { status: 'awaiting_approval' },
+    })
+  })
+
+  test('request_policy_change only records the ask', async () => {
+    const result = await callPaying('request_policy_change', { change: 'raise hourly to $30', reason: 'big batch' })
+    expect(result.structuredContent).toMatchObject({ request: { status: 'pending', client: 'Test client' } })
+  })
+})

@@ -1,15 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/server'
-import { OperationInput, TOOLS, type Operation } from '@goblin/wallet/contract'
+import { OperationInput, TOOLS } from '@goblin/wallet/contract'
 import { readOperation } from '../../services/programs/operation.ts'
 import { answer, refusal } from '../results.ts'
+import { describeOperation } from '../spend-reply.ts'
 import { standard } from '../standard.ts'
 import type { Toolbox } from '../toolbox.ts'
-
-export const describeOperation = (op: Operation): string => {
-  const paid = op.payment?.txHash === undefined ? '' : ` Transaction ${op.payment.txHash}.`
-  const why = op.reason === undefined ? '' : ` ${op.reason}`
-  return `${op.id}: ${op.status}. ${op.terms.kind} of $${op.terms.amountUsd} to ${op.terms.subject} on ${op.terms.chain}.${paid}${why}`
-}
 
 export function registerOperation(server: McpServer, box: Toolbox): void {
   server.registerTool(

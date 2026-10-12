@@ -72,11 +72,14 @@ export interface LedgerHost {
  * as `POST /call {method, args}` so the class stays testable without `cloudflare:workers`; callers use `ledgerClient`.
  * The store is synchronous, so each call is atomic against the others and nothing here awaits.
  */
-export class WalletLedger implements DurableObject {
+export class LedgerObject implements DurableObject {
   readonly #table: ReadonlyMap<string, Callable>
 
-  constructor(ctx: LedgerHost) {
-    const store = new LedgerStore(fromDurableObjectSql(ctx.storage.sql, (write) => ctx.storage.transactionSync(write)))
+  constructor(ctx: LedgerHost, now: () => number) {
+    const store = new LedgerStore(
+      fromDurableObjectSql(ctx.storage.sql, (write) => ctx.storage.transactionSync(write)),
+      now,
+    )
     this.#table = new Map(
       LEDGER_METHODS.map((name): [string, Callable] => [
         name,
@@ -94,6 +97,13 @@ export class WalletLedger implements DurableObject {
     const method = this.#table.get(call.method)
     if (method === undefined) return error('bad_call', `No ledger method ${call.method}.`, 404)
     return json({ result: method(...call.args) })
+  }
+}
+
+/** The deployed class. Cloudflare passes `(state, env)`, so the clock is not a constructor argument here. */
+export class WalletLedger extends LedgerObject {
+  constructor(ctx: LedgerHost) {
+    super(ctx, Date.now)
   }
 }
 

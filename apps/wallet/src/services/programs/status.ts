@@ -28,6 +28,7 @@ export const readStatus = Effect.gen(function* () {
   const grant = yield* ledger.use((api) => api.limits())
   const revoked = yield* ledger.use((api) => api.isRevoked())
   const limits = yield* readLimits
+  const recent = yield* ledger.use((api) => api.activity(10))
   const read = yield* rails.use((port) => port.balances()).pipe(Effect.option)
   const balances: ChainBalance[] = Option.getOrElse(read, (): ChainBalance[] => [])
   const status = deriveStatus({
@@ -48,6 +49,7 @@ export const readStatus = Effect.gen(function* () {
     agent: { address: profile.agentAddress ?? NO_ADDRESS },
     balances,
     limits,
+    recent,
     checkedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
   }
   return result
