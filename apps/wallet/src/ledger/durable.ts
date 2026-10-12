@@ -40,6 +40,8 @@ export const LEDGER_METHODS = [
   'preparedAllowance',
   'putSignedAllowance',
   'signedAllowances',
+  'putPreparedUpgrade',
+  'preparedUpgrade',
   'putQuote',
   'getQuote',
   'isRevoked',

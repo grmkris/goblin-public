@@ -59,6 +59,7 @@ import { getQuote, putQuote, type StoredQuote } from './quotes.ts'
 import { migrate } from './schema.ts'
 import type { Sql } from './sql.ts'
 import { getState, isRevoked, putState, REVOKED_KEY } from './state.ts'
+import { preparedUpgrade, putPreparedUpgrade } from './upgrades.ts'
 import type { Ctx } from './rows.ts'
 
 /**
@@ -222,6 +223,14 @@ export class LedgerStore {
 
   signedAllowances(): { chain: string; json: string }[] {
     return signedAllowances(this.#ctx)
+  }
+
+  putPreparedUpgrade(id: string, json: string): void {
+    putPreparedUpgrade(this.#ctx, id, json)
+  }
+
+  preparedUpgrade(id: string): string | undefined {
+    return preparedUpgrade(this.#ctx, id)
   }
 
   putQuote(stored: StoredQuote): void {
