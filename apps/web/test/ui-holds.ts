@@ -65,6 +65,12 @@ async function drive(browser: Browser, origin: string, label: string, options: B
   await page.goto(`${origin}holds.html`)
   await page.getByText('Approve the new agent "Worker".').waitFor()
   await page.getByText('This link goes to approvals.example.org').waitFor()
+  // The server's words are framed as its claim, and the card says how long the request waits.
+  await page.getByText('Sidequest · Worker says:').first().waitFor()
+  await page
+    .getByText(/^Open until /u)
+    .first()
+    .waitFor()
   // The Open action is a real link styled as a button, so its role reads as a button.
   const open = page.locator('a', { hasText: /^Open$/u }).first()
   assert.equal(await open.getAttribute('href'), OWN)
@@ -73,14 +79,22 @@ async function drive(browser: Browser, origin: string, label: string, options: B
   await page.screenshot({ path: path.join(out, `${label}-cards.png`), fullPage: true })
   const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert(width <= 0, `${label}: scrolls sideways by ${String(width)}px`)
+  // Open leads until the owner has opened the link; then Done does. The tab it opens goes nowhere here.
+  await page.context().route('https://dev.sidequest.exchange/**', (route) => route.abort())
+  const leads = async () => (await open.getAttribute('class'))?.includes('bg-primary') === true
+  assert(await leads(), `${label}: Open does not lead before the link is opened`)
+  await open.click()
+  assert(!(await leads()), `${label}: Open still leads after the link was opened`)
   await page.getByRole('button', { name: 'Done, continue' }).first().click()
-  await page.getByText('The server is still waiting.').waitFor()
+  await page.getByText('Sidequest · Worker is still waiting.').waitFor()
   await page.getByRole('button', { name: 'Done, continue' }).first().click()
   await page.getByText('Approve the new agent "Worker".').waitFor({ state: 'detached' })
   await page.getByRole('button', { name: 'Cancel' }).first().click()
   await page.getByText('Allow the work role.').waitFor({ state: 'detached' })
   assert.deepEqual(answers, ['mcp-url:41:c1:accept', 'mcp-url:41:c1:accept', 'mcp-url:41:c2:decline'])
   await page.getByText('It asks for: sidequest:read sidequest:work').waitFor()
+  // Continue waits for a sign-in to start: nothing has changed for the agent before it.
+  assert(await page.getByRole('button', { name: 'Continue' }).isDisabled())
   await page.getByRole('button', { name: 'Sign in again' }).click()
   const signIn = page.locator('a', { hasText: 'Open sign-in' })
   assert.equal(await signIn.getAttribute('href'), AUTHORIZE)

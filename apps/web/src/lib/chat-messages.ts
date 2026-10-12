@@ -105,6 +105,12 @@ export function failureReason(raw: string): TurnFailure {
     return { text: 'The model provider refused the request: quota exceeded or rate-limited.', provider: true }
   if (/\b(?:500|502|503|504)\b|overloaded|high demand|unavailable/iu.test(raw))
     return { text: 'The model provider is overloaded or unavailable.', provider: true }
+  // The router answers 404 when it cannot reach the model right now (Meta's model went missing for minutes at a time).
+  if (/\b404\b|model_not_found|NotFoundError|model[^\n]{0,40}not found/iu.test(raw))
+    return {
+      text: "This model isn't available right now. Pick another model below and send again.",
+      provider: true,
+    }
   const line =
     raw
       .split('\n')

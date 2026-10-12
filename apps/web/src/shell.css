@@ -822,8 +822,22 @@
   min-width: 0;
 }
 .attributed-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   margin-block-start: 0.25rem;
   font-size: var(--text-13);
+}
+/* The link's icon sits on the host's line, at the text's size (it wrapped onto a line of its own). */
+.attributed-open > svg {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+@media (pointer: coarse) {
+  .attributed-open {
+    min-height: 2.75rem;
+  }
 }
 .delegate-mark {
   display: grid;

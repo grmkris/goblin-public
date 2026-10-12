@@ -186,6 +186,15 @@ describe('Pi committed state projected for the chat', () => {
     ).toMatchObject({
       failure: { text: 'The model provider is overloaded or unavailable.', provider: true },
     })
+    // The showcase run's Muse spells: LiteLLM's 404 JSON, never shown raw.
+    const missing =
+      '404: {"message":"litellm.NotFoundError: OpenAIException - The requested model was not found.. Received Model Group=muse-spark-1.3-contributor"}'
+    expect(assistant({ stopReason: 'error', errorMessage: missing })).toMatchObject({
+      failure: {
+        text: "This model isn't available right now. Pick another model below and send again.",
+        provider: true,
+      },
+    })
     expect(assistant({ stopReason: 'error', errorMessage: 'Bad tool schema\nstack' })).toMatchObject({
       failure: { text: 'The model call failed: Bad tool schema', provider: false },
     })

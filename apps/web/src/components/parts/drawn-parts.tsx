@@ -9,6 +9,7 @@ import { PersonaAvatar } from '../persona-avatar.tsx'
 import { usePanel } from '../shell/panel.tsx'
 import { ThreadSummary } from '../shell/thread-summary.tsx'
 import { useConversation } from '../../lib/workspace/hooks.ts'
+import { LinkConfirm } from './link-confirm.tsx'
 import { PersonaHoldCard } from './persona-hold.tsx'
 import { Cause, MessageText, OpenThread } from './text-part.tsx'
 
@@ -139,6 +140,30 @@ export function DelegateResultPart({ part }: { readonly part: Of<'delegate-resul
 const NOTICE_TAG = { event: 'Notice', reminder: 'Reminder', digest: 'Notice' } as const
 
 /**
+ * A notice's one link: its host, opened through the link dialog every untrusted link asks through (the producer chose
+ * it), and as a plain link outside the shell.
+ */
+function NoticeLink({ url }: { readonly url: string }) {
+  const confirm = use(LinkConfirm)
+  return (
+    <a
+      className="cause-link attributed-open"
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer nofollow"
+      onClick={(event) => {
+        if (confirm === undefined) return
+        event.preventDefault()
+        confirm(url)
+      }}
+    >
+      <ExternalLinkIcon aria-hidden />
+      {new URL(url).host}
+    </a>
+  )
+}
+
+/**
  * A routine's notice (ADR 0041), as a bot's message: from the connection it came from (or the routine, for a
  * reminder), the producer's title and words as plain text, and its one link, opened outside the app.
  */
@@ -155,12 +180,7 @@ export function NoticePart({ part }: { readonly part: Of<'notice'> }) {
     >
       <p className="message-text font-medium">{part.title}</p>
       {part.body !== undefined && <p className="message-text">{part.body}</p>}
-      {part.url !== undefined && (
-        <a className="cause-link attributed-open" href={part.url} target="_blank" rel="noopener noreferrer nofollow">
-          <ExternalLinkIcon aria-hidden />
-          {new URL(part.url).host}
-        </a>
-      )}
+      {part.url !== undefined && <NoticeLink url={part.url} />}
     </Attributed>
   )
 }

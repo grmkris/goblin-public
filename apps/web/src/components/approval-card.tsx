@@ -1,12 +1,39 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { AskCard, AskCardHeader, AskCardDescription, AskCardActions, Button, JsonView, Receipt } from '@goblin/ui'
-import { KeyRoundIcon } from 'lucide-react'
+import type { ApprovalView } from '@goblin/contracts'
+import { CircleAlertIcon, KeyRoundIcon, LoaderCircleIcon } from 'lucide-react'
 import { approvalQuery, decideApprovalMutation } from '../approvals/queries.ts'
 import type { Interaction } from '../lib/interactions.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
 
 type Approval = Extract<Interaction, { kind: 'approval' }>
+
+/** Where a held call stands once the owner decided, in words, until it leaves the dock. */
+const STANDING: Partial<Record<ApprovalView['state'], { readonly text: string; readonly error: boolean }>> = {
+  approved: { text: 'Approved. Sending the call…', error: false },
+  dispatching: { text: 'Sending the call…', error: false },
+  expired: { text: 'This request ran out of time before you decided. Nothing ran.', error: true },
+  failed: { text: 'The call was not sent. Nothing ran.', error: true },
+  uncertain: {
+    text: 'The answer was cut off. The call may have run: check on the server before trying again.',
+    error: true,
+  },
+}
+
+/** Where the call stands after the owner's decision: on its way, or what went wrong. */
+function Standing({ text, error }: { readonly text: string; readonly error: boolean }) {
+  return (
+    <Receipt tone={error ? 'error' : 'neutral'}>
+      {error ? (
+        <CircleAlertIcon aria-hidden />
+      ) : (
+        <LoaderCircleIcon aria-hidden className="animate-spin motion-reduce:animate-none" />
+      )}
+      <span>{text}</span>
+    </Receipt>
+  )
+}
 
 /**
  * The owner reviews the durable call, not arguments supplied by remote content or the browser. It is read while it
@@ -27,6 +54,9 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
   const decide = (allowed: boolean) => decision.mutate(allowed)
   const pending = view?.state === 'pending'
   if (view?.state === 'completed' || view?.state === 'refused') return null
+  const standing = view === undefined ? undefined : STANDING[view.state]
+  // Which answer is on its way, for the button that sent it.
+  const refusing = decision.variables !== undefined && !decision.variables
   return (
     <AskCard aria-label="Approve this call">
       <AskCardHeader>
@@ -43,19 +73,18 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
         These exact arguments will run once if you approve. Credential fields are hidden.
       </AskCardDescription>
       {view !== undefined && <JsonView value={view.arguments} />}
-      {view !== undefined && !pending && (
-        <Receipt tone={view.state === 'uncertain' || view.state === 'failed' ? 'error' : 'neutral'}>
-          {view.state === 'uncertain'
-            ? 'The response was interrupted. The call may have taken effect; check the service before trying again.'
-            : `Call ${view.state}.`}
+      {standing !== undefined && <Standing {...standing} />}
+      {error && (
+        <Receipt tone="error">
+          <CircleAlertIcon aria-hidden />
+          <span>{error}</span>
         </Receipt>
       )}
-      {error && <Receipt tone="error">{error}</Receipt>}
       <AskCardActions>
-        <Button variant="ghost" disabled={busy || !pending} onClick={() => decide(false)}>
+        <Button variant="ghost" disabled={busy || !pending} pending={busy && refusing} onClick={() => decide(false)}>
           Refuse
         </Button>
-        <Button disabled={busy || !pending} onClick={() => decide(true)}>
+        <Button disabled={busy || !pending} pending={busy && !refusing} onClick={() => decide(true)}>
           Approve once
         </Button>
       </AskCardActions>

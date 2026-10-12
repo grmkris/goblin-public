@@ -101,6 +101,7 @@ describe('what the agent waits on the owner for', () => {
       callId: 'g1',
       connectionId: 'myplan',
       scope: 'notes:write',
+      name: 'document_edit',
     })
     expect(interactionOf(mcpCall({ ...scope, scope: undefined }))).toMatchObject({ kind: 'access', scope: '' })
     expect(interactionOf(mcpCall({ ...scope, connectionId: 'other' }))).toBeUndefined()

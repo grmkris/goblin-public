@@ -21,7 +21,14 @@ export type Interaction =
     }
   | { readonly kind: 'grant'; readonly callId: string; readonly connectionId: string; readonly name: string }
   /** A call needed more access than the connection's sign-in granted: the owner signs in again (ADR 0042). */
-  | { readonly kind: 'access'; readonly callId: string; readonly connectionId: string; readonly scope: string }
+  | {
+      readonly kind: 'access'
+      readonly callId: string
+      readonly connectionId: string
+      readonly scope: string
+      /** The tool that needed it, when the result names it. */
+      readonly name?: string
+    }
   /** A server asks the owner to finish a step on its site first: its URL request, read from the owner API (ADR 0042). */
   | {
       readonly kind: 'url'
@@ -140,7 +147,7 @@ function accessOf(part: ToolPart, details: Record<string, unknown>): Interaction
   if (part.call.name !== 'mcp_call' || target === undefined || details.connectionId !== target.connectionId)
     return undefined
   const scope = isString(details.scope) ? details.scope.slice(0, 512) : ''
-  return { kind: 'access', callId: part.call.id, connectionId: target.connectionId, scope }
+  return { kind: 'access', callId: part.call.id, connectionId: target.connectionId, scope, name: target.name }
 }
 
 /** A URL request, only from `mcp_call` and only for exactly the server and tool that were called. */

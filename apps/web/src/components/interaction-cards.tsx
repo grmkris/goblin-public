@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, Settings2Icon } from 'lucide-react'
+import { CircleAlertIcon, KeyRoundIcon, MessageCircleQuestionIcon, PlugIcon, Settings2Icon } from 'lucide-react'
 import { type ServerView, type ToolView, itemLabel } from '@goblin/contracts'
 import {
   AskCard,
@@ -30,6 +30,16 @@ import { answerText, type Interaction, interactionOperation } from '../lib/inter
 import { setWorkspaceTopicSetupMutation } from '../lib/workspace/mutations.ts'
 import { ApprovalCard } from './approval-card.tsx'
 import { UrlRequestCard } from './url-request-card.tsx'
+
+/** A card's failure line: the error tone colours only the icon, so the icon is what says it went wrong. */
+function Failed({ children }: { readonly children: string }) {
+  return (
+    <Receipt tone="error">
+      <CircleAlertIcon aria-hidden />
+      <span>{children}</span>
+    </Receipt>
+  )
+}
 
 /** Sends the owner's reply as their next message, under the interaction's stable operation id. */
 export type Answer = (input: string, operationId: string) => Promise<boolean>
@@ -75,7 +85,7 @@ function CardReplies({
 }) {
   return (
     <>
-      {error && <Receipt tone="error">{error}</Receipt>}
+      {error && <Failed>{error}</Failed>}
       <AskCardActions>
         <Button variant="ghost" disabled={busy} onClick={() => onReply(false)}>
           Not now
@@ -149,7 +159,7 @@ function ServerRequestCard({
             You already have it: {mine.map((server) => server.label).join(', ')}. Use that, or add another connection to
             sign in as another account.
           </AskCardDescription>
-          {error && <Receipt tone="error">{error}</Receipt>}
+          {error && <Failed>{error}</Failed>}
           <AskCardActions>
             <Button variant="ghost" disabled={busy} onClick={() => reply(false)}>
               Not now
@@ -235,7 +245,7 @@ const signInLink = (url: string | undefined): string | undefined => {
  * it grants, so the card promises nothing.
  */
 export function AccessCard({ interaction, onAnswer }: { readonly interaction: Access; readonly onAnswer: Answer }) {
-  const { connectionId, scope } = interaction
+  const { connectionId, scope, name } = interaction
   const connection = useConnectionLabels()(connectionId)
   const { busy, error, replying } = useReplying()
   const stepUp = useMutation(stepUpMutation)
@@ -254,7 +264,8 @@ export function AccessCard({ interaction, onAnswer }: { readonly interaction: Ac
       <AskCardHeader>
         <KeyRoundIcon aria-hidden />
         <p>
-          <strong className="font-medium">{connection}</strong> says this needs more access
+          <strong className="font-medium">{name === undefined ? connection : `${connection} · ${name}`}</strong> says it
+          needs more access
         </p>
       </AskCardHeader>
       {scope !== '' && (
@@ -265,7 +276,7 @@ export function AccessCard({ interaction, onAnswer }: { readonly interaction: Ac
       <AskCardDescription>
         Sign in to it again in a new tab and allow the extra access there, then come back and continue.
       </AskCardDescription>
-      {(failed || error) && <Receipt tone="error">{failed || error}</Receipt>}
+      {(failed || error) && <Failed>{failed || error}</Failed>}
       <AskCardActions>
         <Button variant="ghost" disabled={busy} onClick={() => reply(false)}>
           Not now
@@ -284,7 +295,13 @@ export function AccessCard({ interaction, onAnswer }: { readonly interaction: Ac
             Open sign-in
           </Button>
         )}
-        <Button variant={opened ? 'default' : 'outline'} disabled={busy} onClick={() => reply(true)}>
+        {/* Continue once a sign-in has started: before it, nothing has changed for the agent to go on with. */}
+        <Button
+          variant={opened ? 'default' : 'outline'}
+          disabled={busy || link === undefined}
+          pending={busy}
+          onClick={() => reply(true)}
+        >
           Continue
         </Button>
       </AskCardActions>
@@ -382,7 +399,7 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
           <QuestionnaireSubmit disabled={busy}>Send answers</QuestionnaireSubmit>
         </QuestionnaireActions>
       </Questionnaire>
-      {error && <Receipt tone="error">{error}</Receipt>}
+      {error && <Failed>{error}</Failed>}
     </AskCard>
   )
 }
