@@ -46,10 +46,11 @@ function DashboardView() {
           recent={recentOf(shown)}
           refreshing={refreshing}
           refreshError={refreshError}
-          displayMode={context?.displayMode ?? 'inline'}
-          canFullscreen={context?.availableDisplayModes?.includes('fullscreen') === true}
+          fullscreen={context?.displayMode === 'fullscreen'}
           onRefresh={() => void refresh()}
-          onToggleFullscreen={() => void toggleFullscreen()}
+          onToggleFullscreen={
+            context?.availableDisplayModes?.includes('fullscreen') === true ? () => void toggleFullscreen() : undefined
+          }
         />
       )}
     </ViewFrame>

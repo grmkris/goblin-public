@@ -1,3 +1,4 @@
+import { Button } from '@goblin/ui'
 import type { Operation } from '@goblin/wallet/contract'
 import { useActivity } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
@@ -8,19 +9,24 @@ import { EmptyState, Page, RowList } from '../ui/page.tsx'
 function Row({ operation }: { readonly operation: Operation }) {
   if (operation.status !== 'awaiting_approval') return <ReceiptRow operation={operation} />
   return (
-    <Link
-      to={`/approve/${operation.id}`}
-      className="-mx-4 block rounded-lg px-4 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-ring active:bg-muted pointer-fine:hover:bg-muted"
-    >
-      <ReceiptRow operation={operation} />
-    </Link>
+    <ReceiptRow
+      operation={operation}
+      action={
+        <Button size="sm" nativeButton={false} render={<Link to={`/approve/${operation.id}`} />}>
+          Review
+        </Button>
+      }
+    />
   )
 }
 
 export function ActivityPage() {
   const activity = useActivity()
   return (
-    <Page title="Activity" description="Everything your agent paid for or tried to, newest first, with the receipt.">
+    <Page
+      title="Activity"
+      description="Everything your agent paid for or tried to, newest first. Open a row for its details."
+    >
       <Async query={activity}>
         {(rows) =>
           rows.length === 0 ? (

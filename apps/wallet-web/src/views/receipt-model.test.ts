@@ -1,6 +1,6 @@
 import type { Operation } from '@goblin/wallet/contract'
 import { describe, expect, it } from 'vitest'
-import { deliveryStep, modelSummary, paymentStep } from './receipt-model.ts'
+import { amountMeaning, deliveryStep, modelSummary, paymentStep } from './receipt-model.ts'
 
 const operation = (patch: Partial<Operation>): Operation => ({
   id: 'op_test_0001',
@@ -27,15 +27,25 @@ describe('receipt model', () => {
   it('keeps payment and delivery apart', () => {
     const paidNotDelivered = operation({ status: 'confirmed', delivery: { status: '502', detail: 'bad gateway' } })
     expect(paymentStep(paidNotDelivered).tone).toBe('ok')
-    expect(deliveryStep(paidNotDelivered)?.tone).toBe('bad')
+    expect(deliveryStep(paidNotDelivered)).toMatchObject({ label: 'Failed, HTTP 502', tone: 'bad' })
+    expect(deliveryStep(operation({ delivery: { status: '200' } }))?.label).toBe('Delivered, HTTP 200')
     expect(deliveryStep(operation({ status: 'confirmed' }))?.label).toBe('Waiting for the service')
     expect(deliveryStep(operation({ status: 'awaiting_approval' }))).toBeUndefined()
   })
 
   it('never calls an uncertain payment paid or failed', () => {
     const step = paymentStep(operation({ status: 'uncertain' }))
-    expect(step.label).toBe('Outcome unknown')
-    expect(step.detail).toMatch(/never retried/u)
+    expect(step.label).toBe('Not confirmed')
+    expect(step.detail).toBe('Kept reserved and not retried on its own. Check before paying again.')
+    expect(deliveryStep(operation({ status: 'uncertain' }))?.label).toBe('Unknown')
+  })
+
+  it('says whether the amount was asked for, held, paid or not charged', () => {
+    expect(amountMeaning(operation({ status: 'awaiting_approval' }))).toBe('Requested')
+    expect(amountMeaning(operation({ status: 'submitted' }))).toBe('Held')
+    expect(amountMeaning(operation({ status: 'uncertain' }))).toBe('Held, not confirmed')
+    expect(amountMeaning(operation({ status: 'delivered' }))).toBe('Paid')
+    expect(amountMeaning(operation({ status: 'failed' }))).toBe('Not charged')
   })
 
   it('summarises in one bounded line', () => {

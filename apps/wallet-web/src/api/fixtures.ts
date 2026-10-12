@@ -129,11 +129,21 @@ export const LIMITS: readonly LimitView[] = [
   {
     layer: 'client',
     period: 'day',
-    limit: '2',
+    limit: '25',
     used: '0.62',
-    remaining: '1.38',
+    remaining: '24.38',
     enforcedBy: "goblin's spending rules",
     periodEndsAt: ahead(60 * 9),
+  },
+  { layer: 'ledger', period: 'call', limit: '5', enforcedBy: 'This wallet, every payment in every chain' },
+  {
+    layer: 'ledger',
+    period: 'hour',
+    limit: '20',
+    used: '7.43',
+    remaining: '12.57',
+    enforcedBy: 'This wallet, every payment in every chain',
+    periodEndsAt: ahead(41),
   },
 ]
 
@@ -154,6 +164,36 @@ export const ME: Me = {
   limits: { perCall: '5', perHour: '20', perWeek: '50', expiresAt: ahead(60 * 24 * 6), version: 3 },
 }
 
+const NATIVE = '0x0000000000000000000000000000000000000000'
+const USDC_OF = {
+  base: USDC_BASE,
+  arbitrum: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  ethereum: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  tempo: '0x20C000000000000000000000b9537d11c60E8b50',
+} as const
+
+/** One holder's stablecoin and, off Tempo, its ETH: what the server returns for a network it could read. */
+const held = (
+  chain: keyof typeof USDC_OF,
+  holder: 'owner' | 'agent',
+  stable: string,
+  gas = '0',
+): WalletStatusResult['balances'] => {
+  const address = holder === 'owner' ? OWNER : AGENT
+  const usdc = {
+    chain,
+    symbol: chain === 'tempo' ? 'USDC.e' : 'USDC',
+    token: USDC_OF[chain],
+    decimals: 6,
+    balance: stable,
+    holder,
+    address,
+  }
+  return chain === 'tempo'
+    ? [usdc]
+    : [usdc, { chain, symbol: 'ETH', token: NATIVE, decimals: 18, balance: gas, holder, address }]
+}
+
 export const STATUS: WalletStatusResult = {
   status: {
     kind: 'wallet',
@@ -165,21 +205,41 @@ export const STATUS: WalletStatusResult = {
   },
   owner: { address: OWNER, upgraded: true },
   agent: { address: AGENT },
+  // Base funded on both sides, Arbitrum read and empty, Ethereum's read failed (only the agent's zero stablecoin
+  // comes back), and USDC.e on Tempo in the owner's account, where the agent cannot draw on it.
   balances: [
-    { chain: 'base', symbol: 'USDC', token: USDC_BASE, decimals: 6, balance: '62.5', holder: 'owner', address: OWNER },
-    { chain: 'base', symbol: 'USDC', token: USDC_BASE, decimals: 6, balance: '1.21', holder: 'agent', address: AGENT },
+    ...held('base', 'agent', '1.21', '0.000597817944927921'),
+    ...held('base', 'owner', '62.5', '0.005399666120503803'),
+    ...held('arbitrum', 'agent', '0'),
+    ...held('arbitrum', 'owner', '0'),
     {
-      chain: 'tempo',
-      symbol: 'USDC.e',
-      token: '0x20C000000000000000000000b9537d11c60E8b50',
+      chain: 'ethereum',
+      symbol: 'USDC',
+      token: USDC_OF.ethereum,
       decimals: 6,
-      balance: '20.5',
-      holder: 'owner',
-      address: OWNER,
+      balance: '0',
+      holder: 'agent',
+      address: AGENT,
     },
+    ...held('tempo', 'agent', '0'),
+    ...held('tempo', 'owner', '20.5'),
   ],
   limits: LIMITS,
+  recent: OPERATIONS,
   checkedAt: ago(0),
+}
+
+/** A wallet just created: the agent exists, nothing is funded yet, the owner has not upgraded. */
+export const FRESH_STATUS: WalletStatusResult = {
+  ...STATUS,
+  status: { kind: 'wallet', paid: 'blocked', funding: 'blocked', tokens: [], expiresAt: ahead(60 * 24 * 7) },
+  owner: { address: OWNER, upgraded: false },
+  balances: (['base', 'arbitrum', 'ethereum', 'tempo'] as const).flatMap((chain) => [
+    ...held(chain, 'agent', '0'),
+    ...held(chain, 'owner', '0'),
+  ]),
+  limits: LIMITS.filter((limit) => limit.layer === 'ledger'),
+  recent: [],
 }
 
 export const APPROVAL: ApprovalView = {

@@ -3,46 +3,10 @@
 import type { LimitView, Operation, SpendResult } from '@goblin/wallet/contract'
 import { Button } from '@goblin/ui'
 import { ExternalLink } from 'lucide-react'
-import type { ReactNode } from 'react'
-import {
-  AddressChip,
-  Amount,
-  ChainBadge,
-  CopyButton,
-  cn,
-  PERIOD_LABEL,
-  StatusPill,
-  formatUsd,
-  timeAgo,
-  timeUntil,
-  txUrl,
-} from '../ui/index.ts'
-import { deliveryStep, paymentStep, type Step } from './receipt-model.ts'
-
-const KIND = {
-  paid_fetch: 'Paid request',
-  transfer: 'Transfer',
-  swap: 'Swap',
-  bridge: 'Bridge',
-  upgrade: 'Account upgrade',
-  allowance: 'Allowance',
-} as const
-
-const RAIL = {
-  x402: 'x402',
-  mpp: 'MPP',
-  transfer: 'Direct transfer',
-  lifi: 'LI.FI',
-  relay: 'Relay',
-  delegation: 'Allowance',
-} as const
-
-const DOT: Record<Step['tone'], string> = {
-  ok: 'bg-success',
-  wait: 'bg-attention',
-  bad: 'bg-destructive',
-  quiet: 'bg-muted-foreground/50',
-}
+import { Amount, cn, PERIOD_LABEL, StatusPill, formatUsd, timeUntil } from '../ui/index.ts'
+import { KIND, OperationDetails, STEP_DOT } from '../ui/operation-details.tsx'
+import { byMicros, microsOf } from './money.ts'
+import { amountMeaning, deliveryStep, paymentStep, type Step } from './receipt-model.ts'
 
 function StepRow({ title, step }: { readonly title: string; readonly step: Step }) {
   return (
@@ -50,20 +14,11 @@ function StepRow({ title, step }: { readonly title: string; readonly step: Step 
       <span className="text-sm text-muted-foreground">{title}</span>
       <span className="flex min-w-0 flex-col items-end gap-0.5 text-end">
         <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-          <span aria-hidden className={cn('size-1.5 rounded-full', DOT[step.tone])} />
+          <span aria-hidden className={cn('size-1.5 rounded-full', STEP_DOT[step.tone])} />
           {step.label}
         </span>
         {step.detail !== undefined && <span className="text-xs/relaxed text-muted-foreground">{step.detail}</span>}
       </span>
-    </div>
-  )
-}
-
-function Detail({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-2.5">
-      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
-      <dd className="flex min-w-0 items-center justify-end text-sm">{children}</dd>
     </div>
   )
 }
@@ -102,7 +57,7 @@ function Approval({
 function LimitsLeft({ limits }: { readonly limits: readonly LimitView[] }) {
   const metered = limits
     .filter((limit) => limit.remaining !== undefined)
-    .toSorted((a, b) => Number(a.remaining) - Number(b.remaining))
+    .toSorted((a, b) => byMicros(microsOf(a.remaining ?? '0'), microsOf(b.remaining ?? '0')))
   const tightest = metered.slice(0, 2)
   if (tightest.length === 0) return null
   return (
@@ -130,8 +85,7 @@ export function Receipt({
   readonly onOpenLink: (url: string) => void
 }) {
   const { operation } = result
-  const { terms, payment } = operation
-  const tx = payment?.explorerUrl ?? (payment?.txHash === undefined ? undefined : txUrl(terms.chain, payment.txHash))
+  const { terms } = operation
   const waiting = operation.status === 'quoted' || operation.status === 'awaiting_approval'
   const delivery = deliveryStep(operation)
   return (
@@ -142,6 +96,7 @@ export function Receipt({
       </header>
       <section aria-label="Amount" className="flex flex-col gap-2">
         <Amount usd={terms.amountUsd} token={{ symbol: terms.token.symbol, amount: terms.amount }} size="hero" />
+        <p className="text-sm text-muted-foreground">{amountMeaning(operation)}</p>
         <p className="text-base font-medium text-balance">{terms.subject}</p>
       </section>
       {waiting && <Approval operation={operation} approveUrl={approveUrl} onOpenLink={onOpenLink} />}
@@ -149,40 +104,7 @@ export function Receipt({
         <StepRow title="Payment" step={paymentStep(operation)} />
         {delivery !== undefined && <StepRow title="Delivery" step={delivery} />}
       </div>
-      <dl className="flex flex-col divide-y divide-border">
-        <Detail label="Network">
-          <ChainBadge chain={terms.chain} className="text-sm text-foreground" />
-          <span className="ms-2 text-muted-foreground">{RAIL[terms.rail]}</span>
-        </Detail>
-        <Detail label="Paid to">
-          <AddressChip address={terms.recipient} chain={terms.chain} />
-        </Detail>
-        {terms.request !== undefined && (
-          <Detail label="Request">
-            <span className="truncate text-muted-foreground" title={terms.request.url}>
-              {terms.request.method} {terms.request.url.replace(/^https:\/\//u, '')}
-            </span>
-          </Detail>
-        )}
-        {tx !== undefined && (
-          <Detail label="Transaction">
-            <a
-              href={tx}
-              className="inline-flex min-h-6 items-center gap-1 underline-offset-4 pointer-fine:hover:underline"
-            >
-              View on explorer
-              <ExternalLink aria-hidden className="size-3" />
-            </a>
-          </Detail>
-        )}
-        <Detail label="Operation">
-          <span className="truncate text-muted-foreground tabular-nums">{operation.id}</span>
-          <CopyButton text={operation.id} label="Copy operation id" compact />
-        </Detail>
-        <Detail label="Updated">
-          <span className="text-muted-foreground">{timeAgo(operation.updatedAt)}</span>
-        </Detail>
-      </dl>
+      <OperationDetails operation={operation} />
       <LimitsLeft limits={limits} />
     </>
   )

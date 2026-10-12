@@ -1,18 +1,24 @@
+import { formatUnits, parseUnits } from '@goblin/wallet/amounts'
 import type { EvmChain } from '@goblin/wallet/balances'
 import {
   type ApprovalView,
   type ChainSetup,
   type Connection,
   DEFAULT_GRANT_DAYS,
+  type DepositAddress,
+  type DepositRequest,
+  type DepositStatus,
   type Me,
   type PolicyChange,
   termsHash,
+  type WalletStatusResult,
 } from '@goblin/wallet/contract'
 import {
   ADDRESS_BOOK,
   AGENT,
   APPROVAL,
   CONNECTIONS,
+  FRESH_STATUS,
   LIMITS,
   ME,
   OAUTH_REQUEST,
@@ -29,11 +35,19 @@ const delay = async <T>(value: T): Promise<T> => {
   return value
 }
 
+interface FixtureDeposit {
+  readonly quote: DepositAddress
+  polls: number
+  credited: boolean
+}
+
 interface World {
   me: Me
+  status: WalletStatusResult
   connections: readonly Connection[]
   approval: ApprovalView
   policyChanges: readonly PolicyChange[]
+  readonly deposits: Map<string, FixtureDeposit>
 }
 
 export interface FixtureApi extends WalletApi {
@@ -89,7 +103,7 @@ function reads(
 > {
   return {
     me: () => delay(world.me),
-    status: () => delay(STATUS),
+    status: () => delay(world.status),
     limits: () => delay(LIMITS),
     activity: () => delay(OPERATIONS),
     approval: async () => delay({ ...world.approval, termsHash: await termsHash(world.approval.terms) }),
@@ -139,13 +153,84 @@ function writes(
   }
 }
 
+/** What a fixture deposit receives: ETH at $2,500, less a flat four-cent fee, worked in base units. */
+function fixtureOut({ asset, amount, receive }: DepositRequest): string {
+  const FEE_USDC = 40_000n
+  if (asset === receive) {
+    const decimals = asset === 'ETH' ? 18 : 6
+    const fee = asset === 'ETH' ? 16_000_000_000_000n : FEE_USDC
+    const units = parseUnits(amount, decimals)
+    return formatUnits(units > fee ? units - fee : 0n, decimals)
+  }
+  if (asset === 'ETH') {
+    const usdc = (parseUnits(amount, 18) * 2500n) / 10n ** 12n
+    return formatUnits(usdc > FEE_USDC ? usdc - FEE_USDC : 0n, 6)
+  }
+  const usdc = parseUnits(amount, 6)
+  return formatUnits(usdc > FEE_USDC ? ((usdc - FEE_USDC) * 10n ** 12n) / 2500n : 0n, 18)
+}
+
+/** Relay's answers for a fixture deposit, one per poll: waiting, not reporting, seen, then landed on Base. */
+const PROGRESS: readonly DepositStatus['status'][] = ['waiting', 'unknown', 'pending', 'success']
+
+/** A landed deposit raises the owner's balance on Base, as the chain would. */
+function credit(world: World, quote: DepositAddress): void {
+  world.status = {
+    ...world.status,
+    balances: world.status.balances.map((row) =>
+      row.chain === 'base' && row.holder === 'owner' && row.symbol === quote.receive
+        ? {
+            ...row,
+            balance: formatUnits(
+              parseUnits(row.balance, row.decimals) + parseUnits(quote.expectedOut, row.decimals),
+              row.decimals,
+            ),
+          }
+        : row,
+    ),
+  }
+}
+
+function deposits(world: World): Pick<WalletApi, 'deposit' | 'depositStatus'> {
+  return {
+    deposit: (request) => {
+      const index = world.deposits.size + 1
+      const depositAddress = `0x${'d3'.repeat(19)}${index.toString(16).padStart(2, '0')}`
+      const quote: DepositAddress = {
+        requestId: `req_fixture_${index}`,
+        depositAddress,
+        ...request,
+        expectedOut: fixtureOut(request),
+        feesUsd: '0.04',
+        recipient: OWNER,
+        timeEstimateSeconds: request.from === 'ethereum' ? 60 : 20,
+      }
+      world.deposits.set(depositAddress, { quote, polls: 0, credited: false })
+      return delay(quote)
+    },
+    depositStatus: (depositAddress) => {
+      const entry = world.deposits.get(depositAddress)
+      if (entry === undefined) return Promise.reject(new Error('No deposit with that address.'))
+      entry.polls += 1
+      const status = PROGRESS[Math.min(entry.polls, PROGRESS.length) - 1] ?? 'waiting'
+      if (status === 'success' && !entry.credited) {
+        credit(world, entry.quote)
+        entry.credited = true
+      }
+      return delay({ depositAddress, status, txHashes: status === 'success' ? [`0x${'7e'.repeat(32)}`] : [] })
+    },
+  }
+}
+
 /** In-memory API: edits stick for the session so the pages can be clicked through. */
 export function createFixtureApi(start: 'fresh' | 'ready' = 'ready'): FixtureApi {
   const world: World = {
     me: start === 'ready' ? ME : { userId: ME.userId, owner: OWNER, chains: [] },
+    status: start === 'ready' ? STATUS : FRESH_STATUS,
     connections: start === 'ready' ? CONNECTIONS : [],
     approval: APPROVAL,
     policyChanges: start === 'ready' ? POLICY_CHANGES : [],
+    deposits: new Map(),
   }
-  return { ...reads(world), ...writes(world), simulate: simulate(world) }
+  return { ...reads(world), ...writes(world), ...deposits(world), simulate: simulate(world) }
 }

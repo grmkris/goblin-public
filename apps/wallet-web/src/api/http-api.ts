@@ -84,6 +84,7 @@ const reads = (
   | 'connections'
   | 'oauthRequest'
   | 'policyChanges'
+  | 'depositStatus'
 > => ({
   me: () => call(OwnerRoutes.me),
   status: () => call(OwnerRoutes.status),
@@ -95,13 +96,14 @@ const reads = (
   connections: () => call(OwnerRoutes.connections),
   oauthRequest: (id) => call(OwnerRoutes.oauthRequest, { params: { id } }),
   policyChanges: () => call(OwnerRoutes.policyChanges),
+  depositStatus: (depositAddress) => call(OwnerRoutes.depositStatus, { params: { depositAddress } }),
 })
 
 const writes = (
   call: Call,
 ): Pick<
   WalletApi,
-  'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll' | 'decidePolicyChange'
+  'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll' | 'decidePolicyChange' | 'deposit'
 > => ({
   createAgent: () => call(OwnerRoutes.createAgent),
   setLimits: (limits) => call(OwnerRoutes.setLimits, { body: limits }),
@@ -110,6 +112,7 @@ const writes = (
   oauthDecide: (id, decision) => call(OwnerRoutes.oauthDecide, { params: { id }, body: { decision } }),
   decidePolicyChange: (id, decision) => call(OwnerRoutes.decidePolicyChange, { params: { id }, body: { decision } }),
   revokeAll: () => call(OwnerRoutes.revokeAll),
+  deposit: (request) => call(OwnerRoutes.deposit, { body: request }),
 })
 
 export function createHttpApi(getToken: () => Promise<string | null>): WalletApi {

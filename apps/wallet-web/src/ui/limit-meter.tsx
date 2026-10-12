@@ -1,4 +1,5 @@
 import { Meter } from '@goblin/ui'
+import { usdToMicros } from '@goblin/wallet/amounts'
 import { cn } from './cn.ts'
 import type { LimitView } from '@goblin/wallet/contract'
 import { Amount } from './amount.tsx'
@@ -6,8 +7,13 @@ import { ChainBadge } from './chain-badge.tsx'
 import { formatUsd, PERIOD_LABEL, timeUntil } from './format.ts'
 import { LAYERS, LayerBadge } from './layer.tsx'
 
-const used = (limit: LimitView): number => Number(limit.used ?? '0')
-const total = (limit: LimitView): number => Number(limit.limit)
+/** The share of the period used, in percent to one decimal, from integer micro-dollars. A tiny use stays tiny. */
+function shareUsed(limit: LimitView): number {
+  const total = usdToMicros(limit.limit)
+  if (total === 0n) return 0
+  const permille = (usdToMicros(limit.used ?? '0') * 1000n) / total
+  return permille >= 1000n ? 100 : Number(permille) / 10
+}
 
 /**
  * One limit: what is left (the largest figure), how much of the period is used, which layer enforces it and what that
@@ -15,7 +21,7 @@ const total = (limit: LimitView): number => Number(limit.limit)
  */
 export function LimitMeter({ limit, className }: { readonly limit: LimitView; readonly className?: string }) {
   const metered = limit.period !== 'call' && limit.used !== undefined
-  const share = metered && total(limit) > 0 ? Math.min(100, (used(limit) / total(limit)) * 100) : 0
+  const share = metered ? shareUsed(limit) : 0
   const nearly = share >= 90
   return (
     <section

@@ -33,7 +33,8 @@ export function Link({
   ...rest
 }: {
   readonly to: string
-  readonly children: ReactNode
+  /** Optional so a Button can render as a Link and pass its own children. */
+  readonly children?: ReactNode
   readonly className?: string
   readonly 'aria-current'?: 'page'
   readonly 'aria-label'?: string
