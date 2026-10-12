@@ -58,7 +58,7 @@ export interface TempoTransactionJson {
 
 /** The agent's signer plus Tempo transaction signing. Resolves with the signed, serialized transaction. */
 export interface TempoAgent extends AgentSigner {
-  signTempoTransaction(input: { operationKey: string; transaction: TempoTransactionJson }): Promise<Hex>
+  signTempoTransaction(input: { operationKey: string; transaction: TempoTransactionJson }): Promise<string>
 }
 
 export type TempoFailure = 'bad_challenge' | 'terms_changed' | 'above_cap' | 'unsafe_call' | 'sign_failed'
@@ -168,7 +168,9 @@ export const tempoAccount = (
       // SAFETY: mppx and viem hand a Tempo request here; assertCalls rejects anything that is not a USDC.e spend.
       const tx = transaction as ViemTempoTx
       assertCalls(tx.calls ?? [], allow)
-      return agent.signTempoTransaction({ operationKey: `${operationKey}:tempo`, transaction: toTransactionJson(tx) })
+      return toHex(
+        await agent.signTempoTransaction({ operationKey: `${operationKey}:tempo`, transaction: toTransactionJson(tx) }),
+      )
     },
   })
 
