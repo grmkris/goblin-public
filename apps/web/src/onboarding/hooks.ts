@@ -25,17 +25,19 @@ export type StartInputs = {
 }
 
 /**
- * Signed out, unable to check, or without a plan, the page's own gate takes over; a Start state that cannot be read
- * lets the owner in, since Start is help, not a lock. Otherwise the page waits until Start's state is known.
+ * Signed out or unable to check, the page's own gate takes over; a Start state that cannot be read lets the owner in,
+ * since Start is help, not a lock. An open Start comes first whether or not the owner has a plan yet; otherwise the
+ * page waits until the plan is known, and its own gate decides.
  */
 export const decideStart = ({ gated, session, billing, start }: StartInputs): StartDecision => {
   if (!gated) return SHOW
   if (session === 'checking') return WAIT
   if (session !== 'signed-in') return SHOW
-  if (billing.state === undefined && billing.error === '') return WAIT
-  if (billing.state?.active !== true) return SHOW
   if (start.data === undefined) return start.failed ? SHOW : WAIT
-  return start.data.status === 'open' ? { kind: 'start', step: start.data.step ?? 'welcome' } : SHOW
+  // Start comes first, plan or not: choosing goblin Pro is one of its steps (ADR 0054). Once it is done or skipped,
+  // the page's own gate sends an owner without a plan to subscribe.
+  if (start.data.status === 'open') return { kind: 'start', step: start.data.step ?? 'welcome' }
+  return billing.state === undefined && billing.error === '' ? WAIT : SHOW
 }
 
 /**

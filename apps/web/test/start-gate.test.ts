@@ -52,11 +52,26 @@ describe("the shell's Start decision (ADR 0048)", () => {
   it("leaves the page's own gate to sign in, report or subscribe, and lets the owner in when Start cannot be read", () => {
     expect(decideStart(inputs({ session: 'signed-out' }))).toEqual({ kind: 'show' })
     expect(decideStart(inputs({ session: 'unavailable' }))).toEqual({ kind: 'show' })
-    expect(decideStart(inputs({ billing: { state: undefined, error: 'failed · ref 1' } }))).toEqual({ kind: 'show' })
-    expect(decideStart(inputs({ billing: { state: { ...plan, active: false }, error: '' } }))).toEqual({
+    const done = { data: { status: 'done' as const }, failed: false }
+    expect(decideStart(inputs({ start: done, billing: { state: undefined, error: 'failed · ref 1' } }))).toEqual({
+      kind: 'show',
+    })
+    expect(decideStart(inputs({ start: done, billing: { state: { ...plan, active: false }, error: '' } }))).toEqual({
       kind: 'show',
     })
     expect(decideStart(inputs({ start: { data: undefined, failed: true } }))).toEqual({ kind: 'show' })
+  })
+
+  it('sends an owner without a plan to an open Start: choosing goblin Pro is one of its steps', () => {
+    const open = { data: { status: 'open' as const, step: 'wallet' as const }, failed: false }
+    expect(decideStart(inputs({ start: open, billing: { state: { ...plan, active: false }, error: '' } }))).toEqual({
+      kind: 'start',
+      step: 'wallet',
+    })
+    expect(decideStart(inputs({ start: open, billing: { state: undefined, error: '' } }))).toEqual({
+      kind: 'start',
+      step: 'wallet',
+    })
   })
 })
 
