@@ -20,6 +20,18 @@ export type Host = {
 let host: Host = { surface: 'inline', width: 0, height: 0 }
 const hostListeners = new Set<() => void>()
 
+/**
+ * The surface and the edges the host covers (a page's chat bar, the screen's safe areas), as the frame's stylesheet
+ * reads them: `data-surface` on the document and `--goblin-inset-*` in pixels. The view gets its room from them.
+ */
+function markFrame(surface: Host['surface'], context: NonNullable<ReturnType<App['getHostContext']>>): void {
+  const root = document.documentElement
+  root.dataset['surface'] = surface
+  const insets = context.safeAreaInsets
+  for (const edge of ['top', 'right', 'bottom', 'left'] as const)
+    root.style.setProperty(`--goblin-inset-${edge}`, `${Math.max(0, Math.round(insets?.[edge] ?? 0))}px`)
+}
+
 /** Presentation only: the host's current surface and fixed room grant no powers. */
 function acceptHost(context: ReturnType<App['getHostContext']>): void {
   if (context === undefined) return
@@ -29,6 +41,7 @@ function acceptHost(context: ReturnType<App['getHostContext']>): void {
     width: 'width' in dimensions ? dimensions.width : (dimensions.maxWidth ?? 0),
     height: 'height' in dimensions ? dimensions.height : (dimensions.maxHeight ?? 0),
   }
+  markFrame(host.surface, context)
   for (const listener of hostListeners) listener()
 }
 

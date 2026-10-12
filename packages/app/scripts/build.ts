@@ -109,7 +109,11 @@ for (const file of (await readdir(`${root}docs`)).toSorted())
   if (file.endsWith('.md')) docs[file.replace(/\.md$/u, '')] = await text(`${root}docs/${file}`)
 
 const frame: Record<string, string> = {
-  'ui.css': `${await compileCss(sheets, await componentWords())}\n${await text(`${packages}kit/src/kit.css`)}`,
+  'ui.css': [
+    await compileCss(sheets, await componentWords()),
+    await text(`${packages}kit/src/kit.css`),
+    await text(`${root}src/ui/frame.css`),
+  ].join('\n'),
 }
 for (const name of ['core', 'charts', 'maps', 'diagrams', 'icons']) {
   const bundle = await frameBundle(name)

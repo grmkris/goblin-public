@@ -1,0 +1,43 @@
+/*
+ * The frame around every agent app view (appended to the frame's ui.css after goblin's components and the kit). A view
+ * gets goblin's room without asking for it: centred, at most 48rem wide, 1rem in from the edges in the chat and 1.5rem
+ * on a page, clear of what the host covers (a page's chat bar, the screen's safe areas, `--goblin-inset-*` from
+ * `sdk.ts`). A view that pads its own root keeps its padding and the frame adds only the covered edges, so the two never
+ * add up. The spacing defaults sit in the components layer, under the view's own Tailwind classes, which always win.
+ */
+#root {
+  --frame-pad: 1rem;
+  box-sizing: border-box;
+  max-inline-size: 48rem;
+  margin-inline: auto;
+  padding-block: var(--frame-pad) calc(var(--frame-pad) + var(--goblin-inset-bottom, 0px));
+  padding-inline: calc(var(--frame-pad) + var(--goblin-inset-left, 0px))
+    calc(var(--frame-pad) + var(--goblin-inset-right, 0px));
+}
+:root[data-surface='page'] #root {
+  --frame-pad: 1.5rem;
+}
+#root:has(
+  > :is([class^='p-'], [class*=' p-'], [class^='px-'], [class*=' px-'], [class*=':p-'], [class*=':px-']):not(
+    [data-slot]
+  ),
+  > *
+    > :is([class^='p-'], [class*=' p-'], [class^='px-'], [class*=' px-'], [class*=':p-'], [class*=':px-']):not(
+      [data-slot]
+    )
+) {
+  --frame-pad: 0px;
+}
+/* A view that asks for the whole width (`max-w-none` on its root) gets it. */
+#root:has(> [class~='max-w-none']) {
+  max-inline-size: none;
+}
+@layer components {
+  /* A view's top-level blocks, spaced as goblin's pages space their sections, when the view does not space them. */
+  :where(#root > :not(.flex, .grid, .inline-flex, [class*='space-y-'])) > :where(* + *) {
+    margin-block-start: 1.5rem;
+  }
+  :where(#root > .flex-col:not([class*='gap-'])) {
+    gap: 1.5rem;
+  }
+}
