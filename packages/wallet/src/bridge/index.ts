@@ -19,6 +19,8 @@ import type { AgentRoute } from '../balances/transfer.ts'
 import { ARBITRUM, BASE, ETHEREUM, TEMPO, type Chain } from '../chains/index.ts'
 import type { ChainKey } from '../contract/index.ts'
 
+export * from './float.ts'
+
 /** Relay's depository: the same address on every chain Relay serves. */
 export const RELAY_DEPOSITORY = '0x4cd00e387622c35bddb9b4c962c136462338bc31'
 const API = 'https://api.relay.link'
