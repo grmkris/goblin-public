@@ -1,8 +1,8 @@
 {
   "name": "@goblin/wallet-worker",
   "version": "0.1.0",
-  "license": "MIT",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
