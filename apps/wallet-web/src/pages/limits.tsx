@@ -18,13 +18,15 @@ import type { Recipient, ServiceRule, WalletLimits } from '@goblin/wallet/contra
 import { useState } from 'react'
 import { useAddressBook, useLimits, useMe, useServices, useSetLimits } from '../api/queries.tsx'
 import { Async, errorText } from '../ui/async.tsx'
-import { AddressChip, Amount, ChainBadge, LAYERS, LimitMeter } from '../ui/index.ts'
+import { AddressChip, Amount, ChainBadge, LAYERS } from '../ui/index.ts'
+import { limitOrder } from '../views/overview-model.ts'
+import { LimitLine } from '../views/overview.tsx'
 import { EmptyState, Page, RowList, Section } from '../ui/page.tsx'
 import { checkLimits, type LimitDraft } from './limit-draft.ts'
 import { PolicyRequests } from './policy-requests.tsx'
 
 const FIELDS = [
-  ['perCall', 'Per call', 'The most one payment can be.'],
+  ['perCall', 'Per payment', 'The most one payment can be.'],
   ['perHour', 'Per hour', 'The most in any hour.'],
   ['perWeek', 'Per week', 'The most in any week.'],
 ] as const
@@ -117,6 +119,10 @@ function LedgerForm({ current }: { readonly current: WalletLimits }) {
   return (
     <Card>
       <CardContent>
+        <p className="mb-5 max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
+          These are the wallet ledger&apos;s limits: this wallet checks them before every payment. Saving them leaves
+          the on-chain allowance as you signed it; that changes only when you sign a new one.
+        </p>
         <form
           className="flex flex-col gap-5"
           onSubmit={(event) => {
@@ -125,17 +131,19 @@ function LedgerForm({ current }: { readonly current: WalletLimits }) {
           }}
         >
           <FieldGroup>
-            {FIELDS.map(([key, label, hint]) => (
-              <LimitField
-                key={key}
-                id={key}
-                label={label}
-                hint={hint}
-                value={draft[key]}
-                problem={problems.find((entry) => entry.field === key)?.message}
-                onChange={(value) => setDraft({ ...draft, [key]: value })}
-              />
-            ))}
+            <div className="grid gap-5 sm:grid-cols-3">
+              {FIELDS.map(([key, label, hint]) => (
+                <LimitField
+                  key={key}
+                  id={key}
+                  label={label}
+                  hint={hint}
+                  value={draft[key]}
+                  problem={problems.find((entry) => entry.field === key)?.message}
+                  onChange={(value) => setDraft({ ...draft, [key]: value })}
+                />
+              ))}
+            </div>
             <GrantField value={grant} expiresAt={current.expiresAt} onChange={setGrant} />
           </FieldGroup>
           {save.isError && (
@@ -154,10 +162,6 @@ function LedgerForm({ current }: { readonly current: WalletLimits }) {
               </span>
             )}
           </div>
-          <p className="text-xs/relaxed text-muted-foreground">
-            {LAYERS.ledger.name}: {LAYERS.ledger.promise} The on-chain allowance above only changes when you sign a new
-            one.
-          </p>
         </form>
       </CardContent>
     </Card>
@@ -206,19 +210,26 @@ export function LimitsPage() {
       <Section title="In force now">
         <Async query={limits} rows={2}>
           {(rows) => (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] gap-3">
-              {rows.map((limit) => (
-                <Card key={`${limit.layer}-${limit.period}-${limit.chain ?? ''}`}>
-                  <CardContent>
-                    <LimitMeter limit={limit} />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            // One line per limit, as Home lists them, so the limits you can change come into view; what each layer
+            // promises is said once below rather than under every limit.
+            <>
+              <RowList>
+                {rows.toSorted(limitOrder).map((limit) => (
+                  <LimitLine key={`${limit.layer}-${limit.period}-${limit.chain ?? ''}`} limit={limit} showChain />
+                ))}
+              </RowList>
+              <ul className="flex flex-col gap-1 text-xs/relaxed text-muted-foreground">
+                {[...new Set(rows.map((limit) => limit.layer))].map((layer) => (
+                  <li key={layer}>
+                    <span className="text-foreground">{LAYERS[layer].name}:</span> {LAYERS[layer].promise}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </Async>
       </Section>
-      <Section title="Wallet ledger limits">
+      <Section title="Wallet limits you can change">
         <Async query={me} rows={2}>
           {(data) =>
             data.limits === undefined ? (

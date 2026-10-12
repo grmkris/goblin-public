@@ -84,7 +84,7 @@ export const CHAIN_LABEL: Record<ChainKey, string> = {
 }
 
 export const PERIOD_LABEL = {
-  call: 'Per call',
+  call: 'Per payment',
   hour: 'Per hour',
   day: 'Per day',
   week: 'Per week',

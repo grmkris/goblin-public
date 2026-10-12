@@ -1,7 +1,7 @@
 // The overview's sections, shared by the dashboard App and the owner's Home. Each renders what the display model says;
 // the caller adds only what it alone can do: links and owner actions on Home, the host's refresh in the App.
 import { Badge, Button, Collapsible, CollapsibleContent, CollapsibleTrigger } from '@goblin/ui'
-import type { ChainKey, Operation } from '@goblin/wallet/contract'
+import type { ChainKey, LimitView, Operation } from '@goblin/wallet/contract'
 import { ChevronDown } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AddressChip, Amount, cn, formatUsd, LAYERS, PERIOD_LABEL, ReceiptRow, timeUntil } from '../ui/index.ts'
@@ -134,6 +134,41 @@ export function RecentWork({
   )
 }
 
+/** One limit on one line: its period and the layer that enforces it, what is left (or its cap) and when it resets. */
+export function LimitLine({
+  limit,
+  binding = false,
+  showChain = false,
+}: {
+  readonly limit: LimitView
+  readonly binding?: boolean
+  /** Name the limit's chain too, where the list is not already about one network. */
+  readonly showChain?: boolean
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-3">
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm font-medium">{PERIOD_LABEL[limit.period]}</span>
+        <span className="text-xs text-muted-foreground">
+          {LAYERS[limit.layer].name}
+          {showChain && limit.chain !== undefined && `, ${CHAIN_LABEL[limit.chain]}`}
+        </span>
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-1 text-end">
+        <span className="text-sm tabular-nums">{limitValue(limit)}</span>
+        {binding ? (
+          <Badge variant="secondary">Limiting now</Badge>
+        ) : (
+          limit.periodEndsAt !== undefined &&
+          limit.period !== 'call' && (
+            <span className="text-xs text-muted-foreground">resets {timeUntil(limit.periodEndsAt)}</span>
+          )
+        )}
+      </span>
+    </div>
+  )
+}
+
 /** The limits that apply on the summary's network, the one holding back the amount marked, and when access ends. */
 export function BoundaryList({
   boundaries,
@@ -150,26 +185,7 @@ export function BoundaryList({
     <Section title={`Limits on ${CHAIN_LABEL[chain]}`} action={action}>
       <RowList>
         {boundaries.map(({ limit, binding }) => (
-          <div
-            key={`${limit.layer}-${limit.period}-${limit.chain ?? ''}`}
-            className="flex items-start justify-between gap-3 py-3"
-          >
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-sm font-medium">{PERIOD_LABEL[limit.period]}</span>
-              <span className="text-xs text-muted-foreground">{LAYERS[limit.layer].name}</span>
-            </span>
-            <span className="flex shrink-0 flex-col items-end gap-1 text-end">
-              <span className="text-sm tabular-nums">{limitValue(limit)}</span>
-              {binding ? (
-                <Badge variant="secondary">Limiting now</Badge>
-              ) : (
-                limit.periodEndsAt !== undefined &&
-                limit.period !== 'call' && (
-                  <span className="text-xs text-muted-foreground">resets {timeUntil(limit.periodEndsAt)}</span>
-                )
-              )}
-            </span>
-          </div>
+          <LimitLine key={`${limit.layer}-${limit.period}-${limit.chain ?? ''}`} limit={limit} binding={binding} />
         ))}
         {boundaries.length === 0 && <p className="py-3 text-sm text-muted-foreground">No limits are reported here.</p>}
         {expiresAt !== undefined && (

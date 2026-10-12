@@ -18,7 +18,7 @@ export function AddressChip({
 }) {
   const text = <span className="tabular-nums">{shortAddress(address)}</span>
   return (
-    <span className={cn('inline-flex min-w-0 items-center gap-0.5 text-sm', className)}>
+    <span className={cn('inline-flex min-w-0 items-center gap-2 text-sm', className)}>
       {label !== undefined && <span className="me-1.5 truncate text-muted-foreground">{label}</span>}
       {chain === undefined ? (
         text

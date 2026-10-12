@@ -63,7 +63,7 @@ export function Shell({
             )
           })}
         </nav>
-        <div className="ms-auto flex min-w-0 items-center gap-1">
+        <div className="ms-auto flex min-w-0 items-center gap-3">
           <AddressChip address={owner} />
           <Button type="button" variant="ghost" size="icon" aria-label="Sign out" title="Sign out" onClick={onSignOut}>
             <LogOut aria-hidden />
