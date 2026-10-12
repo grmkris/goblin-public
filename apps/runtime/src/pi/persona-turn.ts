@@ -34,7 +34,7 @@ import type { RunProgram } from '../runtime/bridge.ts'
 import { withContext } from './context-tail.ts'
 import { authoredContent } from './content.ts'
 import { BACKGROUND, entryId } from './context.ts'
-import { MODEL_PROVIDER } from './model.ts'
+import { modelRef } from './model.ts'
 import { ConversationMissing, answerText } from './subagent-relay.ts'
 import { epochSeconds } from '../clock.ts'
 
@@ -308,7 +308,10 @@ const forkPhase: Phase<'fork'> = async (task, runtime, context) => {
     const selection = personaSelection(agent)
     if (selection.extensions !== undefined) agent.extensions = selection.extensions
     if (selection.tools !== undefined) agent.tools = selection.tools
-    if (persona.model !== undefined) agent.model = { provider: MODEL_PROVIDER, modelId: persona.model }
+    if (persona.model !== undefined) {
+      const ref = modelRef(persona.model)
+      agent.model = { provider: ref.provider, modelId: ref.id }
+    }
     await markPersona(tx, forked.id, personaText(persona))
     return { status: 'running', checkpoint: { phase: 'register', fork: forked.id } }
   }, context)

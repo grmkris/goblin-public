@@ -14,6 +14,11 @@ type Profile = ServerProfile & {
   readonly statusTool?: { readonly name: string; readonly read: (structured: unknown) => WalletStatus | undefined }
   /** Scopes asked for at sign-in beside those the resource offers, when its own list is too narrow for the work. */
   readonly scope?: readonly string[]
+  /**
+   * The tool that pays one MPP challenge for goblin's paid inference (ADR 0046): reached only by the `inference` caller,
+   * kept from the model by the server's App-only visibility.
+   */
+  readonly payment?: { readonly tool: string }
 }
 
 const Readiness = Schema.Literals(['ready', 'blocked', 'not_verified'])
@@ -197,6 +202,8 @@ const WALLET: Profile = {
       'wallet_home',
       'swap_quote',
       'bridge_quote',
+      // Paid inference's payments: within the wallet's own limits, and never visible to the model (ADR 0046).
+      'pay_challenge',
     ],
     ask: ['paid_fetch', 'transfer', 'swap_execute', 'bridge_execute', 'request_policy_change'],
   },
@@ -204,6 +211,7 @@ const WALLET: Profile = {
   app: { tool: 'wallet_open' },
   status: true,
   statusTool: { name: 'wallet_status', read: goblinWallet },
+  payment: { tool: 'pay_challenge' },
 }
 
 const PROFILES: readonly Profile[] = [MERCATOR, CLOUDFLARE, WALLET]
@@ -213,4 +221,10 @@ export const profileOf = (endpoint: string): Profile | undefined =>
   PROFILES.find((profile) => profile.endpoints.includes(endpoint))
 
 /** A profile as the owner's view carries it: everything but how goblin reads the server. */
-export const profileView = ({ endpoints: _, statusTool: __, scope: ___, ...view }: Profile): ServerProfile => view
+export const profileView = ({
+  endpoints: _,
+  statusTool: __,
+  scope: ___,
+  payment: ____,
+  ...view
+}: Profile): ServerProfile => view

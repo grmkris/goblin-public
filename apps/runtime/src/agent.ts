@@ -19,7 +19,8 @@ import { appsExtension, appExecutionExtension } from './pi/apps.ts'
 import { serversExtension } from './pi/servers.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { type AgentTelemetry, agentTelemetry } from './telemetry/agent.ts'
-import { LITELLM_STREAMS, makePiModels } from './pi/model.ts'
+import { LITELLM_STREAMS, type PayChallenge, makePiModels } from './pi/model.ts'
+import { payInferenceChallenge, paymentFailureText } from './mcp/inference-pay.ts'
 import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
 import { threadExtension } from './pi/thread.ts'
@@ -82,7 +83,12 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     runApplicationMigrations(ctx.storage)
     this.#bridge = makeBridge(() => this.#services(), { instrument })
     const { run, local: routineRun } = this.#bridge
-    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)))
+    // Paid inference pays each model call from the owner's Goblin Wallet (ADR 0046); a refusal ends the call in words.
+    const pay: PayChallenge = (request) =>
+      routineRun(payInferenceChallenge(request)).catch((error: unknown) => {
+        throw new Error(paymentFailureText(error))
+      })
+    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)), pay)
     const residentTools = residentMcpExtension(run)
     const tools = [residentTools, budgetExtension(routineRun)]
     this.#thread = threadExtension(run)

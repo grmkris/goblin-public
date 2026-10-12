@@ -2,7 +2,7 @@ import * as Effect from 'effect/Effect'
 import { epochSeconds } from './clock.ts'
 import { Chats } from './chats/service.ts'
 import { Models } from './models.ts'
-import { MODEL_PROVIDER } from './pi/model.ts'
+import { modelRef } from './pi/model.ts'
 import { PiSessions, fromPi } from './pi/sessions.ts'
 import { AgentInput } from './runtime/input.ts'
 
@@ -17,7 +17,7 @@ export const useModel = (pi: PiSessions['Service'], applied: Applied, session: s
   Effect.gen(function* () {
     const id = yield* (yield* Models).current
     if (applied.get(session) === id) return
-    yield* fromPi(pi.setModel(session, { provider: MODEL_PROVIDER, id }))
+    yield* fromPi(pi.setModel(session, modelRef(id)))
     applied.set(session, id)
   })
 

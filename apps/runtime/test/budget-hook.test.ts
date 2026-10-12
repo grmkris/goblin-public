@@ -5,12 +5,26 @@ import { Budget } from '../src/budget.ts'
 import { type AppError, BudgetExhausted, Internal, SubscriptionRequired } from '../src/http/errors.ts'
 import { BUDGET_BLOCKS, budgetVerdict } from '../src/pi/budget.ts'
 
-/** The hook's verdict when today's budget answers `today`. */
-const verdictOf = (today: Effect.Effect<UsageToday, AppError>) =>
+/**
+ * The hook's verdict when today's budget answers `today`, with `require` refusing a spent day as the budget does, or
+ * letting anything through for a model paid per call (`paid`, ADR 0046).
+ */
+const verdictOf = (today: Effect.Effect<UsageToday, AppError>, paid = false) =>
   budgetVerdict.pipe(
     Effect.provideService(
       Budget,
-      Budget.of({ today: () => today, record: () => Effect.void, require: () => Effect.void }),
+      Budget.of({
+        today: () => today,
+        record: () => Effect.void,
+        require: () =>
+          paid
+            ? Effect.void
+            : Effect.flatMap(today, (current) =>
+                current.used >= current.limit
+                  ? Effect.fail(new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt }))
+                  : Effect.void,
+              ),
+      }),
     ),
   )
 
@@ -22,6 +36,8 @@ describe('the budget hook before a tool (R1)', () => {
       expect(yield* verdictOf(Effect.succeed(day(1, 2)))).toBe('open')
       expect(yield* verdictOf(Effect.succeed(day(2, 2)))).toBe('exhausted')
       expect(yield* verdictOf(Effect.fail(new BudgetExhausted({ limit: 2, resetsAt: 86_400 })))).toBe('exhausted')
+      // A model paid per call from the owner's wallet is not held to the day's Credits.
+      expect(yield* verdictOf(Effect.succeed(day(2, 2)), true)).toBe('open')
     }),
   )
 

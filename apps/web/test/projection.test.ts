@@ -215,6 +215,17 @@ describe('Pi committed state projected for the chat', () => {
       },
     })
     expect(
+      assistant({
+        stopReason: 'error',
+        errorMessage: '402 Payment from your Goblin Wallet failed: connect your Goblin Wallet on Connections first.',
+      }),
+    ).toMatchObject({
+      failure: {
+        text: 'Payment from your Goblin Wallet failed: connect your Goblin Wallet on Connections first.',
+        provider: true,
+      },
+    })
+    expect(
       assistant({ stopReason: 'error', errorMessage: 'The conversation exceeds the context window: 900 tokens left' }),
     ).toMatchObject({ failure: { text: expect.stringContaining('too long for the model'), provider: false } })
     expect(assistant({ stopReason: 'stop', content: [{ type: 'text', text: 'Hi' }] })).not.toHaveProperty('failure')

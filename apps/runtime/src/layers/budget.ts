@@ -4,7 +4,7 @@ import { Entitlements } from '../billing/gates.ts'
 import { Budget, recordUse, usageLedger, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
 import { BudgetExhausted, attemptSync } from '../http/errors.ts'
-import { ModelChoiceStore, ModelPicker, Models, modelOptions } from '../models.ts'
+import { ModelChoiceStore, ModelPicker, Models, offeredModels, paidRoute } from '../models.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 
@@ -29,10 +29,14 @@ const sync = <Args extends readonly unknown[], A>(name: string, method: Method<A
 const BudgetLive: Layer.Layer<Budget, never, AgentInput | Db | Entitlements> = Layer.effect(
   Budget,
   Effect.gen(function* () {
-    const ledger = usageLedger(yield* Db)
+    const db = yield* Db
+    const ledger = usageLedger(db)
     const plans = yield* Entitlements
     const { env } = yield* AgentInput
     const rates = creditRates(env.MODEL_CREDIT_RATES)
+    // A model paid per call from the owner's wallet (ADR 0046) draws no Credits, so it is never held to them.
+    const picks = new ModelPicker(new ModelChoiceStore(db), offeredModels(env.MODELS, env.MODEL_ID, env.PAID_INFERENCE))
+    const paidPick = () => paidRoute(picks.current()) !== undefined
     const today = Effect.fn('Budget.today')(function* (now: number) {
       const { day, resetsAt } = utcDay(now)
       const { dailyCredits } = yield* plans.require()
@@ -45,6 +49,7 @@ const BudgetLive: Layer.Layer<Budget, never, AgentInput | Db | Entitlements> = L
         yield* Effect.sync(() => recordUse(ledger, rates, use, now, model))
       }),
       require: Effect.fn('Budget.require')(function* (now) {
+        if (yield* Effect.sync(paidPick)) return
         const current = yield* today(now)
         if (current.used >= current.limit)
           return yield* new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt })
@@ -58,7 +63,10 @@ const ModelsLive: Layer.Layer<Models, never, AgentInput | Db> = Layer.effect(
   Models,
   Effect.gen(function* () {
     const { env } = yield* AgentInput
-    const models = new ModelPicker(new ModelChoiceStore(yield* Db), modelOptions(env.MODELS, env.MODEL_ID))
+    const models = new ModelPicker(
+      new ModelChoiceStore(yield* Db),
+      offeredModels(env.MODELS, env.MODEL_ID, env.PAID_INFERENCE),
+    )
     return Models.of({
       current: sync('Models.current', models.current.bind(models))(),
       choice: sync('Models.choice', models.choice.bind(models))(),

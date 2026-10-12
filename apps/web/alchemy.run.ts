@@ -16,6 +16,9 @@ const modelEnv = {
   MODEL_KEY: Config.Redacted('GOBLIN_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
   MODEL_CREDIT_RATES: Config.String('GOBLIN_MODEL_CREDIT_RATES').pipe(Config.withDefault('')),
   MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
+  FREE_DAILY_CREDITS: Config.String('GOBLIN_FREE_DAILY_CREDITS').pipe(Config.withDefault('0')),
+  // Inference paid per call from the owner's Goblin Wallet (ADR 0046): `tempo`, `goblin`, or none.
+  PAID_INFERENCE: Config.String('GOBLIN_PAID_INFERENCE').pipe(Config.withDefault('')),
 }
 
 /** What the Website build reads: a change to any of them builds again. */
@@ -93,7 +96,6 @@ export default Alchemy.Stack(
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),
         SIGNUP_MODE: signupMode,
-        FREE_DAILY_CREDITS: yield* Config.String('GOBLIN_FREE_DAILY_CREDITS').pipe(Config.withDefault('0')),
         ...(mailSender === ''
           ? {}
           : {

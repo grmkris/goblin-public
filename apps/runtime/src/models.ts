@@ -55,6 +55,66 @@ export function modelOptions(models: string | undefined, defaultId: string): Mod
   return [optionOf(defaultId), ...others.map(optionOf)]
 }
 
+/**
+ * A route for inference paid per call from the owner's Goblin Wallet over MPP on Tempo (ADR 0046): the option's id, the
+ * Pi provider its calls go through, the model that route serves, and the model that stands in for it where goblin
+ * itself pays (routines, housekeeping).
+ */
+export type PaidRoute = {
+  readonly id: string
+  readonly provider: string
+  readonly model: string
+  readonly credits: string
+  readonly route: string
+}
+
+const PAID: Readonly<Record<string, Omit<PaidRoute, 'id'>>> = {
+  // Tempo's MPP proxy to OpenRouter: priced up front per call from max_tokens and the prompt, in USDC.e on Tempo.
+  'paid:tempo': {
+    provider: 'goblin-paid-tempo',
+    model: 'deepseek/deepseek-v4.1-flash',
+    credits: 'deepseek-v4.1-flash',
+    route: 'Tempo',
+  },
+  // goblin's own endpoint (`/v1/chat/completions`) behind the same MPP charge, paying the deployment's recipient.
+  'paid:goblin': {
+    provider: 'goblin-paid-goblin',
+    model: 'deepseek-v4.1-flash',
+    credits: 'deepseek-v4.1-flash',
+    route: 'goblin',
+  },
+}
+
+/** The paid route an option id names, if it is one. */
+export const paidRoute = (id: string): PaidRoute | undefined => {
+  const route = PAID[id]
+  return route === undefined ? undefined : { id, ...route }
+}
+
+/** The paid routes `PAID_INFERENCE` (comma-separated: `tempo`, `goblin`) offers. */
+export const paidRoutes = (value: string | undefined): readonly PaidRoute[] =>
+  [...new Set((value ?? '').split(',').map((name) => name.trim()))].flatMap((name) => {
+    const route = paidRoute(`paid:${name}`)
+    return route === undefined ? [] : [route]
+  })
+
+/** The model goblin pays for in place of `id`: a paid option's own model on goblin's provider, else `id` itself. */
+export const creditsModel = (id: string): string => paidRoute(id)?.credits ?? id
+
+/** What the owner can pick: the deployment's models, then its paid-per-call routes. */
+export function offeredModels(models: string | undefined, defaultId: string, paid: string | undefined): ModelOptions {
+  const [first, ...rest] = modelOptions(models, defaultId)
+  const routes = paidRoutes(paid).map((route): ModelOption => ({
+    id: route.id,
+    label: `DeepSeek V4.1 Flash · pay per call (${route.route})`,
+    route: route.route,
+    note: 'Paid per call from your Goblin Wallet',
+    images: false,
+    contextWindow: CONTEXT_WINDOW,
+  }))
+  return [first, ...rest, ...routes]
+}
+
 /** The model that names threads and writes main's memory: `GOBLIN_MEMORY_MODEL` when offered, else the default. */
 export function memoryModelId(memoryModel: string | undefined, options: ModelOptions): string {
   return options.find((option) => option.id === memoryModel)?.id ?? options[0].id
