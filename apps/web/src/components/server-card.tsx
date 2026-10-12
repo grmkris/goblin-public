@@ -21,6 +21,7 @@ import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
 import { AnotherConnection, RenameConnection } from './connection-forms.tsx'
 import { type Action, type Edit, RemoveConfirm, ServerMenu } from './server-menu.tsx'
+import { FirstClassPart } from './first-class.tsx'
 import { ToolGrants } from './tool-grants.tsx'
 
 /** The endpoint without its scheme, which is always https for an added server. */
@@ -92,6 +93,7 @@ function ServerBody({
   return (
     <CardContent>
       <div className="server-body">
+        {server.profile !== undefined && <FirstClassPart server={server} profile={server.profile} tools={tools} />}
         <ConnectionEvents server={server} />
         {settings && (
           <section className="server-part" aria-label="Settings">
@@ -170,14 +172,20 @@ function CardForms({
   readonly removing: boolean
   readonly onClose: () => void
 }) {
-  if (server.description === undefined && !removing && editing === undefined) return null
+  if (server.description === undefined && server.profile === undefined && !removing && editing === undefined)
+    return null
   return (
     <CardContent>
       <div className="server-body">
-        {server.description !== undefined && (
-          <p className="server-claim">
-            <span>The server says:</span> {server.description}
-          </p>
+        {/* A first-class server is described in goblin's own words (ADR 0043); any other only as it claims. */}
+        {server.profile === undefined ? (
+          server.description !== undefined && (
+            <p className="server-claim">
+              <span>The server says:</span> {server.description}
+            </p>
+          )
+        ) : (
+          <p className="server-note">{server.profile.description}</p>
         )}
         {removing && <RemoveConfirm server={server} onCancel={onClose} onMessage={onMessage} />}
         {editing === 'rename' && <RenameConnection server={server} onDone={onClose} onMessage={onMessage} />}

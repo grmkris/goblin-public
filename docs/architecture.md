@@ -606,7 +606,10 @@ label, endpoint binding, credentials, pending sign-ins and grants in one transac
 (`mcp/first-class.ts`, `ServerView.profile`): our title and words, the grants Allow recommended applies (free tools run
 when needed, paid ones ask first), a paid tool with the argument that holds its amount (ADR 0044), the tool that opens
 its own App, and a status tool whose answer goblin decodes with its own schema (`WalletStatus`, bounded, the server's
-claim). Mercator is the first. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
+claim). Mercator is the first. Its card puts goblin's words for it in place of the server's, lists it first, shows its
+wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that tool is allowed) and offers
+Allow recommended (`POST /api/mcp/:id/recommended`, `mcp/first-class-owner.ts`) until those grants are in place; a tool
+the server does not list now is skipped. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
 comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
 the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built
 in, then up to eight the owner adds (`app_mcp_registries`). A registry is

@@ -24,6 +24,7 @@ export const mcpKeys = {
   catalogs: ['mcp', 'catalog'] as const,
   catalog: (q: string | undefined): readonly ['mcp', 'catalog', string | undefined] => ['mcp', 'catalog', q],
   tools: (connectionId: string) => ['mcp', 'tools', connectionId] as const,
+  status: (connectionId: string) => ['mcp', 'status', connectionId] as const,
   events: (connectionId: string) => ['mcp', 'events', connectionId] as const,
 }
 
@@ -221,6 +222,36 @@ export const askFirstMutation = mutationOptions({
   onSuccess: (grants, { connectionId, name, enabled }, _result, { client }) =>
     grantsChanged(client, grants, connectionId, (tool) => (tool.name === name ? { ...tool, askFirst: enabled } : tool)),
 })
+
+/**
+ * A first-class server's recommended grants, applied in one go (ADR 0043): its free tools run when needed, its paid
+ * ones ask first. Its tools and status line are read again.
+ */
+export const allowRecommendedMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, connectionId: string) => api.mcp.allowRecommended({ params: { id: connectionId } }),
+  }),
+  onSuccess: (grants, connectionId, _result, { client }) => {
+    client.setQueryData(grantsQuery.queryKey, grants)
+    return Promise.all([
+      client.invalidateQueries({ queryKey: mcpKeys.tools(connectionId) }),
+      client.invalidateQueries({ queryKey: mcpKeys.status(connectionId) }),
+    ])
+  },
+})
+
+/** A first-class server's status line (its wallet), once it is connected; null until its status tool is allowed. */
+export const serverStatusQuery = (connectionId: string, connected: boolean) =>
+  queryOptions({
+    queryKey: mcpKeys.status(connectionId),
+    queryFn: connected
+      ? owner.apiQuery({
+          queryKey: mcpKeys.status(connectionId),
+          queryFn: (api) => api.mcp.serverStatus({ params: { id: connectionId } }),
+        }).queryFn
+      : skipToken,
+    staleTime: 60_000,
+  })
 
 /** Adds a registry to search, or removes one of the owner's; the answer is the list as it is now. */
 export const registryMutation = mutationOptions({

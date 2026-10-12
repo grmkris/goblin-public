@@ -18,6 +18,7 @@ import {
   ownerResource,
   setAskFirst,
 } from './approval-owner.ts'
+import { allowRecommended as allowRecommendedGrants, serverStatus as statusOf } from './first-class-owner.ts'
 import { urlRequestView } from './url-request.ts'
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
 import { Events, McpConnections, McpGrants, McpServers } from './service.ts'
@@ -106,6 +107,8 @@ const stepUp = endpoint('stepUp')(({ params, payload }) =>
     withFlow({ flow: 'step_up', via: 'app', actor: 'owner' }),
   ),
 )
+const allowRecommended = endpoint('allowRecommended')(({ params }) => allowRecommendedGrants(params.id))
+const serverStatus = endpoint('serverStatus')(({ params }) => statusOf(params.id))
 const disconnect = endpoint('disconnect')(({ params }) => disconnectOwnerServer(params.id))
 const removeServer = endpoint('removeServer')(({ params }) => removeOwnerServer(params.id))
 const callTool = endpoint('callTool')(({ params, headers, payload }) =>
@@ -133,9 +136,9 @@ const oauthCallback = ({ request }: { readonly request: HttpServerRequest.HttpSe
   })
 
 /**
- * The `mcp` group (ADRs 0003, 0005, 0006, 0008, 0028): each handler runs its program, behind owner admission. A
- * decided held call goes on to its conversation as the owner's message, composed into the decision rather than sent
- * through the agent's own `submit`.
+ * The `mcp` group (ADRs 0003, 0005, 0006, 0008, 0028, 0043): each handler runs its program, behind owner admission.
+ * A decided held call goes on to its conversation as an outcome, composed into the decision rather than sent through
+ * the agent's own `submit`.
  */
 export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
   handlers
@@ -162,6 +165,8 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       tools,
       connect,
       stepUp,
+      allowRecommended,
+      serverStatus,
       disconnect,
       removeServer,
       callTool,

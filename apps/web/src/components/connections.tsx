@@ -84,9 +84,13 @@ function NoServers({ onAdd }: { readonly onAdd: () => void }) {
 
 const SERVERS_NOTE = 'Your agent reaches another service only through a server here, and only with the tools you allow.'
 
-/** The connections in the order they came, those to one server side by side (ADR 0041). */
+/**
+ * The connections in the order they came, those to one server side by side (ADR 0041), and the servers goblin supports
+ * first-class first (ADR 0043).
+ */
 const byServer = (servers: readonly ServerView[]): readonly ServerView[] => {
-  const order = [...new Set(servers.map((server) => server.endpoint))]
+  const ranked = [...servers.filter((server) => server.profile), ...servers.filter((server) => !server.profile)]
+  const order = [...new Set(ranked.map((server) => server.endpoint))]
   return order.flatMap((endpoint) => servers.filter((server) => server.endpoint === endpoint))
 }
 
