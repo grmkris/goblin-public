@@ -21,8 +21,11 @@ const object = Schema.decodeUnknownSync(ObjectSchema)
 const objects = Schema.decodeUnknownSync(Schema.Array(ObjectSchema))
 const string = Schema.decodeUnknownSync(Schema.String)
 
-/** A read-only tool per known server, called only if the owner has already granted it. */
-const PROBES: Readonly<Record<string, string>> = { myplan: 'account_read', mybrowser: 'browser_backends' }
+/**
+ * A read-only tool per known server, by its endpoint's host, called only if the owner has already granted it: mysi's
+ * own summary of the apps it reaches (ADR 0052).
+ */
+const PROBES: Readonly<Record<string, string>> = { 'mysi.lol': 'access_read', 'dev.mysi.lol': 'access_read' }
 const REDIRECT_URI = 'http://127.0.0.1:9/callback'
 const DEV_MARKER = 'GOBLIN_DEV_OK'
 const MCP_MARKER = 'GOBLIN_MCP_OK'
@@ -168,11 +171,29 @@ class InboundClient {
   }
 }
 
-type ServerReport = { connectionId: string; status: string; tools?: number; granted?: number; probe?: string }
+type ServerReport = {
+  connectionId: string
+  status: string
+  tools?: number
+  granted?: number
+  probe?: string
+  /** The read-only tool probed, when it was. */
+  probeTool?: string
+}
+
+/** The probe for `endpoint`'s server, if it is one we know. */
+const probeOf = (endpoint: string): string | undefined => {
+  try {
+    return PROBES[new URL(endpoint).host]
+  } catch {
+    // expected: an endpoint the URL parser refuses is no server we probe
+    return undefined
+  }
+}
 
 async function serverReport(
   dev: DevClient,
-  server: { readonly connectionId: string; readonly status: string },
+  server: { readonly connectionId: string; readonly status: string; readonly endpoint: string },
 ): Promise<ServerReport> {
   const { connectionId } = server
   const report: ServerReport = { connectionId, status: server.status }
@@ -187,7 +208,7 @@ async function serverReport(
   if (tools === undefined) return { ...report, probe: 'unreachable' }
   report.tools = tools.length
   report.granted = tools.filter((tool) => tool.granted).length
-  const probe = PROBES[connectionId]
+  const probe = probeOf(server.endpoint)
   const granted = tools.some((tool) => tool.name === probe && tool.granted)
   if (probe === undefined || !granted) {
     report.probe = 'not-granted'
@@ -197,15 +218,20 @@ async function serverReport(
     api.mcp.callTool({ params: { id: connectionId }, headers: {}, payload: { name: probe, arguments: {} } }),
   )
   report.probe = result.isError === true ? 'error' : 'ok'
+  report.probeTool = probe
   return report
 }
 
-/** If the owner has granted the MyPlan probe, the agent must be able to call it through its resident authority. */
+/**
+ * If the owner has granted a probe (mysi's `access_read`), the agent must be able to call it through its resident
+ * authority; skipped when no connection proved one.
+ */
 async function residentToolTurn(client: InboundClient, servers: readonly ServerReport[]): Promise<'ok' | 'skipped'> {
-  if (!servers.some((server) => server.connectionId === 'myplan' && server.probe === 'ok')) return 'skipped'
+  const probed = servers.find((server) => server.probe === 'ok' && server.probeTool !== undefined)
+  if (probed?.probeTool === undefined) return 'skipped'
   const used = await client.ask(
-    `Call mcp_call exactly once with connectionId "myplan", name "${PROBES['myplan'] ?? ''}" and arguments {}. ` +
-      `After a successful result reply with exactly ${MCP_MARKER}; otherwise describe the failure.`,
+    `Call mcp_call exactly once with connectionId "${probed.connectionId}", name "${probed.probeTool}" and ` +
+      `arguments {}. After a successful result reply with exactly ${MCP_MARKER}; otherwise describe the failure.`,
   )
   if (used['status'] !== 'done' || used['text'] !== MCP_MARKER) throw new Error('resident_tool_turn_failed')
   return 'ok'
