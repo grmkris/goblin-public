@@ -22,6 +22,7 @@ import type { EventOffers, SettledOffer } from './events/offers.ts'
 import type { Labels } from './labels.ts'
 import { StoredOAuthProvider } from './oauth-provider.ts'
 import type { AddedRegistries } from './registries.ts'
+import { profileOf, profileView } from './first-class.ts'
 import { makeCatalog } from './registry.ts'
 import { offersEvents, offersSkills, toolAppResource, toolOffered } from './remote.ts'
 import { type AddedServer, type AddedServers, MAX_ADDED_SERVERS } from './servers.ts'
@@ -73,6 +74,7 @@ const viewOf = (
   const name = snapshot?.serverInfo?.name
   const events = snapshot !== undefined && offersEvents(snapshot)
   const offer = events ? (owner.offers?.settled(server.connectionId) ?? 'open') : undefined
+  const profile = profileOf(server.endpoint)
   return {
     connectionId: server.connectionId,
     label: owner.labels.of(server.connectionId) ?? server.connectionId,
@@ -87,6 +89,7 @@ const viewOf = (
     ...(claims?.title === undefined ? {} : { title: claims.title }),
     ...(claims?.description === undefined ? {} : { description: claims.description }),
     ...(claims?.icon === undefined ? {} : { icon: claims.icon }),
+    ...(profile === undefined ? {} : { profile: profileView(profile) }),
   }
 }
 

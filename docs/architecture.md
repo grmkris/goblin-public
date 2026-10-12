@@ -602,7 +602,11 @@ connection registers with its authorization server as `goblin · <label>`, so th
 standard "who am I", so goblin cannot show which account a sign-in reached. An added endpoint is a public https address
 (`mcp/endpoint.ts`), and its server card's title, description and icon are the server's own claims, for the owner's
 eyes only. Configured connections win on ID and cannot be removed. Removing an added connection forgets its row,
-label, endpoint binding, credentials, pending sign-ins and grants in one transaction. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
+label, endpoint binding, credentials, pending sign-ins and grants in one transaction. A server goblin supports **first-class** (ADR 0043) has goblin's own profile, matched by exact endpoint
+(`mcp/first-class.ts`, `ServerView.profile`): our title and words, the grants Allow recommended applies (free tools run
+when needed, paid ones ask first), a paid tool with the argument that holds its amount (ADR 0044), the tool that opens
+its own App, and a status tool whose answer goblin decodes with its own schema (`WalletStatus`, bounded, the server's
+claim). Mercator is the first. Connections also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
 comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
 the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built
 in, then up to eight the owner adds (`app_mcp_registries`). A registry is

@@ -184,6 +184,51 @@ export type EventStream = typeof EventStream.Type
  * An outbound MCP server as the owner sees it. `live`: a connection is open right now. `source`: the deployment
  * configured it, or the owner added it. `title`, `description` and `icon` are the server's own claims.
  */
+/**
+ * goblin's own profile of a server it supports first-class (ADR 0043), matched by endpoint, never by what the server
+ * says about itself: our title and words, the grants "Allow recommended" applies, a paid tool and the argument that
+ * holds its amount (ADR 0044), the tool that opens the server's own App, and whether it has a status line.
+ */
+export const ServerProfile = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  /** The tools that run when needed, and those that ask first, once the owner allows the recommended set. */
+  recommended: Schema.Struct({ run: Schema.Array(Schema.String), ask: Schema.Array(Schema.String) }),
+  spend: Schema.optional(
+    Schema.Struct({ tool: Schema.String, argument: Schema.String, currency: Schema.Literal('USD') }),
+  ),
+  app: Schema.optional(Schema.Struct({ tool: Schema.String })),
+  /** It has a status line (`GET /api/mcp/:id/status`). */
+  status: Schema.Boolean,
+})
+export type ServerProfile = typeof ServerProfile.Type
+
+const Readiness = Schema.Literals(['ready', 'blocked', 'not_verified'])
+const Short = Schema.String.check(Schema.isMaxLength(64))
+
+/**
+ * A first-class server's wallet as goblin reads it from the server's status tool (ADR 0043): whether paid work can run
+ * now and whether it is funded, each token's balance, what its signed limit has left and can spend now, when the
+ * limit's period ends and when the wallet's key expires. All of it is the server's claim, decoded by goblin and bounded.
+ */
+export const WalletStatus = Schema.Struct({
+  kind: Schema.Literal('wallet'),
+  paid: Readiness,
+  funding: Readiness,
+  tokens: Schema.Array(
+    Schema.Struct({
+      symbol: Short,
+      balance: Schema.optional(Short),
+      remaining: Schema.optional(Short),
+      spendable: Schema.optional(Short),
+    }),
+  ).check(Schema.isMaxLength(8)),
+  periodEndsAt: Schema.optional(Short),
+  expiresAt: Schema.optional(Short),
+})
+export type WalletStatus = typeof WalletStatus.Type
+
 export const ServerView = Schema.Struct({
   connectionId: Schema.String,
   /** The owner's name for this connection (ADR 0041). */
@@ -206,6 +251,8 @@ export const ServerView = Schema.Struct({
   eventHealth: Schema.optional(Schema.Array(EventHealth)),
   /** The owner uses this server's skills (procedures the agent follows). */
   skillsEnabled: Schema.optional(Schema.Boolean),
+  /** goblin's own profile, for a server it supports first-class (ADR 0043). */
+  profile: Schema.optional(ServerProfile),
 })
 export type ServerView = typeof ServerView.Type
 
