@@ -28,7 +28,7 @@ import {
 } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
-import { serverName, serverStatus } from '../lib/labels.ts'
+import { serverStatus } from '../lib/labels.ts'
 import { ConnectionEvents } from './connection-events.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
@@ -37,6 +37,12 @@ import { AnotherConnection, ChooseAccess, RenameConnection } from './connection-
 import { type Action, type Edit, RemoveConfirm, ServerMenu } from './server-menu.tsx'
 import { FirstClassAccess, FirstClassSummary } from './first-class.tsx'
 import { ToolGrants } from './tool-grants.tsx'
+
+/**
+ * What the server behind a connection is called, beside the owner's label: goblin's own name for a first-class server,
+ * else its card's title. Not the name it reports in `initialize`, which is an identifier (`coingecko_typescript_api`).
+ */
+const serverFrom = (server: ServerView): string | undefined => server.profile?.title ?? server.title
 
 /** The endpoint's host, which is what tells servers apart on a card; the whole endpoint is its title. */
 function endpointHost(endpoint: string): string {
@@ -237,26 +243,36 @@ function ServerHeading({
   readonly onEdit: (edit: Edit) => void
   readonly onRemove: () => void
 }) {
-  const from = serverName(server)
+  const from = serverFrom(server)
   const appTool = server.profile?.app?.tool ?? server.entrypoint
   const connected = server.status === 'connected'
+  const status = <StatusLabel label={serverStatus(server.status)} />
+  // Where it stands is said once: beside the actions on a wide card, on the quiet line under the name on a narrow one.
   return (
     <CardHeader>
       <CardTitle>
         <span className="server-title">
           <AppTile origin={server.connectionId} />
-          {server.label}
+          <span className="server-name">{server.label}</span>
         </span>
       </CardTitle>
       <CardDescription>
         <span className="server-from">
-          {from !== undefined && from !== server.label && <span>{from} ·</span>}
+          {status}
+          {from !== undefined && from !== server.label && (
+            <>
+              <span>{from}</span>
+              <span className="server-sep" aria-hidden="true">
+                ·
+              </span>
+            </>
+          )}
           <span title={server.endpoint}>{endpointHost(server.endpoint)}</span>
         </span>
       </CardDescription>
       <CardAction>
         <div className="server-actions">
-          <StatusLabel label={serverStatus(server.status)} />
+          {status}
           {connected && appTool !== undefined && (
             <Button
               size="sm"
