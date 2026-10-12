@@ -15,13 +15,16 @@ export type EventConsumerPorts = {
   }
 }
 
+/** The handler of the Telegram channel's subscriptions: what tells an event the channel already takes (ADR 0041). */
+export const TELEGRAM_INBOX = 'telegram-inbox'
+
 /** Installed static handlers never execute event text; Telegram pulls inbox, Skills persist invalidation. */
 export const installEventConsumers = (
   events: Pick<Events['Service'], 'register'>,
   ports: EventConsumerPorts,
 ): Effect.Effect<void> =>
   Effect.andThen(
-    events.register('telegram-inbox', ({ subscription, envelope }) =>
+    events.register(TELEGRAM_INBOX, ({ subscription, envelope }) =>
       Effect.gen(function* () {
         const status = yield* ports.channel
         if (status?.connectionId !== subscription.connectionId || status.transport !== 'events') return

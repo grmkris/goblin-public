@@ -15,6 +15,7 @@ import {
   subscribeEvents,
   unsubscribeEvents,
 } from './events/client.ts'
+import { TELEGRAM_INBOX } from './events/consumers.ts'
 import { type EventHandler, makeDispatcher } from './events/dispatcher.ts'
 import { receive } from './events/ingress.ts'
 import type { EventEnvelope, EventsPollResult } from './events/protocol.ts'
@@ -265,6 +266,9 @@ const reads = (engine: Engine) => ({
           status,
           refreshBefore,
           lastReceiptAt,
+          ...(store.bindings(id).some((binding) => binding.handlerKey === TELEGRAM_INBOX)
+            ? { telegram: true as const }
+            : {}),
         })),
     )
   }),

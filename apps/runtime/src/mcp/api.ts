@@ -11,6 +11,7 @@ import { withFlow } from '../observability/flows.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { setSkillEvents } from '../skills/events.ts'
 import { challengeScope } from './errors.ts'
+import { eventSuggestion } from './events/protocol.ts'
 import {
   answerOwnerUrlRequest,
   approvalView,
@@ -86,14 +87,18 @@ const setAppGrant = endpoint('setAppGrant')(({ payload }) =>
 const approval = endpoint('approval')(({ params }) => approvalView(params.id))
 /** The longest description of an event stream the owner reads; the rest of a server's claim is cut. */
 const EVENT_DESCRIPTION = 500
+/** Each stream with the server's suggestions for it (ADR 0041): claims that pre-select, never grant. */
 const events = endpoint('events')(({ params }) =>
   Events.use((offered) => offered.catalog(params.id)).pipe(
     Effect.map((descriptors) =>
-      descriptors.map(({ name, description, inputSchema, delivery }) => ({
-        name,
-        ...(description === undefined ? {} : { description: description.slice(0, EVENT_DESCRIPTION) }),
-        inputSchema,
-        subscribable: delivery.includes('poll') && delivery.includes('webhook'),
+      descriptors.map((descriptor) => ({
+        name: descriptor.name,
+        ...(descriptor.description === undefined
+          ? {}
+          : { description: descriptor.description.slice(0, EVENT_DESCRIPTION) }),
+        inputSchema: descriptor.inputSchema,
+        subscribable: descriptor.delivery.includes('poll') && descriptor.delivery.includes('webhook'),
+        ...eventSuggestion(descriptor),
       })),
     ),
   ),
