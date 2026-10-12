@@ -19,7 +19,7 @@ export function SignInPage() {
           <div className="flex flex-col gap-3">
             <Button type="button" size="lg" disabled={loading} onClick={auth.login}>
               {loading && <Spinner data-icon="inline-start" />}
-              Sign in with email or Google
+              Sign in with email or X
             </Button>
             <p className="text-xs/relaxed text-muted-foreground">
               We create an account for you on first sign-in. Nothing is spent until you give your agent an allowance.

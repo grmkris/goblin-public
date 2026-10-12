@@ -9,11 +9,11 @@ export interface Owner {
   readonly authenticated: boolean
   /** Privy's user id (`did:privy:…`). */
   readonly userId: string | undefined
-  /** The sign-in email (or the Google account's), for display. */
+  /** The sign-in email (or the Google account's), for display; none for an X sign-in. */
   readonly email: string | undefined
   /** The owner wallet: the embedded EVM wallet at index 0. Undefined until Privy has created it. */
   readonly address: Address | undefined
-  /** Opens Privy's sign-in (email code or Google). */
+  /** Opens Privy's sign-in (email code or X). */
   readonly login: () => void
   readonly logout: () => Promise<void>
   /** A current Privy access token for `authorization: Bearer …`; null when signed out. */

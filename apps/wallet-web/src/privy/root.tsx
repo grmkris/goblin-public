@@ -37,7 +37,7 @@ const OWNER_CHAINS: readonly Chain[] = [BASE, ARBITRUM, ETHEREUM, BASE_SEPOLIA, 
 const prefersDark = (): boolean => window.matchMedia('(prefers-color-scheme: dark)').matches
 
 /**
- * Privy for the whole app: whatever sign-in methods the Privy dashboard enables (email codes, Google), and an EVM
+ * Privy for the whole app: whatever sign-in methods the Privy dashboard enables (email codes, X), and an EVM
  * embedded wallet created at the first sign-in, which becomes the owner wallet. The children wait for the app id; a
  * failed config load says so instead of showing a sign-in that cannot work.
  */
