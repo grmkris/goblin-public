@@ -135,6 +135,11 @@ const FEATURE_COPY = {
   },
 } as const satisfies Record<typeof PlanFeature.Type, { readonly message: string; readonly recovery: string }>
 
+/** What an `UpstreamMcp` says when the server was not reached at all (a network failure, a timeout): try again. */
+const UNREACHED_COPY = { message: 'The MCP server could not be reached. Try again in a minute.' } as const
+const unreached = (error: AppError | typeof AppError.Encoded): boolean =>
+  Predicate.isTagged(error, 'UpstreamMcp') && (error.reason === 'transport' || error.reason === 'timeout')
+
 /** `Tag` in lower_snake_case, as `codeOf` spells it; any string for a tag the type does not know. */
 type SnakeCase<Tag extends string, Done extends string = ''> = string extends Tag
   ? string
@@ -203,14 +208,16 @@ const TAG_OF_CODE: ReadonlyMap<string, string> = new Map(Object.keys(ERROR_COPY)
 
 /**
  * A failure's fixed copy, as the API answers it and the web shows it: its tag's, or, for a feature the plan leaves out,
- * that feature's.
+ * that feature's, or for an MCP server that was not reached, that it was not.
  */
 export const failureCopy = (
   error: AppError | typeof AppError.Encoded,
 ): { readonly message: string; readonly recovery?: string } =>
   Predicate.isTagged(error, 'SubscriptionRequired') && error.feature !== undefined
     ? FEATURE_COPY[error.feature]
-    : ERROR_COPY[error._tag]
+    : unreached(error)
+      ? UNREACHED_COPY
+      : ERROR_COPY[error._tag]
 
 /** The envelope body of an encoded failure: its code and fixed copy, then its own safe fields. */
 const toWire = (encoded: typeof AppError.Encoded): ErrorEnvelope => {

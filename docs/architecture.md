@@ -749,7 +749,8 @@ its registry, name and version. The owner connects each server from the Connecti
 1. `POST /api/mcp/:id/connect` first tries without sign-in. If needed, it runs the MCP SDK's `auth()` with our
    `StoredOAuthProvider`: discovery, dynamic client registration, PKCE. Only a flow needing consent returns a remote
    authorization URL; otherwise it returns `{}`. A server the open try cannot reach answers that transport failure;
-   no sign-in starts for it.
+   no sign-in starts for it, and its credentials are put back as they were (one never connected stays not connected,
+   not `needs_auth`).
 2. The remote server redirects to `/api/mcp/oauth/callback`. The pending state is single-use and expires after an
    hour (the wallet's consent includes its setup and funding); the code is exchanged and the tokens stored.
 3. Client registration and tokens are AES-GCM encrypted at rest (`GOBLIN_CREDENTIAL_KEY`, bound to server ID and

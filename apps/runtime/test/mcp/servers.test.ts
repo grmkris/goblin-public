@@ -137,4 +137,33 @@ describe('servers that need no sign-in', () => {
       await dispose()
     }
   })
+
+  it('is not connected, rather than waiting for sign-in, after its first connect cannot reach it', async () => {
+    const credentials = new MemoryCredentials()
+    const grants = new MemoryGrants()
+    let down = true
+    const { servers: mcp, dispose } = hostOf({
+      servers: [],
+      credentials,
+      grants,
+      fetch: async (input, init) => {
+        const { pathname } = new URL(new Request(input, init).url)
+        if (down && pathname === '/mcp') throw new TypeError('fetch failed')
+        return openFetch(input, init)
+      },
+      added: new MemoryAddedServers(credentials, grants),
+      random: () => 'abc123',
+    })
+    try {
+      const { connectionId } = await mcp.add('https://docs.example.com/mcp')
+      await expect(mcp.beginConnect(connectionId)).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport' })
+      expect((await mcp.list())[0]?.status).toBe('disconnected')
+      down = false
+      expect(await mcp.beginConnect(connectionId)).toEqual({})
+      expect((await mcp.list())[0]?.status).toBe('connected')
+      expect((await mcp.tools(connectionId, false)).map((tool) => tool.name)).toEqual(['search'])
+    } finally {
+      await dispose()
+    }
+  })
 })

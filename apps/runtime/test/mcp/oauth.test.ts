@@ -309,12 +309,32 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
     }
   })
 
-  it('starts no sign-in for a server it cannot reach', async () => {
-    const { servers, authorizationServer, status, dispose } = setup()
+  it('starts no sign-in for a server it cannot reach, and leaves the connection as it was', async () => {
+    const { servers, authorizationServer, credentials, connect, status, dispose } = setup()
+    const unreached = () =>
+      expect(servers.beginConnect('fixture')).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport' })
     try {
       authorizationServer.unreachable.add('/mcp')
-      await expect(servers.beginConnect('fixture')).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'transport' })
-      expect(await status()).not.toBe('connected')
+      await unreached()
+      // Never connected, so still not connected: the owner is offered Connect, not "Sign in again".
+      expect(await status()).toBe('disconnected')
+      expect(authorizationServer.registered).toEqual([])
+      authorizationServer.unreachable.clear()
+      await connect()
+      const signedIn = await credentials.tokens('fixture')
+      const expiresAt = credentials.tokenExpiresAt('fixture')
+      authorizationServer.unreachable.add('/mcp')
+      await unreached()
+      // Signed in: the tokens the open try wrote over are back, with their expiry.
+      expect(await status()).toBe('connected')
+      expect(await credentials.tokens('fixture')).toMatchObject({
+        access_token: signedIn?.access_token,
+        refresh_token: signedIn?.refresh_token,
+      })
+      expect(credentials.tokenExpiresAt('fixture')).toBe(expiresAt)
+      credentials.markNeedsAuth('fixture')
+      await unreached()
+      expect(await status()).toBe('needs_auth')
     } finally {
       await dispose()
     }

@@ -1,4 +1,10 @@
-import { auth, computeScopeUnion, discoverOAuthServerInfo, type Tool } from '@modelcontextprotocol/client'
+import {
+  auth,
+  computeScopeUnion,
+  discoverOAuthServerInfo,
+  type StoredOAuthTokens,
+  type Tool,
+} from '@modelcontextprotocol/client'
 import type { ServerSource, ServerView, ToolView } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
@@ -15,7 +21,7 @@ import {
 } from '../http/errors.ts'
 import { OPEN_ACCESS } from './auth.ts'
 import type { McpManager } from './connections.ts'
-import type { Credentials } from './credentials.ts'
+import type { ConnectionStatus, Credentials } from './credentials.ts'
 import { addedConnectionId, serverClaims, userEndpoint } from './endpoint.ts'
 import type { Grants } from './grants.ts'
 import type { EventOffers, SettledOffer } from './events/offers.ts'
@@ -171,28 +177,65 @@ const removeServer = (owner: OwnerServers, connectionId: string) =>
     yield* Effect.sync(() => owner.offers?.remove(connectionId))
   })
 
+/** A connection's credentials as they stood before an open try wrote over them. */
+type Held = {
+  readonly status: ConnectionStatus
+  readonly tokens: StoredOAuthTokens | undefined
+  readonly expiresAt: number | undefined
+}
+
+const heldOf = (credentials: Credentials, connectionId: string) =>
+  attempt(async (): Promise<Held> => ({
+    status: credentials.status(connectionId),
+    tokens: await credentials.tokens(connectionId),
+    expiresAt: credentials.tokenExpiresAt(connectionId),
+  }))
+
+/**
+ * Puts a connection's credentials back as they were before an open try that reached nothing: the try learned nothing
+ * about the server. One never connected is not connected again (Connect, not "Sign in again"), one that needed sign-in
+ * still does, and tokens it held keep their expiry.
+ */
+const putBack = (credentials: Credentials, connectionId: string, held: Held) =>
+  Effect.flatMap(epochSeconds, (now) =>
+    attempt(async () => {
+      // No record before the try, so no client registration or pending sign-in either: only the try's own is dropped.
+      if (held.status === 'disconnected') return credentials.remove(connectionId)
+      if (held.tokens === undefined) return credentials.invalidate(connectionId, 'tokens', now)
+      const { expiresAt, tokens } = held
+      await credentials.saveTokens(
+        connectionId,
+        expiresAt === undefined ? tokens : { ...tokens, expires_in: expiresAt - now },
+        now,
+      )
+      if (held.status === 'needs_auth') credentials.markNeedsAuth(connectionId, now)
+    }),
+  )
+
 /**
  * Many servers need no sign-in (public documentation servers, for example), some only offer it. Try the server with
  * an empty token, which the transport leaves out: if it answers discovery, it is connected. If it refuses, the OAuth
- * flow runs. A server that cannot be reached is that failure: no sign-in is started for it. A server that later
- * demands sign-in is marked needs_auth by the refused refresh, as any other.
+ * flow runs. A server that cannot be reached is that failure: no sign-in is started for it, and its credentials are
+ * put back as they were, so a timeout or a network failure never makes a server look as if it wanted sign-in. A
+ * server that later demands sign-in is marked needs_auth by the refused refresh, as any other.
  */
 const connectsOpenly = (owner: OwnerServers, connectionId: string) =>
   Effect.gen(function* () {
     const { credentials, manager } = owner
+    const held = yield* heldOf(credentials, connectionId)
     const now = yield* epochSeconds
     yield* attempt(() => credentials.saveTokens(connectionId, OPEN_ACCESS, now))
     const refused = Effect.andThen(
       manager.close(connectionId),
       Effect.flatMap(epochSeconds, (later) => Effect.sync(() => credentials.invalidate(connectionId, 'tokens', later))),
     )
+    const unreached = Effect.andThen(manager.close(connectionId), putBack(credentials, connectionId, held))
     return yield* manager.connect(connectionId).pipe(
       Effect.as(true),
       Effect.catch((error) =>
-        Effect.andThen(
-          refused,
-          error instanceof UpstreamMcp && UNREACHABLE.has(error.reason) ? Effect.fail(error) : Effect.succeed(false),
-        ),
+        error instanceof UpstreamMcp && UNREACHABLE.has(error.reason)
+          ? Effect.andThen(unreached, Effect.fail(error))
+          : Effect.andThen(refused, Effect.succeed(false)),
       ),
     )
   })

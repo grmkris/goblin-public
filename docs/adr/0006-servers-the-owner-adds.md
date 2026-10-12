@@ -34,6 +34,7 @@ rather than failing silently. Registry entries are labelled by registry and stat
 a pasted URL.
 
 Amended 2026-10-09: Connect starts no sign-in for a server its open try cannot reach (transport, timeout, cancelled);
-it answers that failure. A registry that is not reached fails as `UpstreamMcp` transport and one that answers anything
+it answers that failure. Amended 2026-10-13: such a try also leaves the connection's credentials as they were, so a
+server never connected stays not connected (Connect, "could not be reached, try again") instead of `needs_auth`. A registry that is not reached fails as `UpstreamMcp` transport and one that answers anything
 but the registry API as `not_a_registry`; a search over a registry that failed is logged and flagged partial, and the
 partial answer is not cached. Each registry gets eight seconds.

@@ -18,7 +18,6 @@ import {
   type AppError,
   BudgetExhausted,
   Conflict,
-  ERROR_COPY,
   Forbidden,
   GrantDenied,
   Internal,
@@ -33,6 +32,7 @@ import {
   UpstreamMcp,
   codeOf,
   envelopeOf,
+  failureCopy,
   statusOf,
 } from './errors.ts'
 
@@ -98,7 +98,7 @@ describe('the API error envelope', () => {
       expect(statusOf(error)).toBe(status)
       const body: unknown = await response.json()
       expect(body).toEqual(envelopeOf(error))
-      expect(body).toMatchObject({ error: { code: codeOf(error._tag), message: ERROR_COPY[error._tag].message } })
+      expect(body).toMatchObject({ error: { code: codeOf(error._tag), message: failureCopy(error).message } })
       expect(await Effect.runPromise(Effect.flip(call(index)))).toEqual(error)
     },
   )
@@ -146,6 +146,16 @@ describe('the API error envelope', () => {
       },
     })
     expect(Schema.decodeUnknownSync(ApiErrors.subscriptionRequired)(envelopeOf(handOver))).toEqual(handOver)
+  })
+
+  it('says an MCP server that was not reached could not be, and to try again', () => {
+    for (const reason of ['transport', 'timeout'] as const)
+      expect(envelopeOf(new UpstreamMcp({ connectionId: 'kiwi', reason })).error.message).toBe(
+        'The MCP server could not be reached. Try again in a minute.',
+      )
+    expect(envelopeOf(new UpstreamMcp({ connectionId: 'kiwi', reason: 'cancelled' })).error.message).toBe(
+      'The MCP server did not respond as expected.',
+    )
   })
 
   it('refuses a body whose code another status answers', () => {
