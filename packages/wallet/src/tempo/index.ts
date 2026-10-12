@@ -346,7 +346,8 @@ export const payMpp = async (input: PayMppInput): Promise<MppPaid> => {
   }
   const paid = paymentOf(response, now())
   if (paid !== undefined) return { outcome: 'settled', payment: paid, response }
-  return { outcome: response.status === 402 ? 'unsettled' : 'unknown', payment: undefined, response }
+  // The signed credential is out: a 402 or any answer without a receipt cannot revoke it, so it is never `unsettled`.
+  return { outcome: 'unknown', payment: undefined, response }
 }
 
 export interface TempoTransferInput {

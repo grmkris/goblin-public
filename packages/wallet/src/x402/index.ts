@@ -190,7 +190,10 @@ export interface PayX402Input {
 export type X402Outcome = 'settled' | 'unsettled' | 'unknown'
 
 export interface X402Paid {
-  /** `settled`: the server confirmed settlement. `unknown`: money may have moved; reconcile, never retry blind. */
+  /**
+   * `settled`: the server confirmed settlement. `unknown`: the credential left the wallet, so money may have moved
+   * whatever the answer (even a 402); reconcile, never retry blind. `unsettled`: no credential was ever sent.
+   */
   readonly outcome: X402Outcome
   readonly payment: Payment | undefined
   readonly response: Response
@@ -281,5 +284,6 @@ export const payX402 = async (input: PayX402Input): Promise<X402Paid> => {
   }
   const payment = paymentOf(response, now())
   if (payment !== undefined) return { outcome: 'settled', payment, response }
-  return { outcome: response.status === 402 ? 'unsettled' : 'unknown', payment: undefined, response }
+  // The authorization is out: a 402 or any answer without a receipt cannot revoke it, so it is never `unsettled`.
+  return { outcome: 'unknown', payment: undefined, response }
 }

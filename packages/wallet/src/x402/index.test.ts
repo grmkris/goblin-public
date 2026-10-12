@@ -205,7 +205,7 @@ describe('x402 payment', () => {
     expect(signed).toHaveLength(0)
   })
 
-  test('a transport failure after signing is unknown, a 402 again is unsettled, a 500 without receipt is unknown', async () => {
+  test('a transport failure after signing is unknown, a 402 again is unknown too (the credential is out), a 500 without receipt is unknown', async () => {
     const quote = await quoteOf()
     const run = async (answer: () => Response) =>
       payX402({
@@ -220,7 +220,7 @@ describe('x402 payment', () => {
     expect(
       (await run(() => new Response('', { status: 402, headers: { 'payment-required': EXA_PAYMENT_REQUIRED } })))
         .outcome,
-    ).toBe('unsettled')
+    ).toBe('unknown')
     const lost = await payX402({
       request,
       terms: quote.terms,

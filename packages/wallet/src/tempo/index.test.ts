@@ -208,6 +208,21 @@ describe('MPP payment', () => {
     expect(signed).toHaveLength(0)
   })
 
+  test('a 402 after the credential is unknown, never unsettled: the service may still redeem it', async () => {
+    const { agent } = fakeAgent()
+    const fn = async () => new Response('{}', { status: 402, headers: { 'www-authenticate': challengeHeader() } })
+    const paid = await payMpp({
+      request: REQUEST,
+      terms: TERMS,
+      maxUsd: '0.05',
+      agent,
+      operationKey: 'op-mpp-0004',
+      fetchFn: fn,
+      client: fakeNode().client,
+    })
+    expect(paid.outcome).toBe('unknown')
+  })
+
   test('a transport failure after the credential is unknown', async () => {
     const { agent } = fakeAgent()
     const fn = async (_input: string | URL | Request, init?: RequestInit) => {
