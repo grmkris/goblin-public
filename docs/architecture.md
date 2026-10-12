@@ -567,7 +567,8 @@ their versions, members and last errors; the skills on offer) goes into one trai
 never stores it, so everything before it stays a cacheable prefix. The `mcp_list` and `mcp_call` tools
 (`pi/resident-mcp.ts`) are how the model reaches the owner's MCP servers; both require current resident authority, and
 `mcp_call` is marked unsafe to replay. `mcp_list` lists the connections with the owner's labels (two accounts of one
-server are told apart by them; ADR 0041). A connection's tools come in brief, since the result stays in the model's
+server are told apart by them; ADR 0041), connected ones first, each first-class server also under goblin's own name
+for it (`server`, ADR 0043), so a configured connection never signed in does not win over the one the owner connected. A connection's tools come in brief, since the result stays in the model's
 context and is paid for again on every later call: each tool's name, its description cut to one line of 160
 characters, and only the flags that differ (`granted: false`, `askFirst: true`, a paid tool's `spending`), with no
 schemas. The tools the model names in `tools` come in full, with their input schemas (the server's, untrusted data),
@@ -689,7 +690,8 @@ Connections come from `GOBLIN_MCP_SERVERS` (JSON: `connectionId`, `endpoint`, op
 address and a connection the owner's account on it (ADR 0041): the owner may connect one server several times, each
 connection with its own id, sign-in, grants, skills switch and Events. Every connection has the owner's **label**
 (`app_mcp_labels`, `mcp/labels.ts`), one line of at most eighty characters, unique whatever its case: given when it is
-added (`AddServer.label`), else the first free name from its server card's title (`Example`, `Example 2`), or the
+added (`AddServer.label`), else the first free name from goblin's own name for a first-class server (`Goblin Wallet
+2`), else its server card's title (`Example`, `Example 2`), else its host, or the
 configured `label` (else its id) for a configured one, set once at start; `PATCH /api/mcp/:id` renames it. Every
 connection registers with its authorization server as plain `goblin` (ADR 0048: a consent screen names the app, not
 goblin's own label); MCP has no standard "who am I", so goblin cannot show which account a sign-in reached. An added endpoint is a public https address

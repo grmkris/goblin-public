@@ -140,7 +140,8 @@ const views = (owner: OwnerServers) =>
 
 /**
  * Adds a connection to a public https endpoint, one the owner may already have a connection to (ADR 0041). It is
- * named `label`, refused when another connection holds it, or else the first free name from its server card's title.
+ * named `label`, refused when another connection holds it, or else the first free name from goblin's own name for a
+ * first-class server (ADR 0043), else its server card's title, else its host.
  * It starts disconnected; the owner connects it as any other. `source` records the registry entry it came from.
  */
 const addServer = (owner: OwnerServers, raw: string, label: string | undefined, source: ServerSource | undefined) =>
@@ -156,7 +157,8 @@ const addServer = (owner: OwnerServers, raw: string, label: string | undefined, 
     const now = yield* epochSeconds
     yield* attemptSync(() => {
       added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, now)
-      labels.set(server.connectionId, label ?? labels.free(claims.title ?? endpoint.hostname))
+      const named = profileOf(server.endpoint)?.title ?? claims.title ?? endpoint.hostname
+      labels.set(server.connectionId, label ?? labels.free(named))
     })
     yield* manager.add(server)
     const view = (yield* views(owner)).find((item) => item.connectionId === server.connectionId)

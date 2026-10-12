@@ -1,4 +1,4 @@
-import { EVERYTHING, type TopicSetup } from '@goblin/contracts'
+import { EVERYTHING, type ServerView, type TopicSetup } from '@goblin/contracts'
 import { createMcpHandler } from '@modelcontextprotocol/server'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -7,10 +7,11 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { type AppError, UpstreamMcp } from '../src/http/errors.ts'
 import { EVENTS_EXTENSION } from '../src/mcp/events/protocol.ts'
+import { profileOf, profileView } from '../src/mcp/first-class.ts'
 import { mcpHost } from '../src/mcp/host.ts'
 import { type SetupScope, type Exclusion, scopeOf, topicScope } from '../src/setup/scope.ts'
 import { Setups } from '../src/setup/service.ts'
-import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
+import { listedServers, residentMcpExtension } from '../src/pi/resident-mcp.ts'
 import { Events, Resident, Spending, UrlRequests } from '../src/mcp/service.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
 import { McpUrlRequestStore } from '../src/mcp/url-requests.ts'
@@ -385,6 +386,37 @@ describe('mcp_list by service, for a gateway of many apps (unit)', () => {
   })
   it("still lists a large server's tools when their names fall into no services", async () => {
     expect(toolsOf(await listed({ connectionId: 'jobs' }, 7))).toHaveLength(JOBS.length)
+  })
+})
+
+describe('how mcp_list names the connections (unit)', () => {
+  it("puts connected ones first and gives a first-class server goblin's own name, whatever its label", () => {
+    const wallet = profileOf('https://wallet-dev.goblin.surf/mcp')
+    const view = (connectionId: string, label: string, status: ServerView['status'], first = false): ServerView => ({
+      connectionId,
+      label,
+      endpoint: 'https://wallet-dev.goblin.surf/mcp',
+      status,
+      live: false,
+      source: 'config',
+      ...(first && wallet !== undefined ? { profile: profileView(wallet) } : {}),
+    })
+    expect(
+      listedServers([
+        view('wallet', 'Goblin Wallet', 'disconnected', true),
+        view('notes', 'Notes', 'needs_auth'),
+        view('wallet-dev-goblin-surf-f460a8', 'wallet-dev.goblin.surf', 'connected', true),
+      ]),
+    ).toEqual([
+      {
+        connectionId: 'wallet-dev-goblin-surf-f460a8',
+        label: 'wallet-dev.goblin.surf',
+        server: 'Goblin Wallet',
+        status: 'connected',
+      },
+      { connectionId: 'notes', label: 'Notes', status: 'needs_auth' },
+      { connectionId: 'wallet', label: 'Goblin Wallet', server: 'Goblin Wallet', status: 'disconnected' },
+    ])
   })
 })
 
