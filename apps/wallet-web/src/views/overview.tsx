@@ -11,11 +11,9 @@ import { usdOf } from './money.ts'
 import { assetOn, blockerText, constraintText, limitValue } from './overview-copy.ts'
 import type { AssetRow, Attention, Boundary, Holding, NetworkBalances, Spending } from './overview-model.ts'
 
-function AvailableFigure({ spending }: { readonly spending: Spending }) {
-  const { available } = spending
-  if (!available.known)
-    return <span className="text-4xl leading-none font-semibold tracking-tight text-muted-foreground">Unknown</span>
-  const usd = usdOf(available.micros)
+/** The amount, when it was read. An amount that was not is never a hero figure: the sentence below says why. */
+function AvailableFigure({ micros }: { readonly micros: bigint }) {
+  const usd = usdOf(micros)
   return (
     <span className="flex flex-col gap-1">
       <Amount usd={usd} size="hero" compact />
@@ -37,10 +35,12 @@ export function SpendingSummary({ spending, action }: { readonly spending: Spend
     >
       <div className="flex flex-col gap-2">
         <h2 className="text-sm text-muted-foreground">Your agent can spend now</h2>
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-          <AvailableFigure spending={spending} />
-          <span className="pt-2 text-base font-medium text-muted-foreground">{assetOn(spending)}</span>
-        </div>
+        {spending.available.known && (
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+            <AvailableFigure micros={spending.available.micros} />
+            <span className="pt-2 text-base font-medium text-muted-foreground">{assetOn(spending)}</span>
+          </div>
+        )}
       </div>
       {sentence !== undefined && (
         <p className={cn('max-w-prose text-sm/relaxed text-pretty', blocker === undefined && 'text-muted-foreground')}>

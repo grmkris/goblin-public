@@ -57,6 +57,18 @@ export function refusalOf(result: CallToolResult): string | undefined {
   return text?.type === 'text' && text.text !== '' ? text.text.slice(0, 240) : undefined
 }
 
+const decodeSetup = Schema.decodeUnknownOption(Schema.Array(Schema.String.check(Schema.isMaxLength(200))))
+
+/**
+ * What setup still needs, as `wallet_status` and `wallet_open` list it beside the status (`setup`): empty once it is
+ * finished, undefined when the result does not say (an older server).
+ */
+export function setupOf(result: CallToolResult | undefined): readonly string[] | undefined {
+  const payload = payloadOf(result)
+  if (typeof payload !== 'object' || payload === null || !('setup' in payload)) return undefined
+  return Option.getOrUndefined(decodeSetup(payload.setup))
+}
+
 const decodeRecent = Schema.decodeUnknownOption(Schema.Array(Operation))
 
 /** The few latest operations a result may carry beside the status (`recent`); anything malformed reads as none. */

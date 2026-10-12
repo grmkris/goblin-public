@@ -17,6 +17,8 @@ export interface WalletApp {
   readonly cancelled: boolean
   /** The last link the host refused to open, so the view can say so instead of doing nothing. */
   readonly refusedLink: string | undefined
+  /** The host's own name as it introduced itself ("goblin"), for "isn't ready for goblin yet". */
+  readonly hostName: string | undefined
 }
 
 export function useWalletApp(name: string): WalletApp {
@@ -65,5 +67,6 @@ export function useWalletApp(name: string): WalletApp {
     document.addEventListener('click', listener)
     return () => document.removeEventListener('click', listener)
   }, [app])
-  return { app, error, context, input, result, cancelled, refusedLink }
+  const hostName = isConnected ? app?.getHostVersion()?.name : undefined
+  return { app, error, context, input, result, cancelled, refusedLink, hostName }
 }

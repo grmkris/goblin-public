@@ -9,10 +9,11 @@ import {
 import type { App } from '@modelcontextprotocol/ext-apps'
 import { useCallback, useMemo, useState } from 'react'
 import { Dashboard } from './dashboard.tsx'
-import { checkOf, depositOf, depositStatusOf, recentOf, refusalOf, statusOf } from './decode.ts'
+import { checkOf, depositOf, depositStatusOf, recentOf, refusalOf, setupOf, statusOf } from './decode.ts'
 import type { FundActions } from './fund.tsx'
 import { ViewFrame, ViewStatus } from './frame.tsx'
 import { mount } from './mount.tsx'
+import { clientNameOf } from './setup-model.ts'
 import { useWalletApp } from './use-wallet-app.ts'
 
 /** Asks the wallet, through the host, for a deposit address that lands as USDC.e with the agent on Tempo. */
@@ -38,7 +39,7 @@ async function depositProgress(app: App | null, depositAddress: string): Promise
 }
 
 function DashboardView() {
-  const { app, error, context, result, cancelled, refusedLink } = useWalletApp('Goblin Wallet')
+  const { app, error, context, result, cancelled, refusedLink, hostName } = useWalletApp('Goblin Wallet')
   const [refreshed, setRefreshed] = useState<{ readonly from: unknown; readonly result: typeof result }>()
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState<string>()
@@ -96,6 +97,8 @@ function DashboardView() {
       ) : (
         <Dashboard
           status={status}
+          setup={setupOf(shown)}
+          client={clientNameOf(hostName)}
           recent={recentOf(shown)}
           refreshing={refreshing}
           refreshError={refreshError}

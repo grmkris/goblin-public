@@ -12,6 +12,8 @@ import { EmptyState, RowList, Section } from '../ui/page.tsx'
 import { type FundActions, PaysFrom } from './fund.tsx'
 import { agentOnTempo, isEmpty, opensOnAddFunds } from './fund-model.ts'
 import { NEXT_LABEL } from './overview-copy.ts'
+import { SetupCard } from './setup-card.tsx'
+import { setupChecklist, setupGapsOf } from './setup-model.ts'
 import { attentionOf, balanceGroups, boundariesOf, limitOrder, nextActionOf, spendingOf } from './overview-model.ts'
 import type { Attention, NextAction, Spending } from './overview-model.ts'
 import {
@@ -145,8 +147,11 @@ function useAddFundsOpen(status: WalletStatusResult): readonly [boolean, () => v
   return [opened || status.focus === 'add_funds', () => setOpened(true)]
 }
 
-function LimitsTab({ status }: { readonly status: WalletStatusResult }) {
+function LimitsTab({ status, ready }: { readonly status: WalletStatusResult; readonly ready: boolean }) {
   const limits = status.limits.toSorted(limitOrder)
+  // Before setup nothing is in force: no allowance to cap, no access to end.
+  if (!ready)
+    return <EmptyState title="No limits yet" description="Your limits start once setup is finished in your wallet." />
   if (limits.length === 0)
     return <EmptyState title="No limits set" description="Set limits in the wallet before your agent can spend." />
   return (
@@ -163,11 +168,14 @@ function DashboardTabs({
   status,
   recent,
   spending,
+  ready,
   onCheck,
 }: {
   readonly status: WalletStatusResult
   readonly recent: readonly Operation[]
   readonly spending: Spending
+  /** Setup is finished: the limits are in force and are listed. */
+  readonly ready: boolean
   readonly onCheck: (operation: Operation) => Promise<OperationCheck>
 }) {
   return (
@@ -179,14 +187,18 @@ function DashboardTabs({
       </TabsList>
       <TabsContent value="overview">
         <div className="flex flex-col gap-8">
-          <OverviewColumns>
+          {ready ? (
+            <OverviewColumns>
+              <RecentWork operations={recent} />
+              <BoundaryList
+                boundaries={boundariesOf(spending, status.limits)}
+                chain={spending.spend.chain}
+                expiresAt={status.status.expiresAt}
+              />
+            </OverviewColumns>
+          ) : (
             <RecentWork operations={recent} />
-            <BoundaryList
-              boundaries={boundariesOf(spending, status.limits)}
-              chain={spending.spend.chain}
-              expiresAt={status.status.expiresAt}
-            />
-          </OverviewColumns>
+          )}
           <Section title="Balances">
             <BalanceGroups groups={balanceGroups(status)} />
           </Section>
@@ -204,7 +216,7 @@ function DashboardTabs({
         )}
       </TabsContent>
       <TabsContent value="limits">
-        <LimitsTab status={status} />
+        <LimitsTab status={status} ready={ready} />
       </TabsContent>
     </Tabs>
   )
@@ -221,8 +233,14 @@ export function Dashboard({
   fullscreen,
   onRefresh,
   onToggleFullscreen,
+  setup,
+  client,
 }: {
   readonly status: WalletStatusResult
+  /** What setup still needs, as the tool result says it; undefined when it does not. */
+  readonly setup: readonly string[] | undefined
+  /** The host by its own name ("goblin"), for the setup card. */
+  readonly client: string | undefined
   readonly recent: readonly Operation[]
   readonly refreshing: boolean
   readonly refreshError: string | undefined
@@ -236,6 +254,8 @@ export function Dashboard({
   readonly onToggleFullscreen: (() => void) | undefined
 }) {
   const [addFundsOpen, openAddFunds] = useAddFundsOpen(status)
+  // Not ready for the agent: the setup card leads instead of an amount nobody can spend yet.
+  const checklist = setupChecklist(setupGapsOf(status, setup))
   const spending = spendingOf(status)
   const next = spending.blocker === undefined ? undefined : nextActionOf(spending.blocker)
   const step = next === undefined || next === 'wait' ? undefined : next
@@ -262,13 +282,23 @@ export function Dashboard({
         />
       )}
       <AttentionList items={attentionOf(recent)} actionFor={attentionFor(status.site, onCheck)} />
-      <SpendingSummary
+      {checklist.length > 0 ? (
+        <SetupCard client={client} checklist={checklist} site={status.site} />
+      ) : (
+        <SpendingSummary
+          spending={spending}
+          action={
+            step === undefined ? undefined : <NextStep action={step} onRefresh={onRefresh} onAddFunds={openAddFunds} />
+          }
+        />
+      )}
+      <DashboardTabs
+        status={status}
+        recent={recent}
         spending={spending}
-        action={
-          step === undefined ? undefined : <NextStep action={step} onRefresh={onRefresh} onAddFunds={openAddFunds} />
-        }
+        ready={checklist.length === 0}
+        onCheck={onCheck}
       />
-      <DashboardTabs status={status} recent={recent} spending={spending} onCheck={onCheck} />
     </>
   )
 }
