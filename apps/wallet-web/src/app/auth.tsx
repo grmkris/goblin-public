@@ -12,6 +12,9 @@ export type OwnerChain = EvmChain
  */
 export type UpgradeOutcome = 'confirmed' | 'submitted'
 
+/** The upgrade's two signatures, as each is asked for: the authorization, then the operation that carries it. */
+export type UpgradeStep = 'authorize' | 'confirm'
+
 export interface Auth {
   /** `stalled`: still loading, or signed in without an owner wallet, long after it should have finished. */
   readonly status: 'loading' | 'stalled' | 'signed-out' | 'ready'
@@ -22,9 +25,9 @@ export interface Auth {
   readonly logout: () => void
   /**
    * Sign the owner's EIP-7702 authorization for `chain`, then the UserOperation that carries it (its gas paid in USDC
-   * from the owner's account), and have the Worker send it.
+   * from the owner's account), and have the Worker send it. `onStep` hears which signature is being asked for.
    */
-  readonly upgrade: (chain: OwnerChain) => Promise<UpgradeOutcome>
+  readonly upgrade: (chain: OwnerChain, onStep?: (step: UpgradeStep) => void) => Promise<UpgradeOutcome>
   /** Prepare the allowance on `chain`, rebuild and compare it, sign it, confirm it. */
   readonly signAllowance: (input: {
     readonly chain: OwnerChain

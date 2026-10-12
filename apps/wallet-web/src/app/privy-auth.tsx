@@ -39,8 +39,8 @@ export function PrivyAuthProvider({ children }: { readonly children: ReactNode }
       getToken: () => live.current.owner.getToken(),
       login: () => live.current.owner.login(),
       logout: () => void live.current.owner.logout(),
-      upgrade: async (chain) => {
-        const operation = await live.current.upgrader.upgrade(chain)
+      upgrade: async (chain, onStep) => {
+        const operation = await live.current.upgrader.upgrade(chain, onStep)
         return operation.status === 'confirmed' ? 'confirmed' : 'submitted'
       },
       signAllowance: async (input) => {

@@ -115,6 +115,26 @@ export function useOAuthDecide(id: string) {
   const api = useApi()
   return useMutation({ mutationFn: (decision: 'approve' | 'deny') => api.oauthDecide(id, decision) })
 }
+/** Keeps a consent request pending while its page is open; each answer replaces the page's view of it. */
+export function useOAuthKeepAlive(id: string) {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.oauthKeepAlive(id),
+    onSuccess: (view) => client.setQueryData(['oauth-request', id], view),
+  })
+}
+/** Whether setup may send the owner back to `url`; nothing is asked when there is no `url`. */
+export const useReturnCheck = (url: string | undefined) => {
+  const api = useApi()
+  return useQuery({
+    queryKey: ['return-check', url],
+    queryFn: () => api.returnCheck(url ?? ''),
+    enabled: url !== undefined,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  })
+}
 export function useDisconnect() {
   const api = useApi()
   const client = useQueryClient()

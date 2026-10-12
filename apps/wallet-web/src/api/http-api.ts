@@ -36,7 +36,11 @@ async function failure(response: Response): Promise<ApiFailure> {
 
 type Call = <R extends Route>(
   route: R,
-  options?: { readonly params?: Record<string, string>; readonly body?: unknown },
+  options?: {
+    readonly params?: Record<string, string>
+    readonly query?: Record<string, string>
+    readonly body?: unknown
+  },
 ) => Promise<R['response']['Type']>
 
 /**
@@ -56,7 +60,8 @@ function makeCall(getToken: () => Promise<string | null>): Call {
     const token = await tokenOf(getToken)
     if (token === null) throw failureOf('signed_out', 'You are signed out.', 'Sign in again.')
     const path = route.path.replace(/:(\w+)/gu, (_, name: string) => encodeURIComponent(options.params?.[name] ?? ''))
-    const response = await fetch(path, {
+    const query = options.query === undefined ? '' : `?${new URLSearchParams(options.query).toString()}`
+    const response = await fetch(`${path}${query}`, {
       method: route.method,
       headers: {
         authorization: `Bearer ${token}`,
@@ -85,6 +90,7 @@ const reads = (
   | 'oauthRequest'
   | 'policyChanges'
   | 'depositStatus'
+  | 'returnCheck'
 > => ({
   me: () => call(OwnerRoutes.me),
   status: () => call(OwnerRoutes.status),
@@ -97,6 +103,7 @@ const reads = (
   oauthRequest: (id) => call(OwnerRoutes.oauthRequest, { params: { id } }),
   policyChanges: () => call(OwnerRoutes.policyChanges),
   depositStatus: (depositAddress) => call(OwnerRoutes.depositStatus, { params: { depositAddress } }),
+  returnCheck: (url) => call(OwnerRoutes.returnCheck, { query: { url } }),
 })
 
 const writes = (
@@ -109,6 +116,7 @@ const writes = (
   | 'checkOperation'
   | 'disconnect'
   | 'oauthDecide'
+  | 'oauthKeepAlive'
   | 'revokeAll'
   | 'decidePolicyChange'
   | 'deposit'
@@ -119,6 +127,7 @@ const writes = (
   checkOperation: (operationId) => call(OwnerRoutes.checkOperation, { params: { operationId } }),
   disconnect: (id) => call(OwnerRoutes.disconnect, { params: { id } }),
   oauthDecide: (id, decision) => call(OwnerRoutes.oauthDecide, { params: { id }, body: { decision } }),
+  oauthKeepAlive: (id) => call(OwnerRoutes.oauthKeepAlive, { params: { id } }),
   decidePolicyChange: (id, decision) => call(OwnerRoutes.decidePolicyChange, { params: { id }, body: { decision } }),
   revokeAll: () => call(OwnerRoutes.revokeAll),
   deposit: (request) => call(OwnerRoutes.deposit, { body: request }),

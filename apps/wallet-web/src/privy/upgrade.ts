@@ -10,6 +10,9 @@ import { chainFor, pendingNonce } from './network.ts'
 import { useOwner } from './owner.ts'
 import { upgradePrompt, walletTypedData } from './prompts.ts'
 
+/** The upgrade's two signatures: the EIP-7702 authorization, then the UserOperation that carries it. */
+export type UpgradeStep = 'authorize' | 'confirm'
+
 export interface UpgradeAccount {
   readonly state: FlowState
   /**
@@ -19,9 +22,10 @@ export interface UpgradeAccount {
    * address with its gas paid in their USDC; it is reviewed here and signed second, on Privy's screen ("Upgrade your
    * account"), then `POST /api/onboarding/upgrade` sends it. Resolves with the operation, `confirmed` or still
    * `submitted` (confirmed at once when the account already delegates); rejects, setting `state` to error, when the
-   * owner declines, the review finds something else to sign or the Worker refuses, with its reason.
+   * owner declines, the review finds something else to sign or the Worker refuses, with its reason. `onStep` hears
+   * which of the two signatures is being asked for, for a progress list.
    */
-  readonly upgrade: (chain: EvmChain) => Promise<Operation>
+  readonly upgrade: (chain: EvmChain, onStep?: (step: UpgradeStep) => void) => Promise<Operation>
   readonly reset: () => void
 }
 
@@ -57,13 +61,14 @@ export function useUpgradeAccount(): UpgradeAccount {
   const { signTypedData } = useSignTypedData()
   const { state, run, reset } = useFlow()
   const upgrade = useCallback(
-    (key: EvmChain) =>
+    (key: EvmChain, onStep?: (step: UpgradeStep) => void) =>
       run(async (step) => {
         if (address === undefined)
           throw new FlowFailure({ code: 'no_wallet', message: 'Your wallet is still being created. Try again.' })
         const chain = await chainFor(key)
         const owner = getAddress(address)
         step('signing')
+        onStep?.('authorize')
         const authorization = await authorize(signAuthorization, chain, owner)
         step('preparing')
         const draft = await ownerCall(getToken, OwnerRoutes.upgradePrepare, { body: { chain: key, authorization } })
@@ -72,6 +77,7 @@ export function useUpgradeAccount(): UpgradeAccount {
         step('checking')
         const reviewed = reviewOwnerUpgrade(draft.typedData, { chain, owner, feeCeiling: UPGRADE_FEE_CEILINGS[key] })
         step('signing')
+        onStep?.('confirm')
         const { signature } = await signTypedData(walletTypedData(reviewed.typedData), {
           address,
           uiOptions: upgradePrompt(reviewed.maxFee),

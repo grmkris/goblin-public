@@ -22,7 +22,10 @@ export function FixtureAuthProvider({
       getToken: () => Promise.resolve('fixture'),
       login: () => setSignedIn(true),
       logout: () => setSignedIn(false),
-      upgrade: async (chain) => {
+      upgrade: async (chain, onStep) => {
+        onStep?.('authorize')
+        await pause()
+        onStep?.('confirm')
         await pause()
         onUpgrade(chain)
         return 'confirmed'

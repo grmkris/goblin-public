@@ -5,6 +5,7 @@ import {
   type ChainSetup,
   type Connection,
   DEFAULT_GRANT_DAYS,
+  DEFAULT_LIMITS,
   type DepositAddress,
   type DepositRequest,
   type DepositStatus,
@@ -19,10 +20,12 @@ import {
   ADDRESS_BOOK,
   AGENT,
   APPROVAL,
+  CLIENT_ORIGINS,
   CONNECTIONS,
   FRESH_STATUS,
   LIMITS,
   ME,
+  NO_AGENT_STATUS,
   OAUTH_REQUEST,
   OPERATIONS,
   OWNER,
@@ -37,13 +40,30 @@ const delay = async <T>(value: T): Promise<T> => {
   return value
 }
 
+/** The ledger's defaults on a wallet created now: $5 a payment, $20 an hour, $50 a week, for seven days. */
+const FRESH_LIMITS = {
+  ...DEFAULT_LIMITS,
+  expiresAt: new Date(Date.now() + DEFAULT_GRANT_DAYS * 86_400_000).toISOString(),
+  version: 1,
+}
+
 interface FixtureDeposit {
   readonly quote: DepositAddress
   polls: number
   credited: boolean
 }
 
+/**
+ * Where the demo starts. `ready`: set up and busy. `fresh`: just signed in, no agent wallet, goblin asking to connect;
+ * a few balance reads after the agent wallet exists, $12 of USDC lands on Base, as a send would. `funded`: the agent
+ * wallet exists and USDC is on Base, but spending is not turned on. `expired`: set up, and goblin's request ran out.
+ */
+export type FixtureStart = 'ready' | 'fresh' | 'funded' | 'expired'
+
+export const FIXTURE_STARTS: readonly FixtureStart[] = ['ready', 'fresh', 'funded', 'expired']
+
 interface World {
+  readonly start: FixtureStart
   me: Me
   status: WalletStatusResult
   connections: readonly Connection[]
@@ -53,6 +73,8 @@ interface World {
   readonly activity: readonly Operation[]
   readonly limits: readonly LimitView[]
   readonly deposits: Map<string, FixtureDeposit>
+  /** Balance reads since the agent wallet was created, in `fresh`: the third one sees the send land. */
+  reads: number
 }
 
 export interface FixtureApi extends WalletApi {
@@ -109,6 +131,34 @@ function simulate(world: World): FixtureApi['simulate'] {
   }
 }
 
+/** The owner's USDC on Base set to `amount`, as a send to their address would leave it. */
+const ownerUsdcOnBase = (status: WalletStatusResult, amount: string): WalletStatusResult => ({
+  ...status,
+  balances: status.balances.map((row) =>
+    row.chain === 'base' && row.holder === 'owner' && row.symbol === 'USDC' ? { ...row, balance: amount } : row,
+  ),
+})
+
+/** One balance read; in `fresh`, the third one after the agent wallet exists sees the owner's send land. */
+function readStatus(world: World): WalletStatusResult {
+  if (world.start === 'fresh' && world.me.agent !== undefined && ++world.reads === 3)
+    world.status = ownerUsdcOnBase(world.status, '12')
+  return world.status
+}
+
+/** goblin's request as the consent page reads it: open, or run out in `expired`. */
+const oauthView = (world: World, minutes: number) =>
+  world.start === 'expired'
+    ? { ...OAUTH_REQUEST, expiresAt: new Date(Date.now() - 60_000).toISOString(), expired: true as const }
+    : { ...OAUTH_REQUEST, expiresAt: new Date(Date.now() + minutes * 60_000).toISOString() }
+
+/** Setup may send the owner back to a URL on one of their clients' origins, and nowhere else. */
+function returnTarget(url: string): { readonly url?: string; readonly host?: string } {
+  if (!URL.canParse(url)) return {}
+  const parsed = new URL(url)
+  return CLIENT_ORIGINS.includes(parsed.origin) ? { url: parsed.href, host: parsed.host } : {}
+}
+
 function reads(
   world: World,
 ): Pick<
@@ -122,18 +172,22 @@ function reads(
   | 'addressBook'
   | 'connections'
   | 'oauthRequest'
+  | 'oauthKeepAlive'
+  | 'returnCheck'
   | 'policyChanges'
 > {
   return {
     me: () => delay(world.me),
-    status: () => delay(world.status),
+    status: () => delay(readStatus(world)),
     limits: () => delay(world.limits),
     activity: () => delay(world.activity),
     approval: async () => delay({ ...world.approval, termsHash: await termsHash(world.approval.terms) }),
     services: () => delay(SERVICES),
     addressBook: () => delay(ADDRESS_BOOK),
     connections: () => delay(world.connections),
-    oauthRequest: () => delay(OAUTH_REQUEST),
+    oauthRequest: () => delay(oauthView(world, 8)),
+    oauthKeepAlive: () => delay(oauthView(world, 10)),
+    returnCheck: (url) => delay(returnTarget(url)),
     policyChanges: () => delay(world.policyChanges),
   }
 }
@@ -153,7 +207,9 @@ function writes(
 > {
   return {
     createAgent: () => {
-      world.me = { ...world.me, agent: AGENT }
+      // The server creates it with the default limits for seven days, and the agent's balances start being read.
+      world.me = { ...world.me, agent: AGENT, limits: world.me.limits ?? FRESH_LIMITS }
+      if (world.status.agent.address !== AGENT) world.status = FRESH_STATUS
       return delay(world.me)
     },
     setLimits: (limits) => {
@@ -180,7 +236,8 @@ function writes(
       world.connections = world.connections.filter((connection) => connection.id !== id)
       return delay(world.connections)
     },
-    oauthDecide: () => delay({ redirectTo: '/' }),
+    // Back to the demo itself: a real client's redirect would leave the fixtures.
+    oauthDecide: () => delay({ redirectTo: `/?fixtures=${world.start}` }),
     decidePolicyChange: (id, decision) => {
       world.policyChanges = world.policyChanges.map((change) =>
         change.id === id ? { ...change, status: decision } : change,
@@ -264,17 +321,32 @@ function deposits(world: World): Pick<WalletApi, 'deposit' | 'depositStatus'> {
   }
 }
 
+const startingMe = (start: FixtureStart): Me => {
+  if (start === 'fresh') return { userId: ME.userId, owner: OWNER, chains: [] }
+  if (start === 'funded') return { userId: ME.userId, owner: OWNER, agent: AGENT, chains: [], limits: FRESH_LIMITS }
+  return ME
+}
+
+const startingStatus = (start: FixtureStart): WalletStatusResult => {
+  if (start === 'fresh') return NO_AGENT_STATUS
+  if (start === 'funded') return ownerUsdcOnBase(FRESH_STATUS, '12')
+  return STATUS
+}
+
 /** In-memory API: edits stick for the session so the pages can be clicked through. */
-export function createFixtureApi(start: 'fresh' | 'ready' = 'ready'): FixtureApi {
+export function createFixtureApi(start: FixtureStart = 'ready'): FixtureApi {
+  const busy = start === 'ready' || start === 'expired'
   const world: World = {
-    me: start === 'ready' ? ME : { userId: ME.userId, owner: OWNER, chains: [] },
-    status: start === 'ready' ? STATUS : FRESH_STATUS,
-    connections: start === 'ready' ? CONNECTIONS : [],
+    start,
+    me: startingMe(start),
+    status: startingStatus(start),
+    connections: busy ? CONNECTIONS : [],
     approval: APPROVAL,
-    policyChanges: start === 'ready' ? POLICY_CHANGES : [],
-    activity: start === 'ready' ? OPERATIONS : [],
-    limits: start === 'ready' ? LIMITS : FRESH_STATUS.limits,
+    policyChanges: busy ? POLICY_CHANGES : [],
+    activity: busy ? OPERATIONS : [],
+    limits: busy ? LIMITS : FRESH_STATUS.limits,
     deposits: new Map(),
+    reads: 0,
   }
   return { ...reads(world), ...writes(world), ...deposits(world), simulate: simulate(world) }
 }

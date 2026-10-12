@@ -245,6 +245,17 @@ export const STATUS: WalletStatusResult = {
   checkedAt: ago(0),
 }
 
+/** A wallet just signed in to: no agent wallet yet, so nothing to read but the owner's own account. */
+export const NO_AGENT_STATUS: WalletStatusResult = {
+  ...STATUS,
+  status: { kind: 'wallet', paid: 'blocked', funding: 'blocked', tokens: [] },
+  owner: { address: OWNER, upgraded: false },
+  agent: { address: '0x0000000000000000000000000000000000000000' },
+  balances: (['base', 'arbitrum', 'ethereum'] as const).flatMap((chain) => held(chain, 'owner', '0')),
+  limits: [],
+  recent: [],
+}
+
 /** A wallet just created: the agent exists, nothing is funded yet, the owner has not upgraded. */
 export const FRESH_STATUS: WalletStatusResult = {
   ...STATUS,
@@ -292,13 +303,17 @@ export const ADDRESS_BOOK: readonly Recipient[] = [
   { address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F', chain: 'base', label: 'Mari (rent)', addedAt: ago(60 * 70) },
 ]
 
+/** goblin asking to connect, as goblin registers itself: by its plain name. */
 export const OAUTH_REQUEST = {
   id: 'req_demo_01',
-  client: 'Claude Desktop',
-  redirectHost: 'claude.ai',
+  client: 'goblin',
+  redirectHost: 'goblin.surf',
   scopes: ['wallet:read', 'wallet:spend'],
   expiresAt: ahead(8),
 }
+
+/** The origins of the clients the demo owner connected, where setup may send them back. */
+export const CLIENT_ORIGINS: readonly string[] = ['https://goblin.surf', 'https://claude.ai']
 
 export const POLICY_CHANGES: readonly PolicyChange[] = [
   {

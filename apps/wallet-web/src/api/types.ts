@@ -7,22 +7,22 @@ import type {
   DepositStatus,
   LimitView,
   Me,
+  OAuthRequestView as OAuthRequestViewSchema,
   Operation,
   OperationCheck,
   PolicyChange,
   Recipient,
+  ReturnCheck,
   ServiceRule,
   WalletLimits,
   WalletStatusResult,
 } from '@goblin/wallet/contract'
 
-export interface OAuthRequestView {
-  readonly id: string
-  readonly client: string
-  readonly redirectHost: string
-  readonly scopes: readonly string[]
-  readonly expiresAt: string
-}
+/** A consent request as its page shows it; `expired` once it ran out, and the page sends the owner back. */
+export type OAuthRequestView = typeof OAuthRequestViewSchema.Type
+
+/** Where `/setup?return=` may send the owner back: set only for the origin of one of their own clients. */
+export type ReturnTarget = ReturnCheck
 
 /** What the pages need from the server. `httpApi` calls OwnerRoutes; `fixtureApi` answers from fixtures. */
 export interface WalletApi {
@@ -44,6 +44,10 @@ export interface WalletApi {
   readonly disconnect: (id: string) => Promise<readonly Connection[]>
   readonly oauthRequest: (id: string) => Promise<OAuthRequestView>
   readonly oauthDecide: (id: string, decision: 'approve' | 'deny') => Promise<{ readonly redirectTo: string }>
+  /** The consent page is still open: the request stays pending a while longer (at most an hour after it opened). */
+  readonly oauthKeepAlive: (id: string) => Promise<OAuthRequestView>
+  /** Whether `url` is one of the owner's own clients, so setup may send them back there. */
+  readonly returnCheck: (url: string) => Promise<ReturnTarget>
   readonly policyChanges: () => Promise<readonly PolicyChange[]>
   readonly decidePolicyChange: (id: string, decision: 'applied' | 'dismissed') => Promise<PolicyChange>
   readonly revokeAll: () => Promise<Me>
