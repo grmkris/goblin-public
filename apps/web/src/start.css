@@ -513,6 +513,10 @@
   font-size: 0.875rem;
   font-weight: 500;
 }
+/* The shelf's groups sit apart from the heading above them. */
+.start-more > .shelf {
+  margin-block-start: 0.5rem;
+}
 
 /* What goblin is for: the owner's words, or an idea to start from. */
 .start-kickoff {

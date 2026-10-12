@@ -38,11 +38,10 @@ import { type Action, type Edit, RemoveConfirm, ServerMenu } from './server-menu
 import { FirstClassAccess, FirstClassSummary } from './first-class.tsx'
 import { ToolGrants } from './tool-grants.tsx'
 
-/** The endpoint without its scheme, which is always https for an added server. */
-function shortEndpoint(endpoint: string): string {
+/** The endpoint's host, which is what tells servers apart on a card; the whole endpoint is its title. */
+function endpointHost(endpoint: string): string {
   try {
-    const url = new URL(endpoint)
-    return `${url.host}${url.pathname === '/' ? '' : url.pathname}`
+    return new URL(endpoint).host
   } catch {
     // expected: an endpoint the URL parser refuses is shown as it was stored
     return endpoint
@@ -82,8 +81,8 @@ function SkillsSwitch({
           Use its skills
         </span>
         <span className="grant-about">
-          Skills are procedures your agent follows. Turn this on only for a skills library you trust, such as MySkills.
-          A skill never allows a tool by itself.
+          Skills are procedures your agent follows. Turn this on only for a skills library you trust, such as your own
+          through mysi. A skill never allows a tool by itself.
         </span>
       </span>
       <Switch checked={enabled} disabled={pending} aria-busy={pending} aria-labelledby={id} onCheckedChange={change} />
@@ -250,8 +249,10 @@ function ServerHeading({
         </span>
       </CardTitle>
       <CardDescription>
-        {from === undefined || from === server.label ? '' : `${from} · `}
-        {shortEndpoint(server.endpoint)}
+        <span className="server-from">
+          {from !== undefined && from !== server.label && <span>{from} ·</span>}
+          <span title={server.endpoint}>{endpointHost(server.endpoint)}</span>
+        </span>
       </CardDescription>
       <CardAction>
         <div className="server-actions">

@@ -86,7 +86,7 @@ export function WelcomeStep({ onContinue }: { readonly onContinue: () => void })
           <span className="start-piece-name">More coming soon</span>
         </li>
       </ul>
-      <p className="start-note">Outside services such as Mercator and myapps come next.</p>
+      <p className="start-note">Outside services such as Mercator and mysi come next.</p>
       <Button size="cta" onClick={onContinue}>
         Set up my wallet
       </Button>

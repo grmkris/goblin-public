@@ -1101,6 +1101,22 @@
     align-items: center;
     gap: 0.5rem;
   }
+  /*
+   * Under the name: the server's own name and its host on one line, each cut short rather than broken. Its width is
+   * the line's, never its text's, so a long host cannot widen the card's header on a phone.
+   */
+  .server-from {
+    display: flex;
+    gap: 0.25rem;
+    width: 0;
+    min-width: 100%;
+  }
+  .server-from > span {
+    min-width: 0;
+    overflow: clip;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .server-body {
     display: flex;
     flex-direction: column;
@@ -1548,6 +1564,29 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     white-space: nowrap;
+  }
+  /* The shelf (components/server-add.tsx): suggestions in groups, set apart by space, each under its own name. */
+  .shelf {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .shelf-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .shelf-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .shelf-title {
+    margin: 0;
+    font-size: var(--text-13);
+    font-weight: 600;
+    text-wrap: balance;
   }
   /* The picker's panels (components/server-picker.tsx): a field above its list. */
   .pick-panel {
