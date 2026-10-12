@@ -68,4 +68,7 @@ Holding it only while in use lets the object sleep a minute after the last call.
 - A new table, `app_mcp_url_requests`, keeps URL requests; it is added by its own migration, so dev keeps its data.
 - Activity's Needs you counts open URL requests and step-ups, and a Persona's answer can hold either.
 - An interrupted retry is recorded as uncertain, as an interrupted approval dispatch is: the server may already have
-  acted.
+  acted. So is one the server answered with a result goblin cannot read or keep.
+- The answer goes to the tool as it was listed when the server asked, even if the server has dropped it since:
+  finishing the server's step can change its tools (amended 2026-10-12, after the showcase run). A cancel stands even
+  if the server asks again.

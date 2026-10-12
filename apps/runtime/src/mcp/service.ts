@@ -1,4 +1,4 @@
-import type { CallToolResult, ReadResourceResult } from '@modelcontextprotocol/client'
+import type { CallToolResult, ReadResourceResult, Tool } from '@modelcontextprotocol/client'
 import type {
   ApprovalView,
   CatalogEntry,
@@ -289,6 +289,8 @@ export class UrlRequests extends Context.Service<
     readonly decline: (id: string) => Effect.Effect<void>
     /** The call's frozen arguments. */
     readonly arguments: (id: string) => Effect.Effect<JsonObject, AppError>
+    /** The tool the answer goes to when the server no longer lists it, as it was listed when the server asked. */
+    readonly tool: (id: string) => Effect.Effect<Tool, AppError>
     /** What the server asked, unsealed. */
     readonly prompt: (id: string) => Effect.Effect<UrlPrompt, AppError>
     /** The retry's result, once the server answered it. */

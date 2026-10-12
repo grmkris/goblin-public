@@ -119,6 +119,8 @@ export type UrlAnswer = {
 /** A model's own call: it may meet a URL request, and its retry carries the owner's answer. */
 export type McpModelCallOptions = Omit<McpCallOptions, 'caller' | 'approvalId' | 'approvalContext'> & {
   readonly answer?: UrlAnswer
+  /** With an `answer`: the tool as it was listed when the server asked, sent to even if the server no longer lists it. */
+  readonly heldTool?: Tool
 }
 
 /** A model's call that may meet a URL request: the server's result, or what it asks first. */

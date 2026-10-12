@@ -1,7 +1,8 @@
 import { and, eq, lt, sql } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
-import type { CallToolResult } from '@modelcontextprotocol/client'
+import type { CallToolResult, Tool } from '@modelcontextprotocol/client'
 import type { JsonObject } from '@goblin/contracts'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { appMcpUrlRequests as requests } from '../storage/mcp-url-requests.ts'
 import { Conflict, NotFound, PayloadTooLarge } from '../http/errors.ts'
@@ -24,6 +25,8 @@ export type HeldUrlRequest = UrlPrompt & {
   readonly name: string
   readonly endpoint: string
   readonly arguments: Record<string, unknown>
+  /** The tool's input schema as listed now, so the answer can still be sent if the server drops the tool. */
+  readonly toolSchema?: Tool['inputSchema']
   readonly expiresAt: number
 }
 
@@ -31,6 +34,18 @@ export type HeldUrlRequest = UrlPrompt & {
 export const MAX_REQUEST_STATE = 65_536
 /** How many URL requests may wait on the owner at once. */
 const MAX_PENDING = 32
+/** The largest input schema kept with a request; a larger one is left out and the answer goes with a plain object. */
+const MAX_TOOL_SCHEMA = 65_536
+
+const InputSchema = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json))
+const decodeInputSchema = Schema.decodeUnknownOption(InputSchema)
+
+/** The schema kept with a request: its JSON when it fits, otherwise nothing. */
+const keptSchema = (schema: Tool['inputSchema'] | undefined): string | null => {
+  if (schema === undefined) return null
+  const json = JSON.stringify(schema)
+  return new TextEncoder().encode(json).byteLength > MAX_TOOL_SCHEMA ? null : json
+}
 
 const decodeArguments = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))
 const Prompt = Schema.Struct({ url: Schema.String, message: Schema.String })
@@ -132,6 +147,7 @@ export class McpUrlRequestStore {
         endpoint: input.endpoint,
         argumentsSealed: sealedArguments,
         argumentsHash: hash,
+        toolSchema: keptSchema(input.toolSchema),
         ...prompt,
         state: 'pending',
         expiresAt: input.expiresAt,
@@ -215,6 +231,18 @@ export class McpUrlRequestStore {
     return decodeArguments(
       JSON.parse(await this.#cipher.decrypt(row.argumentsSealed, `mcp-url:${id}:arguments`)),
     ) as JsonObject
+  }
+
+  /**
+   * The tool the answer is sent to when the server no longer lists it: its name and the input schema kept when the
+   * server asked, or a plain object schema when none was kept.
+   */
+  tool(id: string): Tool {
+    const row = this.get(id)
+    const kept = row.toolSchema === null ? Option.none() : decodeInputSchema(row.toolSchema)
+    // SAFETY: a kept schema is the `inputSchema` of a tool the SDK validated when it was listed.
+    const inputSchema = Option.getOrElse(kept, () => ({ type: 'object' })) as Tool['inputSchema']
+    return { name: row.name, inputSchema }
   }
 
   /** What the server asked, unsealed. */

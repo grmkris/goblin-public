@@ -10,4 +10,9 @@ export const MCP_MIGRATIONS: readonly Migration[] = [
       'CREATE INDEX app_mcp_url_request_session ON app_mcp_url_requests (session_id, state)',
     ].join(BREAK),
   },
+  {
+    key: '20261031000000_mcp_url_request_tool',
+    tables: ['app_mcp_url_requests'],
+    sql: 'ALTER TABLE app_mcp_url_requests ADD COLUMN tool_schema TEXT',
+  },
 ]

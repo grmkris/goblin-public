@@ -138,6 +138,33 @@ describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
     expect(first?.text).not.toContain('one-time')
   })
 
+  it('sends the answer even after the server stopped listing the tool, as finishing its step can make it', async () => {
+    const { server, told, answer } = await fixture()
+    server.state.approved = true
+    server.state.unlisted = true
+    expect(await answer(ID, 'accept')).toMatchObject({ state: 'completed' })
+    expect(server.seen.at(-1)).toMatchObject({ answer: { action: 'accept' }, state: 'op_1' })
+    expect(told[0]?.text).toContain('"agent":"ag_1"')
+  })
+
+  it('ends a retry the server answered but goblin could not read as uncertain, and one it refused as failed', async () => {
+    const unreadable = await fixture()
+    unreadable.server.state.approved = true
+    unreadable.server.state.wrongOutput = true
+    expect(await unreadable.answer(ID, 'accept')).toMatchObject({ state: 'uncertain' })
+    expect(unreadable.told[0]?.text).toContain('It may have taken effect')
+    const refused = await fixture()
+    refused.server.state.refuse = true
+    expect(await refused.answer(ID, 'accept')).toMatchObject({ state: 'failed' })
+  })
+
+  it('keeps a cancel declined even when the server asks again', async () => {
+    const { server, told, answer } = await fixture()
+    server.state.askOnDecline = true
+    expect(await answer(ID, 'decline')).toMatchObject({ state: 'declined' })
+    expect(told[0]?.text).toContain('The owner cancelled the step')
+  })
+
   it('sends a decline on Cancel and tells the turn the step was cancelled', async () => {
     const { server, told, answer, flows } = await fixture()
     expect(await answer(ID, 'decline')).toMatchObject({ state: 'declined' })

@@ -41,8 +41,16 @@ import { type AskingOutcome, callAsking, urlPromptOf } from './url-asks.ts'
 // resources, draft Events and the Skills extension. Each request checks the owner's grant and the caller's authority
 // again right before it is dispatched.
 
-/** One tool call as its checks see it: the server, the tool and the arguments, serialized once. */
-type ToolCall = { readonly connectionId: string; readonly name: string; readonly argumentsJson: string }
+/**
+ * One tool call as its checks see it: the server, the tool and the arguments, serialized once; `held` is the tool as
+ * listed when the server asked, for an answer it asked for.
+ */
+type ToolCall = {
+  readonly connectionId: string
+  readonly name: string
+  readonly argumentsJson: string
+  readonly held?: Tool
+}
 
 /** The checks of one tool call: before it connects and again before each of its HTTP dispatches. */
 const toolGuards = (
@@ -93,7 +101,8 @@ const plainCall: Send<McpToolResult> = (live, tool, args, guarded) =>
 const modelCall =
   (connectionId: string, answer: UrlAnswer | undefined): Send<AskingOutcome> =>
   async (live, tool, args, guarded) => {
-    if (live.snapshot.protocolEra === 'modern') return callAsking(live.client, tool, args, answer, guarded)
+    if (live.snapshot.protocolEra === 'modern')
+      return callAsking({ connectionId, client: live.client }, tool, args, answer, guarded)
     if (answer !== undefined) throw new UpstreamMcp({ connectionId, reason: 'unsupported' })
     return { kind: 'complete', result: await plainCall(live, tool, args, guarded) }
   }
@@ -152,8 +161,11 @@ const callTool = <A>(
     const listed = live.snapshot.tools.some((item) => item.name === name)
       ? live.snapshot
       : yield* refreshTools(manager, live)
-    const tool = listed.tools.find((item) => item.name === name)
-    if (tool === undefined || !toolOffered(tool, caller)) return yield* new NotFound({ what: `tool ${name}` })
+    const found = listed.tools.find((item) => item.name === name)
+    if (found !== undefined && !toolOffered(found, caller)) return yield* new NotFound({ what: `tool ${name}` })
+    // An answer the server asked for goes to the tool as it was listed then: finishing its step may have removed it.
+    const tool = found ?? call.held
+    if (tool === undefined) return yield* new NotFound({ what: `tool ${name}` })
     yield* fits(connectionId, args, manager.maxResultBytes)
     return yield* withDeadline(manager, request, (deadlined) =>
       remote(manager, live, () =>
@@ -303,8 +315,13 @@ const requests = (manager: Manager) => ({
     args: Record<string, unknown> = {},
     options: McpModelCallOptions = {},
   ) {
-    const { answer, ...call } = options
-    const frozen = { connectionId, name, argumentsJson: JSON.stringify(args) }
+    const { answer, heldTool, ...call } = options
+    const frozen = {
+      connectionId,
+      name,
+      argumentsJson: JSON.stringify(args),
+      ...(answer === undefined || heldTool === undefined ? {} : { held: heldTool }),
+    }
     const outcome = yield* callTool(
       manager,
       frozen,

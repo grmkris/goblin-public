@@ -126,6 +126,9 @@ export const urlRequestsOver = (store: McpUrlRequestStore) =>
     arguments: Effect.fn('UrlRequests.arguments')(function* (id: string) {
       return yield* attempt(() => store.arguments(id))
     }),
+    tool: Effect.fn('UrlRequests.tool')(function* (id: string) {
+      return yield* attemptSync(() => store.tool(id))
+    }),
     prompt: Effect.fn('UrlRequests.prompt')(function* (id: string) {
       return yield* attempt(() => store.prompt(id))
     }),

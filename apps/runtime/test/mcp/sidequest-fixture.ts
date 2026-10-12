@@ -1,4 +1,4 @@
-import { createMcpHandler } from '@modelcontextprotocol/server'
+import { ProtocolError, ProtocolErrorCode, createMcpHandler } from '@modelcontextprotocol/server'
 import { declaresUrlElicitation, lowLevelServer } from './low-level-server.ts'
 
 /** The Sidequest-like server's connection. */
@@ -19,23 +19,28 @@ export const urlAsk = (url: string) => ({
  * A Sidequest-like server (ADR 0042): `create_agent` needs the operator's approval. A request that declares URL
  * elicitation gets "input required: open this URL" with request state `op_1` until it comes back accepted with that
  * state once `approved`; a declined one completes as an error; one that does not declare it gets today's link in the
- * text. `ask` changes what it asks, to test what goblin refuses.
+ * text. `ask` changes what it asks, to test what goblin refuses. `state` switches what it does next: `unlisted` drops
+ * `create_agent` from its list while still answering it (as Sidequest does once a setup becomes an agent),
+ * `askOnDecline` keeps asking after a decline, `wrongOutput` answers outside the output schema and `refuse` answers a
+ * JSON-RPC error.
  */
 export const sidequestServer = (
   ask: (url: string) => Record<string, unknown> = (url) => ({ approval: urlAsk(url) }),
 ) => {
   const seen: Seen[] = []
-  const state = { approved: false, wrongOutput: false }
+  const state = { approved: false, wrongOutput: false, unlisted: false, askOnDecline: false, refuse: false }
   const official = createMcpHandler(() => {
     const server = lowLevelServer({ name: 'sq', version: '1.0.0' }, { capabilities: { tools: {} } })
     server.setRequestHandler('tools/list', () => ({
-      tools: [
-        {
-          name: 'create_agent',
-          inputSchema: { type: 'object' as const, properties: { name: { type: 'string' } } },
-          outputSchema: { type: 'object' as const, properties: { agent: { type: 'string' } }, required: ['agent'] },
-        },
-      ],
+      tools: state.unlisted
+        ? []
+        : [
+            {
+              name: 'create_agent',
+              inputSchema: { type: 'object' as const, properties: { name: { type: 'string' } } },
+              outputSchema: { type: 'object' as const, properties: { agent: { type: 'string' } }, required: ['agent'] },
+            },
+          ],
     }))
     server.setRequestHandler('tools/call', (_request, ctx) => {
       // The server SDK lifts the request's envelope, input responses and state out of the params.
@@ -44,7 +49,8 @@ export const sidequestServer = (
       const url = declaresUrlElicitation(envelope)
       seen.push({ url, answer: inputResponses?.['approval'], state: requestState })
       const answer = JSON.stringify(inputResponses?.['approval'])
-      if (url && answer === '{"action":"decline"}' && requestState === 'op_1')
+      if (state.refuse) throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'operation key reused')
+      if (url && answer === '{"action":"decline"}' && requestState === 'op_1' && !state.askOnDecline)
         return { content: [{ type: 'text', text: 'closed: the operator was not asked' }], isError: true }
       if (url && !(answer === '{"action":"accept"}' && requestState === 'op_1' && state.approved))
         // SAFETY: the 2026 server seam takes a hand-built input_required result in place of a CallToolResult.

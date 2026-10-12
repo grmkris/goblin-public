@@ -22,6 +22,11 @@ export const appMcpUrlRequests = sqliteTable('app_mcp_url_requests', {
   /** The link and the server's message, as one sealed JSON object. */
   promptSealed: text('prompt_sealed').notNull(),
   resultSealed: text('result_sealed'),
+  /**
+   * The tool's input schema as the connection listed it when the server asked: the answer is sent with it even if the
+   * server has dropped the tool since (finishing its step can). Absent when it was too large to keep.
+   */
+  toolSchema: text('tool_schema'),
   state: text('state', {
     enum: ['pending', 'retrying', 'completed', 'declined', 'expired', 'failed', 'uncertain'],
   }).notNull(),

@@ -4,8 +4,6 @@ import {
   type Client,
   type InputRequiredResult,
   type JsonSchemaType,
-  ProtocolError,
-  ProtocolErrorCode,
   type RequestOptions,
   type Tool,
   isInputRequiredResult,
@@ -70,22 +68,17 @@ export function urlPromptOf(connectionId: string, result: InputRequiredResult): 
 
 const validators = new CfWorkerJsonSchemaValidator()
 
-/** A complete result checked against the tool's output schema, as the SDK's own `callTool` checks it. */
-function checkOutput(tool: Tool, result: CallToolResult): CallToolResult {
+/**
+ * A complete result checked against the tool's output schema, as the SDK's own `callTool` checks it. A result that
+ * fails the check is `unsupported`, not a server error: the server did answer, so a retry it completed is uncertain.
+ */
+function checkOutput(connectionId: string, tool: Tool, result: CallToolResult): CallToolResult {
   if (tool.outputSchema === undefined || result.isError === true) return result
-  if (result.structuredContent === undefined)
-    throw new ProtocolError(
-      ProtocolErrorCode.InvalidRequest,
-      `Tool ${tool.name} has an output schema but did not return structured content`,
-    )
+  if (result.structuredContent === undefined) throw unsupported(connectionId)
   // SAFETY: an output schema is a JSON Schema object in the tools/list response the SDK validated; `$schema` is absent
   // or a string, never undefined.
   const schema = tool.outputSchema as JsonSchemaType
-  if (!validators.getValidator(schema)(result.structuredContent).valid)
-    throw new ProtocolError(
-      ProtocolErrorCode.InvalidParams,
-      "Structured content does not match the tool's output schema",
-    )
+  if (!validators.getValidator(schema)(result.structuredContent).valid) throw unsupported(connectionId)
   return result
 }
 
@@ -109,7 +102,7 @@ export type AskingOutcome =
  * mirroring keeps the tool's input schema.
  */
 export async function callAsking(
-  client: Client,
+  { connectionId, client }: { readonly connectionId: string; readonly client: Client },
   tool: Tool,
   args: Record<string, unknown>,
   answer: UrlAnswer | undefined,
@@ -127,5 +120,5 @@ export async function callAsking(
     { ...options, allowInputRequired: true, toolDefinition: unchecked },
   )
   if (isInputRequiredResult(result)) return { kind: 'input', result }
-  return { kind: 'complete', result: checkOutput(tool, result) }
+  return { kind: 'complete', result: checkOutput(connectionId, tool, result) }
 }

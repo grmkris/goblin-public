@@ -44,11 +44,12 @@ describe("the model's calls and URL requests (unit, ADR 0042)", () => {
       const done = await manager.connections.callModelTool('sq', 'create_agent', { name: 'Worker' }, { answer })
       expect(done).toMatchObject({ kind: 'complete', result: { structuredContent: { agent: 'ag_1' } } })
       expect(seen.at(-1)).toEqual({ url: true, answer: { action: 'accept' }, state: 'op_1' })
-      // A complete result is still checked against the tool's output schema.
+      // A complete result is still checked against the tool's output schema: one that fails it was answered but is
+      // unreadable, not a server error.
       state.wrongOutput = true
       await expect(
         manager.connections.callModelTool('sq', 'create_agent', { name: 'Worker' }, { answer }),
-      ).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'remote-rpc' })
+      ).rejects.toMatchObject({ _tag: 'UpstreamMcp', reason: 'unsupported' })
     } finally {
       await manager.dispose()
     }

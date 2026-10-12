@@ -36,7 +36,11 @@ export const holdUrlRequest = (
     const now = yield* Clock.currentTimeMillis
     const run = yield* (yield* RoutineRuns).session(session)
     const deadline = run === undefined || run.deadlineAt <= now ? Number.POSITIVE_INFINITY : run.deadlineAt
-    const server = yield* (yield* McpConnections).server(input.connectionId)
+    const connections = yield* McpConnections
+    const server = yield* connections.server(input.connectionId)
+    const listed = Option.flatMapNullishOr(yield* connections.snapshot(input.connectionId), (snapshot) =>
+      snapshot.tools.find((tool) => tool.name === input.name),
+    )
     const row = yield* (yield* UrlRequests).hold({
       id: urlRequestId(session, callId),
       sessionId: session,
@@ -46,6 +50,7 @@ export const holdUrlRequest = (
       name: input.name,
       endpoint: server.endpoint,
       arguments: input.arguments,
+      ...Option.match(listed, { onNone: () => ({}), onSome: (tool) => ({ toolSchema: tool.inputSchema }) }),
       ...prompt,
       expiresAt: Math.min(now + URL_REQUEST_TTL, deadline),
     })
@@ -91,9 +96,13 @@ export const urlRequestView = (id: string) =>
     } satisfies UrlRequestView
   })
 
-/** How a failed retry ends: `uncertain` when the request may have reached the server, `failed` when it cannot have. */
+/**
+ * How a failed retry ends: `uncertain` when the request may have reached the server (it was interrupted, or the server
+ * answered with a result goblin could not read or keep), `failed` when it cannot have or the server refused it.
+ */
+const UNCERTAIN: ReadonlySet<string> = new Set(['transport', 'timeout', 'cancelled', 'unsupported', 'content-limit'])
 const failure = (error: AppError): 'failed' | 'uncertain' =>
-  error instanceof UpstreamMcp && ['transport', 'timeout', 'cancelled'].includes(error.reason) ? 'uncertain' : 'failed'
+  error instanceof UpstreamMcp && UNCERTAIN.has(error.reason) ? 'uncertain' : 'failed'
 
 /**
  * Retries the held call once with the owner's answer and the server's request state, under the authority the call
@@ -111,9 +120,12 @@ const retry = (row: UrlRequestRow, action: UrlAnswer['action']) =>
     const outcome = yield* connections.callModelTool(row.connectionId, row.name, args, {
       authorize,
       answer: { inputKey: prompt.inputKey, action, requestState: prompt.requestState },
+      heldTool: yield* requests.tool(row.id),
       runContext: { conversationId: row.sessionId, taskId: row.taskId },
     })
-    if (outcome.kind === 'url') return yield* requests.again(row.id, outcome.prompt)
+    // A server still waiting keeps the request open, unless the owner cancelled: a cancel stands.
+    if (outcome.kind === 'url')
+      return yield* action === 'decline' ? requests.decline(row.id) : requests.again(row.id, outcome.prompt)
     yield* requests.finish(row.id, action === 'accept' ? 'completed' : 'declined', outcome.result)
     // expected: a failed re-list marks the connection stale, so its next use opens it again.
     yield* Effect.ignore(connections.refreshTools(row.connectionId))
