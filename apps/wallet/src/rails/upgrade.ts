@@ -31,6 +31,27 @@ const delegated = (rpc: JsonRpc, owner: string, delegator: string): Promise<bool
     () => null,
   )
 
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Reads the owner's code until it shows the delegation: right after the receipt, a load-balanced node one block behind
+ * still serves the old code, and an applied upgrade would be reported as skipped.
+ */
+const delegatedAfterReceipt = async (
+  rpc: JsonRpc,
+  owner: string,
+  delegator: string,
+  wait: RailsDeps['wait'],
+): Promise<boolean | null> => {
+  let last: boolean | null = null
+  for (let attempt = 0; attempt < (wait?.attempts ?? 5); attempt += 1) {
+    last = await delegated(rpc, owner, delegator)
+    if (last === true) return true
+    await (wait?.sleep ?? pause)(wait?.intervalMs ?? 1500)
+  }
+  return last
+}
+
 /**
  * Relays the owner's signed EIP-7702 authorization and reports the result as an operation. `confirmed` means the
  * owner's code now delegates to this network's DeleGator, read back from the chain: a mined transaction whose
@@ -59,7 +80,7 @@ export const upgrade = async (request: UpgradeRequest, deps: RailsDeps): Promise
     const payment = { rail: 'relay' as const, txHash: sent.txHash, settledAt: now.toISOString() }
     if (sent.status === 'pending') return { ...base, status: 'submitted', updatedAt: now.toISOString(), payment }
     if (sent.status !== 'success') return { ...failed('The upgrade transaction reverted.'), payment }
-    const applied = await delegated(rpc, owner, delegator)
+    const applied = await delegatedAfterReceipt(rpc, owner, delegator, deps.wait)
     if (applied === true) return { ...base, status: 'confirmed', updatedAt: now.toISOString(), payment }
     if (applied === null) return { ...base, status: 'submitted', updatedAt: now.toISOString(), payment }
     return { ...failed('The upgrade landed but the chain did not apply the authorization.'), payment }

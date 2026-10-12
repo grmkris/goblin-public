@@ -116,6 +116,7 @@ const railsOn = (node: ReturnType<typeof fakeNode>, live = true): RailsDeps => (
   profile: async () => ({ ownerAddress: ownerAccount.address, agentAddress: AGENT, chains: [] }),
   rpcFor: () => node.rpc,
   relay: relayClient(() => objectOn(sqlHost(), node.rpc)),
+  wait: { attempts: 2, sleep: async () => undefined },
 })
 
 describe('the upgrade rail', () => {

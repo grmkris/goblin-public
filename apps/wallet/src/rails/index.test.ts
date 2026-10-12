@@ -370,6 +370,21 @@ describe('upgrade', () => {
     expect(operationResult.termsHash).toBe(await termsHash(operationResult.terms))
   })
 
+  test('an upgrade read back from a node a block behind is confirmed once the node catches up', async () => {
+    let landed = false
+    let stale = 1
+    const relay = {
+      upgrade: async () => {
+        landed = true
+        return { txHash: toHex(`0x${'cd'.repeat(32)}`), status: 'success' as const, nonce: 3 }
+      },
+    }
+    // The first code read after the receipt still shows the old (empty) code.
+    const rpcFor = () => async () => (landed && (stale -= 1) < 0 ? delegated()() : '0x')
+    const operationResult = await createRails(deps({ relay, rpcFor })).upgrade(request)
+    expect(operationResult.status).toBe('confirmed')
+  })
+
   test('an owner already delegated to the DeleGator is confirmed without relaying again', async () => {
     const relay = { upgrade: vi.fn() }
     const operationResult = await createRails(deps({ relay, rpcFor: delegated })).upgrade(request)
