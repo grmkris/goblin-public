@@ -4,8 +4,8 @@ import { Address, ChainKey, Hex, Instant, OperationId, Text, TokenAmount, UsdAmo
 export const OperationKind = Schema.Literals(['paid_fetch', 'transfer', 'swap', 'bridge', 'upgrade', 'allowance'])
 export type OperationKind = typeof OperationKind.Type
 
-/** The rail a payment went over. */
-export const Rail = Schema.Literals(['x402', 'mpp', 'transfer', 'lifi', 'relay', 'delegation'])
+/** The rail a payment went over. `relay` is Relay.link's bridge; `userop` an account's own UserOperation (an upgrade). */
+export const Rail = Schema.Literals(['x402', 'mpp', 'transfer', 'lifi', 'relay', 'delegation', 'userop'])
 export type Rail = typeof Rail.Type
 
 /**
@@ -48,6 +48,11 @@ export type Terms = typeof Terms.Type
 export const Payment = Schema.Struct({
   rail: Rail,
   txHash: Schema.optional(Hex),
+  /**
+   * The UserOperation the payment went out in (every EVM send of the wallet is one). Kept from the moment the bundler
+   * took it, so an unknown outcome can be read back from the bundler (`eth_getUserOperationReceipt`), never paid again.
+   */
+  userOpHash: Schema.optional(Hex),
   /** The rail's own receipt reference (x402 PAYMENT-RESPONSE, MPP Payment-Receipt), bounded. */
   reference: Schema.optional(Text(512)),
   explorerUrl: Schema.optional(Text(256)),

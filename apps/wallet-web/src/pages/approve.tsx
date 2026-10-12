@@ -31,6 +31,7 @@ const RAIL: Record<string, string> = {
   lifi: 'LI.FI',
   relay: 'Relay',
   delegation: 'Allowance',
+  userop: 'Account operation',
 }
 
 function Detail({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {

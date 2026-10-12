@@ -26,6 +26,7 @@ export const RAIL: Record<Rail, string> = {
   lifi: 'LI.FI',
   relay: 'Relay',
   delegation: 'Allowance',
+  userop: 'Account operation',
 }
 
 /** The colour of a payment or delivery step's dot; the label beside it carries the meaning. */
