@@ -40,8 +40,9 @@ mode is fullscreen; it has no place in a transcript.
 
 **Full screen keeps the composer.** An App's page fills the main column under the bar (Back to the conversation, the
 App's name, its menu, Close), and goblin's composer for the App's conversation floats over its bottom edge, with the
-agent's presence on it. The composer, and the line over it, are `data-app-cover`: the stage clips itself to them, and
-the App is told what they cover as `safeAreaInsets.bottom` with `containerDimensions` the whole room. A reply goblin
+agent's presence on it. The composer, and the line over it, are one bar marked `data-app-cover`: the stage clips
+itself to it again whenever it moves or resizes (a reply line, a question or a chip appearing), and the App is told
+what it covers as `safeAreaInsets.bottom` with `containerDimensions` the whole room. A reply goblin
 finishes while the page is open shows as one line over the composer; a tap opens the conversation beside the App, or
 in a sheet over its lower part on a phone, where the composer is the conversation's own. `ui/message` and
 `ui/update-model-context` from the App go to that conversation, as everywhere. Inline stays as it was.

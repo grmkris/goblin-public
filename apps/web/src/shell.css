@@ -773,7 +773,7 @@
 /*
  * Under the App page's bar (ADR 0053): the room the App's stage fills, with goblin's composer for the App's
  * conversation floating over its bottom edge, and that conversation beside it once opened. The composer and the line
- * above it cover the App (the stage clips itself to them), and the App is told how much they cover.
+ * above it are one bar that covers the App (the stage clips itself to it), and the App is told how much it covers.
  */
 .app-page-body {
   position: relative;
@@ -793,22 +793,32 @@
   min-width: 0;
   background: var(--background);
 }
-.app-page-main > .chat-dock {
-  padding-block-start: 0.625rem;
+/* The bar over the room's bottom edge, on the keyboard while it is up: the reply line, then the composer. */
+.app-chat-bar {
+  position: absolute;
+  z-index: var(--z-dock);
+  inset-inline: 0;
+  bottom: var(--keyboard-inset, 0px);
+  display: flex;
+  flex-direction: column;
   border-block-start: 1px solid var(--border);
+  background: var(--background);
+}
+.app-chat-bar > .chat-dock {
+  position: relative;
+  inset: auto;
+  padding-block-start: 0.625rem;
+  border-radius: 0;
   background: var(--background);
 }
 /* The newest reply as one line over the composer: goblin's orb, the words, and a way to set it aside. */
 .app-chat-reply {
-  position: absolute;
-  z-index: var(--z-dock);
-  inset-inline: 0;
-  bottom: calc(var(--dock-height, 6rem) + var(--keyboard-inset, 0px) + 0.5rem);
   display: flex;
+  flex: none;
   align-items: center;
   gap: 0.125rem;
   width: min(var(--chat-column), calc(100% - 2 * var(--message-scroller-inset-x)));
-  margin-inline: auto;
+  margin: 0.5rem auto 0;
   padding: 0.25rem;
   border-radius: 1rem;
   background: var(--popover);

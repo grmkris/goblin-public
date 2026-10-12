@@ -954,9 +954,11 @@ loads when its place comes on screen; beyond six instances the least recently se
 picture-in-picture): fullscreen is the App's page, `/a/<id>`, the main column under a bar with "Back to #channel", the
 App's name, its menu (Pin to sidebar, Back in the conversation) and Close. On the page goblin's composer for the App's
 conversation (`ConversationDock`) floats over the room's bottom edge with the agent's presence on it; it and the line
-above it are `data-app-cover` in the page's `data-app-scope`, so the stage clips itself to them, and the App is told
-what they cover as `safeAreaInsets.bottom` (with the sides' safe areas), its `containerDimensions` the whole room
-(`host.insets`, `components/apps/page.tsx`). A reply finished while the page is open shows as one line over the
+above it are one bar marked `data-app-cover` in the page's `data-app-scope`. The stage is drawn over the page, so only
+its clip lets the bar show and take taps: each time the bar moves or resizes (a reply line, a question or a chip), the
+page kicks the stages to clip again, and the App is told what it covers as `safeAreaInsets.bottom` (with the sides'
+safe areas, read through a probe outside the page), its `containerDimensions` the whole room (`host.insets`,
+`components/apps/page.tsx`). A reply finished while the page is open shows as one line over the
 composer (`lib/app-chat.ts`); a tap opens the conversation beside the App, or in a sheet over its lower part on a phone
 (`data-app-overlay`), as the thread panel shows it. In its transcript the host's bar above an App pins it, opens its
 page or closes it. Agent apps are listed in the sidebar's Apps section and on the Apps page (`/apps`, `/apps/<name>`:

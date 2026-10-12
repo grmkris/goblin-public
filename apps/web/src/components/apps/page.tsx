@@ -133,11 +133,13 @@ function safeAreaProbe() {
 }
 
 /**
- * Tells the App what covers its page: the screen's safe areas at the sides and, while the chat bar shows, the bar and
- * the line above it at the bottom (else the safe area there). The top is cleared by the page's own bar.
+ * Tells the App what covers its page: the screen's safe areas at the sides and, while the chat bar shows, the bar (the
+ * reply line, what waits on the owner, the composer) at the bottom (else the safe area there). The top is cleared by
+ * the page's own bar. Each time what covers it moves or resizes, the stages are told too, so the App's stage clips
+ * itself to the bar again: the stage is drawn over the page, and only its clip lets the bar show and take taps.
  */
 function useCoveredEdges(id: string, main: RefObject<HTMLElement | null>, bar: boolean) {
-  const { setInsets } = useAppHost()
+  const { setInsets, kick } = useAppHost()
   const keyboard = useKeyboardInset()
   useLayoutEffect(() => {
     const room = main.current
@@ -151,9 +153,10 @@ function useCoveredEdges(id: string, main: RefObject<HTMLElement | null>, bar: b
       const bottom = room.getBoundingClientRect().bottom
       const covered = bar && tops.length > 0 ? Math.round(bottom - Math.min(...tops)) : safe.bottom
       setInsets(id, { ...safe, bottom: Math.max(covered, safe.bottom) })
+      kick()
     }
     const sizes = new ResizeObserver(measure)
-    // The reply line comes and goes: each time, what covers the room is watched again.
+    // The chat bar comes and goes with the conversation beside the App: each time, what covers the room is watched again.
     const watch = () => {
       sizes.disconnect()
       sizes.observe(room)
@@ -168,7 +171,7 @@ function useCoveredEdges(id: string, main: RefObject<HTMLElement | null>, bar: b
       sizes.disconnect()
       probe.remove()
     }
-  }, [id, main, bar, keyboard, setInsets])
+  }, [id, main, bar, keyboard, setInsets, kick])
   useEffect(() => () => setInsets(id, undefined), [id, setInsets])
 }
 
@@ -187,7 +190,8 @@ function useReplyLine(parts: Parameters<typeof latestReply>[0], loaded: boolean)
 
 /**
  * goblin's composer for the App's conversation over the page's bottom edge, with what the agent is doing on it, and
- * over it the newest reply as one line that opens the conversation. Both cover the App (`data-app-cover`).
+ * over it the newest reply as one line that opens the conversation. They cover the App as one bar (`data-app-cover`),
+ * measured whole, so a reply line, a question or a chip that appears grows what the App's stage leaves clear.
  */
 function AppChatBar({
   app,
@@ -215,9 +219,9 @@ function AppChatBar({
     onOpen()
   }
   return (
-    <>
+    <div className="app-chat-bar" data-app-cover>
       {reply !== undefined && (
-        <div className="app-chat-reply" data-app-cover>
+        <div className="app-chat-reply">
           <button type="button" className="app-chat-reply-open" onClick={open}>
             <PresenceOrb state="idle" label="goblin replied" active={false} />
             <span className="truncate">{reply.line}</span>
@@ -237,7 +241,7 @@ function AppChatBar({
         active
         placeholder={`Ask about ${name}…`}
       />
-    </>
+    </div>
   )
 }
 
