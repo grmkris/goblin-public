@@ -306,19 +306,6 @@ function HeldOnBase() {
   )
 }
 
-/** The card Home shows: the owner's address, then a deposit from another chain or token. */
-export function AddFundsCard({ owner }: { readonly owner: string }) {
-  return (
-    <div className="flex flex-col gap-6 rounded-2xl bg-card p-6 text-card-foreground ring-1 ring-foreground/10">
-      <p className="text-center text-sm/relaxed text-muted-foreground text-pretty">
-        Send USDC on Base to your address. It is the same address on every EVM chain.
-      </p>
-      <ReceiveAddress owner={owner} />
-      <FromElsewhere />
-    </div>
-  )
-}
-
 /** `/add-funds`: the owner's address and what they hold on Base, then a deposit from another chain or token. */
 /**
  * A client that sent the owner here to top up (`/add-funds?return=<url>`) gets a way back, once the Worker vouches the
