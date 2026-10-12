@@ -3,6 +3,7 @@
   "compilerOptions": { "types": ["bun", "node"] },
   "include": [
     "apps/web/alchemy.run.ts",
+    "apps/wallet/alchemy.run.ts",
     "apps/web/vite.config.ts",
     "scripts/**/*.ts",
     "tools/**/*.ts",

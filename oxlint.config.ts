@@ -2,7 +2,7 @@ import { defineConfig, type OxlintOverride } from 'oxlint'
 import { agentIgnorePatterns } from './tools/vendored.ts'
 
 /** Where React runs, and the plugins its files are linted with. */
-const REACT_FILES = ['apps/web/**', 'packages/ui/**', 'packages/kit/**', 'packages/app/src/ui/**']
+const REACT_FILES = ['apps/web/**', 'apps/wallet-web/**', 'packages/ui/**', 'packages/kit/**', 'packages/app/src/ui/**']
 const REACT_PLUGINS: OxlintOverride['plugins'] = ['typescript', 'unicorn', 'oxc', 'import', 'react']
 /** The React Compiler's checks of the Rules of React (oxlint's port): refs, purity, effects, memoisation, syntax. */
 const RULES_OF_REACT = [
@@ -137,10 +137,10 @@ export default defineConfig({
     },
     // process.env is these files' input, not app settings:
     // - the Vite and Vitest configs read the build's and the test harness's settings before anything is bundled;
-    // - scripts/stage.ts builds and scrubs the child environment of every stage run (ADR 0001; decision F4 in
+    // - scripts/stage.ts and scripts/wallet-stage.ts build and scrub the child environment of every stage run (ADR 0001; decision F4 in
     //   docs/agents/lint-quality.md).
     {
-      files: ['**/vitest*.config.ts', '**/vite.config.ts', 'scripts/stage.ts'],
+      files: ['**/vitest*.config.ts', '**/vite.config.ts', 'scripts/stage.ts', 'scripts/wallet-stage.ts'],
       rules: { 'goblin/no-process-env': 'off' },
     },
     // The isolated benchmark stack must replace ambient cloud credentials with local placeholders and restore them.
@@ -149,7 +149,7 @@ export default defineConfig({
     // styles, unknown or computed classes, and a component restyled only in its layout. The kit draws with its own
     // stylesheet.
     {
-      files: ['apps/web/src/**/*.tsx', 'packages/ui/src/**'],
+      files: ['apps/web/src/**/*.tsx', 'apps/wallet-web/src/**/*.tsx', 'packages/ui/src/**'],
       rules: {
         'shadcn/no-restyle': ['error', { allow: ['layout'] }],
         'shadcn/no-raw-colors': 'error',
@@ -179,7 +179,13 @@ export default defineConfig({
     // The Rules of React as the React Compiler checks them, in the source it compiles: a component that breaks one is
     // skipped by it. Test fixtures count renders and poke at refs on purpose.
     {
-      files: ['apps/web/src/**', 'packages/ui/src/**', 'packages/kit/src/**', 'packages/app/src/ui/**'],
+      files: [
+        'apps/web/src/**',
+        'apps/wallet-web/src/**',
+        'packages/ui/src/**',
+        'packages/kit/src/**',
+        'packages/app/src/ui/**',
+      ],
       plugins: REACT_PLUGINS,
       rules: Object.fromEntries(RULES_OF_REACT.map((rule) => [`react/${rule}`, 'error'])),
     },

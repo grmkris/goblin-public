@@ -123,7 +123,7 @@
           },
           {
             // These loaders scrub the stage environment or force local-only placeholder cloud credentials.
-            "include": ["scripts/stage.ts", "bench/scripts/local.ts"],
+            "include": ["scripts/stage.ts", "scripts/wallet-stage.ts", "bench/scripts/local.ts"],
             "options": { "diagnosticSeverity": { "processEnv": "off", "processEnvInEffect": "off" } }
           }
         ]

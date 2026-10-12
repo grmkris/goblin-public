@@ -9,13 +9,14 @@ const OBSERVABILITY = {
   traces: { enabled: true, headSamplingRate: 1, persist: true },
 }
 
-export function resolveStage(name: string) {
+/** `app` prefixes every physical name: goblin's are `goblin-<stage>…`, the wallet's `goblin-wallet-<stage>…`. */
+export function resolveStage(name: string, app = 'goblin') {
   if (name !== 'local' && name !== 'dev' && name !== 'prod' && !/^test_[a-z0-9_-]+$/u.test(name))
     throw new Error('unsupported_stage')
   return {
     name,
-    workerName: `goblin-${name.replaceAll('_', '-')}`,
-    resourceName: (role: string) => `goblin-${name.replaceAll('_', '-')}-${role}`,
+    workerName: `${app}-${name.replaceAll('_', '-')}`,
+    resourceName: (role: string) => `${app}-${name.replaceAll('_', '-')}-${role}`,
     local: name === 'local',
     observability: OBSERVABILITY,
   }

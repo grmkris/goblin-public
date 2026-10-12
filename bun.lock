@@ -73,6 +73,36 @@
         "vitest": "5.0.1",
       },
     },
+    "apps/wallet": {
+      "name": "@goblin/wallet-worker",
+      "version": "0.1.0",
+      "dependencies": {
+        "@goblin/wallet": "workspace:*",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "5.20260928.1",
+        "typescript": "7.0.2",
+        "vitest": "5.0.1",
+      },
+    },
+    "apps/wallet-web": {
+      "name": "@goblin/wallet-web",
+      "version": "0.1.0",
+      "dependencies": {
+        "@goblin/ui": "workspace:*",
+        "@goblin/wallet": "workspace:*",
+        "react": "19.3.0",
+        "react-dom": "19.3.0",
+      },
+      "devDependencies": {
+        "@tailwindcss/vite": "4.3.3",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "@vitejs/plugin-react": "6.1.1",
+        "typescript": "7.0.2",
+        "vite": "8.3.1",
+      },
+    },
     "apps/web": {
       "name": "@goblin/web",
       "version": "0.1.0",
@@ -220,6 +250,14 @@
       "peerDependencies": {
         "react": "19.3.0",
         "react-dom": "19.3.0",
+      },
+    },
+    "packages/wallet": {
+      "name": "@goblin/wallet",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "7.0.2",
+        "vitest": "5.0.1",
       },
     },
     "tools": {
@@ -585,6 +623,12 @@
     "@goblin/tools": ["@goblin/tools@workspace:tools"],
 
     "@goblin/ui": ["@goblin/ui@workspace:packages/ui"],
+
+    "@goblin/wallet": ["@goblin/wallet@workspace:packages/wallet"],
+
+    "@goblin/wallet-web": ["@goblin/wallet-web@workspace:apps/wallet-web"],
+
+    "@goblin/wallet-worker": ["@goblin/wallet-worker@workspace:apps/wallet"],
 
     "@goblin/web": ["@goblin/web@workspace:apps/web"],
 

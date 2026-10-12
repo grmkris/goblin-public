@@ -71,6 +71,11 @@
         "test/perf/vite.config.ts!",
       ],
     },
+    "apps/wallet": {
+      "entry": ["alchemy.run.ts!", "src/worker.ts!"],
+    },
+    // Lanes add `src/views/*.tsx!` (wallet-web) and `scripts/*.ts!` (packages/wallet) with their first files: a
+    // pattern that matches nothing is a knip configuration hint, and hints gate.
     "packages/app": {
       // scripts/build.ts reads tw-animate-css's stylesheet from node_modules by path (its package exports CSS only).
       "ignoreDependencies": ["tw-animate-css"],

@@ -4,10 +4,17 @@ import { resolve } from 'node:path'
 
 export const DEFAULT_RELEASE_ROOT = '/var/lib/goblin-release'
 
-export function attachStageState(root: string, stage: string, releaseRoot: string): void {
-  const target = resolve(releaseRoot, 'alchemy/state/goblin', stage)
+/** Which app's state to attach: the Alchemy stack name, and the workspace whose `.alchemy` directory holds the link. */
+export interface StageApp {
+  readonly stack: string
+  readonly dir: string
+}
+const GOBLIN: StageApp = { stack: 'goblin', dir: 'apps/web' }
+
+export function attachStageState(root: string, stage: string, releaseRoot: string, app: StageApp = GOBLIN): void {
+  const target = resolve(releaseRoot, 'alchemy/state', app.stack, stage)
   if (!existsSync(target)) throw new Error(`release_state_not_seeded: ${stage}`)
-  const link = resolve(root, 'apps/web/.alchemy/state/goblin', stage)
+  const link = resolve(root, app.dir, '.alchemy/state', app.stack, stage)
   mkdirSync(resolve(link, '..'), { recursive: true })
   if (existsSync(link)) {
     if (lstatSync(link).isSymbolicLink()) {
