@@ -263,10 +263,13 @@ export function PaysFrom({
   held,
   actions,
   onOpen,
+  automatic,
 }: {
   readonly payFrom: PayFrom
   /** Nothing is held anywhere yet: the card asks to fund this address. */
   readonly empty: boolean
+  /** The wallet refills this address from the owner's Base allowance (ADR 0051), so nobody needs to send to it. */
+  readonly automatic: boolean
   readonly open: boolean
   readonly held: bigint | undefined
   readonly actions: FundActions
@@ -277,8 +280,9 @@ export function PaysFrom({
       aria-label="Where your agent pays from"
       className="flex flex-col gap-4 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+      {/* Stacked on a phone, the code beside the address once there is room for both. */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-1">
           <h2 className={cn('text-sm', empty ? 'font-medium' : 'text-muted-foreground')}>
             {empty ? 'Fund this address' : 'Your agent pays from'}
           </h2>
@@ -288,14 +292,15 @@ export function PaysFrom({
           </div>
           <p className="text-sm text-muted-foreground tabular-nums">Tempo · USDC.e · {heldText(payFrom)}</p>
           <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
-            Paid model calls and services are paid from here. Send USDC.e on Tempo to this address, or add funds from
-            Base, Arbitrum or Ethereum.
+            {automatic
+              ? 'Paid model calls and services are paid from here. The wallet keeps it topped up from your allowance on Base.'
+              : 'Paid model calls and services are paid from here. Send USDC.e on Tempo to this address, or add funds from Base, Arbitrum or Ethereum.'}
           </p>
         </div>
         <QrCode
           value={payFrom.address}
           label={`QR code of your agent's address ${payFrom.address}`}
-          className="size-28"
+          className="size-28 self-center sm:self-start"
         />
       </div>
       {open ? (

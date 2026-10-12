@@ -259,6 +259,20 @@ export function Dashboard({
   const spending = spendingOf(status)
   const next = spending.blocker === undefined ? undefined : nextActionOf(spending.blocker)
   const step = next === undefined || next === 'wait' ? undefined : next
+  // Where the agent pays from leads only while it is the task (empty, or opened on Add funds); otherwise what the
+  // agent can spend comes first and the address follows it.
+  const fundingLeads = isEmpty(status) || addFundsOpen
+  const paysFrom = status.payFrom !== undefined && (
+    <PaysFrom
+      payFrom={status.payFrom}
+      empty={isEmpty(status)}
+      open={addFundsOpen}
+      held={agentOnTempo(status)}
+      actions={fund}
+      onOpen={openAddFunds}
+      automatic={status.float?.automatic === true}
+    />
+  )
   return (
     <>
       <Header
@@ -271,16 +285,7 @@ export function Dashboard({
         onToggleFullscreen={onToggleFullscreen}
       />
       <RefusedLink link={refusedLink} />
-      {status.payFrom !== undefined && (
-        <PaysFrom
-          payFrom={status.payFrom}
-          empty={isEmpty(status)}
-          open={addFundsOpen}
-          held={agentOnTempo(status)}
-          actions={fund}
-          onOpen={openAddFunds}
-        />
-      )}
+      {fundingLeads && paysFrom}
       <AttentionList items={attentionOf(recent)} actionFor={attentionFor(status.site, onCheck)} />
       {checklist.length > 0 ? (
         <SetupCard client={client} checklist={checklist} site={status.site} />
@@ -292,6 +297,7 @@ export function Dashboard({
           }
         />
       )}
+      {!fundingLeads && paysFrom}
       <DashboardTabs
         status={status}
         recent={recent}
