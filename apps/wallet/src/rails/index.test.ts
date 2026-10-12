@@ -2,6 +2,7 @@ import { toHex, type JsonRpc } from '@goblin/wallet/balances'
 import type { AgentSigner, Operation, ServiceRule, Terms } from '@goblin/wallet/contract'
 import { DEFAULT_SERVICES, termsHash } from '@goblin/wallet/contract'
 import { describe, expect, test, vi } from 'vitest'
+import { TOP_UP_SETTLE_MS } from './fetch.ts'
 import { createRails, type RailsDeps } from './index.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
@@ -204,6 +205,28 @@ describe('paid fetch', () => {
     expect(outcome.outcome === 'settled' && String(outcome.response?.body).length).toBe(32_000)
     expect(cancelled).toBe(true)
     expect(pulls).toBeLessThan(10)
+  })
+
+  test('after an allowance top-up, the x402 payment waits for the new balance to settle before it signs', async () => {
+    const slept: number[] = []
+    const empty: JsonRpc = async (method) => {
+      if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
+      if (method === 'eth_getBlockByNumber') return { baseFeePerGas: '0x989680' }
+      if (method === 'eth_estimateGas') return '0x186a0'
+      if (method === 'eth_maxPriorityFeePerGas') return '0xf4240'
+      return method === 'eth_getBalance' ? word(10n ** 15n) : word(0n)
+    }
+    const rails = createRails(
+      deps({
+        rpcFor: () => empty,
+        topUp: async () => ({ redeemCalldata: () => '0xfeed', available: async () => 20_000_000n }),
+        wait: { attempts: 2, sleep: async (ms) => void slept.push(ms) },
+        fetchFn: exaFetch(),
+      }),
+    )
+    const terms = await rails.quotePaidFetch(EXA, {}, 'x402')
+    expect(await rails.payPaidFetch(operation(terms), EXA, {})).toMatchObject({ outcome: 'settled' })
+    expect(slept).toContain(TOP_UP_SETTLE_MS)
   })
 
   test('a price rise since the quote is failed before anything is signed', async () => {

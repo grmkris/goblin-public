@@ -158,6 +158,15 @@ export const boundedResponse = async (response: Response): Promise<PaidResponse>
 
 const atomic = (terms: Terms): string => parseUnits(terms.amount, terms.token.decimals).toString()
 
+/**
+ * After an allowance top-up, the service's facilitator checks the agent's USDC on its own node before it settles. Right
+ * after our receipt that node can still see the old balance and refuse with a 402, which leaves the signed credential
+ * out and the payment unknown. Two Base blocks let the new balance reach it first.
+ */
+export const TOP_UP_SETTLE_MS = 4000
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
 /** Pays a reserved `paid_fetch` operation over the rail its frozen terms name. */
 export const payPaidFetch = async (
   operation: Operation,
@@ -180,7 +189,7 @@ export const payPaidFetch = async (
   }
   try {
     if (terms.rail === 'x402') {
-      await ensureUsdc({
+      const funded = await ensureUsdc({
         live: deps.live,
         chain: 'base',
         amount: BigInt(atomic(terms)),
@@ -190,6 +199,7 @@ export const payPaidFetch = async (
         topUp: await deps.topUp?.('base'),
         wait: deps.wait,
       })
+      if (funded.topUpTxHash !== undefined) await (deps.wait?.sleep ?? pause)(TOP_UP_SETTLE_MS)
       const paid = await payX402({
         ...common,
         agent: signer,
