@@ -2,6 +2,7 @@
   "name": "@goblin/wallet",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./contract": "./src/contract/index.ts",

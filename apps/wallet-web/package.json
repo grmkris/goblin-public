@@ -2,6 +2,7 @@
   "name": "@goblin/wallet-web",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 18980 --strictPort",
