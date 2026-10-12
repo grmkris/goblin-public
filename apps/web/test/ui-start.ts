@@ -30,17 +30,21 @@ const server = (connectionId: string, title: string, status: string) => ({
   source: 'config',
   profile: PROFILE(connectionId, title),
 })
+/** No plan yet: the wallet step ends with goblin Pro's two ways to pay, the day pass first (ADR 0054). */
 const PLAN = {
-  active: true,
-  source: 'free',
+  active: false,
+  source: 'none',
   until: null,
-  dailyCredits: 200,
-  status: 'active',
+  dailyCredits: 0,
+  status: 'none',
   hasCustomer: false,
   cancelAtPeriodEnd: false,
   mode: null,
-  plan: 'free',
-  priceCents: 0,
+  plan: null,
+  catalog: [
+    { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
+    { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
+  ],
 }
 const SETUP_URL = 'https://wallet.goblin.surf/setup?return=https%3A%2F%2Fgoblin.surf%2Fstart%2Fwallet'
 const FUNDS_URL = 'https://wallet.goblin.surf/add-funds?return=https%3A%2F%2Fgoblin.surf%2Fstart%2Fwallet'
@@ -54,7 +58,7 @@ const wallet = (change: Record<string, unknown>) => ({
   gaps: [],
   setupUrl: SETUP_URL,
   fundsUrl: FUNDS_URL,
-  needs: '5',
+  needs: '0',
   funded: false,
   ...change,
 })

@@ -4,15 +4,24 @@
 // owner tells it.
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import type { OnboardingStep, OnboardingView, ServerSuggestion, ServerView } from '@goblin/contracts'
+import type {
+  BillingId,
+  BillingState,
+  OnboardingStep,
+  OnboardingView,
+  PlanOffer,
+  ServerSuggestion,
+  ServerView,
+} from '@goblin/contracts'
 import { Badge, Button, GoblinMark, Receipt, Textarea } from '@goblin/ui'
 import { CircleAlertIcon, CircleCheckIcon, PlusIcon, WalletIcon } from 'lucide-react'
 import { useId, useState } from 'react'
 import { payQuery } from '../../agent/queries.ts'
 import { useBilling } from '../../account/hooks.ts'
+import { messageOf } from '../../lib/query/app-error.ts'
 import { QueryBoundary } from '../../lib/query/query-boundary.tsx'
 import { serverStatusQuery, serversQuery } from '../../mcp/queries.ts'
-import { startAddMutation } from '../../onboarding/queries.ts'
+import { startAddMutation, startPlanMutation } from '../../onboarding/queries.ts'
 import { SuggestedServers } from '../server-add.tsx'
 import { PrepaidLine } from '../first-class.tsx'
 import { PayModeChoices, payModeTitle, waysOf } from '../inference-card.tsx'
@@ -161,17 +170,90 @@ function PayLine() {
   )
 }
 
-/** Set up in the wallet: what it holds and where it pays from, how goblin pays, and Add funds while it holds too little. */
+const OFFER_NAME: Readonly<Record<BillingId, string>> = { day: 'Day pass', month: 'Monthly' }
+
+/** "$1.00 a day you use goblin", "$15.00 a month": one way to pay for Pro, in words. */
+const offerWords = (offer: PlanOffer): string => {
+  if (offer.periodDays === 1) return `${dollars(offer.amountUsd)} a day you use goblin`
+  return offer.periodDays === 30
+    ? `${dollars(offer.amountUsd)} a month`
+    : `${dollars(offer.amountUsd)} every ${String(offer.periodDays)} days`
+}
+
+/** Has goblin Pro, however it is paid (ADR 0054): without it goblin does not answer. */
+const hasPro = (billing: BillingState | undefined): boolean => billing?.active === true && billing.plan === 'pro'
+
+/** goblin Pro as the owner pays for it, or the deployment's ways to pay with the day pass first, signed once in the wallet. */
+function ProPlan({ billing }: { readonly billing: BillingState }) {
+  const start = useMutation(startPlanMutation)
+  const [choice, setChoice] = useState<BillingId>(billing.catalog[0]?.id ?? 'day')
+  const name = useId()
+  if (hasPro(billing)) {
+    const offer = billing.catalog.find((each) => each.id === billing.wallet?.billing)
+    return (
+      <p className="start-note">
+        goblin Pro{offer === undefined ? '' : ` · ${OFFER_NAME[offer.id]}, ${offerWords(offer)}`}
+      </p>
+    )
+  }
+  const credits = billing.catalog[0]?.dailyCredits ?? billing.dailyCredits
+  // The wallet's page signs it; a refusal shows below the button.
+  const subscribe = () => {
+    start.mutate(choice, { onSuccess: ({ signUrl }) => window.location.assign(signUrl) })
+  }
+  return (
+    <div className="start-plan">
+      <p className="start-pay-line">
+        <span>goblin Pro: {String(credits)} Credits a day, hand-overs and subagents.</span>
+      </p>
+      <fieldset className="pay-choices">
+        <legend className="sr-only">How to pay for goblin Pro</legend>
+        {billing.catalog.map((offer) => (
+          <label key={offer.id} className="setting-row pay-choice">
+            <input
+              type="radio"
+              name={name}
+              checked={choice === offer.id}
+              onChange={() => {
+                setChoice(offer.id)
+              }}
+            />
+            <span className="grant-text">
+              <span className="grant-name">{OFFER_NAME[offer.id]}</span>
+              <span className="grant-about">{offerWords(offer)}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <p className="start-note">You sign once in your wallet, and cancel there any time.</p>
+      <Button size="cta" disabled={start.isPending} onClick={subscribe}>
+        <WalletIcon aria-hidden />
+        {start.isPending ? 'Opening your wallet…' : 'Subscribe in your wallet'}
+      </Button>
+      {start.error !== null && (
+        <Receipt tone="error">
+          <CircleAlertIcon aria-hidden />
+          <span>{messageOf(start.error, 'open the wallet to subscribe')}</span>
+        </Receipt>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Set up in the wallet: what it holds and where it pays from, then goblin Pro (chosen and signed in the wallet), how
+ * goblin pays per call, and Add funds while it holds nothing.
+ */
 function WalletReady({ wallet }: { readonly wallet: OnboardingView['wallet'] }) {
   const billing = useBilling().state
-  const free = billing?.source === 'free' && Number(wallet.needs) > 0
+  const ready = wallet.funded && hasPro(billing)
   const held = wallet.payFrom?.held
   return (
     <div className="start-action">
-      <div className="start-wallet" {...(wallet.funded ? { 'data-funded': true } : {})}>
-        <p className="start-state" {...(wallet.funded ? { 'data-done': true } : {})}>
-          {wallet.funded ? <CircleCheckIcon aria-hidden /> : <span className="start-pulse" aria-hidden />}
-          {wallet.funded ? 'Ready to pay' : 'Set up. Add funds to start'}
+      <div className="start-wallet" {...(ready ? { 'data-funded': true } : {})}>
+        <p className="start-state" {...(ready ? { 'data-done': true } : {})}>
+          {ready ? <CircleCheckIcon aria-hidden /> : <span className="start-pulse" aria-hidden />}
+          {ready ? 'Ready' : wallet.funded ? 'Set up. Choose how to pay for goblin' : 'Set up. Add funds to start'}
         </p>
         <p className="start-wallet-amount">
           <span className="start-wallet-dollars">{wallet.dollars === undefined ? '…' : dollars(wallet.dollars)}</span>
@@ -182,12 +264,9 @@ function WalletReady({ wallet }: { readonly wallet: OnboardingView['wallet'] }) 
             {dollars(held)} ready to pay on {CHAINS[wallet.payFrom.chain] ?? wallet.payFrom.chain}
           </p>
         )}
-        {!wallet.funded && free && (
-          <p className="start-note">
-            Your {billing.dailyCredits} free Credits a day start once it holds {dollars(wallet.needs)}.
-          </p>
-        )}
-        <PayLine />
+        {wallet.funded && billing !== undefined && <ProPlan billing={billing} />}
+        {/* How each call is paid matters once Pro's Credits are there to pay first. */}
+        {hasPro(billing) && <PayLine />}
       </div>
       {!wallet.funded && wallet.fundsUrl !== undefined && (
         <SetupLink href={wallet.fundsUrl}>Add funds in your wallet</SetupLink>
@@ -282,10 +361,8 @@ export function GoblinStep({
   const billing = useBilling().state
   const [text, setText] = useState('')
   const field = useId()
-  const canAnswer =
-    (billing !== undefined && billing.source !== 'free') ||
-    view.wallet.funded ||
-    Number(view.wallet.payFrom?.held ?? '0') >= 0.05
+  // Without goblin Pro (a day pass or monthly) goblin does not answer, so the kickoff waits for it.
+  const canAnswer = hasPro(billing)
   return (
     <div className="start-action">
       <label className="sr-only" htmlFor={field}>
@@ -316,9 +393,9 @@ export function GoblinStep({
         <Receipt tone="neutral">
           <CircleAlertIcon aria-hidden />
           <span>
-            goblin needs a funded wallet to answer.{' '}
+            goblin answers with goblin Pro, a day pass or monthly.{' '}
             <Link className="cause-link" to="/start/$step" params={{ step: 'wallet' }}>
-              Set up your wallet
+              Choose it in the wallet step
             </Link>
           </span>
         </Receipt>

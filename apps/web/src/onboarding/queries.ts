@@ -1,7 +1,7 @@
 import { mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
-import type { OnboardingChange, OnboardingConnect, OnboardingState, OnboardingView } from '@goblin/contracts'
+import type { BillingId, OnboardingChange, OnboardingConnect, OnboardingState, OnboardingView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
-import { owner } from '../lib/api.ts'
+import { account, owner } from '../lib/api.ts'
 
 /** First-run Start (ADR 0048) on the owner API. Keys are `['onboarding', kind]`. */
 export const onboardingKeys = {
@@ -75,4 +75,12 @@ export const startAddMutation = mutationOptions({
   }),
   onSuccess: (started, _endpoint, _result, { client }) =>
     started.authorizationUrl === undefined ? client.invalidateQueries({ queryKey: ['mcp', 'servers'] }) : undefined,
+})
+
+/**
+ * Pays for goblin Pro from the Goblin Wallet the way the owner chose (ADR 0054): the page goes to sign it once, and the
+ * wallet's return (`/subscribe/success`, which confirms it) brings them back to Start's wallet step.
+ */
+export const startPlanMutation = account.apiMutation({
+  mutationFn: (api, plan: BillingId) => api.billing.walletStart({ payload: { plan, return: '/start/wallet' } }),
 })
