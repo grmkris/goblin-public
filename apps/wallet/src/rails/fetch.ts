@@ -105,12 +105,44 @@ export const quotePaidFetch = async (
 
 const BODY_LIMIT = 32_000
 
-/** The paid response, bounded: JSON parsed when it fits, otherwise text cut at the limit. */
+/** Reads at most `BODY_LIMIT` bytes from the stream and cancels the rest, so an endless body is never buffered. */
+const readBounded = async (response: Response): Promise<{ text: string; truncated: boolean }> => {
+  if (response.body === null) return { text: '', truncated: false }
+  // SAFETY: a fetch Response body is a byte stream.
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  let truncated = false
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const room = BODY_LIMIT - size
+      if (value.byteLength > room) {
+        chunks.push(value.subarray(0, room))
+        truncated = true
+        break
+      }
+      chunks.push(value)
+      size += value.byteLength
+    }
+  } finally {
+    // expected: cancelling an already-cut stream may fail; the bytes we kept are what matter.
+    if (truncated) await reader.cancel().catch(() => undefined)
+  }
+  const bytes = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0))
+  let at = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, at)
+    at += chunk.byteLength
+  }
+  return { text: new TextDecoder().decode(bytes), truncated }
+}
+
+/** The paid response, bounded: JSON parsed when it fits, otherwise text cut at the byte limit while streaming. */
 export const boundedResponse = async (response: Response): Promise<PaidResponse> => {
   const contentType = response.headers.get('content-type') ?? 'application/octet-stream'
-  const raw = await response.text()
-  const truncated = raw.length > BODY_LIMIT
-  const text = truncated ? raw.slice(0, BODY_LIMIT) : raw
+  const { text, truncated } = await readBounded(response)
   if (!truncated && contentType.includes('json')) {
     try {
       const body: unknown = JSON.parse(text)
@@ -182,8 +214,18 @@ const outcomeOf = async (
   response: Response,
 ): Promise<PayOutcome> => {
   if (outcome === 'settled' && payment !== undefined) {
-    const bounded = await boundedResponse(response)
-    return { outcome: 'settled', payment, delivery: { status: String(response.status) }, response: bounded }
+    // The settlement is proven: a body that cannot be read changes the delivery, never the payment.
+    try {
+      const bounded = await boundedResponse(response)
+      return { outcome: 'settled', payment, delivery: { status: String(response.status) }, response: bounded }
+    } catch {
+      // expected: the stream broke after the service settled; the receipt is kept and delivery reported failed.
+      return {
+        outcome: 'settled',
+        payment,
+        delivery: { status: 'failed', detail: 'The payment settled but the response body could not be read.' },
+      }
+    }
   }
   if (outcome === 'unsettled')
     return {

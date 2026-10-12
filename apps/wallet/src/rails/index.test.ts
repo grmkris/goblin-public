@@ -132,7 +132,7 @@ describe('paid fetch', () => {
     })
   })
 
-  test('a refused payment is failed; a silent paid answer is uncertain; no signer is failed', async () => {
+  test('a 402 after the credential is uncertain; a silent paid answer is uncertain; no signer is failed', async () => {
     const terms = await createRails(deps({ fetchFn: exaFetch() })).quotePaidFetch(EXA, {}, 'x402')
     const refused = createRails(
       deps({
@@ -141,11 +141,58 @@ describe('paid fetch', () => {
         }),
       }),
     )
-    expect((await refused.payPaidFetch(operation(terms), EXA, {})).outcome).toBe('failed')
+    expect((await refused.payPaidFetch(operation(terms), EXA, {})).outcome).toBe('uncertain')
     const silent = createRails(deps({ fetchFn: exaFetch({ paid: () => new Response('boom', { status: 500 }) }) }))
     expect((await silent.payPaidFetch(operation(terms), EXA, {})).outcome).toBe('uncertain')
     const nobody = createRails(deps({ signer: undefined, fetchFn: exaFetch() }))
     expect((await nobody.payPaidFetch(operation(terms), EXA, {})).outcome).toBe('failed')
+  })
+
+  test('a paid response whose body breaks keeps the settlement and reports delivery failed', async () => {
+    const terms = await createRails(deps({ fetchFn: exaFetch() })).quotePaidFetch(EXA, {}, 'x402')
+    const broken = new ReadableStream<Uint8Array>({
+      pull: () => {
+        throw new Error('stream reset')
+      },
+    })
+    const rails = createRails(
+      deps({
+        fetchFn: exaFetch({ paid: () => new Response(broken, { headers: { 'payment-response': settle } }) }),
+      }),
+    )
+    const outcome = await rails.payPaidFetch(operation(terms), EXA, {})
+    expect(outcome).toMatchObject({
+      outcome: 'settled',
+      payment: { rail: 'x402', txHash: `0x${'ab'.repeat(32)}` },
+      delivery: { status: 'failed' },
+    })
+  })
+
+  test('the paid body is bounded while streaming: an endless body is cut and cancelled', async () => {
+    const terms = await createRails(deps({ fetchFn: exaFetch() })).quotePaidFetch(EXA, {}, 'x402')
+    let pulls = 0
+    let cancelled = false
+    const endless = new ReadableStream<Uint8Array>({
+      pull: (controller) => {
+        pulls += 1
+        controller.enqueue(new Uint8Array(10_000).fill(97))
+      },
+      cancel: () => {
+        cancelled = true
+      },
+    })
+    const rails = createRails(
+      deps({
+        fetchFn: exaFetch({
+          paid: () => new Response(endless, { headers: { 'payment-response': settle, 'content-type': 'text/plain' } }),
+        }),
+      }),
+    )
+    const outcome = await rails.payPaidFetch(operation(terms), EXA, {})
+    expect(outcome).toMatchObject({ outcome: 'settled', response: { truncated: true } })
+    expect(outcome.outcome === 'settled' && String(outcome.response?.body).length).toBe(32_000)
+    expect(cancelled).toBe(true)
+    expect(pulls).toBeLessThan(10)
   })
 
   test('a price rise since the quote is failed before anything is signed', async () => {
