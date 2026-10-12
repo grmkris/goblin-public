@@ -197,8 +197,10 @@ per request. `GOBLIN_SIGNUP_MODE=open` admits new addresses; `invite` requires `
 `x-invite-code` header on both send and verify; `closed` permits only existing accounts. A successful OTP creates an
 email-verified account or signs its owner in. Password, reset, verification-link and passkey endpoints are unavailable.
 A stage that sets `GOBLIN_FREE_DAILY_CREDITS` gives every account without Pro a free plan (`billing/plans.ts`,
-`source: 'free'`): the agent with those Credits a day and no routines (`requirePlan('routines')` refuses it, also
-from the agent's kept answer), with Pro still on offer.
+`source: 'free'`): the agent with those Credits a day and routines that only tell the owner (Tell me: a notice, and a
+Telegram copy if asked, with no model call), but no hand-over (`requirePlan('handOver')` refuses it, also from the
+agent's kept answer, as `SubscriptionRequired` with `feature: 'hand_over'`, whose copy says hand-over is part of Pro),
+with Pro still on offer (ADR 0012, amended 2026-10-12).
 
 Every stage requires a mail sender. Deployed mail uses Cloudflare Email Sending from `hello@goblin.surf`; local
 workerd captures `.eml` files through Alchemy's simulator. Better Auth 1.7.6 swallows mail callback errors, so a
@@ -1469,15 +1471,34 @@ termination stops lease refresh and surfaces health. Mail and workspace changes 
 The owner browses a connection's event streams before granting any (`GET /api/mcp/:id/events`, `Events.catalog`):
 the plan, resident authority and a signed-in connection are enough, no selector grant is made, and each stream says
 whether goblin can subscribe to it (poll and webhook). Descriptions are the server's claims, cut to 500 characters.
+A stream also carries what the server suggests for it, read leniently field by field from the descriptor's `title`
+and `_meta["lol.mysi/suggest"]` (`eventSuggestion`, `mcp/events/protocol.ts`; a malformed one never fails the list):
+`title`, `summary`, `group`, `recommended`, `tellMe` and `rate` (`often`, `daily`, `rare`). They are claims that only
+pre-select in the picker; nothing is granted or confirmed by them. Through mysi an event is named
+`<service>.<event>`, as subscribed and as delivered, so the name checks at ingress and dispatch are unchanged. A
+subscription the Telegram channel consumes is marked `telegram: true` in the connection's Events health.
 
 A connection that sends events **offers** them (ADR 0041): `ServerView.events` is `open` until the owner sets up a
 routine on it (`done`, recorded when an event routine on it is confirmed) or dismisses it
 (`POST /api/mcp/:id/events/dismiss`); `app_mcp_event_offers` (`mcp/events/offers.ts`) keeps only those answers, and
 a dismissal never undoes `done`. The connection's card shows an **Events** section (`components/connection-events.tsx`):
-the offer while open, each stream with the routines on it ("When `<stream>` → Tell me in #Topic · Hand to @Persona"),
-**Set up**, which opens the routine editor in place with that event and then its review to confirm, and the
-subscriptions' health. Activity lists each open offer ("Set up events for `<label>`", linking to its card, with Not
-now); it is not counted in the rail's badge.
+the offer while open, what is set up ("`<title>` → #Topic", "→ goblin, in #Topic" or "→ @Persona", with Pause or
+Resume and Edit, which opens the routine editor and then its review), the **picker** for the rest
+(`components/event-picker.tsx`, `lib/event-setup.ts`, `lib/events.ts`), and the subscriptions' health. The picker
+lists the streams by group (the server's, else the service before the first dot of a three-part name, else the
+connection), each by title (else its name in words, `message.received` → "Message received") with its summary and a
+quiet rate. While the offer is open, a recommended stream the server says to tell the owner about is picked, to Tell me
+in Personal; one it recommends without `tellMe` is handed to goblin there on Pro and left unpicked on the free plan.
+Each picked stream has one select for where it goes: Tell me in a Topic, or (Pro) goblin acting on it in a Topic or a
+Persona acting on it (answering in Personal); on the free plan those show disabled, with Get Pro
+(`/subscribe?return=<this page>`). A preview line shows the notice ("You'll see: `<title>` · `<summary>`"). **Advanced**
+(folded) holds each stream's filters (a nullable or optional string is a plain optional field, with the server's
+default as its hint), an instruction for a hand-over (else goblin's), Tell me and Telegram. One action, **Set up N
+events**, proposes and then confirms each stream's own routine in turn (`setUpEventsMutation`), so each confirmation
+grants exactly its selector; a filter the server requires and that is empty stops it and opens Advanced. A stream the
+Telegram channel already takes says "Already arrives through Telegram" instead of being offered. A quiet line states the
+limits: one run a minute, 20 notices an hour then a digest, events from before setup dropped. Activity lists each open
+offer ("Set up events for `<label>`", linking to its card, with Not now); it is not counted in the rail's badge.
 
 The client refreshes before the producer's ISO `refreshBefore` and polls on gaps or webhook outages. Bounds are
 64 live subscriptions (maintenance reconciles every one; a tombstone is pruned once no delivery or binding
@@ -1783,13 +1804,17 @@ an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and 
 definition (ADR 0041) is a trigger, a timezone, **Tell me** (`tellMe: { on, telegram }`, Telegram only with Tell me) and
 **Hand to** (`handTo`: `none`; `goblin` with its instruction, allowed tools and budget; or `persona` with those and the
 Persona's id and the revision it pins); one that hands nothing over must tell the owner. Only a hand-over makes runs
-(`handOverOf`, `runHandOver`). Settings shows the instruction, exact
+(`handOverOf`, `runHandOver`). A routine that only tells is on the free plan too; a hand-over needs Pro: propose,
+edit, confirm (and confirm again), run admission and the run provider check `requirePlan('handOver')`, while pause and
+archive stay the owner's on any plan. Settings shows the instruction, exact
 tool pairs, timezone, budgets and Telegram policy before confirmation. Its editor (`components/routine-editor.tsx`,
 `routine-when.tsx`, `routine-hand.tsx`) asks what, where (the Topic), when, Tell me (and Telegram) and Hand to
 (nobody, Goblin or a Persona, with the instruction, tools and limits only for a hand-over); an event trigger picks a
-connection that sends events, one of its streams from `GET /api/mcp/:id/events`, and its filters through a form
+connection that sends events, one of its streams (by title) from `GET /api/mcp/:id/events`, and its filters through a form
 generated from the stream's input schema (`lib/schema-form.ts`, `components/schema-form.tsx`: text, a choice, a
-number, yes or no, a list of texts, required first), with raw JSON for anything a flat form cannot hold. A routine lives in a
+number, yes or no, a list of texts, required first; a nullable one optional), with raw JSON for anything a flat form
+cannot hold; a routine's card says which events it takes in words ("Every one", or each filter's title and value). On
+the free plan the editor's hand-over tabs are locked with Get Pro. A routine lives in a
 Topic, and its runs are bounded by that Topic's setup as well as its allowed tools (ADR 0040): each `RoutineView`
 carries `topic` and `outsideSetup`, the allowed tools the setup does not hold now, read live so a proposal or a
 routine's page can flag them; a run that calls one gets the words-only `not-in-topic` refusal (code `not_in_topic` in

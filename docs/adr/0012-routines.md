@@ -3,6 +3,7 @@
 Status: scheduled and Event execution implemented; native workerd verified. Phase 1 and the Event checkpoint are deployed on dev; the recurring-wake follow-up and real producer acceptance remain pending.
 Amended by ADR 0040: a routine run is bounded by its Topic's setup as well as its own allowed tools.
 Amended by ADR 0041: a routine tells the owner, hands over to Goblin or a Persona, or both.
+Amended 2026-10-12 (with the owner): a routine that only tells is on the free plan; a hand-over is Pro. See the end.
 
 ## Decision
 
@@ -77,5 +78,27 @@ participate in earliest-wake selection. LOCAL throwaway-account acceptance throu
 and passive note, retained cron firing/rearm across a local process restart, revoked-authority skip without usage or
 renewal, the twenty-active/two-running caps, Event editor validation/review and run/day token blocking. CLIProxy reported 1526 committed weighted tokens for the first response under a one-token test cap (1525 overshoot); the next run added no usage. This meter is not an exact provider billing measurement. This proves the local source with its wake fix, not remote
 eviction, Railway billing or live Event producers.
+
+## Amended 2026-10-12: Tell me on the free plan, hand-over on Pro
+
+Kris connected mysi on a free account and setting up its events ended in a 402 that read "Subscribe to Pro to use your
+personal agent" (prod `POST /api/routines`). He decided that free accounts get **Tell me** and only a hand-over needs
+Pro:
+
+- The plan gates two features where it gated one (`billing/plans.ts`, `billing/gates.ts`): `routines`, which the free
+  plan now has, and `handOver`, which it does not. A routine that only tells makes no model call: its event notices,
+  reminders and their Telegram copies work end to end on the free plan.
+- Proposing or editing a routine, and confirming (or confirming again) one, check what its definition needs: `handOver`
+  when it hands its work to Goblin or a Persona, else `routines`. Pausing and archiving stay the owner's on any plan,
+  so a downgraded account can still stop a hand-over.
+- Run admission (`admissionSkip`) and the run provider (`requireRoutine`) check `handOver`: a downgraded account's
+  hand-over firing is recorded skipped (`SubscriptionRequired`) and no model call is made.
+- The refusal names the feature: `SubscriptionRequired` carries `feature: 'hand_over'`, and its copy says handing an
+  event or a schedule to goblin or a Persona is part of Pro, with "or have it only tell you" as the way on. The web
+  shows the same words (`failureCopy`), and its picker and editor show hand-overs on the free plan as Pro-only with a
+  link to `/subscribe?return=<page>`.
+
+Evidence: the entitlement and error-envelope unit tests cover the split and the copy. Free-account Tell me end to end
+(subscription, notice, Telegram) is to be accepted on dev.
 
 Related: [ADR 0010](0010-per-conversation-capabilities-and-thread-notes.md), [ADR 0011](0011-mcp-events.md).

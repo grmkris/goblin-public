@@ -2,6 +2,8 @@
 
 Accepted 2026-10-11 with the owner, in a design interview; the plan is
 0012 (routines) and 0033 (Personas). Amended 2026-10-12 by ADR 0048: every connection registers as plain `goblin`.
+Amended 2026-10-12 again (with the owner): the Events picker, the server's suggestions from `_meta`, and send to a
+Topic or a Persona. See the end.
 
 The owner wants goblin to listen to the platforms it is connected to. A Sidequest event, "you were picked for a job",
 should reach them as a notification. An event can also wake Goblin or a Persona to act on it. They also want to run
@@ -103,3 +105,45 @@ goblin detects Events from either the top-level `capabilities.events` its first 
   agent, across connections.
 - Two connections to one server subscribe to the same event with different webhook URLs. A producer that keys
   subscriptions without the principal still delivers each subscription separately.
+
+## Amended 2026-10-12: the Events picker
+
+When Kris connected mysi and set up its events, the section showed raw ids (`message.received`), one Set up per event
+that each opened the whole routine editor, filters as raw JSON, a review that read "Only events matching `{}`", no
+preview, and on a free account a 402 (now Tell me on free, hand-over on Pro: ADR 0012, amended). His direction: if the
+server suggests defaults, use them; inside goblin an event goes to a Topic or a Persona, and that is it; filters, an
+instruction and Tell me go under Advanced.
+
+**Suggestions from the server.** An event descriptor may carry `title` and `_meta["lol.mysi/suggest"]`:
+`{ title, summary, group, recommended, tellMe, rate: 'often' | 'daily' | 'rare' }` (myapps adds them; filter arguments
+gain titles, descriptions and defaults; payloads carry `title`, `summary` and `url`, which notices already read).
+goblin decodes them leniently, field by field, so a malformed `_meta` never fails the list, and passes them to the
+owner as `EventStream` fields. They are claims: they pre-select and they name things, and they never grant or confirm
+anything. Through mysi an event is `<service>.<event>` both as subscribed and as delivered, so the name checks at
+ingress and dispatch stay as they are.
+
+**The picker.** A connection's Events section lists its events by group with their titles (else the name in words),
+summaries and a quiet rate. While the offer is open, the recommended ones are picked: one the server says to tell the
+owner about goes to Tell me in Personal; one it recommends without `tellMe` is work for the agent, handed to goblin in
+Personal on Pro and left unpicked on the free plan. With no suggestion nothing is picked. Each picked event has one
+compact select:
+
+- **Tell me in #Topic**: a notice there (free);
+- **goblin acts on it in #Topic**: a hand-over to Goblin in that Topic (Pro);
+- **@Persona acts on it**: a hand-over to that Persona, answering in Personal (Pro).
+
+Advanced (folded) holds the filters from the event's schema (a nullable or optional string is a plain optional field;
+JSON only for what a flat form cannot hold), the handler's instruction (goblin writes one when it is left empty) and
+Tell me and Telegram. A preview line shows the notice the owner will see, from the suggestion; a quiet line states the
+limits above (one run a minute, 20 notices an hour then a digest, replays from before setup dropped). One action sets
+up every picked event: each one's routine is proposed and then confirmed at that revision, one after another, so each
+confirmation still grants exactly its own selector. The owner's click is the review: the picker shows each event, its
+filters and where it goes. A hand-over from the picker carries no tools until the owner adds them in the editor.
+
+What is set up lists as "`<title>` → #Topic" (or "→ goblin, in #Topic", "→ @Persona"), with Pause or Resume and Edit;
+Edit opens the full editor, which, like the routine's card, names events by title and says which ones it takes in
+words. An event the Telegram channel already consumes (MyGram's two) says "Already arrives through Telegram" instead of
+being offered twice; goblin reads that from the channel's subscriptions (`EventHealth.telegram`), not the channel.
+
+Rejected: a batch endpoint that confirms several events under one confirmation (each selector keeps its own); a
+separate "send to" model beside routines (routines stay the one engine).
