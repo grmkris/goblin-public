@@ -173,6 +173,17 @@ or added by URL, suggestion or registry. One server may have several. Each has i
 settings, skills switch and Events subscriptions (ADR 0041).
 _Avoid_: server (for the account), integration, account
 
+**First-class server**:
+A server goblin knows by its own profile, matched by endpoint: our description, a recommended set of grants, a
+status line read from one of its tools, its app one tap away and, for a paid tool, a spending rule (ADR 0043).
+Mercator is one, and a connection every account starts with.
+_Avoid_: featured, partner, built-in
+
+**Spending rule**:
+The owner's limit on a paid tool of a first-class server: jobs up to an amount run without asking, until a daily
+total; anything else asks first. The server's wallet limit stays the hard stop (ADR 0044).
+_Avoid_: budget (that is the model budget), allowance
+
 **Skill**:
 A procedure served by an MCP server through the MCP Skills extension. The agent follows skills only from servers the
 owner turned skills on for, activates them per conversation as `<connection>:<name>`, and a skill never grants a
