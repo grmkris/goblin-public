@@ -22,6 +22,7 @@ const MERCATOR = 'https://mercator.sh/mcp/auth'
 const PAY_FROM = { address: `0x${'b'.repeat(40)}`, chain: 'tempo', token: 'USDC.e', held: '4.93' }
 /** The wallet's own setup page, back to Start's wallet step on this goblin (`APP_URL` below). */
 const SETUP_URL = 'https://wallet.goblin.surf/setup?return=https%3A%2F%2Fgoblin.test%2Fstart%2Fwallet'
+const FUNDS_URL = 'https://wallet.goblin.surf/add-funds?return=https%3A%2F%2Fgoblin.test%2Fstart%2Fwallet'
 const GAPS = ['create the agent wallet', 'sign the spending allowance']
 
 /** A first-class server as the owner's list shows it. */
@@ -146,6 +147,7 @@ describe('first-run Start (ADR 0048)', () => {
           ready: false,
           gaps: GAPS,
           setupUrl: SETUP_URL,
+          fundsUrl: FUNDS_URL,
           dollars: '20',
           funded: false,
         })

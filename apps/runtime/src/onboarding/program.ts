@@ -14,7 +14,7 @@ import { Budget } from '../budget.ts'
 import { Chats } from '../chats/service.ts'
 import { epochSeconds } from '../clock.ts'
 import { freeWalletUsd, stablecoinDollars } from '../layers/budget.ts'
-import { profileOf, walletSetupUrl } from '../mcp/first-class.ts'
+import { profileOf, walletPageUrl } from '../mcp/first-class.ts'
 import { allowRecommended, serverStatus } from '../mcp/first-class-owner.ts'
 import { McpGrants, McpServers } from '../mcp/service.ts'
 import { reportAndRecover } from '../observability/report.ts'
@@ -56,13 +56,15 @@ const server = ({ server: found, connected, allowed }: Found) => ({
 const shown = (dollars: number): string => String(Math.round(dollars * 100) / 100)
 
 /**
- * The wallet's setup page for a signed-in wallet connection, back to Start's wallet step (`walletSetupUrl`); none before
- * it is connected, when the wallet would not know goblin's address to return to.
+ * A wallet page for a signed-in wallet connection, back to Start's wallet step (`walletPageUrl`); none before it is
+ * connected, when the wallet would not know goblin's address to return to.
  */
-const setupUrlOf = (wallet: Found, appUrl: string): string | undefined =>
+const walletUrlOf = (wallet: Found, page: 'setup' | 'add-funds', appUrl: string): string | undefined =>
   wallet.connected && wallet.server !== undefined
-    ? walletSetupUrl(wallet.server.endpoint, new URL('/start/wallet', appUrl).href)
+    ? walletPageUrl(wallet.server.endpoint, page, new URL('/start/wallet', appUrl).href)
     : undefined
+
+const setupUrlOf = (wallet: Found, appUrl: string): string | undefined => walletUrlOf(wallet, 'setup', appUrl)
 
 /** The wallet's state: its status (none until allowed and read), what it holds, set up to pay, and funded. */
 type Wallet = {
@@ -96,16 +98,21 @@ const stepsOf = (record: OnboardingRecord | undefined, wallet: Wallet) => {
 }
 
 /** The wallet as Start shows it: its connection, whether it is set up, what it still needs, holds and is asked to. */
-const walletOf = (found: Found, wallet: Wallet, needs: number, setupUrl: string | undefined) => ({
-  ...server(found),
-  ready: wallet.ready,
-  gaps: wallet.status?.setup ?? [],
-  ...(setupUrl === undefined ? {} : { setupUrl }),
-  ...(wallet.status?.payFrom === undefined ? {} : { payFrom: wallet.status.payFrom }),
-  ...(wallet.dollars === undefined ? {} : { dollars: shown(wallet.dollars) }),
-  needs: shown(needs),
-  funded: wallet.funded,
-})
+const walletOf = (found: Found, wallet: Wallet, needs: number, appUrl: string) => {
+  const setupUrl = setupUrlOf(found, appUrl)
+  const fundsUrl = walletUrlOf(found, 'add-funds', appUrl)
+  return {
+    ...server(found),
+    ready: wallet.ready,
+    gaps: wallet.status?.setup ?? [],
+    ...(setupUrl === undefined ? {} : { setupUrl }),
+    ...(fundsUrl === undefined ? {} : { fundsUrl }),
+    ...(wallet.status?.payFrom === undefined ? {} : { payFrom: wallet.status.payFrom }),
+    ...(wallet.dollars === undefined ? {} : { dollars: shown(wallet.dollars) }),
+    needs: shown(needs),
+    funded: wallet.funded,
+  }
+}
 
 /** The wallet's status as the owner, once its status tool is allowed; none otherwise or when it cannot be read. */
 const walletStatus = (wallet: Found) =>
@@ -146,7 +153,7 @@ export const onboardingView = Effect.gen(function* () {
   const view: OnboardingView = {
     status: record?.status ?? (wallet.funded ? 'done' : 'open'),
     steps: stepsOf(record, wallet),
-    wallet: walletOf(walletFound, wallet, needs, setupUrlOf(walletFound, env.APP_URL)),
+    wallet: walletOf(walletFound, wallet, needs, env.APP_URL),
     mercator: server(mercator),
     connected: others.length,
     kickoff: record?.kickoffAt !== undefined,

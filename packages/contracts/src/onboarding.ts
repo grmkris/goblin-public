@@ -44,6 +44,8 @@ const OnboardingWallet = Schema.Struct({
    * built from the connection's configured endpoint, never from what the server says. Absent until it is connected.
    */
   setupUrl: Schema.optional(Schema.String),
+  /** The wallet's Add funds page, built the same way and back to the same step, for a wallet set up but short. */
+  fundsUrl: Schema.optional(Schema.String),
   payFrom: Schema.optional(Schema.Struct({ address: Short, chain: Short, token: Short, held: Schema.optional(Short) })),
   /** The stablecoin dollars the wallet holds on every chain it reads; absent until its status can be read. */
   dollars: Schema.optional(Short),

@@ -43,6 +43,7 @@ const PLAN = {
   priceCents: 0,
 }
 const SETUP_URL = 'https://wallet.goblin.surf/setup?return=https%3A%2F%2Fgoblin.surf%2Fstart%2Fwallet'
+const FUNDS_URL = 'https://wallet.goblin.surf/add-funds?return=https%3A%2F%2Fgoblin.surf%2Fstart%2Fwallet'
 const steps = (done: readonly string[]) =>
   ['welcome', 'wallet', 'services', 'goblin'].map((id) => ({ id, done: done.includes(id) }))
 const wallet = (change: Record<string, unknown>) => ({
@@ -52,6 +53,7 @@ const wallet = (change: Record<string, unknown>) => ({
   ready: false,
   gaps: [],
   setupUrl: SETUP_URL,
+  fundsUrl: FUNDS_URL,
   needs: '5',
   funded: false,
   ...change,
@@ -77,7 +79,7 @@ const SCREENS = [
   {
     name: 'wallet-connect',
     at: '/start/wallet',
-    view: view({ connected: false, allowed: false, setupUrl: undefined }, ['welcome']),
+    view: view({ connected: false, allowed: false, setupUrl: undefined, fundsUrl: undefined }, ['welcome']),
     walletSignedIn: false,
   },
   {

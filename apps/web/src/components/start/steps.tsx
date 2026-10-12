@@ -189,8 +189,8 @@ function WalletReady({ wallet }: { readonly wallet: OnboardingView['wallet'] }) 
         )}
         <PayLine />
       </div>
-      {!wallet.funded && wallet.setupUrl !== undefined && (
-        <SetupLink href={wallet.setupUrl}>Add funds in your wallet</SetupLink>
+      {!wallet.funded && wallet.fundsUrl !== undefined && (
+        <SetupLink href={wallet.fundsUrl}>Add funds in your wallet</SetupLink>
       )}
     </div>
   )
