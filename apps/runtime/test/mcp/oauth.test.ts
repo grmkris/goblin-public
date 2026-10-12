@@ -159,13 +159,13 @@ const setup = () => {
 }
 
 describe('outbound OAuth connect and refresh (unit, fixture authorization server)', () => {
-  it("connects with DCR + PKCE under the connection's label, then calls a granted tool with the stored token", async () => {
+  it('connects with DCR + PKCE as goblin, then calls a granted tool with the stored token', async () => {
     const { authorizationServer, servers, connections, grants, credentials, connect, status, dispose } = setup()
     try {
       expect(await status()).toBe('disconnected')
       const approval = await connect()
       expect(approval.code).toMatch(/^code-/u)
-      expect(authorizationServer.registered).toEqual(['goblin · Fixture · Hirer'])
+      expect(authorizationServer.registered).toEqual(['goblin'])
       expect(await status()).toBe('connected')
       const tools = await servers.tools('fixture', false)
       expect(tools).toEqual([expect.objectContaining({ name: 'read', readOnlyHint: true, granted: false })])

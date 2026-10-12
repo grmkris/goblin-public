@@ -198,13 +198,6 @@ const connectsOpenly = (owner: OwnerServers, connectionId: string) =>
   })
 
 /**
- * The name goblin registers itself under with a connection's authorization server, so its consent screen says which
- * connection is signing in: two connections to one server are told apart only by their labels.
- */
-const clientName = (owner: OwnerServers, connectionId: string): string =>
-  `goblin · ${owner.labels.of(connectionId) ?? connectionId}`
-
-/**
  * Starts (or silently renews) authorization: the URL to send the owner's browser to, when one is needed. With `chosen`,
  * the sign-in asks for those scopes only (ADR 0042), checked against what the server offers before anything changes.
  */
@@ -214,13 +207,7 @@ const beginConnect = (owner: OwnerServers, connectionId: string, chosen?: readon
     const narrowed = chosen === undefined ? undefined : yield* chosenScope(owner, server.endpoint, chosen)
     yield* owner.manager.close(connectionId)
     if (yield* connectsOpenly(owner, connectionId)) return {}
-    const provider = new StoredOAuthProvider(
-      owner.credentials,
-      connectionId,
-      owner.appUrl,
-      { kind: 'interactive' },
-      clientName(owner, connectionId),
-    )
+    const provider = new StoredOAuthProvider(owner.credentials, connectionId, owner.appUrl, { kind: 'interactive' })
     const result = yield* attempt(async () => {
       const scope = narrowed ?? (await signInScope(server.endpoint, owner.fetch))
       return auth(provider, {
@@ -243,13 +230,7 @@ const beginConnect = (owner: OwnerServers, connectionId: string, chosen?: readon
 const beginStepUp = (owner: OwnerServers, connectionId: string, required: string) =>
   Effect.gen(function* () {
     const server = yield* owner.manager.server(connectionId)
-    const provider = new StoredOAuthProvider(
-      owner.credentials,
-      connectionId,
-      owner.appUrl,
-      { kind: 'interactive' },
-      clientName(owner, connectionId),
-    )
+    const provider = new StoredOAuthProvider(owner.credentials, connectionId, owner.appUrl, { kind: 'interactive' })
     const result = yield* attempt(async () => {
       const held = await owner.credentials.tokens(connectionId)
       const offered = await signInScope(server.endpoint, owner.fetch)
@@ -279,13 +260,10 @@ const finishConnect = (owner: OwnerServers, state: string, code: string, issuer:
     const pending = yield* attempt(() => owner.credentials.takePending(state, now))
     if (pending === undefined) return yield* new InvalidInput({ reason: 'unknown or expired authorization state' })
     const server = yield* owner.manager.server(pending.connectionId)
-    const provider = new StoredOAuthProvider(
-      owner.credentials,
-      server.connectionId,
-      owner.appUrl,
-      { kind: 'callback', codeVerifier: pending.codeVerifier },
-      clientName(owner, server.connectionId),
-    )
+    const provider = new StoredOAuthProvider(owner.credentials, server.connectionId, owner.appUrl, {
+      kind: 'callback',
+      codeVerifier: pending.codeVerifier,
+    })
     const result = yield* attempt(() =>
       auth(provider, {
         serverUrl: server.endpoint,

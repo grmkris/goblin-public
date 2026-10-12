@@ -23,6 +23,12 @@ export type OAuthMode =
   | { readonly kind: 'callback'; readonly codeVerifier: string }
 
 /**
+ * The name goblin registers under with every authorization server: a consent screen names the app, `goblin`, and the
+ * connection's label stays goblin's own (ADR 0048).
+ */
+const CLIENT_NAME = 'goblin'
+
+/**
  * The MCP SDK's `OAuthClientProvider` over the Agent DO's encrypted credential store. The SDK does discovery,
  * dynamic client registration, PKCE, code exchange and refresh; this class only persists what it hands over.
  */
@@ -32,19 +38,16 @@ export class StoredOAuthProvider implements OAuthClientProvider {
   readonly #redirectUrl: string
   readonly #appUrl: string
   readonly #mode: OAuthMode
-  readonly #clientName: string
   #codeVerifier: string | undefined
   /** Set by `redirectToAuthorization` in interactive mode. */
   authorizationUrl: URL | undefined
 
-  /** `clientName` is what goblin registers as (`goblin · <label>`); a refresh never registers, so it keeps the default. */
-  constructor(store: Credentials, connectionId: string, appUrl: string, mode: OAuthMode, clientName = 'goblin') {
+  constructor(store: Credentials, connectionId: string, appUrl: string, mode: OAuthMode) {
     this.#store = store
     this.#connectionId = connectionId
     this.#appUrl = appUrl.replace(/\/$/u, '')
     this.#redirectUrl = `${this.#appUrl}/api/mcp/oauth/callback`
     this.#mode = mode
-    this.#clientName = clientName
   }
 
   get redirectUrl(): string {
@@ -53,7 +56,7 @@ export class StoredOAuthProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     return {
-      client_name: this.#clientName,
+      client_name: CLIENT_NAME,
       client_uri: this.#appUrl,
       redirect_uris: [this.#redirectUrl],
       grant_types: ['authorization_code', 'refresh_token'],

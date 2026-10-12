@@ -1,7 +1,7 @@
 # ADR 0041: Connections, Tell me and Hand to
 
 Accepted 2026-10-11 with the owner, in a design interview; the plan is
-0012 (routines) and 0033 (Personas).
+0012 (routines) and 0033 (Personas). Amended 2026-10-12 by ADR 0048: every connection registers as plain `goblin`.
 
 The owner wants goblin to listen to the platforms it is connected to. A Sidequest event, "you were picked for a job",
 should reach them as a notification. An event can also wake Goblin or a Persona to act on it. They also want to run
