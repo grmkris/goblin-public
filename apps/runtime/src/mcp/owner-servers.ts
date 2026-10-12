@@ -33,7 +33,7 @@ import { makeCatalog } from './registry.ts'
 import { globalEntrypoint, offersEvents, offersSkills, toolAppResource, toolOffered } from './remote.ts'
 import { type AddedServer, type AddedServers, MAX_ADDED_SERVERS } from './servers.ts'
 import { McpServers } from './service.ts'
-import { type Stage, suggestions } from './suggested.ts'
+import { type Stage, suggestedTitle, suggestions } from './suggested.ts'
 import type { McpConnectionSnapshot, McpServerConfig } from './types.ts'
 
 /** The failures that mean a server was not reached at all, rather than that it refused this agent. */
@@ -141,7 +141,7 @@ const views = (owner: OwnerServers) =>
 /**
  * Adds a connection to a public https endpoint, one the owner may already have a connection to (ADR 0041). It is
  * named `label`, refused when another connection holds it, or else the first free name from goblin's own name for a
- * first-class server (ADR 0043), else its server card's title, else its host.
+ * first-class server (ADR 0043) or a server on the shelf, else its server card's title, else its host.
  * It starts disconnected; the owner connects it as any other. `source` records the registry entry it came from.
  */
 const addServer = (owner: OwnerServers, raw: string, label: string | undefined, source: ServerSource | undefined) =>
@@ -157,7 +157,8 @@ const addServer = (owner: OwnerServers, raw: string, label: string | undefined, 
     const now = yield* epochSeconds
     yield* attemptSync(() => {
       added.add({ ...server, ...claims, ...(source === undefined ? {} : { source }) }, now)
-      const named = profileOf(server.endpoint)?.title ?? claims.title ?? endpoint.hostname
+      const named =
+        profileOf(server.endpoint)?.title ?? suggestedTitle(server.endpoint) ?? claims.title ?? endpoint.hostname
       labels.set(server.connectionId, label ?? labels.free(named))
     })
     yield* manager.add(server)

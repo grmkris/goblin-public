@@ -691,7 +691,8 @@ address and a connection the owner's account on it (ADR 0041): the owner may con
 connection with its own id, sign-in, grants, skills switch and Events. Every connection has the owner's **label**
 (`app_mcp_labels`, `mcp/labels.ts`), one line of at most eighty characters, unique whatever its case: given when it is
 added (`AddServer.label`), else the first free name from goblin's own name for a first-class server (`Goblin Wallet
-2`), else its server card's title (`Example`, `Example 2`), else its host, or the
+2`) or a server on the shelf (`Kiwi.com`, `suggestedTitle`), else its server card's title (`Example`, `Example 2`),
+else its host, or the
 configured `label` (else its id) for a configured one, set once at start; `PATCH /api/mcp/:id` renames it. Every
 connection registers with its authorization server as plain `goblin` (ADR 0048: a consent screen names the app, not
 goblin's own label); MCP has no standard "who am I", so goblin cannot show which account a sign-in reached. An added endpoint is a public https address

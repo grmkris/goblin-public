@@ -91,6 +91,14 @@ describe('servers the owner adds', () => {
     expect([first.label, second.label]).toEqual(['Goblin Wallet', 'Goblin Wallet 2'])
   })
 
+  it("names a connection added from the shelf by the shelf's title, on any stage's endpoint", async () => {
+    let next = 0
+    const { mcp } = host(() => String(++next).padStart(6, '0'))
+    expect((await mcp.add('https://mcp.kiwi.com')).label).toBe('Kiwi.com')
+    expect((await mcp.add('https://mysi.lol/mcp')).label).toBe('mysi')
+    expect((await mcp.add('https://notes.example.com/mcp')).label).toBe('Example notes')
+  })
+
   it('renames a connection, configured or added, never onto a label another holds', async () => {
     const { mcp } = host()
     const notes = await mcp.add('https://notes.example.com/mcp', 'Notes')

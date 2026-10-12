@@ -204,3 +204,16 @@ export function suggestions(stage: Stage | undefined, endpoints: ReadonlySet<str
     return { ...rest, endpoint: url, added: offered.has(served(url)) }
   })
 }
+
+/**
+ * goblin's title for the server a suggestion reaches at `endpoint`, on any stage: the name a connection added from the
+ * shelf starts from, where the server's own card or host would read as an address ("mcp.kiwi.com").
+ */
+export function suggestedTitle(endpoint: string): string | undefined {
+  const wanted = served(endpoint)
+  return SUGGESTED.find((item) =>
+    (typeof item.endpoint === 'string' ? [item.endpoint] : Object.values(item.endpoint)).some(
+      (url) => served(url) === wanted,
+    ),
+  )?.title
+}
