@@ -42,15 +42,11 @@ import { SchemaForm } from './schema-form.tsx'
 
 type Choices = ReadonlyMap<string, EventChoice>
 
-/**
- * What the picker offers a route to: the live Topics and Personas, whether the plan has hand-overs, and whether it is
- * known to be the free plan (not while the plan is still being read).
- */
+/** What the picker offers a route to: the live Topics and Personas, and whether the owner may hand over (Pro). */
 type Places = {
   readonly topics: readonly TopicView[]
   readonly personas: readonly PersonaView[]
   readonly handOver: boolean
-  readonly free: boolean
 }
 
 /** Where routes go, and whether the plan hands over (Pro): the owner's live Topics and Personas. */
@@ -58,7 +54,7 @@ function usePlaces(): Places {
   const { state } = useBilling()
   const topics = useTopics().filter((topic) => topic.archivedAt === undefined)
   const personas = usePersonas().filter((persona) => persona.archivedAt === undefined)
-  return { topics, personas, handOver: hasHandOver(state), free: state !== undefined && !hasHandOver(state) }
+  return { topics, personas, handOver: hasHandOver(state) }
 }
 
 /** A route in words, for a picked event's line: where it is told, or who acts on it and where. */
@@ -429,7 +425,7 @@ export function EventPicker({
           </ul>
         </div>
       ))}
-      {places.free && available.length > 0 && (
+      {!places.handOver && available.length > 0 && (
         <ProNote>Handing an event to goblin or a Persona is part of Pro.</ProNote>
       )}
       {count > 0 && <AdvancedSection server={server} streams={available} picks={picks} />}
