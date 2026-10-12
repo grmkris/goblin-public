@@ -10,6 +10,7 @@ import {
 } from '@modelcontextprotocol/client'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/client/validators/cf-worker'
 import { Predicate } from 'effect'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Internal, UpstreamMcp } from '../http/errors.ts'
 import { readBytes } from '../http/body.ts'
@@ -73,6 +74,32 @@ export const toolAppResource = (tool: Tool): string | undefined => {
   return ui.resourceUri.startsWith('ui://') ? ui.resourceUri : undefined
 }
 
+/**
+ * A tool's entrypoints, as `_meta["openai/ui"].entrypoints` declares them: where in the host its App may be opened. The
+ * server's claim, decoded here with a local schema and bounded; anything that does not fit declares none.
+ */
+const Entrypoints = Schema.Array(
+  Schema.Struct({
+    type: Schema.Literals(['global', 'thread', 'file']),
+    quickAction: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
+  }),
+).check(Schema.isMaxLength(8))
+const decodeEntrypoints = Schema.decodeUnknownOption(Entrypoints)
+
+/** Whether `tool` declares a global entrypoint: its App opened on its own, from any chat. */
+export const toolGlobalEntrypoint = (tool: Tool): boolean => {
+  const ui = tool._meta?.['openai/ui']
+  if (!Predicate.isObject(ui) || !('entrypoints' in ui)) return false
+  return Option.match(decodeEntrypoints(ui.entrypoints), {
+    onNone: () => false,
+    onSome: (entries) => entries.some((entry) => entry.type === 'global'),
+  })
+}
+
+/** The first of a connection's tools that declares a global entrypoint, as the owner may open it (not App-only hidden). */
+export const globalEntrypoint = (snapshot: McpConnectionSnapshot): string | undefined =>
+  snapshot.tools.find((tool) => toolGlobalEntrypoint(tool) && toolOffered(tool, 'human'))?.name
+
 /** A server's endpoint is https (or plain http on this machine), with no credentials or fragment in it. */
 export function assertEndpoint(server: McpServerConfig): void {
   const url = new URL(server.endpoint)
@@ -106,7 +133,7 @@ const optionalTemplates = async (
 }
 
 /** The MCP Apps extension (SEP-1865) and the one MIME type of App HTML goblin renders. */
-export const MCP_APPS_EXTENSION = 'io.modelcontextprotocol/ui'
+const MCP_APPS_EXTENSION = 'io.modelcontextprotocol/ui'
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app'
 
 /** What goblin's client declares to every server: the Skills, Events and MCP Apps extensions. */

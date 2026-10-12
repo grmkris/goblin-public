@@ -301,6 +301,11 @@ export const ServerView = Schema.Struct({
   skillsEnabled: Schema.optional(Schema.Boolean),
   /** goblin's own profile, for a server it supports first-class (ADR 0043). */
   profile: Schema.optional(ServerProfile),
+  /**
+   * The tool that opens this connection's global entrypoint (its App, from any chat): the one a profile names, or the one
+   * the server declares in `_meta["openai/ui"].entrypoints`. Absent when it has none.
+   */
+  entrypoint: Schema.optional(Schema.String),
 })
 export type ServerView = typeof ServerView.Type
 

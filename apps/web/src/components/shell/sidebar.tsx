@@ -1,9 +1,11 @@
 import { type ReactNode, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { AppView, ConversationView, PersonaView, TopicView } from '@goblin/contracts'
 import { ChevronRightIcon, HashIcon, LayoutGridIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react'
 import { jobTrouble } from '../../lib/app-jobs.ts'
 import { agentApps, appOrigin } from '../../lib/app-names.ts'
+import { entrypoints } from '../../lib/entrypoints.ts'
 import { activePersonas } from '../../lib/personas.ts'
 import { isUnread, threadTitle } from '../../lib/threads.ts'
 import { channels, topicThreads } from '../../lib/topics.ts'
@@ -16,6 +18,7 @@ import {
   usePersonas,
   useTopics,
 } from '../../lib/workspace/hooks.ts'
+import { serversQuery } from '../../mcp/queries.ts'
 import { AppTile } from '../apps/app-tile.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
 import { useCurrent, useFolded, useRecentThreads } from './sidebar-state.ts'
@@ -170,6 +173,29 @@ function AppRow({ app, current }: { readonly app: AppView; readonly current: boo
   )
 }
 
+/** Each connected server's own App (its global entrypoint), opened from anywhere; nothing when no server has one. */
+function Services({ path }: { readonly path: string }) {
+  const listed = entrypoints(useQuery(serversQuery).data ?? [])
+  if (listed.length === 0) return null
+  return (
+    <Section id="services" label="Services">
+      {listed.map(({ connectionId, title }) => (
+        <li key={connectionId}>
+          <Link
+            to="/connections/$connectionId/app"
+            params={{ connectionId }}
+            className="sidebar-row"
+            aria-current={path === `/connections/${connectionId}/app` ? 'page' : undefined}
+          >
+            <AppTile origin={connectionId} />
+            <span className="sidebar-row-name">{title}</span>
+          </Link>
+        </li>
+      ))}
+    </Section>
+  )
+}
+
 /** A Persona: its mark and `@name`; a click opens its profile (never a chat with it). */
 function PersonaRow({ persona, current }: { readonly persona: PersonaView; readonly current: boolean }) {
   return (
@@ -248,6 +274,7 @@ export function Sidebar() {
           <AddTopic />
         </Section>
         <Personas path={path} />
+        <Services path={path} />
         {apps.length > 0 && (
           <Section
             id="apps"

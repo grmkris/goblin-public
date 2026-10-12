@@ -24,7 +24,7 @@ import { StoredOAuthProvider } from './oauth-provider.ts'
 import type { AddedRegistries } from './registries.ts'
 import { profileOf, profileView } from './first-class.ts'
 import { makeCatalog } from './registry.ts'
-import { offersEvents, offersSkills, toolAppResource, toolOffered } from './remote.ts'
+import { globalEntrypoint, offersEvents, offersSkills, toolAppResource, toolOffered } from './remote.ts'
 import { type AddedServer, type AddedServers, MAX_ADDED_SERVERS } from './servers.ts'
 import { McpServers } from './service.ts'
 import { type Stage, suggestions } from './suggested.ts'
@@ -99,6 +99,7 @@ const viewOf = (
   const events = snapshot !== undefined && offersEvents(snapshot)
   const offer = events ? (owner.offers?.settled(server.connectionId) ?? 'open') : undefined
   const profile = profileOf(server.endpoint)
+  const entrypoint = profile?.app?.tool ?? (snapshot === undefined ? undefined : globalEntrypoint(snapshot))
   return {
     connectionId: server.connectionId,
     label: owner.labels.of(server.connectionId) ?? server.connectionId,
@@ -114,6 +115,7 @@ const viewOf = (
     ...(claims?.description === undefined ? {} : { description: claims.description }),
     ...(claims?.icon === undefined ? {} : { icon: claims.icon }),
     ...(profile === undefined ? {} : { profile: profileView(profile) }),
+    ...(entrypoint === undefined ? {} : { entrypoint }),
   }
 }
 
