@@ -3,7 +3,16 @@ import { toHex } from '../balances/hex.ts'
 import { field, type JsonRpc } from '../balances/rpc.ts'
 import type { AgentSigner } from '../contract/index.ts'
 import quoteFixture from './fixtures/base-tempo.json' with { type: 'json' }
-import { executeBridge, quoteBridge, RELAY_DEPOSITORY, relayDelivery, type FrozenBridge } from './index.ts'
+import {
+  depositStatus,
+  executeBridge,
+  quoteBridge,
+  quoteDepositAddress,
+  RELAY_DEPOSITORY,
+  relayDelivery,
+  type FrozenBridge,
+} from './index.ts'
+import { BASE } from '../chains/index.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
 const NOW = new Date('2026-10-12T06:00:00Z')
@@ -280,5 +289,84 @@ describe('Relay bridge execute', () => {
     const h = harness()
     await expect(run(await quote(), h, [], new Date('2026-10-12T06:10:00Z'))).rejects.toMatchObject({ code: 'expired' })
     expect(h.sent).toHaveLength(0)
+  })
+})
+
+/** Relay's keyless status API refusing: it rate-limits in stages. */
+const rateLimited = async () => Response.json({ message: 'rate limit' }, { status: 429 })
+
+/** A Relay `requests/v2` answer holding one fill with this status. */
+const fillAt = (status: string) => async () =>
+  Response.json({
+    requests: [{ status, data: { inTxs: [{ hash: '0xab' }], outTxs: [{ hash: '0xcd' }, { hash: 'nope' }] } }],
+  })
+
+describe('deposit addresses', () => {
+  const OWNER = '0x76C70140b195ABcFf6406D0a83f8b64A2d435e94'
+  const relayQuote = {
+    steps: [{ id: 'deposit', depositAddress: '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f', requestId: '0x1791' }],
+    details: { currencyOut: { amount: '10158603' }, timeEstimate: 2 },
+    fees: { relayer: { amountUsd: '0.032409' }, gas: { amountUsd: '0.001' } },
+  }
+
+  test('quotes a one-off address that delivers to the owner on Base, refunding to the owner', async () => {
+    const sent: unknown[] = []
+    const deposit = await quoteDepositAddress({
+      from: 'base',
+      asset: 'ETH',
+      amount: '0.004',
+      receive: 'USDC',
+      recipient: OWNER,
+      fetchFn: async (_url, init) => {
+        sent.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'))
+        return Response.json(relayQuote)
+      },
+    })
+    expect(deposit).toEqual({
+      requestId: '0x1791',
+      depositAddress: '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f',
+      expectedOut: '10.158603',
+      feesUsd: '0.033409',
+      timeEstimateSeconds: 2,
+    })
+    expect(sent[0]).toMatchObject({
+      recipient: OWNER,
+      refundTo: OWNER,
+      originChainId: 8453,
+      destinationChainId: 8453,
+      originCurrency: '0x0000000000000000000000000000000000000000',
+      destinationCurrency: BASE.usdc.address,
+      amount: '4000000000000000',
+      useDepositAddress: true,
+    })
+  })
+
+  test('refuses a same-asset deposit on Base and a quote without an address', async () => {
+    await expect(
+      quoteDepositAddress({ from: 'base', asset: 'USDC', amount: '5', receive: 'USDC', recipient: OWNER }),
+    ).rejects.toMatchObject({ code: 'unsupported' })
+    await expect(
+      quoteDepositAddress({
+        from: 'arbitrum',
+        asset: 'USDC',
+        amount: '5',
+        receive: 'USDC',
+        recipient: OWNER,
+        fetchFn: async () => Response.json({ steps: [{}] }),
+      }),
+    ).rejects.toMatchObject({ code: 'bad_quote' })
+  })
+
+  test('follows the deposit address: no fill yet is waiting, then Relay statuses map to the owner API words', async () => {
+    const address = '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f'
+    expect(await depositStatus(address, async () => Response.json({ requests: [] }))).toEqual({
+      status: 'waiting',
+      txHashes: [],
+    })
+    expect(await depositStatus(address, fillAt('success'))).toEqual({ status: 'success', txHashes: ['0xab', '0xcd'] })
+    expect((await depositStatus(address, fillAt('refund'))).status).toBe('refunded')
+    expect((await depositStatus(address, fillAt('failure'))).status).toBe('failed')
+    expect((await depositStatus(address, fillAt('delayed'))).status).toBe('pending')
+    expect(await depositStatus(address, rateLimited)).toEqual({ status: 'unknown', txHashes: [] })
   })
 })

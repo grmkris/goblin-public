@@ -100,10 +100,14 @@ export const DepositAddress = Schema.Struct({
 })
 export type DepositAddress = typeof DepositAddress.Type
 
-/** `GET /api/deposits/:requestId`: Relay's progress for one deposit address. */
+/**
+ * `GET /api/deposits/:depositAddress`: Relay's progress for one deposit address. Relay records the fill as its own
+ * request whose user is the deposit address, so the address, not the quote's request id, is what is followed.
+ */
 export const DepositStatus = Schema.Struct({
-  requestId: Text(80),
-  status: Schema.Literals(['waiting', 'pending', 'success', 'refunded', 'failed']),
+  depositAddress: Address,
+  /** `unknown`: Relay's keyless status API did not answer (it rate-limits); the owner's balance shows the arrival. */
+  status: Schema.Literals(['waiting', 'pending', 'success', 'refunded', 'failed', 'unknown']),
   txHashes: Schema.Array(Hex),
 })
 export type DepositStatus = typeof DepositStatus.Type
@@ -157,7 +161,7 @@ export const OwnerRoutes = {
   },
   revokeAll: { method: 'POST', path: '/api/revoke', response: Me },
   deposit: { method: 'POST', path: '/api/deposits', request: DepositRequest, response: DepositAddress },
-  depositStatus: { method: 'GET', path: '/api/deposits/:requestId', response: DepositStatus },
+  depositStatus: { method: 'GET', path: '/api/deposits/:depositAddress', response: DepositStatus },
 } as const
 
 /** The JSON error envelope of every route. */
