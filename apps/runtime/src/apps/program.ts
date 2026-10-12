@@ -13,6 +13,7 @@ import { AppEngine } from '../agent-apps/service.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
 import { Conversations } from '../chats/service.ts'
 import { Home } from '../home/service.ts'
+import { settledDetails } from '../mcp/kept-app.ts'
 import { toolAppResource } from '../mcp/remote.ts'
 import { McpConnections } from '../mcp/service.ts'
 import { Apps } from './service.ts'
@@ -38,7 +39,12 @@ export const createOwnerApp = ({ conversation, callId }: CreateApp) =>
 export const updateOwnerApp = (id: string, change: UpdateApp) => Apps.use((apps) => apps.update(id, change.closed))
 
 /** What the browser needs to load an App; it grants nothing (its calls are checked live). */
-export const launchOwnerApp = (id: string) => Apps.use((apps) => apps.launch(id))
+export const launchOwnerApp = (id: string) =>
+  Effect.gen(function* () {
+    const launch = yield* Apps.use((apps) => apps.launch(id))
+    // A call the owner approved, or a URL request they finished, shows the server's real answer, not its placeholder.
+    return launch.kind === 'mcp' ? { ...launch, result: yield* settledDetails(launch.result) } : launch
+  })
 
 /** The agent app an App id names, with the engine that runs it. */
 const agentApp = (id: string) =>

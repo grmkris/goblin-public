@@ -2,6 +2,7 @@ import { AppView, type AgentAppLaunch } from '@goblin/contracts'
 import { AgentAppsGroup, AppsGroup, NotFound } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import { AgentAppsHandlers } from '../../../src/agent-apps/api.ts'
@@ -12,7 +13,7 @@ import type { AppOrigin } from '../../../src/apps/registry.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { Home } from '../../../src/home/service.ts'
-import { McpConnections, Resident } from '../../../src/mcp/service.ts'
+import { Approvals, McpConnections, Resident, UrlRequests } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
 import { callOwner } from '../../owner-client.ts'
 import { currentResident, json, plans, post, serve, served, stub, unrouted } from './fixture.ts'
@@ -28,6 +29,8 @@ type OtherParts = {
   readonly conversations?: Pick<Conversations['Service'], 'require' | 'requireOpen' | 'kindOf'>
   readonly connections?: Pick<McpConnections['Service'], 'connect'>
   readonly home?: Pick<Home['Service'], 'appRemoved'>
+  readonly approvals?: Pick<Approvals['Service'], 'result'>
+  readonly urlRequests?: Pick<UrlRequests['Service'], 'result'>
 }
 
 /**
@@ -54,6 +57,8 @@ function appsServer(
           stub(Conversations, others.conversations),
           stub(McpConnections, others.connections),
           stub(Home, others.home),
+          stub(Approvals, others.approvals),
+          stub(UrlRequests, others.urlRequests),
           Layer.succeed(Resident, resident.service),
           plans(options.active),
         ),
@@ -64,6 +69,7 @@ function appsServer(
 }
 
 const BOARD = 'ui://fixture/board'
+const placeholder = (kind: string, key: string) => ({ kind, [key]: 'held-1', connectionId: 'fixture', name: 'board' })
 
 const kept: AppView = {
   id: '3',
@@ -153,6 +159,52 @@ describe('the apps group served by the agent', () => {
     expect(unknown.status).toBe(404)
     expect(await unknown.json()).toEqual({
       error: { code: 'not_found', message: 'That does not exist.', what: 'app', ref: 'ref-404' },
+    })
+  })
+
+  it("launches a held call's App with the real result once the owner has decided, and the placeholder until then", async () => {
+    const launching = (details: unknown) =>
+      fakeApps({
+        launch: () =>
+          Effect.succeed({
+            kind: 'mcp' as const,
+            connectionId: 'fixture',
+            uri: BOARD,
+            arguments: { marker: 'kept' },
+            result: details,
+          }),
+      })
+    const answered = { structuredContent: { rows: 3 }, content: [{ type: 'text', text: 'three rows' }] }
+    const waiting = { result: () => Effect.succeed(Option.none()) }
+    const decided = { result: () => Effect.succeed(Option.some(answered)) }
+    const launched = async (details: unknown, others: OtherParts): Promise<Record<string, unknown>> => {
+      const { fetch } = appsServer({ apps: launching(details), others })
+      const response = await fetch(json('GET', '/api/apps/3/launch'))
+      expect(response.status).toBe(200)
+      // SAFETY: the launch endpoint answers a JSON object.
+      return (await response.json()) as Record<string, unknown>
+    }
+    for (const [kind, key, parts] of [
+      ['approval-required', 'approvalId', 'approvals'],
+      ['url-required', 'requestId', 'urlRequests'],
+    ] as const) {
+      const held = placeholder(kind, key)
+      expect(await launched(held, { [parts]: waiting })).toMatchObject({ result: held })
+      const real = await launched(held, { [parts]: decided })
+      expect(real).toMatchObject({
+        kind: 'mcp',
+        arguments: { marker: 'kept' },
+        result: {
+          origin: { connectionId: 'fixture', trust: 'untrusted' },
+          structuredContent: { rows: 3 },
+          content: [{ type: 'text', text: 'three rows' }],
+        },
+      })
+      expect(real.result).not.toHaveProperty('kind')
+    }
+    // A result that is not a placeholder is the transcript's own.
+    expect(await launched({ structuredContent: { rows: 1 } }, {})).toMatchObject({
+      result: { structuredContent: { rows: 1 } },
     })
   })
 

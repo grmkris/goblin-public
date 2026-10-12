@@ -4,14 +4,13 @@ import * as Schema from 'effect/Schema'
 import type { Grant } from '@goblin/contracts'
 import type { Tool } from '@modelcontextprotocol/client'
 import * as Option from 'effect/Option'
-import { Apps } from '../apps/service.ts'
 import { Chats } from '../chats/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import type { SetupScope } from '../setup/scope.ts'
 import { Setups } from '../setup/service.ts'
 import { type GrantDenied, type NeedsAuthorization, NotFound, type ScopeRequired, UpstreamMcp } from '../http/errors.ts'
 import { describeError } from '../telemetry/attributes.ts'
-import { offersEvents, toolAppResource, toolOffered } from '../mcp/remote.ts'
+import { offersEvents, toolOffered } from '../mcp/remote.ts'
 import { connectRequiredResult, grantRequiredResult, mcpModelResult, scopeRequiredResult } from '../mcp/extension.ts'
 import { named } from '../mcp/labels.ts'
 import { Events, McpConnections, McpGrants, McpServers, Spending, requireResident } from '../mcp/service.ts'
@@ -25,6 +24,7 @@ import { outsideScopeResult, mcpOff } from './setup.ts'
 import { ReadyResult, typedTool } from './typed-tool.ts'
 import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-request.ts'
 import { sendApproved } from '../mcp/approval-decision.ts'
+import { keepModelApp } from '../mcp/kept-app.ts'
 import { holdUrlRequest } from '../mcp/url-request.ts'
 
 /** What a model's MCP tool checks before it runs: resident authority, then a routine run's own, when it is one. */
@@ -77,20 +77,6 @@ const scopeRequired = (required: ScopeRequired, name: string, session: string) =
       status: 'ok',
     })
     return new ReadyResult(scopeRequiredResult(required.connectionId, name, required.scope, connection))
-  })
-
-/**
- * An owner's call to a tool that renders an App keeps that App (ADR 0020), so it can be shown here, in its pane and in
- * the sidebar. Keeping it grants nothing: the App's resource and calls need the owner's grants, live.
- */
-const keepApp = (session: string, callId: string, input: { readonly connectionId: string; readonly name: string }) =>
-  Effect.gen(function* () {
-    const snapshot = Option.getOrUndefined(yield* (yield* McpConnections).snapshot(input.connectionId))
-    const tool = snapshot?.tools.find(({ name }) => name === input.name)
-    const uri = tool === undefined ? undefined : toolAppResource(tool)
-    if (uri === undefined) return
-    const origin = { connectionId: input.connectionId, tool: input.name, uri, title: tool?.title ?? input.name }
-    yield* (yield* Apps).register(session, callId, origin)
   })
 
 /** A remote tool as `mcp_list` shows it: its words and schemas are the server's, untrusted data. */
@@ -310,7 +296,7 @@ export function residentMcpExtension(run: RunProgram) {
                         return new ReadyResult(
                           yield* holdUrlRequest(session, api.callId, String(api.taskId), input, outcome.prompt),
                         )
-                      yield* keepApp(session, api.callId, input)
+                      yield* keepModelApp(session, api.callId, input)
                       return new ReadyResult(mcpModelResult(input.connectionId, outcome.result))
                     }),
                   ),

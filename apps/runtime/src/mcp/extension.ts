@@ -11,6 +11,22 @@ const mcpModelContent = (result: CallToolResult): NonNullable<ToolExecutionResul
   }
   return blocks
 }
+/** The details of a model's tool result: the server's own fields, redacted and marked untrusted. */
+export const mcpResultDetails = (
+  connectionId: string,
+  result: {
+    readonly structuredContent?: unknown
+    readonly _meta?: unknown
+    readonly content?: unknown
+  },
+) =>
+  redact({
+    origin: { connectionId, trust: 'untrusted' },
+    structuredContent: result.structuredContent,
+    _meta: result._meta,
+    content: result.content,
+  })
+
 /** A redacted model envelope; the manager retains the original rich MCP result for the host. */
 export const mcpModelResult = (connectionId: string, result: CallToolResult): ToolExecutionResult => ({
   content: [
@@ -18,12 +34,7 @@ export const mcpModelResult = (connectionId: string, result: CallToolResult): To
     ...mcpModelContent(result),
   ],
   isError: result.isError === true,
-  details: redact({
-    origin: { connectionId, trust: 'untrusted' },
-    structuredContent: result.structuredContent,
-    _meta: result._meta,
-    content: result.content,
-  }),
+  details: mcpResultDetails(connectionId, result),
 })
 
 /**

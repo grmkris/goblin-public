@@ -12,6 +12,7 @@ import { bound } from '../runtime/boundary.ts'
 import { authority, resumeRoutine } from './approval-decision.ts'
 import { type McpCallInput, heldCallChanged, waitOnOwner } from './approval-request.ts'
 import { urlRequiredResult } from './extension.ts'
+import { keepLateApp } from './kept-app.ts'
 import { named } from './labels.ts'
 import { redactSecretFields } from './redaction.ts'
 import { McpConnections, McpServers, UrlRequests } from './service.ts'
@@ -128,6 +129,7 @@ const retry = (row: UrlRequestRow, action: UrlAnswer['action']) =>
     if (outcome.kind === 'url')
       return yield* action === 'decline' ? requests.decline(row.id) : requests.again(row.id, outcome.prompt)
     yield* requests.finish(row.id, action === 'accept' ? 'completed' : 'declined', outcome.result)
+    if (action === 'accept') yield* keepLateApp(row.sessionId, row.sourceCallId, row)
     // expected: a failed re-list marks the connection stale, so its next use opens it again.
     yield* Effect.ignore(connections.refreshTools(row.connectionId))
   }).pipe(

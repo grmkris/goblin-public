@@ -13,6 +13,7 @@ import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
 import { named } from './labels.ts'
 import { heldCallChanged } from './approval-request.ts'
+import { keepLateApp } from './kept-app.ts'
 import { profileOf } from './first-class.ts'
 import { Approvals, McpConnections, McpServers, Spending, requireResident } from './service.ts'
 import { microsOf } from './spend.ts'
@@ -94,6 +95,7 @@ export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) 
       authorize,
     })
     yield* approvals.finish(row.id, result)
+    if (row.caller === 'model') yield* keepLateApp(row.sessionId, row.sourceCallId, row)
     return result
   }).pipe(
     Effect.tapError(() =>

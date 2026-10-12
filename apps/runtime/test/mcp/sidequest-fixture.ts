@@ -22,13 +22,13 @@ export const urlAsk = (url: string) => ({
  * text. `ask` changes what it asks, to test what goblin refuses. `state` switches what it does next: `unlisted` drops
  * `create_agent` from its list while still answering it (as Sidequest does once a setup becomes an agent),
  * `askOnDecline` keeps asking after a decline, `wrongOutput` answers outside the output schema and `refuse` answers a
- * JSON-RPC error.
+ * JSON-RPC error and `app` makes `create_agent` render the App `ui://sq/agent`.
  */
 export const sidequestServer = (
   ask: (url: string) => Record<string, unknown> = (url) => ({ approval: urlAsk(url) }),
 ) => {
   const seen: Seen[] = []
-  const state = { approved: false, wrongOutput: false, unlisted: false, askOnDecline: false, refuse: false }
+  const state = { approved: false, wrongOutput: false, unlisted: false, askOnDecline: false, refuse: false, app: false }
   const official = createMcpHandler(() => {
     const server = lowLevelServer({ name: 'sq', version: '1.0.0' }, { capabilities: { tools: {} } })
     server.setRequestHandler('tools/list', () => ({
@@ -37,6 +37,7 @@ export const sidequestServer = (
         : [
             {
               name: 'create_agent',
+              ...(state.app ? { _meta: { ui: { resourceUri: 'ui://sq/agent' } } } : {}),
               inputSchema: { type: 'object' as const, properties: { name: { type: 'string' } } },
               outputSchema: { type: 'object' as const, properties: { agent: { type: 'string' } }, required: ['agent'] },
             },
