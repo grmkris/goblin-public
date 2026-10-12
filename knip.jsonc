@@ -99,6 +99,8 @@
         "src/ui/maps.ts!",
         "src/ui/diagrams.ts!",
         "src/ui/icons.ts!",
+        // Appended by scripts/build.ts to the frame's ui.css.
+        "src/ui/frame.css!",
       ],
     },
   },
