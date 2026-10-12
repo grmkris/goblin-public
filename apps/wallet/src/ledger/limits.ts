@@ -91,12 +91,13 @@ export interface Window {
 }
 
 /** The sum of counted reservations made within `windowMs` of now, and when the window next frees up. */
-export function windowUsage(ctx: Ctx, windowMs: number): Window {
+export function windowUsage(ctx: Ctx, windowMs: number, excludeId = ''): Window {
   const since = ctx.now() - windowMs
   const row = ctx.sql.all<{ total: number | null; oldest: number | null }>(
     `SELECT SUM(micros) AS total, MIN(reserved_at_ms) AS oldest FROM operations
-     WHERE reserved_at_ms IS NOT NULL AND reserved_at_ms > ? AND status IN (${COUNTED_SQL})`,
+     WHERE reserved_at_ms IS NOT NULL AND reserved_at_ms > ? AND id <> ? AND status IN (${COUNTED_SQL})`,
     since,
+    excludeId,
   )[0]
   return {
     usedMicros: BigInt(row?.total ?? 0),
@@ -145,12 +146,12 @@ export function ledgerLimitViews(ctx: Ctx): LimitView[] {
   ]
 }
 
-/** The limit views one spend of `micros` would cross. Empty when it fits. */
-export function crossedLimits(ctx: Ctx, micros: bigint): LimitView[] {
+/** The limit views one spend of `micros` would cross. Empty when it fits. `excludeId` leaves that operation's own hold out. */
+export function crossedLimits(ctx: Ctx, micros: bigint, excludeId = ''): LimitView[] {
   const limits = currentLimits(ctx)
   const now = ctx.now()
-  const hour = windowUsage(ctx, HOUR_MS)
-  const week = windowUsage(ctx, WEEK_MS)
+  const hour = windowUsage(ctx, HOUR_MS, excludeId)
+  const week = windowUsage(ctx, WEEK_MS, excludeId)
   const crossed: LimitView[] = []
   if (micros > limits.perCall) crossed.push(callView(limits.perCall))
   if (hour.usedMicros + micros > limits.perHour) crossed.push(periodView('hour', limits.perHour, hour, now))

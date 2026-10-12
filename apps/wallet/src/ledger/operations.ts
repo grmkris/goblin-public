@@ -62,6 +62,10 @@ export function requireRow(ctx: Ctx, id: string): OperationRow {
 export type MoveResult =
   | { ok: true; operation: Operation }
   | { ok: false; code: 'unknown_operation' | 'bad_transition'; operation?: Operation }
+  | { ok: false; code: SigningRefusal; operation: Operation; reason: string }
+
+/** Why a reserved operation was not allowed to sign: its authority lapsed between reserving and signing. */
+export type SigningRefusal = 'revoked' | 'grant_expired' | 'terms_expired' | 'over_limit'
 
 export interface MovePatch {
   payment?: Payment

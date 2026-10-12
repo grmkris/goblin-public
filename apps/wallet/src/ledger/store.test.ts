@@ -186,6 +186,22 @@ describe('approvals', () => {
   })
 })
 
+describe('signing', () => {
+  test('an owner-approved over-limit spend still signs; revoked or expired authority does not', () => {
+    const { store, clock } = testStore()
+    const big = open(store, '8')
+    store.reserve(big.id)
+    store.decide(big.id, { decision: 'approve', termsHash: big.termsHash })
+    expect(store.reserve(big.id).kind).toBe('reserved')
+    expect(store.signing(big.id).ok).toBe(true)
+    const late = open(store, '1', { expiresAt: new Date(T0 + 30 * 24 * HOUR).toISOString() })
+    store.reserve(late.id)
+    clock.now = T0 + 8 * 24 * HOUR
+    expect(store.signing(late.id)).toMatchObject({ ok: false, code: 'grant_expired' })
+    expect(store.operation(late.id)?.status).toBe('failed')
+  })
+})
+
 describe('revoke', () => {
   test('refuses new work, closes the unfinished and keeps what is in flight', () => {
     const { store } = testStore()

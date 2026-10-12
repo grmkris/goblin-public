@@ -41,6 +41,7 @@ import {
   pendingApprovals,
   reserve,
   type ReserveOptions,
+  signing,
   type ReserveOutcome,
 } from './reserve.ts'
 import { preparedAllowance, putPreparedAllowance, putSignedAllowance, signedAllowances } from './allowances.ts'
@@ -108,9 +109,9 @@ export class LedgerStore {
     return activity(this.#ctx, Math.min(Math.max(limit, 1), 200))
   }
 
-  /** reserved -> signing: the moment before the signer is asked. */
+  /** reserved -> signing: the moment before the signer is asked; grant and limits are re-checked here. */
   signing(id: string): MoveResult {
-    return move(this.#ctx, id, 'signing')
+    return signing(this.#ctx, id)
   }
 
   submitted(id: string, payment: Payment): MoveResult {
@@ -200,8 +201,8 @@ export class LedgerStore {
     putQuote(this.#ctx, stored)
   }
 
-  getQuote(id: string): StoredQuote | undefined {
-    return getQuote(this.#ctx, id)
+  getQuote(id: string, includeExpired = false): StoredQuote | undefined {
+    return getQuote(this.#ctx, id, includeExpired)
   }
 
   isRevoked(): boolean {

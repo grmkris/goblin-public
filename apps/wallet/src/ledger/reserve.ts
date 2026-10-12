@@ -3,7 +3,7 @@ import * as Schema from 'effect/Schema'
 import { LimitView as LimitViewSchema } from '@goblin/wallet/contract'
 import { addRecipient, isKnownRecipient } from './book.ts'
 import { crossedLimits, currentLimits } from './limits.ts'
-import { requireRow } from './operations.ts'
+import { move, type MoveResult, requireRow } from './operations.ts'
 import { type Ctx, getRow, isoOf, isTerminal, type OperationRow, setStatus, toOperation } from './rows.ts'
 import { isRevoked } from './state.ts'
 
@@ -161,6 +161,33 @@ export function reserve(ctx: Ctx, id: string, options: ReserveOptions = {}): Res
     const first = firstUseReason(ctx, row, options)
     const reason: ApprovalReason | undefined = first ?? (crosses.length > 0 ? 'over_limit' : undefined)
     return reason === undefined ? reserveNow(ctx, id) : openApproval(ctx, row, reason, crosses)
+  })
+}
+
+/**
+ * reserved -> signing, the moment before the signer is asked: re-checks, in the same transaction, the grant and the
+ * limits as they are now. A reservation made before the grant expired, the quote lapsed or the limits shrank does not
+ * sign. A passing reservation is re-admitted under the current window (its hold is re-stamped to now), so a stale
+ * reservation cannot sit outside the rolling windows while it spends. An owner-approved spend keeps its approval
+ * over the limits, but never past a revoked or expired grant or a lapsed quote.
+ */
+export function signing(ctx: Ctx, id: string): MoveResult {
+  return ctx.sql.atomic((): MoveResult => {
+    const row = getRow(ctx, id)
+    if (row === undefined || row.status !== 'reserved') return move(ctx, id, 'signing')
+    const op = toOperation(row)
+    const stop = (code: 'revoked' | 'grant_expired' | 'terms_expired' | 'over_limit', reason: string): MoveResult => {
+      setStatus(ctx, id, 'failed', reason)
+      return { ok: false, code, reason, operation: toOperation(requireRow(ctx, id)) }
+    }
+    if (isRevoked(ctx)) return stop('revoked', 'The owner revoked this wallet.')
+    if (currentLimits(ctx).expiresAtMs <= ctx.now()) return stop('grant_expired', 'The wallet grant expired.')
+    if (Date.parse(op.terms.expiresAt) <= ctx.now()) return stop('terms_expired', 'The quote expired.')
+    const approved = getApproval(ctx, id)?.status === 'approved'
+    if (!approved && crossedLimits(ctx, BigInt(row.micros), id).length > 0)
+      return stop('over_limit', 'The wallet limits no longer have room for this spend.')
+    ctx.sql.run('UPDATE operations SET reserved_at_ms = ? WHERE id = ?', ctx.now(), id)
+    return move(ctx, id, 'signing')
   })
 }
 

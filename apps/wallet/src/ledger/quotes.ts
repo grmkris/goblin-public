@@ -25,12 +25,12 @@ export function putQuote(ctx: Ctx, stored: StoredQuote): void {
   )
 }
 
-/** The frozen quote, or undefined when it never existed or has expired. */
-export function getQuote(ctx: Ctx, id: string): StoredQuote | undefined {
+/** The frozen quote, or undefined when it never existed or has expired (unless `includeExpired`: an operation replay). */
+export function getQuote(ctx: Ctx, id: string, includeExpired = false): StoredQuote | undefined {
   const row = ctx.sql.all<{ body_json: string; expires_at_ms: number }>(
     'SELECT body_json, expires_at_ms FROM quotes WHERE id = ?',
     id,
   )[0]
-  if (row === undefined || row.expires_at_ms <= ctx.now()) return undefined
+  if (row === undefined || (!includeExpired && row.expires_at_ms <= ctx.now())) return undefined
   return decodeStored(row.body_json)
 }
