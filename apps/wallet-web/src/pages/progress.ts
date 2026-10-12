@@ -4,7 +4,7 @@ import { ownerOnBase } from './deposit-model.ts'
 export type StepId = 'agent' | 'fund' | 'upgrade' | 'allowance'
 
 interface SetupState {
-  /** The owner holds USDC or ETH on Base; undefined until Base is read. */
+  /** The owner holds USDC on Base, which pays the upgrade's gas; undefined until Base is read. */
   readonly funded: boolean | undefined
 }
 
@@ -30,8 +30,11 @@ export function setupProgress(me: Me, state: SetupState): StepId | 'done' {
   return base.allowance === undefined ? 'allowance' : 'done'
 }
 
-/** Any USDC or ETH in the owner's account on Base: the account is topped up. Undefined until Base is read. */
+/**
+ * Any USDC in the owner's account on Base: the account is topped up, and can pay the upgrade's gas (in USDC, not ETH).
+ * Undefined until Base is read.
+ */
 export function fundedOnBase(status: WalletStatusResult | undefined): boolean | undefined {
-  const held = [ownerOnBase(status, 'USDC'), ownerOnBase(status, 'ETH')].filter((units) => units !== undefined)
-  return held.length === 0 ? undefined : held.some((units) => units > 0n)
+  const units = ownerOnBase(status, 'USDC')
+  return units === undefined ? undefined : units > 0n
 }

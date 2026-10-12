@@ -17,17 +17,21 @@ describe('setup gaps', () => {
   test('a fresh owner has every step left, in order', () => {
     expect(setupGaps({ hasAgent: false, chains: [], balances: [] })).toEqual([
       'create the agent wallet',
-      'add funds to the account (USDC or ETH, on any EVM chain)',
+      "add USDC to the account on Base (the upgrade's gas is paid in USDC)",
       'upgrade the account on Base',
       'sign the spending allowance',
     ])
   })
 
-  test('funds count as soon as the owner holds USDC on Base; a finished setup has no gaps', () => {
+  test('funds count as soon as the owner holds USDC on Base, not ETH; a finished setup has no gaps', () => {
     expect(setupGaps({ hasAgent: true, chains: [], balances: [usdc('2.5')] })).toEqual([
       'upgrade the account on Base',
       'sign the spending allowance',
     ])
+    const eth: ChainBalance = { ...usdc('0.01'), symbol: 'ETH', token: '0x0000000000000000000000000000000000000000' }
+    expect(setupGaps({ hasAgent: true, chains: [], balances: [eth] })[0]).toBe(
+      "add USDC to the account on Base (the upgrade's gas is paid in USDC)",
+    )
     const done = [
       {
         chain: 'base' as const,

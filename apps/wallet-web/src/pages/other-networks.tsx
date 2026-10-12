@@ -1,5 +1,7 @@
 import { Button, Spinner } from '@goblin/ui'
+import { formatUnits } from '@goblin/wallet/amounts'
 import { DEFAULT_GRANT_DAYS } from '@goblin/wallet/contract'
+import { UPGRADE_FEE_CEILINGS } from '@goblin/wallet/userop'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { useMe } from '../api/queries.tsx'
@@ -150,12 +152,13 @@ function NetworkRow({
       </div>
       {state.kind === 'not_upgraded' && upgrade.submitted && (
         <p className="text-xs/relaxed text-muted-foreground text-pretty">
-          Sent. {name} has not confirmed it yet; check again in a minute. Checking asks for your signature once more.
+          Sent. {name} has not confirmed it yet; check again in a minute. Checking asks you to sign again.
         </p>
       )}
       {state.kind === 'not_upgraded' && chain === 'ethereum' && (
         <p className="text-xs/relaxed text-muted-foreground text-pretty">
-          Ethereum upgrades cost more; the relay covers it within its daily limit.
+          Ethereum upgrades cost more: up to {formatUsd(formatUnits(UPGRADE_FEE_CEILINGS.ethereum, 6))} of gas, paid in
+          USDC from your account on Ethereum.
         </p>
       )}
       {state.kind === 'not_upgraded' && <ActionError message={upgrade.error} />}
@@ -167,8 +170,9 @@ function NetworkRow({
 }
 
 /**
- * Arbitrum and Ethereum after onboarding on Base: per chain, the owner upgrades the account (the relay pays) and then
- * signs an allowance, with the same per-hour input as onboarding. Shown once Base is upgraded and has an allowance.
+ * Arbitrum and Ethereum after onboarding on Base: per chain, the owner upgrades the account (its gas paid in USDC from
+ * the account there) and then signs an allowance, with the same per-hour input as onboarding. Shown once Base is
+ * upgraded and has an allowance.
  */
 export function OtherNetworks() {
   const me = useMe()
@@ -187,7 +191,8 @@ export function OtherNetworks() {
     <Section id="networks" title="Other networks">
       <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
         Your agent can spend on Arbitrum and Ethereum too, once your account is upgraded there and you set an allowance.
-        You sign each step. We pay the gas.
+        You sign each step. The one-time upgrade's gas is paid in USDC from your account on that network, so add USDC
+        there first.
       </p>
       <RowList>
         <ul className="divide-y divide-border">

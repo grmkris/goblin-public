@@ -85,7 +85,7 @@ function UpgradeStep({
 }: {
   readonly index: number
   readonly state: StepState
-  /** Nothing has landed on Base yet: the upgrade opens once the wallet is topped up. */
+  /** No USDC on Base yet: the upgrade, whose gas is paid in USDC, opens once the wallet is topped up. */
   readonly waiting: boolean
 }) {
   const auth = useAuth()
@@ -98,11 +98,11 @@ function UpgradeStep({
     <Step index={index} state={state} title="Upgrade your account on Base" summary="Your account can grant allowances.">
       <p className="text-sm/relaxed text-muted-foreground text-pretty">
         EIP-7702 lets your existing address run a smart-account contract, so it can hand your agent a capped allowance
-        without moving your funds or changing your address. You sign once. We pay the gas; it is repaid in USDC from
-        your allowance later.
+        without moving your funds or changing your address. You sign twice: the upgrade, then the operation that carries
+        it. Its one-time gas, about a cent, is paid in USDC from your own account.
       </p>
       {waiting ? (
-        <p className="text-sm text-muted-foreground">Top up first: this opens once USDC or ETH is on Base.</p>
+        <p className="text-sm text-muted-foreground">Top up first: this opens once USDC is on Base.</p>
       ) : (
         <>
           <ActionError message={action.error} />
@@ -169,7 +169,7 @@ function FundingLine({ funded, unread }: { readonly funded: boolean | undefined;
         aria-hidden
         className={cn('size-1.5 shrink-0 rounded-full', funded ? 'bg-success' : 'bg-muted-foreground/50')}
       />
-      {funded ? 'Your wallet has funds on Base.' : 'Waiting for USDC or ETH on Base.'}
+      {funded ? 'Your wallet has USDC on Base.' : 'Waiting for USDC on Base.'}
     </p>
   )
 }

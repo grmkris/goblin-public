@@ -38,10 +38,10 @@ const keepOwner = (symbol: string) => (row: (typeof STATUS.balances)[number]) =>
   row.chain === 'base' && row.holder === 'owner' && row.symbol !== symbol ? { ...row, balance: '0' } : row
 
 describe('fundedOnBase', () => {
-  it('counts USDC or ETH in the owner account on Base', () => {
+  it('counts USDC in the owner account on Base, not ETH: the upgrade pays its gas in USDC', () => {
     expect(fundedOnBase(STATUS)).toBe(true)
     expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('USDC')) })).toBe(true)
-    expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('ETH')) })).toBe(true)
+    expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('ETH')) })).toBe(false)
   })
   it('ignores the agent wallet and other networks', () => {
     const elsewhere = STATUS.balances.map((row) => ownerOnBaseZero({ ...row, balance: '50' }))

@@ -8,12 +8,14 @@ export function setupGaps(input: {
   readonly balances: readonly ChainBalance[]
 }): string[] {
   const base = input.chains.find((chain) => chain.chain === 'base')
+  // The upgrade's gas is paid in USDC from the owner's account on Base, so only USDC there counts.
   const funded = input.balances.some(
-    (row) => row.chain === 'base' && row.holder === 'owner' && /[1-9]/u.test(row.balance),
+    (row) => row.chain === 'base' && row.holder === 'owner' && row.symbol === 'USDC' && /[1-9]/u.test(row.balance),
   )
   const gaps: string[] = []
   if (!input.hasAgent) gaps.push('create the agent wallet')
-  if (base?.upgraded !== true && !funded) gaps.push('add funds to the account (USDC or ETH, on any EVM chain)')
+  if (base?.upgraded !== true && !funded)
+    gaps.push("add USDC to the account on Base (the upgrade's gas is paid in USDC)")
   if (base?.upgraded !== true) gaps.push('upgrade the account on Base')
   if (base?.allowance === undefined) gaps.push('sign the spending allowance')
   return gaps
