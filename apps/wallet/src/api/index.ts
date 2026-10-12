@@ -15,7 +15,7 @@ import { activity, addressBook, services } from './lists.ts'
 import { checkOperation } from './operations.ts'
 import { me, status } from './me.ts'
 import { decidePolicyChange, policyChanges } from './policy-changes.ts'
-import { allowanceConfirm, allowancePrepare, createAgent, upgrade } from './onboarding.ts'
+import { allowanceConfirm, allowancePrepare, createAgent, upgrade, upgradePrepare } from './onboarding.ts'
 
 export interface ApiDeps {
   readonly identity: (env: WalletEnv) => IdentityVerifier
@@ -44,6 +44,7 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.me.method, OwnerRoutes.me.path, me),
   compile(OwnerRoutes.status.method, OwnerRoutes.status.path, status),
   compile(OwnerRoutes.createAgent.method, OwnerRoutes.createAgent.path, createAgent),
+  compile(OwnerRoutes.upgradePrepare.method, OwnerRoutes.upgradePrepare.path, upgradePrepare),
   compile(OwnerRoutes.upgrade.method, OwnerRoutes.upgrade.path, upgrade),
   compile(OwnerRoutes.allowancePrepare.method, OwnerRoutes.allowancePrepare.path, allowancePrepare),
   compile(OwnerRoutes.allowanceConfirm.method, OwnerRoutes.allowanceConfirm.path, allowanceConfirm),

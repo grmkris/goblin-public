@@ -6,14 +6,14 @@ import { depositRails } from './deposit.ts'
 import { bridgeExecute, bridgeQuote, swapExecute, swapQuote } from './exchange.ts'
 import { payPaidFetch, quotePaidFetch } from './fetch.ts'
 import { quoteTransfer, transfer } from './transfer.ts'
-import { upgrade } from './upgrade.ts'
+import { confirmUpgrade, prepareUpgrade } from './upgrade.ts'
 import { allowances, balances } from './views.ts'
 
 export type { RailsDeps, StoredAllowance } from './deps.ts'
 
 /**
  * The payment rails the spend program calls: x402 and MPP fetches, MPP challenges a caller fetched, transfers, swaps,
- * bridges, balances, the relay, and deposit addresses.
+ * bridges, balances, the owner's account upgrade, and deposit addresses.
  */
 export const createRails = (deps: RailsDeps): RailsPort => ({
   quotePaidFetch: (service, args, rail) => quotePaidFetch(service, args, deps, rail),
@@ -29,6 +29,7 @@ export const createRails = (deps: RailsDeps): RailsPort => ({
   balances: () => balances(deps),
   allowances: () => allowances(deps),
   check: (operation) => check(operation, deps),
-  upgrade: (request) => upgrade(request, deps),
+  prepareUpgrade: (request) => prepareUpgrade(request, deps),
+  confirmUpgrade: (pending, signature) => confirmUpgrade(pending, signature, deps),
   ...depositRails(deps),
 })

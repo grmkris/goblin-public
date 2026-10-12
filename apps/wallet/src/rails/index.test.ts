@@ -1,10 +1,14 @@
-import { toHex, type JsonRpc } from '@goblin/wallet/balances'
-import type { AgentSigner, Operation, ServiceRule, Terms } from '@goblin/wallet/contract'
+import { field, type JsonRpc } from '@goblin/wallet/balances'
+import { BASE } from '@goblin/wallet/chains'
+import type { AgentSigner, Operation, ServiceRule, Terms, UserOperation } from '@goblin/wallet/contract'
 import { DEFAULT_SERVICES, termsHash } from '@goblin/wallet/contract'
-import { describe, expect, test, vi } from 'vitest'
+import { approvePaymaster, executeBatch } from '@goblin/wallet/userop'
+import { describe, expect, test } from 'vitest'
+import type { PendingUpgrade } from '../services/rails.ts'
 import { FUNDS_SHORT } from './challenge.ts'
 import { TOP_UP_SETTLE_MS } from './fetch.ts'
 import { createRails, type RailsDeps } from './index.ts'
+import { decodePendingUpgrade, encodePendingUpgrade } from './upgrade.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
 const OWNER = '0x7Ff152896986BDC96a37e8a8eCeF454733318b33'
@@ -369,66 +373,198 @@ describe('balances and allowances', () => {
   })
 })
 
-const delegated = () => async () => '0xef010063c0c19a282a1b52b07dd5a65b58948a07dae32b'
+const UPGRADER = '0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A'
+const AA = BASE.aa ?? failTest()
+const DESIGNATOR = `0xef0100${BASE.delegation.delegator.slice(2).toLowerCase()}`
+const USEROP_HASH = `0x${'ab'.repeat(32)}`
+const BUNDLE_TX = `0x${'cd'.repeat(32)}`
+/** UPGRADER's (key 0x11…11) authorization of the DeleGator on Base at nonce 0, signed once with viem. */
+const AUTHORIZATION = {
+  address: BASE.delegation.delegator,
+  chainId: BASE.id,
+  nonce: 0,
+  r: '0x628ed423023a2c1e7d55bc730d8cc0bdd89dc31059a6153f79dfda37627d333c',
+  s: '0x0419cfd3d73e5decfaecb6e1e7c6ec4a673a0f4f34275251ef53b2dc5a45d094',
+  yParity: 1,
+}
+/** An upgrade operation as the bundler prepared it, and UPGRADER's signature over its DeleGator typed data. */
+const UPGRADE_OP: UserOperation = {
+  sender: UPGRADER,
+  nonce: 0n,
+  callData: executeBatch([approvePaymaster(BASE, AA.paymaster, 16_319n)]),
+  callGasLimit: 275_767n,
+  verificationGasLimit: 61_585n,
+  preVerificationGas: 104_329n,
+  maxFeePerGas: 8_855_000n,
+  maxPriorityFeePerGas: 1_265_000n,
+  paymaster: AA.paymaster,
+  paymasterVerificationGasLimit: 46_456n,
+  paymasterPostOpGasLimit: 43_715n,
+  paymasterData: '0x0200',
+  signature: '0x',
+}
+const OP_SIGNATURE =
+  '0x5b6d1682a2b0b16768f2dcd65b1d6fb7f0e2177a84dd931d3d2ee9d47aecadfb534153d88fae6aa64c38ea99e7984c0e6dc346a9390ee082ee621e2854ec16f61c'
+const hexOf = (value: bigint) => `0x${value.toString(16)}`
+
+/** Base as the upgrade sees it: the owner's nonce and USDC, and their code, the designator once `landed` (after `lag` reads). */
+const upgradeChain =
+  (state: { usdc: bigint; nonce: number; landed: boolean; lag: number }): JsonRpc =>
+  async (method, params) => {
+    if (method === 'eth_getTransactionCount') return hexOf(BigInt(state.nonce))
+    if (method === 'eth_getCode') return state.landed && (state.lag -= 1) < 0 ? DESIGNATOR : '0x'
+    if (method !== 'eth_call') throw new Error(`unexpected ${method}`)
+    const to = String(field(params[0], 'to'))
+    return word(to.toLowerCase() === AA.entryPoint.toLowerCase() ? 0n : state.usdc)
+  }
+
+/** Pimlico on Base: a USDC quote, gas prices and estimates, paymaster data; a sent operation lands with `receipt`. */
+const pimlico = (onSend: () => void, receipt: unknown = { success: true, receipt: { transactionHash: BUNDLE_TX } }) => {
+  const calls: { method: string; params: readonly unknown[] }[] = []
+  const answers: Record<string, unknown> = {
+    pimlico_getTokenQuotes: {
+      quotes: [{ paymaster: AA.paymaster, exchangeRate: hexOf(2_788_189_200n), postOpGas: hexOf(18_990n) }],
+    },
+    pimlico_getUserOperationGasPrice: {
+      fast: { maxFeePerGas: hexOf(8_855_000n), maxPriorityFeePerGas: hexOf(1_265_000n) },
+    },
+    pm_getPaymasterStubData: {
+      paymaster: AA.paymaster,
+      paymasterData: '0x0300',
+      paymasterPostOpGasLimit: hexOf(68_990n),
+    },
+    eth_estimateUserOperationGas: {
+      callGasLimit: hexOf(275_767n),
+      verificationGasLimit: hexOf(61_585n),
+      preVerificationGas: hexOf(104_329n),
+      paymasterVerificationGasLimit: hexOf(46_456n),
+      paymasterPostOpGasLimit: hexOf(43_715n),
+    },
+    pm_getPaymasterData: { paymaster: AA.paymaster, paymasterData: '0x0200' },
+    eth_sendUserOperation: USEROP_HASH,
+    eth_getUserOperationReceipt: receipt,
+  }
+  const rpc: JsonRpc = async (method, params) => {
+    calls.push({ method, params })
+    if (method === 'eth_sendUserOperation') onSend()
+    if (!(method in answers)) throw new Error(`unexpected ${method}`)
+    return answers[method]
+  }
+  return { rpc, calls }
+}
+
+/** The owner UPGRADER on Base, with `usdc` units and nonce 0; the operation lands with the delegation unless `applied` is false. */
+const upgradeSetup = (
+  options: { usdc?: bigint; nonce?: number; landed?: boolean; applied?: boolean; receipt?: unknown } = {},
+) => {
+  const state = {
+    usdc: options.usdc ?? 1_000_000n,
+    nonce: options.nonce ?? 0,
+    landed: options.landed ?? false,
+    lag: options.landed === true ? 0 : 1,
+  }
+  const bundler = pimlico(() => {
+    state.landed = options.applied ?? true
+  }, options.receipt)
+  const rails = createRails(
+    deps({
+      profile: async () => ({ ownerAddress: UPGRADER, agentAddress: AGENT, chains: [] }),
+      rpcFor: () => upgradeChain(state),
+      bundlerFor: () => bundler.rpc,
+    }),
+  )
+  return { rails, bundler, sent: () => bundler.calls.some((call) => call.method === 'eth_sendUserOperation') }
+}
+
+const prepare = (setup: ReturnType<typeof upgradeSetup>, authorization = AUTHORIZATION) =>
+  setup.rails.prepareUpgrade({ chain: 'base', authorization })
+
+const pendingOf = (op: UserOperation = UPGRADE_OP): PendingUpgrade => ({
+  upgradeId: 'upgrade:base:6f1c2c4e-8b1a-4d0e-9f3a-2b7c5d9e1a40',
+  chain: 'base',
+  prepared: { op, authorization: AUTHORIZATION, entryPoint: AA.entryPoint, feeBound: 16_319n },
+  createdAt: NOW.toISOString(),
+  expiresAt: new Date(NOW.getTime() + 300_000).toISOString(),
+})
 
 describe('upgrade', () => {
-  const request = {
-    chain: 'base',
-    authorization: {
-      address: '0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B',
-      chainId: 8453,
-      nonce: 0,
-      r: `0x${'11'.repeat(32)}`,
-      s: `0x${'22'.repeat(32)}`,
-      yParity: 0,
-    },
-  } as const
-
-  test('reports the relay result as an operation with a verifiable terms hash', async () => {
-    let landed = false
-    const relay = {
-      upgrade: async () => {
-        landed = true
-        return { txHash: toHex(`0x${'cd'.repeat(32)}`), status: 'success' as const, nonce: 3 }
-      },
-    }
-    // The owner's code delegates to the DeleGator only once the relayed upgrade has landed.
-    const rpcFor = () => async () => (landed ? delegated()() : word(10_000_000n))
-    const operationResult = await createRails(deps({ relay, rpcFor })).upgrade(request)
-    expect(operationResult).toMatchObject({
-      status: 'confirmed',
-      terms: { kind: 'upgrade', rail: 'relay' },
-      payment: { txHash: `0x${'cd'.repeat(32)}` },
+  test("prepares a UserOperation from the owner's own address that carries their authorization; their USDC pays its gas", async () => {
+    const { rails, bundler } = upgradeSetup()
+    const prepared = await rails.prepareUpgrade({ chain: 'base', authorization: AUTHORIZATION })
+    if (prepared.kind !== 'draft') throw new Error('expected an operation to sign')
+    expect(prepared.maxFeeUsdc).toBe('0.016319')
+    expect(prepared.pending).toMatchObject({ chain: 'base', expiresAt: '2026-10-12T06:05:00.000Z' })
+    expect(prepared.pending.prepared.op).toMatchObject({ sender: UPGRADER, nonce: 0n, paymaster: AA.paymaster })
+    expect(prepared.typedData).toMatchObject({
+      domain: { name: 'EIP7702StatelessDeleGator', chainId: BASE.id, verifyingContract: UPGRADER },
+      message: { sender: UPGRADER, nonce: '0', entryPoint: AA.entryPoint },
     })
-    expect(operationResult.termsHash).toBe(await termsHash(operationResult.terms))
+    const estimate = bundler.calls.find((call) => call.method === 'eth_estimateUserOperationGas')
+    expect(estimate?.params[0]).toMatchObject({ sender: UPGRADER, eip7702Auth: { address: BASE.delegation.delegator } })
+    // The ledger keeps it as JSON and gets back exactly what was prepared.
+    expect(decodePendingUpgrade(encodePendingUpgrade(prepared.pending))).toEqual(prepared.pending)
   })
 
-  test('an upgrade read back from a node a block behind is confirmed once the node catches up', async () => {
-    let landed = false
-    let stale = 1
-    const relay = {
-      upgrade: async () => {
-        landed = true
-        return { txHash: toHex(`0x${'cd'.repeat(32)}`), status: 'success' as const, nonce: 3 }
-      },
-    }
-    // The first code read after the receipt still shows the old (empty) code.
-    const rpcFor = () => async () => (landed && (stale -= 1) < 0 ? delegated()() : '0x')
-    const operationResult = await createRails(deps({ relay, rpcFor })).upgrade(request)
-    expect(operationResult.status).toBe('confirmed')
+  test('refuses testnets, an authorization for another chain or from someone else, a stale nonce and too little USDC', async () => {
+    const testnet = createRails(deps({ live: false }))
+    await expect(testnet.prepareUpgrade({ chain: 'base', authorization: AUTHORIZATION })).rejects.toMatchObject({
+      code: 'mainnet_only',
+    })
+    await expect(prepare(upgradeSetup(), { ...AUTHORIZATION, chainId: 1 })).rejects.toMatchObject({
+      code: 'bad_authorization',
+    })
+    await expect(prepare(upgradeSetup(), { ...AUTHORIZATION, nonce: 1 })).rejects.toMatchObject({
+      code: 'bad_authorization',
+    })
+    await expect(prepare(upgradeSetup({ nonce: 1 }))).rejects.toMatchObject({ code: 'stale_authorization' })
+    const poor = upgradeSetup({ usdc: 16_318n })
+    await expect(prepare(poor)).rejects.toMatchObject({
+      code: 'insufficient_funds',
+      message: expect.stringContaining('up to 0.016319 USDC'),
+    })
+    expect(poor.sent()).toBe(false)
+    const empty = upgradeSetup({ usdc: 0n })
+    await expect(prepare(empty)).rejects.toMatchObject({ code: 'insufficient_funds' })
+    expect(empty.bundler.calls).toEqual([])
+    await expect(
+      createRails(deps()).prepareUpgrade({ chain: 'base', authorization: AUTHORIZATION }),
+    ).rejects.toMatchObject({ code: 'not_configured' })
   })
 
-  test('an owner already delegated to the DeleGator is confirmed without relaying again', async () => {
-    const relay = { upgrade: vi.fn() }
-    const operationResult = await createRails(deps({ relay, rpcFor: delegated })).upgrade(request)
-    expect(operationResult.status).toBe('confirmed')
-    expect(relay.upgrade).not.toHaveBeenCalled()
+  test('an account that already delegates to the DeleGator is confirmed with nothing to sign or send', async () => {
+    const { rails, bundler } = upgradeSetup({ landed: true })
+    const prepared = await rails.prepareUpgrade({ chain: 'base', authorization: AUTHORIZATION })
+    expect(prepared).toMatchObject({ kind: 'upgraded', operation: { status: 'confirmed', terms: { kind: 'upgrade' } } })
+    expect(bundler.calls).toEqual([])
   })
 
-  test('a relay failure is a failed operation; no relay is an error', async () => {
-    const relay = { upgrade: () => Promise.reject(new Error('rpc down')) }
-    expect((await createRails(deps({ relay })).upgrade(request)).status).toBe('failed')
-    await expect(createRails(deps()).upgrade(request)).rejects.toThrow(/No relay/u)
+  test("sends the signed operation and is confirmed once the owner's code delegates, read from a node a block behind", async () => {
+    const { rails } = upgradeSetup()
+    const confirmed = await rails.confirmUpgrade(pendingOf(), OP_SIGNATURE)
+    expect(confirmed).toMatchObject({
+      id: 'upgrade:base:6f1c2c4e-8b1a-4d0e-9f3a-2b7c5d9e1a40',
+      status: 'confirmed',
+      terms: { kind: 'upgrade', rail: 'userop', amount: '0.016319', recipient: AA.paymaster },
+      payment: { rail: 'userop', userOpHash: USEROP_HASH, txHash: BUNDLE_TX },
+    })
+    expect(confirmed.termsHash).toBe(await termsHash(confirmed.terms))
+  })
+
+  test("a signature that is not the owner's fails before anything is sent; in flight is submitted; skipped is failed", async () => {
+    const forged = upgradeSetup()
+    const failed = await forged.rails.confirmUpgrade(pendingOf({ ...UPGRADE_OP, nonce: 1n }), OP_SIGNATURE)
+    expect(failed).toMatchObject({ status: 'failed', reason: expect.stringContaining('not from the sending account') })
+    expect(forged.sent()).toBe(false)
+    const slow = upgradeSetup({ receipt: null, applied: false })
+    expect(await slow.rails.confirmUpgrade(pendingOf(), OP_SIGNATURE)).toMatchObject({
+      status: 'submitted',
+      payment: { userOpHash: USEROP_HASH },
+    })
+    const skipped = upgradeSetup({ applied: false })
+    expect(await skipped.rails.confirmUpgrade(pendingOf(), OP_SIGNATURE)).toMatchObject({
+      status: 'failed',
+      reason: expect.stringContaining('did not apply'),
+    })
   })
 })
 

@@ -30,8 +30,11 @@ export const Me = Schema.Struct({
 })
 export type Me = typeof Me.Type
 
-/** `POST /api/onboarding/upgrade`: the owner's signed EIP-7702 authorization; the relay sends the type-4 transaction. */
-export const UpgradeRequest = Schema.Struct({
+/**
+ * `POST /api/onboarding/upgrade/prepare`: the owner's signed EIP-7702 authorization for `chain`, naming their account's
+ * pending nonce (the bundler, not the owner, sends it). The Worker prepares the UserOperation that carries it.
+ */
+export const UpgradePrepare = Schema.Struct({
   chain: ChainKey,
   authorization: Schema.Struct({
     address: Address,
@@ -42,7 +45,28 @@ export const UpgradeRequest = Schema.Struct({
     yParity: Schema.Int,
   }),
 })
-export type UpgradeRequest = typeof UpgradeRequest.Type
+export type UpgradePrepare = typeof UpgradePrepare.Type
+
+/**
+ * What prepare answers: the UserOperation as the DeleGator's typed data (bigints as decimal strings) for the owner to
+ * review and sign before `expiresAt`, with the most USDC its gas may take from their account; or, when the account
+ * already delegates to the DeleGator, the confirmed upgrade and nothing to sign.
+ */
+export const UpgradeDraft = Schema.Union([
+  Schema.Struct({
+    chain: ChainKey,
+    upgradeId: Text(128),
+    typedData: Schema.Unknown,
+    maxFeeUsdc: TokenAmount,
+    expiresAt: Instant,
+  }),
+  Schema.Struct({ chain: ChainKey, operation: Operation }),
+])
+export type UpgradeDraft = typeof UpgradeDraft.Type
+
+/** `POST /api/onboarding/upgrade`: the owner's signature over a prepared upgrade; the Worker sends it to the bundler. */
+export const UpgradeConfirm = Schema.Struct({ chain: ChainKey, upgradeId: Text(128), signature: Hex })
+export type UpgradeConfirm = typeof UpgradeConfirm.Type
 
 /** `POST /api/allowance/prepare` returns the exact ERC-7710 delegation to sign; the browser rebuilds and compares it. */
 export const AllowancePrepare = Schema.Struct({ chain: ChainKey, perHour: UsdAmount, days: Schema.Int })
@@ -116,7 +140,13 @@ export const OwnerRoutes = {
   me: { method: 'GET', path: '/api/me', response: Me },
   status: { method: 'GET', path: '/api/status', response: WalletStatusResult },
   createAgent: { method: 'POST', path: '/api/onboarding/agent', response: Me },
-  upgrade: { method: 'POST', path: '/api/onboarding/upgrade', request: UpgradeRequest, response: Operation },
+  upgradePrepare: {
+    method: 'POST',
+    path: '/api/onboarding/upgrade/prepare',
+    request: UpgradePrepare,
+    response: UpgradeDraft,
+  },
+  upgrade: { method: 'POST', path: '/api/onboarding/upgrade', request: UpgradeConfirm, response: Operation },
   allowancePrepare: {
     method: 'POST',
     path: '/api/allowance/prepare',

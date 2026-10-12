@@ -1,18 +1,21 @@
 import { DatabaseSync } from 'node:sqlite'
-import { termsHash } from '@goblin/wallet/contract'
+import { type Operation, termsHash } from '@goblin/wallet/contract'
+import * as Schema from 'effect/Schema'
 import { describe, expect, test } from 'vitest'
 import { defaultWiring, unconfiguredRails, type Wiring } from '../context.ts'
 import type { IdentityVerifier } from '../identity.ts'
 import { LedgerObject } from '../ledger/durable.ts'
 import { termsFor } from '../ledger/fixtures.ts'
 import { authClient, WalletAuth } from '../oauth/durable.ts'
-import type { CheckFinding, RailsPort } from '../services/rails.ts'
+import { failure } from '../services/errors.ts'
+import type { CheckFinding, PendingUpgrade, PreparedUpgrade, RailsPort } from '../services/rails.ts'
 import { testEnv } from '../test-env.ts'
 import { createApi } from './index.ts'
 
 const OWNER = '0x1111111111111111111111111111111111111111'
 const AGENT = '0x4444444444444444444444444444444444444444'
 const STRANGER = '0x3333333333333333333333333333333333333333'
+const authorization = { address: OWNER, chainId: 8453, nonce: 0, r: '0x01', s: '0x02', yParity: 0 }
 
 const sqlHost = () => {
   const db = new DatabaseSync(':memory:')
@@ -24,22 +27,58 @@ const sqlHost = () => {
   }
 }
 
-const setup = (
-  upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed',
-  options: { fetchFn?: typeof fetch; live?: boolean; check?: RailsPort['check'] } = {},
-) => {
-  const ledger = new LedgerObject(sqlHost(), () => Date.parse('2026-10-12T10:00:00.000Z'))
-  const auth = authClient(new WalletAuth(sqlHost()))
-  const upgrades: unknown[] = []
+/** A prepared upgrade as the rails hand it over; it expires `expiresInMs` from now. */
+const pendingUpgrade = (expiresInMs = 300_000): PendingUpgrade => ({
+  upgradeId: 'upgrade:base:6f1c2c4e-8b1a-4d0e-9f3a-2b7c5d9e1a40',
+  chain: 'base',
+  prepared: {
+    op: {
+      sender: OWNER,
+      nonce: 0n,
+      callData: '0x',
+      callGasLimit: 275_767n,
+      verificationGasLimit: 61_585n,
+      preVerificationGas: 104_329n,
+      maxFeePerGas: 8_855_000n,
+      maxPriorityFeePerGas: 1_265_000n,
+      paymaster: '0x777777777777AeC03fd955926DbF81597e66834C',
+      paymasterData: '0x0200',
+      signature: '0x',
+    },
+    entryPoint: '0x0000000071727De22E5E9d8BAf0edAc6f37da032',
+    feeBound: 16_319n,
+  },
+  createdAt: '2026-10-12T10:00:00.000Z',
+  expiresAt: new Date(Date.now() + expiresInMs).toISOString(),
+})
+
+const draftOf = (pending: PendingUpgrade): PreparedUpgrade => ({
+  kind: 'draft',
+  pending,
+  typedData: { domain: { chainId: 8453 }, types: {}, primaryType: 'PackedUserOperation', message: { nonce: '0' } },
+  maxFeeUsdc: '0.016319',
+})
+
+interface SetupOptions {
+  readonly fetchFn?: typeof fetch
+  readonly live?: boolean
+  readonly check?: RailsPort['check']
+  readonly prepareUpgrade?: RailsPort['prepareUpgrade']
+}
+
+/** Rails that read nothing and confirm every prepared upgrade as `upgradeStatus`, keeping what they were sent. */
+const fakeRails = (upgradeStatus: Operation['status'], options: SetupOptions) => {
+  const upgrades: { pending: PendingUpgrade; signature: string }[] = []
   const rails: RailsPort = {
     ...unconfiguredRails,
     balances: () => Promise.resolve({ balances: [], unread: [] }),
     allowances: () => Promise.resolve([]),
     ...(options.check === undefined ? {} : { check: options.check }),
-    upgrade: (request) => {
-      upgrades.push(request)
+    prepareUpgrade: options.prepareUpgrade ?? (() => Promise.resolve(draftOf(pendingUpgrade()))),
+    confirmUpgrade: (pending, signature) => {
+      upgrades.push({ pending, signature })
       return Promise.resolve({
-        id: 'op-upgrade-1',
+        id: pending.upgradeId,
         status: upgradeStatus,
         terms: termsFor('0'),
         termsHash: '0xab',
@@ -49,6 +88,13 @@ const setup = (
       })
     },
   }
+  return { rails, upgrades }
+}
+
+const setup = (upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed', options: SetupOptions = {}) => {
+  const ledger = new LedgerObject(sqlHost(), () => Date.parse('2026-10-12T10:00:00.000Z'))
+  const auth = authClient(new WalletAuth(sqlHost()))
+  const { rails, upgrades } = fakeRails(upgradeStatus, options)
   const wiring: Wiring = {
     ...defaultWiring,
     fetchFn: options.fetchFn,
@@ -81,6 +127,12 @@ const setup = (
     )
   return { call, ledger, auth, upgrades }
 }
+
+const decodeDraftIds = Schema.decodeUnknownSync(Schema.Struct({ upgradeId: Schema.String, expiresAt: Schema.String }))
+
+/** Prepares the owner's upgrade on Base and reads back its id and expiry. */
+const prepareOn = async (call: ReturnType<typeof setup>['call']) =>
+  decodeDraftIds(await (await call('POST', '/api/onboarding/upgrade/prepare', { chain: 'base', authorization })).json())
 
 /** Relay as the deposit routes see it: a quote with one deposit address, and one filled request for it. */
 const relay: typeof fetch = async (input) => {
@@ -150,20 +202,34 @@ describe('the owner API', () => {
     expect(await (await call('PATCH', '/api/me')).json()).toMatchObject({ error: { code: 'method_not_allowed' } })
   })
 
-  test('me, then onboarding creates the agent once and upgrade records the chain', async () => {
+  test('me, then onboarding creates the agent once; the upgrade is prepared, signed and recorded once confirmed', async () => {
     const { call, upgrades } = setup()
     expect(await (await call('GET', '/api/me')).json()).toEqual({
       userId: 'did:privy:owner1',
       owner: OWNER,
       chains: [],
     })
+    expect((await call('POST', '/api/onboarding/upgrade/prepare', { chain: 'base', authorization })).status).toBe(409)
     const created = await (await call('POST', '/api/onboarding/agent')).json()
     expect(created).toMatchObject({ agent: AGENT, limits: { perHour: '20' } })
     await call('POST', '/api/onboarding/agent')
-    const authorization = { address: OWNER, chainId: 8453, nonce: 0, r: '0x01', s: '0x02', yParity: 0 }
-    const upgraded = await call('POST', '/api/onboarding/upgrade', { chain: 'base', authorization })
-    expect(upgraded.status).toBe(200)
-    expect(upgrades).toHaveLength(1)
+    const prepared = await call('POST', '/api/onboarding/upgrade/prepare', { chain: 'base', authorization })
+    expect(await prepared.json()).toMatchObject({
+      chain: 'base',
+      upgradeId: 'upgrade:base:6f1c2c4e-8b1a-4d0e-9f3a-2b7c5d9e1a40',
+      typedData: { primaryType: 'PackedUserOperation', message: { nonce: '0' } },
+      maxFeeUsdc: '0.016319',
+    })
+    const draft = await prepareOn(call)
+    const signature = `0x${'5b'.repeat(65)}`
+    const upgraded = await call('POST', '/api/onboarding/upgrade', {
+      chain: 'base',
+      upgradeId: draft.upgradeId,
+      signature,
+    })
+    expect(await upgraded.json()).toMatchObject({ id: draft.upgradeId, status: 'confirmed' })
+    // The rails get back, from the ledger, exactly the operation they prepared.
+    expect(upgrades).toEqual([{ pending: { ...pendingUpgrade(), expiresAt: draft.expiresAt }, signature }])
     expect(await (await call('GET', '/api/me')).json()).toMatchObject({ chains: [{ chain: 'base', upgraded: true }] })
   })
 
@@ -171,11 +237,71 @@ describe('the owner API', () => {
     for (const status of ['submitted', 'failed'] as const) {
       const { call } = setup(status)
       await call('POST', '/api/onboarding/agent')
-      const authorization = { address: OWNER, chainId: 8453, nonce: 0, r: '0x01', s: '0x02', yParity: 0 }
-      const answer = await call('POST', '/api/onboarding/upgrade', { chain: 'base', authorization })
+      const draft = await prepareOn(call)
+      const answer = await call('POST', '/api/onboarding/upgrade', {
+        chain: 'base',
+        upgradeId: draft.upgradeId,
+        signature: '0xaa',
+      })
       expect(await answer.json()).toMatchObject({ status })
       expect(await (await call('GET', '/api/me')).json()).toMatchObject({ chains: [] })
     }
+  })
+
+  test('an unknown, expired or other-chain upgrade is refused before anything is sent', async () => {
+    const { call, upgrades } = setup('confirmed', {
+      prepareUpgrade: () => Promise.resolve(draftOf(pendingUpgrade(-1))),
+    })
+    await call('POST', '/api/onboarding/agent')
+    const confirm = (upgradeId: string, chain = 'base') =>
+      call('POST', '/api/onboarding/upgrade', { chain, upgradeId, signature: '0xaa' })
+    expect(await (await confirm('upgrade:base:unknown-1')).json()).toMatchObject({ error: { code: 'upgrade_unknown' } })
+    const expired = await prepareOn(call)
+    const late = await confirm(expired.upgradeId)
+    expect(late.status).toBe(409)
+    expect(await late.json()).toMatchObject({ error: { code: 'upgrade_unknown', recovery: 'Prepare it again.' } })
+    const fresh = setup()
+    await fresh.call('POST', '/api/onboarding/agent')
+    const draft = await prepareOn(fresh.call)
+    const elsewhere = await fresh.call('POST', '/api/onboarding/upgrade', {
+      chain: 'arbitrum',
+      upgradeId: draft.upgradeId,
+      signature: '0xaa',
+    })
+    expect(elsewhere.status).toBe(409)
+    expect([...upgrades, ...fresh.upgrades]).toEqual([])
+  })
+
+  test('an account that already delegates is recorded as upgraded at prepare, with nothing to sign', async () => {
+    const operation = {
+      id: 'upgrade:base:0x1111111111111111111111111111111111111111:0',
+      status: 'confirmed' as const,
+      terms: termsFor('0'),
+      termsHash: '0xab',
+      limitsVersion: 0,
+      createdAt: '2026-10-12T10:00:00.000Z',
+      updatedAt: '2026-10-12T10:00:00.000Z',
+    }
+    const { call } = setup('confirmed', { prepareUpgrade: () => Promise.resolve({ kind: 'upgraded', operation }) })
+    await call('POST', '/api/onboarding/agent')
+    const answer = await call('POST', '/api/onboarding/upgrade/prepare', { chain: 'base', authorization })
+    expect(await answer.json()).toEqual({ chain: 'base', operation })
+    expect(await (await call('GET', '/api/me')).json()).toMatchObject({ chains: [{ chain: 'base', upgraded: true }] })
+  })
+
+  test("a rail's refusal keeps its code and words; a chain or bundler that does not answer is a 502", async () => {
+    const poor = setup('confirmed', {
+      prepareUpgrade: () => Promise.reject(failure('insufficient_funds', 'Add USDC on Base first.', 409)),
+    })
+    await poor.call('POST', '/api/onboarding/agent')
+    const refused = await poor.call('POST', '/api/onboarding/upgrade/prepare', { chain: 'base', authorization })
+    expect(refused.status).toBe(409)
+    expect(await refused.json()).toEqual({ error: { code: 'insufficient_funds', message: 'Add USDC on Base first.' } })
+    const down = setup('confirmed', { prepareUpgrade: () => Promise.reject(new Error('socket hang up')) })
+    await down.call('POST', '/api/onboarding/agent')
+    const unanswered = await down.call('POST', '/api/onboarding/upgrade/prepare', { chain: 'base', authorization })
+    expect(unanswered.status).toBe(502)
+    expect(await unanswered.json()).toMatchObject({ error: { code: 'rail_unavailable' } })
   })
 
   test('the allowance routes need the agent first, then record the confirmed allowance', async () => {

@@ -3,12 +3,10 @@ import type { JsonRpc } from '@goblin/wallet/balances'
 import { BASE } from '@goblin/wallet/chains'
 import { relayAccountFromKey, type UpgradeRequest } from '@goblin/wallet/relay'
 import { describe, expect, test } from 'vitest'
-import { createRails, type RailsDeps } from './index.ts'
 import { RelayObject, relayClient } from './relay.ts'
 
 const ownerAccount = relayAccountFromKey(`0x${'11'.repeat(32)}`)
 const RELAY_KEY = `0x${'22'.repeat(32)}`
-const AGENT = '0x4444444444444444444444444444444444444444'
 const DESIGNATOR = `0xef0100${BASE.delegation.delegator.slice(2).toLowerCase()}`
 
 const sqlHost = () => {
@@ -107,45 +105,5 @@ describe('the WalletRelay Durable Object', () => {
       authorization: await signed(),
     })
     await expect(busy).rejects.toMatchObject({ _tag: 'RelayError', code: 'busy' })
-  })
-})
-
-const railsOn = (node: ReturnType<typeof fakeNode>, live = true): RailsDeps => ({
-  live,
-  signer: undefined,
-  profile: async () => ({ ownerAddress: ownerAccount.address, agentAddress: AGENT, chains: [] }),
-  rpcFor: () => node.rpc,
-  relay: relayClient(() => objectOn(sqlHost(), node.rpc)),
-  wait: { attempts: 2, sleep: async () => undefined },
-})
-
-describe('the upgrade rail', () => {
-  test('is confirmed only once the owner code delegates to the DeleGator', async () => {
-    const node = fakeNode()
-    node.mine()
-    const rails = createRails(railsOn(node))
-    expect(await rails.upgrade({ chain: 'base', authorization: await signed() })).toMatchObject({
-      status: 'confirmed',
-    })
-  })
-
-  test('a mined upgrade whose authorization the chain skipped is failed; one in flight is submitted', async () => {
-    const skipped = fakeNode()
-    skipped.state.applied = false
-    skipped.mine()
-    expect(await createRails(railsOn(skipped)).upgrade({ chain: 'base', authorization: await signed() })).toMatchObject(
-      { status: 'failed', reason: expect.stringContaining('did not apply') },
-    )
-    const slow = fakeNode()
-    expect(await createRails(railsOn(slow)).upgrade({ chain: 'base', authorization: await signed() })).toMatchObject({
-      status: 'submitted',
-    })
-  })
-
-  test('an authorization for another network fails before the relay is asked', async () => {
-    const node = fakeNode()
-    const testnet = await createRails(railsOn(node, false)).upgrade({ chain: 'base', authorization: await signed() })
-    expect(testnet).toMatchObject({ status: 'failed', reason: expect.stringContaining('Base Sepolia') })
-    expect(node.sent).toHaveLength(0)
   })
 })

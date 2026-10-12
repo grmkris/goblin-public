@@ -23,7 +23,8 @@ const rails: RailsPort = {
   balances: () => Promise.resolve({ balances: [], unread: [] }),
   allowances: () => Promise.resolve([]),
   check: () => Promise.reject(new Error('unused')),
-  upgrade: () => Promise.reject(new Error('unused')),
+  prepareUpgrade: () => Promise.reject(new Error('unused')),
+  confirmUpgrade: () => Promise.reject(new Error('unused')),
   depositAddress: () => Promise.reject(new Error('unused')),
   depositProgress: () => Promise.reject(new Error('unused')),
 }

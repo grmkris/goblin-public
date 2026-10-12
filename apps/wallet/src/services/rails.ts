@@ -4,6 +4,7 @@ import type {
   ChainKey,
   DepositAddress,
   DepositStatus,
+  Hex,
   LimitView,
   Operation,
   Payment,
@@ -13,8 +14,10 @@ import type {
   BridgeQuoteInput,
   Terms,
   TransferInput,
-  UpgradeRequest,
+  TypedDataJson,
+  UpgradePrepare,
 } from '@goblin/wallet/contract'
+import type { PreparedUserOp } from '@goblin/wallet/bundler'
 import type { ReceiptFinding } from '@goblin/wallet/tempo'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
@@ -68,6 +71,29 @@ export interface FrozenQuote {
   payload: unknown
 }
 
+/** The owner's account upgrade, prepared and waiting for their signature; the ledger keeps it under `upgradeId`. */
+export interface PendingUpgrade {
+  readonly upgradeId: string
+  readonly chain: ChainKey
+  /** The UserOperation that carries the owner's EIP-7702 authorization, with the most USDC its gas may take. */
+  readonly prepared: PreparedUserOp
+  readonly createdAt: string
+  /** After this the owner prepares it again: its gas price is stale. */
+  readonly expiresAt: string
+}
+
+/** A prepared upgrade for the owner to sign, or the confirmed upgrade of an account that already delegates. */
+export type PreparedUpgrade =
+  | {
+      readonly kind: 'draft'
+      readonly pending: PendingUpgrade
+      /** The DeleGator's typed data over the operation, bigints as decimal strings: what the owner signs. */
+      readonly typedData: TypedDataJson
+      /** The most USDC the gas may take, as a decimal string. */
+      readonly maxFeeUsdc: string
+    }
+  | { readonly kind: 'upgraded'; readonly operation: Operation }
+
 /**
  * The rails (lane D), as the spend program sees them. A rail quotes the exact terms a spend would have, then pays them;
  * it never decides limits. Every method may throw; the seam turns that into a typed failure.
@@ -90,8 +116,13 @@ export interface RailsPort {
   allowances(): Promise<LimitView[]>
   /** Reads the chain for an uncertain operation's transaction or x402 authorization; never signs or sends. */
   check(operation: Operation): Promise<CheckFinding>
-  /** Relays the owner's signed EIP-7702 authorization. */
-  upgrade(request: UpgradeRequest): Promise<Operation>
+  /**
+   * Prepares the owner's EIP-7702 upgrade as a UserOperation from their own address whose gas their USDC pays (mainnet
+   * only): checks the authorization and the USDC; signs and sends nothing.
+   */
+  prepareUpgrade(request: UpgradePrepare): Promise<PreparedUpgrade>
+  /** Sends a prepared upgrade with the owner's signature; `confirmed` once the chain shows the delegation. */
+  confirmUpgrade(pending: PendingUpgrade, signature: Hex): Promise<Operation>
   /** A one-off Relay deposit address; USDC.e (the default) lands with the agent on Tempo. Signs and spends nothing. */
   depositAddress(input: AddFundsInput): Promise<DepositAddress>
   /** Relay's progress for a deposit address; `unknown` when Relay does not say. */

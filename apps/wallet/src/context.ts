@@ -63,7 +63,8 @@ export const unconfiguredRails: RailsPort = {
   balances: unavailable,
   allowances: unavailable,
   check: unavailable,
-  upgrade: unavailable,
+  prepareUpgrade: unavailable,
+  confirmUpgrade: unavailable,
   depositAddress: unavailable,
   depositProgress: unavailable,
 }
