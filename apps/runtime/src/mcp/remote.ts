@@ -105,8 +105,19 @@ const optionalTemplates = async (
   }
 }
 
-/** What goblin's client declares to every server: the Skills and Events extensions. */
-export const CLIENT_CAPABILITIES = { extensions: { [SKILLS_EXTENSION]: {}, [EVENTS_EXTENSION]: {} } }
+/** The MCP Apps extension (SEP-1865) and the one MIME type of App HTML goblin renders. */
+export const MCP_APPS_EXTENSION = 'io.modelcontextprotocol/ui'
+export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app'
+
+/** What goblin's client declares to every server: the Skills, Events and MCP Apps extensions. */
+export const CLIENT_CAPABILITIES = {
+  extensions: {
+    [SKILLS_EXTENSION]: {},
+    [EVENTS_EXTENSION]: {},
+    // MCP Apps: goblin renders HTML App resources (SEP-1865) in its sandboxed frames.
+    [MCP_APPS_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] },
+  },
+}
 
 /** How a client is opened: the server's bearer tokens, the guarded fetch, and the bounds of discovery. */
 export type OpenOptions = {
