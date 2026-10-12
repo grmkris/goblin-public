@@ -130,3 +130,5 @@ Sidequest, a separate project begun on 25 September that goblin reaches only as 
 author's myapps services (mygram, myinbox, myplan, mytab; begun 28 September) as connected MCP servers. Built on open
 source and third-party services: Cloudflare Agents SDK, Pi, Effect, Alchemy, Privy, MetaMask Delegation Framework
 v1.3.0, x402, mppx, LI.FI, Relay, viem and shadcn. Built with AI coding agents (Claude Code, Codex).
+
+Core Goblin-owned code is source available under [PolyForm Noncommercial 1.0.0](LICENSE). The three Wallet workspaces use MIT. Third-party terms and same-owner reuse are described in [NOTICE](NOTICE.md). See [ADR 0046](docs/adr/0046-production-promotion-and-public-source.md) for branches and publication.
