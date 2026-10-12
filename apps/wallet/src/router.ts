@@ -22,7 +22,7 @@ const health = (env: WalletEnv): Response => {
 
 /**
  * The Worker's front door: /health, /api/config, OAuth, the owner API under /api/*, the MCP endpoint and the app views.
- * Everything else under the worker-first paths is a JSON 404; the SPA's own routes never reach this code.
+ * Anything else is a JSON 404, except a browser page request, which gets the app shell.
  */
 export function createRouter(handlers: Handlers): (request: Request, env: WalletEnv) => Promise<Response> {
   return async (request, env) => {
@@ -36,7 +36,17 @@ export function createRouter(handlers: Handlers): (request: Request, env: Wallet
     }
     if (pathname.startsWith('/api/')) return handlers.api(request, env)
     if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return handlers.mcp(request, env)
-    if (request.method === 'GET' && pathname.startsWith('/views/')) return env.ASSETS.fetch(request)
-    return apiError('not_found', 'No such route.', 404)
+    return fromAssets(request, env, pathname)
   }
+}
+
+/**
+ * The views, the app's own pages, or a JSON 404. A page the SPA routes itself (/consent, /approve/…, /limits) does not
+ * get the assets layer's single-page fallback on the deployment, so a browser asking for HTML gets the shell here.
+ */
+function fromAssets(request: Request, env: WalletEnv, pathname: string): Promise<Response> | Response {
+  if (request.method !== 'GET') return apiError('not_found', 'No such route.', 404)
+  if (pathname.startsWith('/views/')) return env.ASSETS.fetch(request)
+  const page = (request.headers.get('accept') ?? '').includes('text/html')
+  return page ? env.ASSETS.fetch(new Request(new URL('/', request.url))) : apiError('not_found', 'No such route.', 404)
 }

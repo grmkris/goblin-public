@@ -60,4 +60,12 @@ describe('views', () => {
     const response = await get('/views/dashboard.html')
     expect(await response.text()).toBe('asset')
   })
+
+  test('a browser asking for one of the app pages gets the app shell', async () => {
+    const page = await worker.fetch(
+      new Request('https://wallet.test/consent?request=oauth_1', { headers: { accept: 'text/html' } }),
+      envWith({}),
+    )
+    expect(await page.text()).toBe('asset')
+  })
 })
