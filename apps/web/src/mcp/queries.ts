@@ -295,13 +295,18 @@ export const setSpendingMutation = mutationOptions({
  * A first-class server's own App, as the owner opens it (ADR 0043): its app tool called as the owner, and the `ui://`
  * resource that tool declares; nothing to show when the tool declares none. Read again on each open.
  */
-export const serverAppQuery = (connectionId: string, tool: string) => ({
+export const serverAppQuery = (connectionId: string, tool: string, focus?: string) => ({
   ...owner.apiQuery({
-    queryKey: mcpKeys.app(connectionId, tool),
+    queryKey: [...mcpKeys.app(connectionId, tool), focus ?? null] as const,
     queryFn: (api) =>
       Effect.map(
         Effect.all([
-          api.mcp.callTool({ params: { id: connectionId }, headers: {}, payload: { name: tool } }),
+          api.mcp.callTool({
+            params: { id: connectionId },
+            headers: {},
+            // An App that opens on one of its panels takes it as `focus` (the Goblin Wallet's Add funds).
+            payload: focus === undefined ? { name: tool } : { name: tool, arguments: { focus } },
+          }),
           api.mcp.tools({ params: { id: connectionId }, query: {} }),
         ]),
         ([result, tools]) => ({ result, uri: tools.find((each) => each.name === tool)?.appResource }),

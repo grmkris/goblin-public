@@ -26,6 +26,8 @@ import { Route as AppsIndexRouteImport } from './routes/apps.index'
 import { Route as AppsNameRouteImport } from './routes/apps.$name'
 import { Route as CChatIdRouteImport } from './routes/c.$chatId'
 import { Route as PIdRouteImport } from './routes/p.$id'
+import { Route as StartIndexRouteImport } from './routes/start.index'
+import { Route as StartStepRouteImport } from './routes/start.$step'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
 import { Route as ConnectionsConnectionIdAppRouteImport } from './routes/connections_.$connectionId.app'
 
@@ -114,6 +116,16 @@ const PIdRoute = PIdRouteImport.update({
   path: '/p/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StartIndexRoute = StartIndexRouteImport.update({
+  id: '/start/',
+  path: '/start/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StartStepRoute = StartStepRouteImport.update({
+  id: '/start/$step',
+  path: '/start/$step',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   id: '/success',
   path: '/success',
@@ -143,8 +155,10 @@ export interface FileRoutesByFullPath {
   '/apps/$name': typeof AppsNameRoute
   '/c/$chatId': typeof CChatIdRoute
   '/p/$id': typeof PIdRoute
+  '/start/$step': typeof StartStepRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
+  '/start/': typeof StartIndexRoute
   '/connections/$connectionId/app': typeof ConnectionsConnectionIdAppRoute
 }
 export interface FileRoutesByTo {
@@ -164,8 +178,10 @@ export interface FileRoutesByTo {
   '/apps/$name': typeof AppsNameRoute
   '/c/$chatId': typeof CChatIdRoute
   '/p/$id': typeof PIdRoute
+  '/start/$step': typeof StartStepRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps': typeof AppsIndexRoute
+  '/start': typeof StartIndexRoute
   '/connections/$connectionId/app': typeof ConnectionsConnectionIdAppRoute
 }
 export interface FileRoutesById {
@@ -186,8 +202,10 @@ export interface FileRoutesById {
   '/apps/$name': typeof AppsNameRoute
   '/c/$chatId': typeof CChatIdRoute
   '/p/$id': typeof PIdRoute
+  '/start/$step': typeof StartStepRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
+  '/start/': typeof StartIndexRoute
   '/connections_/$connectionId/app': typeof ConnectionsConnectionIdAppRoute
 }
 export interface FileRouteTypes {
@@ -209,8 +227,10 @@ export interface FileRouteTypes {
     | '/apps/$name'
     | '/c/$chatId'
     | '/p/$id'
+    | '/start/$step'
     | '/subscribe/success'
     | '/apps/'
+    | '/start/'
     | '/connections/$connectionId/app'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -230,8 +250,10 @@ export interface FileRouteTypes {
     | '/apps/$name'
     | '/c/$chatId'
     | '/p/$id'
+    | '/start/$step'
     | '/subscribe/success'
     | '/apps'
+    | '/start'
     | '/connections/$connectionId/app'
   id:
     | '__root__'
@@ -251,8 +273,10 @@ export interface FileRouteTypes {
     | '/apps/$name'
     | '/c/$chatId'
     | '/p/$id'
+    | '/start/$step'
     | '/subscribe/success'
     | '/apps/'
+    | '/start/'
     | '/connections_/$connectionId/app'
   fileRoutesById: FileRoutesById
 }
@@ -273,7 +297,9 @@ export interface RootRouteChildren {
   AppsNameRoute: typeof AppsNameRoute
   CChatIdRoute: typeof CChatIdRoute
   PIdRoute: typeof PIdRoute
+  StartStepRoute: typeof StartStepRoute
   AppsIndexRoute: typeof AppsIndexRoute
+  StartIndexRoute: typeof StartIndexRoute
   ConnectionsConnectionIdAppRoute: typeof ConnectionsConnectionIdAppRoute
 }
 
@@ -398,6 +424,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/start/': {
+      id: '/start/'
+      path: '/start'
+      fullPath: '/start/'
+      preLoaderRoute: typeof StartIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/start/$step': {
+      id: '/start/$step'
+      path: '/start/$step'
+      fullPath: '/start/$step'
+      preLoaderRoute: typeof StartStepRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/subscribe/success': {
       id: '/subscribe/success'
       path: '/success'
@@ -444,7 +484,9 @@ const rootRouteChildren: RootRouteChildren = {
   AppsNameRoute: AppsNameRoute,
   CChatIdRoute: CChatIdRoute,
   PIdRoute: PIdRoute,
+  StartStepRoute: StartStepRoute,
   AppsIndexRoute: AppsIndexRoute,
+  StartIndexRoute: StartIndexRoute,
   ConnectionsConnectionIdAppRoute: ConnectionsConnectionIdAppRoute,
 }
 export const routeTree = rootRouteImport

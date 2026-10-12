@@ -3,6 +3,7 @@
 @import '@goblin/kit/kit.css' layer(components);
 @import './attachments.css' layer(app);
 @import './shell.css' layer(app);
+@import './start.css' layer(app);
 /* Streamdown's word fade-in while a reply streams (components/parts/markdown.tsx): its keyframes only. */
 @import 'streamdown/styles.css' layer(app);
 

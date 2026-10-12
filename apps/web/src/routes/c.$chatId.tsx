@@ -28,7 +28,7 @@ function ChannelRoute() {
   const { chatId } = Route.useParams()
   const search = Route.useSearch()
   return (
-    <OwnerGate>
+    <OwnerGate startRequired>
       <ChannelPage chat={chatId} search={search} />
     </OwnerGate>
   )

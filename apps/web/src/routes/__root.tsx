@@ -83,6 +83,8 @@ function Shell({ children }: { readonly children: ReactNode }) {
   const billing = useBilling()
   const path = useRouterState({ select: (router) => router.location.pathname })
   if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
+  // First-run Start (ADR 0048) fills the screen on its own, before the app is there.
+  if (path === '/start' || path.startsWith('/start/')) return <main className="start-root">{children}</main>
   const enabled = state === 'signed-in' && billing.state?.active === true
   return (
     <WorkspaceFeedProvider enabled={enabled}>

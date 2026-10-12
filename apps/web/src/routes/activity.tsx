@@ -6,7 +6,7 @@ import { ActivityPage } from '../components/shell/pages/activity-page.tsx'
 export const Route = createFileRoute('/activity')({ component: ActivityRoute })
 function ActivityRoute() {
   return (
-    <OwnerGate>
+    <OwnerGate startRequired>
       <PageBar title="Activity" />
       <div className="shell">
         <ActivityPage />

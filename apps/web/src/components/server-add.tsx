@@ -76,17 +76,23 @@ export function AddByAddress({
 export function SuggestedServers({
   onChanged,
   onMessage,
+  exclude = [],
+  connectWith,
 }: {
   readonly onChanged: (message: string) => void
   readonly onMessage: (message: string) => void
+  /** Suggestions to leave out by id, such as the ones Start asks for in steps of their own. */
+  readonly exclude?: readonly string[]
+  /** How to add and sign in to a suggestion, when a page brings the owner back somewhere of its own (Start). */
+  readonly connectWith?: (item: ServerSuggestion) => Promise<string>
 }) {
-  const items = useSuspenseQuery(suggestedQuery).data
+  const items = useSuspenseQuery(suggestedQuery).data.filter((item) => !exclude.includes(item.id))
   const connect = useAddAndConnect()
   const [busy, setBusy] = useState('')
   async function add(item: ServerSuggestion): Promise<void> {
     setBusy(item.id)
     try {
-      onChanged(await connect(item.endpoint, item.title))
+      onChanged(await (connectWith?.(item) ?? connect(item.endpoint, item.title)))
     } catch (error) {
       onMessage(messageOf(error, `add ${item.title}`))
     } finally {

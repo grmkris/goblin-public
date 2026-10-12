@@ -31,12 +31,14 @@ function Opened({
   connectionId,
   tool,
   title,
+  focus,
 }: {
   readonly connectionId: string
   readonly tool: string
   readonly title: string
+  readonly focus: string | undefined
 }) {
-  const opened = useQuery(serverAppQuery(connectionId, tool))
+  const opened = useQuery(serverAppQuery(connectionId, tool, focus))
   if (opened.error !== null) return <Unavailable text={messageOf(opened.error, `open ${title}`)} />
   if (opened.data === undefined)
     return (
@@ -49,14 +51,20 @@ function Opened({
   return (
     <McpAppPage
       // SAFETY: the runtime returned this body from the SDK-validated CallToolResult of this exact call.
-      selection={{ kind: 'mcp', connectionId, uri, arguments: {}, result: result as CallToolResult }}
+      selection={{
+        kind: 'mcp',
+        connectionId,
+        uri,
+        arguments: focus === undefined ? {} : { focus },
+        result: result as CallToolResult,
+      }}
       onClose={() => window.history.back()}
     />
   )
 }
 
-/** Connection `connectionId`'s own App, when goblin knows its app tool. */
-export function ServerAppPage({ connectionId }: { readonly connectionId: string }) {
+/** Connection `connectionId`'s own App, when goblin knows its app tool, opened on its `focus` panel when one is named. */
+export function ServerAppPage({ connectionId, focus }: { readonly connectionId: string; readonly focus?: string }) {
   const servers = useSuspenseQuery(serversQuery).data
   const server = servers.find((each) => each.connectionId === connectionId)
   // A profile names its app tool; a server without one may declare a global entrypoint (`ServerView.entrypoint`).
@@ -70,7 +78,7 @@ export function ServerAppPage({ connectionId }: { readonly connectionId: string 
       ) : server.status !== 'connected' ? (
         <Unavailable text={`Sign in to ${title} on Connections first.`} />
       ) : (
-        <Opened connectionId={connectionId} tool={tool} title={title} />
+        <Opened connectionId={connectionId} tool={tool} title={title} focus={focus} />
       )}
     </section>
   )
