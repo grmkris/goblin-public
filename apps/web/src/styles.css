@@ -809,6 +809,10 @@
   .table-block > .typeset-scroll {
     margin-block-start: 0;
   }
+  /* A reply's table fits the column and its cells wrap; it scrolls only when its words alone are wider. */
+  .table-block > .typeset-scroll > table {
+    width: auto;
+  }
   .typeset > * > :is(.code-block, .table-block):first-child {
     margin-block-start: 0;
   }
