@@ -3,6 +3,7 @@
 // message.
 import { useEffect, useState } from 'react'
 import { AppWindowIcon, DownloadIcon, ExternalLinkIcon, XIcon } from 'lucide-react'
+import { MAX_APP_CONTEXT } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import { contextPreview } from '../../lib/app-context.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
@@ -87,18 +88,31 @@ export function DownloadOffer({
 }
 
 /** What the conversation's live Apps share with the owner's next message there: who shares it, and the text. */
-export function useSharedContext(conversation: string) {
-  const host = useAppHost()
-  const shared = [...host.instances.values()].filter(
+/**
+ * The Apps in `conversation` that have context to share, and the ones the next message carries: at most
+ * `MAX_APP_CONTEXT`, the newest (a fourth paid-call receipt would otherwise make the message unsendable). Send clears
+ * all of them.
+ */
+export function sharedOf<T extends { readonly app: { readonly conversation: string }; readonly context?: string }>(
+  instances: Iterable<T>,
+  conversation: string,
+): { readonly offering: readonly T[]; readonly shared: readonly T[] } {
+  const offering = [...instances].filter(
     (instance) => instance.app.conversation === conversation && instance.context !== undefined,
   )
+  return { offering, shared: offering.slice(-MAX_APP_CONTEXT) }
+}
+
+export function useSharedContext(conversation: string) {
+  const host = useAppHost()
+  const { offering, shared } = sharedOf(host.instances.values(), conversation)
   return {
     shared,
     /** The context to send, by App id: the runtime finds where each App comes from. */
     context: shared.map(({ app, context }) => ({ app: app.id, text: context ?? '' })),
     /** Sent: each App's context goes with that one message only. */
     clear: () => {
-      for (const instance of shared) host.setContext(instance.app.id, '')
+      for (const instance of offering) host.setContext(instance.app.id, '')
     },
     drop: (id: string) => host.setContext(id, ''),
   }

@@ -98,10 +98,13 @@ export type AppContext = typeof AppContext.Type
  * Thread whose reply lands in that Thread. With Persona selections the tagged Personas answer instead of Goblin, in
  * parallel unless `personaOrder` is `sequence` ("then").
  */
+/** The most Apps whose context one owner message carries. */
+export const MAX_APP_CONTEXT = 2
+
 export const SendMessage = Schema.Struct({
   input: Schema.String.check(Schema.isMaxLength(20_000)),
   operationId: OperationId,
-  appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(2))),
+  appContext: Schema.optional(Schema.Array(AppContext).check(Schema.isMaxLength(MAX_APP_CONTEXT))),
   attachments: Schema.optional(Schema.Array(FilePath).check(Schema.isMaxLength(8))),
   selections: Schema.optional(ComposerSelections),
   personaOrder: Schema.optional(Schema.Literals(['parallel', 'sequence'])),
