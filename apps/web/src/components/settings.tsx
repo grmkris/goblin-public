@@ -5,6 +5,7 @@ import { BillingCard } from './billing.tsx'
 import { InferenceCard } from './inference-card.tsx'
 import { PageSection } from './page-section.tsx'
 import { RoutinesSection } from './routines.tsx'
+import { SetupSettingsCard } from './start/setup-cards.tsx'
 
 /**
  * The owner's settings, most used first: their plan and today's usage, their agent, routines, how they sign in, the
@@ -16,6 +17,7 @@ export function Settings() {
     <div className="page-stack">
       <PageSection id="plan" title="Plan and usage">
         <BillingCard />
+        {active && <SetupSettingsCard />}
         {active && <InferenceCard />}
         {active && <UsageCard />}
       </PageSection>

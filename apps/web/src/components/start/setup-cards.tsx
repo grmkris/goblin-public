@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { OnboardingStep, OnboardingView } from '@goblin/contracts'
-import { Button } from '@goblin/ui'
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@goblin/ui'
 import { CheckIcon, WalletIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { onboardingQuery } from '../../onboarding/queries.ts'
@@ -72,5 +72,44 @@ export function FinishSetupRow() {
         <XIcon aria-hidden />
       </button>
     </div>
+  )
+}
+
+/** Settings' way back to first-run Start: how much is left, and the step to pick up from. */
+export function SetupSettingsCard() {
+  const view = useQuery(onboardingQuery).data
+  const left = view?.steps.filter((step) => !step.done) ?? []
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Set up goblin</CardTitle>
+        <CardDescription>
+          Your Goblin Wallet and its funds, how goblin pays for its model, Mercator and your other services.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="card-body">
+          <div className="setting-row">
+            <span className="grant-text">
+              <span className="grant-name">
+                {view === undefined
+                  ? 'Reading your setup…'
+                  : left.length === 0
+                    ? 'All set'
+                    : `${String(left.length)} steps left`}
+              </span>
+            </span>
+            <Button
+              size="sm"
+              variant={left.length === 0 ? 'outline' : 'default'}
+              nativeButton={false}
+              render={<Link to="/start/$step" params={{ step: left[0]?.id ?? 'wallet' }} />}
+            >
+              {left.length === 0 ? 'Review' : 'Continue setup'}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
