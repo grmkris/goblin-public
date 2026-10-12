@@ -1,25 +1,20 @@
-import { Card, CardContent } from '@goblin/ui'
 import { CopyButton } from '../ui/index.ts'
 
 export const mcpUrl = (): string => `${window.location.origin}/mcp`
 
-/** The URL to paste into goblin or any MCP client, and what happens next. */
+/** The link to paste into goblin or any MCP client, and the two steps after it. */
 export function ConnectPanel() {
   const url = mcpUrl()
   return (
-    <div className="flex flex-col gap-4">
-      <Card size="sm">
-        <CardContent>
-          <div className="flex items-center justify-between gap-3">
-            <code className="min-w-0 truncate text-sm">{url}</code>
-            <CopyButton text={url} label="Copy MCP URL" />
-          </div>
-        </CardContent>
-      </Card>
-      <ol className="flex list-decimal flex-col gap-1.5 ps-5 text-sm/relaxed text-muted-foreground marker:text-muted-foreground">
-        <li>In goblin, or any MCP client, add a remote MCP server and paste this URL.</li>
-        <li>The client opens a consent page here. Check the name and approve it.</li>
-        <li>Ask your agent for its wallet status. It shows what it can spend and who enforces each limit.</li>
+    <div className="flex flex-col gap-3">
+      <div className="flex min-h-14 items-center justify-between gap-3 rounded-xl bg-card ps-4 pe-2 text-card-foreground ring-1 ring-foreground/10">
+        <code className="min-w-0 truncate font-mono text-sm">{url}</code>
+        <CopyButton text={url} label="Copy link" />
+      </div>
+      <ol className="flex list-decimal flex-col gap-1 ps-5 text-sm/relaxed text-muted-foreground marker:text-muted-foreground">
+        <li>In goblin or any MCP client, add a remote MCP server with this link.</li>
+        <li>Approve it on the page that opens here.</li>
+        <li>Ask your agent for its wallet status.</li>
       </ol>
     </div>
   )
