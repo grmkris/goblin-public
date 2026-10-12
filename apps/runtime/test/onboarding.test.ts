@@ -6,6 +6,8 @@ import { afterEach } from 'vitest'
 import { OnboardingLive } from '../src/layers/onboarding.ts'
 import { profileOf, profileView } from '../src/mcp/first-class.ts'
 import { McpConnections, McpGrants, McpServers } from '../src/mcp/service.ts'
+import { Entitlements } from '../src/billing/gates.ts'
+import type { AccountPlan } from '../src/billing/reconcile.ts'
 import { Budget } from '../src/budget.ts'
 import { Chats } from '../src/chats/service.ts'
 import { changeOnboarding, onboardingContext, onboardingState, onboardingView } from '../src/onboarding/program.ts'
@@ -59,6 +61,9 @@ const start = (servers: readonly ServerView[], grants: readonly Grant[], dollars
             } as never),
           callTool: () => Effect.succeed({ content: [], structuredContent: answer }),
         }),
+        // A free account: its wallet must hold the free plan's dollars.
+        // SAFETY: Start reads only the plan's source.
+        stub(Entitlements, { state: () => Effect.succeed({ source: 'free' } as AccountPlan) }),
         // SAFETY: Start reads only the stage's free-plan dollars from the instance input.
         Layer.succeed(AgentInput, { env: { FREE_WALLET_USD: '5' } } as AgentInputs),
         // Main is session `s1`; the day's allowance is none until the wallet holds the free plan's dollars.

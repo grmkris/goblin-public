@@ -1,6 +1,8 @@
 import type { Grant, OnboardingStep, OnboardingView, ServerView, WalletStatus } from '@goblin/contracts'
 import { ONBOARDING_STEPS, type OnboardingChange, type OnboardingConnect } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
+import * as Option from 'effect/Option'
+import { Entitlements } from '../billing/gates.ts'
 import { Budget } from '../budget.ts'
 import { Chats } from '../chats/service.ts'
 import { epochSeconds } from '../clock.ts'
@@ -94,7 +96,10 @@ export const onboardingView = Effect.gen(function* () {
   const grants = yield* McpGrants.use((owner) => owner.list())
   const wallet = find(servers, grants, 'wallet')
   const mercator = find(servers, grants, 'mercator')
-  const needs = freeWalletUsd(env.FREE_WALLET_USD)
+  // Only the free plan asks the wallet to hold a sum (ADR 0047); any other plan is funded by anything it holds.
+  const plan = yield* Entitlements.use((plans) => plans.state()).pipe(Effect.option)
+  const free = Option.isNone(plan) || plan.value.source === 'free'
+  const needs = free ? freeWalletUsd(env.FREE_WALLET_USD) : 0
   const funds = fundsOf(yield* walletStatus(wallet), needs)
   const complete = wallet.allowed && funds.funded && mercator.allowed
   const others = servers.filter(

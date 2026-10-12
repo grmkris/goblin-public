@@ -77,11 +77,7 @@ const CHAINS: Readonly<Record<string, string>> = {
 }
 
 /** An address in groups of four, so it can be read aloud and checked by eye. */
-const grouped = (address: string): string =>
-  address
-    .replace(/^0x/u, '0x ')
-    .replace(/(.{4})(?=.)/gu, '$1 ')
-    .trim()
+const grouped = (address: string): string => `0x ${address.replace(/^0x/u, '').replace(/(.{4})(?=.)/gu, '$1 ')}`
 
 /** Copy `text`, saying so for a moment. */
 function CopyButton({ text }: { readonly text: string }) {
@@ -163,7 +159,7 @@ export function FundsStep({ view }: { readonly view: OnboardingView }) {
         {held !== undefined && (
           <div>
             <dt>Ready to pay on {CHAINS[chain] ?? chain}</dt>
-            <dd>${held}</dd>
+            <dd>${Number(held).toFixed(2)}</dd>
           </div>
         )}
       </dl>
