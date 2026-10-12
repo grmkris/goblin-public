@@ -5,7 +5,10 @@ import { ConnectionEvents } from '../../src/components/connection-events.tsx'
 import { withQueryClient } from './with-query-client.tsx'
 import '../../src/styles.css'
 
-/** Sidequest's worker connection, connected and sending events the owner has not set up yet (ADR 0041). */
+/**
+ * Sidequest's worker connection, connected and sending events the owner has not set up yet (ADR 0041), one of which
+ * goblin's Telegram channel already takes.
+ */
 const WORKER: ServerView = {
   connectionId: 'sq-worker',
   label: 'Sidequest · Worker',
@@ -14,7 +17,17 @@ const WORKER: ServerView = {
   live: true,
   source: 'added',
   events: 'open',
-  eventHealth: [],
+  eventHealth: [
+    {
+      subscriptionId: 'sub-telegram',
+      name: 'sidequest.worker.messages',
+      granted: true,
+      status: 'active',
+      refreshBefore: null,
+      lastReceiptAt: null,
+      telegram: true,
+    },
+  ],
 }
 
 const WORKSPACE: WorkspaceSnapshot = {

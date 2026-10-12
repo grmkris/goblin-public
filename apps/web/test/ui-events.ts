@@ -123,7 +123,7 @@ async function drive(browser: Browser, origin: string, label: string, options: B
   })
   await page.goto(`${origin}events.html`)
   await page.getByText('Sidequest · Worker sends events').waitFor()
-  await page.getByText('Quote requests').waitFor()
+  await page.getByText('Quote requests').first().waitFor()
   await page.getByText('Already arrives through Telegram.').waitFor()
   assert(await page.getByRole('checkbox', { name: /Quote requests/u }).isChecked(), `${label}: not picked already`)
   assert(!(await page.getByRole('checkbox', { name: /Sidequest inbox/u }).isChecked()), `${label}: inbox picked`)
