@@ -2,6 +2,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
 import { requirePlan } from '../billing/gates.ts'
+import { channelToolName } from '../channel/channel.ts'
 import { Channel } from '../channel/service.ts'
 import { Forbidden, toAppError } from '../http/errors.ts'
 import { McpConnections, requireResident } from '../mcp/service.ts'
@@ -62,11 +63,13 @@ const deliver = (row: NoticeRow) =>
         return yield* new Forbidden({ reason: 'notice channel changed' })
       const authorize = yield* bound(stillAuthorized(connectionId))
       const result = yield* McpConnections.use((connections) =>
-        connections.callTool(
-          connectionId,
-          'send_message',
-          { operationId, text },
-          { caller: 'model', timeout: 5000, authorize },
+        Effect.flatMap(channelToolName(connections, connectionId, 'send'), (send) =>
+          connections.callTool(
+            connectionId,
+            send,
+            { operationId, text },
+            { caller: 'model', timeout: 5000, authorize },
+          ),
         ),
       )
       if (result.isError === true) return yield* new Forbidden({ reason: 'notice refused' })

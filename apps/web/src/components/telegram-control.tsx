@@ -1,16 +1,15 @@
-// The owner's one Telegram channel: a server with Telegram's tools can carry it, and only one does at a time.
+// The owner's one Telegram channel: a server with Telegram's tools can carry it (mygram, directly or through mysi), and
+// only one does at a time.
 import { useEffect, useId } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import type { ToolView } from '@goblin/contracts'
+import { type ToolView, telegramTools } from '@goblin/contracts'
 import { Switch } from '@goblin/ui'
 import { changeChannelMutation, channelQuery } from '../agent/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { shortDate } from '../lib/format.ts'
 
-const TELEGRAM_TOOLS = ['inbox', 'send_message']
-
 export const hasTelegramTools = (tools: readonly ToolView[]): boolean =>
-  TELEGRAM_TOOLS.every((name) => tools.some((tool) => tool.name === name))
+  telegramTools(tools.map(({ name }) => name)) !== undefined
 
 /** One Telegram channel for the owner, shared by every server card. */
 export function useTelegramChannel(onMessage: (message: string) => void) {

@@ -1,7 +1,8 @@
+import { TELEGRAM_EVENTS, telegramEvent, telegramTools } from '@goblin/contracts'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
-import { CHANNEL_TOOLS, DOORBELL_TOOLS, channelTool } from './channel.ts'
+import { DOORBELL_TOOLS, channelTool } from './channel.ts'
 import { type Doorbell, doorbellValid, hookToken, hookUrl } from './doorbell.ts'
 import { Channel } from './service.ts'
 import { Forbidden, InvalidInput, attempt } from '../http/errors.ts'
@@ -11,9 +12,24 @@ import { Events, McpConnections, McpGrants, McpServers } from '../mcp/service.ts
 import { epochSeconds } from '../clock.ts'
 import { AgentInput } from '../runtime/input.ts'
 
-const TELEGRAM_EVENTS = ['message.received', 'question.answered']
+/** The consumer of one Telegram Event: keyed by mygram's own event name, whichever spelling the server uses. */
+const consumerOf = (connectionId: string | undefined, event: string) => `telegram:${connectionId}:${event}`
 
-/** A promise step as `attempt` ran it: its typed failure, anything else `Internal`. */
+/**
+ * The Telegram Events as `connectionId` names them (mygram's own, or mysi's `mygram.` ones), from the Events it lists;
+ * InvalidInput naming one it does not offer.
+ */
+const telegramEvents = (events: typeof Events.Service, connectionId: string) =>
+  Effect.gen(function* () {
+    const offered = new Set((yield* events.catalog(connectionId)).map(({ name }) => name))
+    const named: { readonly event: string; readonly name: string }[] = []
+    for (const event of TELEGRAM_EVENTS) {
+      const name = telegramEvent(offered, event)
+      if (name === undefined) return yield* new InvalidInput({ reason: `${connectionId} does not offer ${event}` })
+      named.push({ event, name })
+    }
+    return named
+  })
 
 const retirePrevious = (events: typeof Events.Service, bindings: readonly Option.Option<Consumer>[]) =>
   Effect.gen(function* () {
@@ -31,13 +47,17 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   const connections = yield* McpConnections
   const channel = yield* Channel
   const events = yield* Events
-  const tools = yield* McpServers.use((servers) => servers.tools(connectionId, true))
+  const tools = (yield* McpServers.use((servers) => servers.tools(connectionId, true))).map(({ name }) => name)
   const snapshot = yield* connections.snapshot(connectionId)
   const modern = Option.isSome(snapshot) && offersEvents(snapshot.value)
-  const required = modern ? CHANNEL_TOOLS : [...CHANNEL_TOOLS, ...DOORBELL_TOOLS]
-  const missing = required.filter((name) => !tools.some((tool) => tool.name === name))
+  const channelTools = telegramTools(tools)
+  if (channelTools === undefined)
+    return yield* new InvalidInput({ reason: `${connectionId} does not offer Telegram's inbox_read and message_send` })
+  const missing = modern ? [] : DOORBELL_TOOLS.filter((name) => !tools.includes(name))
   if (missing.length > 0)
     return yield* new InvalidInput({ reason: `${connectionId} does not offer ${missing.join(', ')}` })
+  const named = modern ? yield* telegramEvents(events, connectionId) : []
+  const required = [channelTools.inbox, channelTools.send, ...(modern ? [] : DOORBELL_TOOLS)]
   const grants = yield* McpGrants
   for (const name of required) yield* grants.setTool(connectionId, name, true)
   if (!modern) {
@@ -48,14 +68,14 @@ export const enableTelegram = Effect.fn('channel.enable')(function* (
   const cursor = yield* channel.startCursor(connectionId, channelTool(connections, connectionId))
   const revision = yield* Clock.currentTimeMillis
   const previous: Option.Option<Consumer>[] = []
-  for (const name of TELEGRAM_EVENTS) {
+  for (const event of TELEGRAM_EVENTS) {
     const current = (yield* channel.status)?.connectionId ?? connectionId
-    previous.push(yield* events.activeConsumer(`telegram:${current}:${name}`))
+    previous.push(yield* events.activeConsumer(consumerOf(current, event)))
   }
-  for (const name of TELEGRAM_EVENTS) {
+  for (const { event, name } of named) {
     yield* events.grant(connectionId, name, {}, true)
     yield* events.subscribe({
-      consumerId: `telegram:${connectionId}:${name}`,
+      consumerId: consumerOf(connectionId, event),
       revision,
       connectionId,
       name,
@@ -73,13 +93,13 @@ export const disableTelegram = Effect.gen(function* () {
   const channel = yield* Channel
   const events = yield* Events
   const status = yield* channel.status
-  for (const name of TELEGRAM_EVENTS) {
-    const binding = yield* events.activeConsumer(`telegram:${status?.connectionId}:${name}`)
+  for (const event of TELEGRAM_EVENTS) {
+    const binding = yield* events.activeConsumer(consumerOf(status?.connectionId, event))
     if (Option.isSome(binding)) yield* events.unsubscribe(binding.value)
   }
   if (status !== null && status.transport === 'doorbell') {
     const connections = yield* McpConnections
-    // expected: the doorbell is off on this side whatever myagent answers; a later ring finds no secret.
+    // expected: the doorbell is off on this side whatever the server answers; a later ring finds no secret.
     yield* Effect.ignore(channelTool(connections, status.connectionId)('unsubscribe', {}))
   }
   yield* channel.disable
@@ -87,8 +107,8 @@ export const disableTelegram = Effect.gen(function* () {
 })
 
 /**
- * A doorbell from myagent, checked against the secret the agent gave it, then answered at once: the pull runs from the
- * agent's `channelPull` schedule. It never renews resident authority.
+ * A doorbell from the channel's server, checked against the secret the agent gave it, then answered at once: the pull
+ * runs from the agent's `channelPull` schedule. It never renews resident authority.
  */
 export const acceptDoorbell = Effect.fn('channel.acceptDoorbell')(function* (doorbell: Doorbell) {
   const channel = yield* Channel

@@ -11,7 +11,7 @@ import type { SetupScope } from '../src/setup/scope.ts'
 import { Channel } from '../src/channel/service.ts'
 import { Forbidden, ResidentInactive, SubscriptionRequired } from '../src/http/errors.ts'
 import { McpConnections, Resident } from '../src/mcp/service.ts'
-import type { McpCallOptions } from '../src/mcp/types.ts'
+import type { McpCallOptions, McpConnectionSnapshot } from '../src/mcp/types.ts'
 import type { RunProgram } from '../src/runtime/bridge.ts'
 
 const complete = () => Effect.succeed('an answer')
@@ -74,6 +74,13 @@ const world = (options: { readonly resident?: boolean; readonly plan?: boolean; 
     Layer.succeed(
       McpConnections,
       part<McpConnections['Service']>({
+        // The channel's server lists mygram's own tools: the send tool is `message_send`.
+        connect: () =>
+          Effect.succeed(
+            part<McpConnectionSnapshot>({
+              tools: ['inbox_read', 'message_send'].map((name) => ({ name, inputSchema: { type: 'object' as const } })),
+            }),
+          ),
         callTool: (connectionId: string, name: string, _args: unknown, call?: McpCallOptions) =>
           Effect.gen(function* () {
             const authorized = yield* (call?.authorize ?? Effect.void).pipe(
@@ -126,6 +133,6 @@ describe("an agent app's powers over the agent's services", () => {
     await expect(world().powers.notify('op-1', 'hi')).rejects.toBeInstanceOf(AppCodeError)
     const { powers, calls } = world({ channel: 'telegram' })
     await powers.notify('op-1', '<b>')
-    expect(calls).toEqual([{ connectionId: 'telegram', name: 'send_message', authorized: true }])
+    expect(calls).toEqual([{ connectionId: 'telegram', name: 'message_send', authorized: true }])
   })
 })

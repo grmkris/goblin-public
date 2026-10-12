@@ -270,7 +270,7 @@ const runSummary = (events: readonly RunEvent[]) => ({
     })),
   inbox: events.filter(
     (event) =>
-      event.kind === 'mcp.request' && event.attributes[RunAttribute.mcpTool] === 'inbox' && event.status === 'ok',
+      event.kind === 'mcp.request' && event.attributes[RunAttribute.mcpTool] === 'inbox_read' && event.status === 'ok',
   ).length,
 })
 

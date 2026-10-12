@@ -13,6 +13,7 @@ import {
   hasSkill,
   hasTool,
   holds,
+  isTelegramSend,
   NOTHING,
 } from '@goblin/contracts'
 import { and, eq, inArray, notInArray } from 'drizzle-orm'
@@ -248,7 +249,7 @@ const routineScope = (db: Db, scope: SetupScope, runId: string): SetupScope => {
     server: (id) => scope.server(id) && allowedTools.some((tool) => tool.connectionId === id),
     tool: (id, name) =>
       scope.tool(id, name) &&
-      (definition.tellMe.telegram || channel?.connectionId !== id || name !== 'send_message') &&
+      (definition.tellMe.telegram || channel?.connectionId !== id || !isTelegramSend(name)) &&
       allowedTools.some((tool) => tool.connectionId === id && tool.name === name),
     skills: () => false,
     skill: () => false,

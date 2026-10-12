@@ -44,7 +44,7 @@ function notificationHandler(calls: Record<string, unknown>[]) {
   return createMcpHandler(() => {
     const server = lowLevelServer({ name: 'notification-fixture', version: '1' }, { capabilities: { tools: {} } })
     server.setRequestHandler('tools/list', () => ({
-      tools: [{ name: 'send_message', inputSchema: { type: 'object' } }],
+      tools: ['inbox_read', 'message_send'].map((name) => ({ name, inputSchema: { type: 'object' as const } })),
     }))
     server.setRequestHandler('tools/call', (request) => {
       calls.push(request.params.arguments ?? {})
@@ -64,7 +64,7 @@ function notificationHost(
     servers: [{ connectionId: 'mygram', endpoint: 'https://notification.test/mcp' }],
     appUrl: 'https://goblin.test',
     credentials,
-    grants: new MemoryGrants([{ connectionId: 'mygram', capability: 'tool', name: 'send_message' }]),
+    grants: new MemoryGrants([{ connectionId: 'mygram', capability: 'tool', name: 'message_send' }]),
     registries: new MemoryRegistries(),
     labels: new MemoryLabels(),
     fetch: async (input, init) => {

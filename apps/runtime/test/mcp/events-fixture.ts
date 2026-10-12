@@ -44,7 +44,7 @@ export class EventsFixture {
       ],
     }))
     server.setRequestHandler('tools/list', () => ({
-      tools: ['inbox', 'send_message', 'subscribe', 'unsubscribe'].map((name) => ({
+      tools: ['inbox_read', 'message_send', 'subscribe', 'unsubscribe'].map((name) => ({
         name,
         inputSchema: { type: 'object' as const },
       })),
@@ -52,7 +52,7 @@ export class EventsFixture {
     server.setRequestHandler('tools/call', (request) => {
       this.calls.push(request.params.name)
       const content =
-        request.params.name === 'inbox'
+        request.params.name === 'inbox_read'
           ? { messages: request.params.arguments?.cursor === this.cursor ? [] : this.inbox, nextCursor: this.cursor }
           : { status: 'subscribed' }
       return { content: [], structuredContent: content }

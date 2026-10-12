@@ -3,6 +3,7 @@ import * as Exit from 'effect/Exit'
 import { requirePlan } from '../billing/gates.ts'
 import { requireBudget } from '../budget.ts'
 import { Setups } from '../setup/service.ts'
+import { channelToolName } from '../channel/channel.ts'
 import { Channel } from '../channel/service.ts'
 import { Forbidden } from '../http/errors.ts'
 import type { AgentServices } from '../layers/index.ts'
@@ -92,11 +93,13 @@ export function appServices(run: RunProgram, complete: AppCompletion): AppServic
             return yield* Effect.fail(new AppCodeError('notify: the owner has no Telegram channel connected'))
           const recheck = yield* bound(Effect.andThen(requirePlan(), requireResident))
           const result = yield* McpConnections.use((connections) =>
-            connections.callTool(
-              connectionId,
-              'send_message',
-              { operationId: op, text: escaped(text) },
-              { caller: 'model', timeout: 5000, authorize: recheck },
+            Effect.flatMap(channelToolName(connections, connectionId, 'send'), (send) =>
+              connections.callTool(
+                connectionId,
+                send,
+                { operationId: op, text: escaped(text) },
+                { caller: 'model', timeout: 5000, authorize: recheck },
+              ),
             ),
           )
           if (result.isError === true)

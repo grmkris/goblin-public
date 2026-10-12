@@ -1,9 +1,11 @@
-// The Telegram channel (ADR 0008): one MCP connection the owner chose, a myagent connection bound to the agent's own
-// bot, carries Telegram both ways. myagent rings a doorbell (channel/doorbell.ts), or the server's Events deliver; the
-// agent then reads `inbox` from its cursor and puts every new message from the owner into main, authored "Telegram".
-// The answer to each of those turns, and to a subagent's report in main, goes back with `send_message`. The rows are
-// channel/store.ts: the connection, the cursor, the doorbell secret (sealed) and the turns whose answers are to send.
-import { type ChannelStatus } from '@goblin/contracts'
+// The Telegram channel (ADR 0009): one MCP connection the owner chose, mygram's bound to the agent's own bot (directly,
+// or through mysi), carries Telegram both ways. The server's Events deliver, or a server without them rings a doorbell
+// (channel/doorbell.ts); the agent then reads the inbox from its cursor and puts every new message from the owner into
+// main, authored "Telegram". The answer to each of those turns, and to a subagent's report in main, goes back with the
+// send tool. Which names those tools have on the connection (`inbox_read`, or mysi's `mygram_inbox_read`) is decided in
+// one place, `telegramTools` (ADR 0052). The rows are channel/store.ts: the connection, the cursor, the doorbell secret
+// (sealed) and the turns whose answers are to send.
+import { type ChannelStatus, type TelegramTool, telegramTools } from '@goblin/contracts'
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Clock from 'effect/Clock'
@@ -34,9 +36,9 @@ import {
   trackReply,
 } from './store.ts'
 
-/** The tools a server must offer to carry the channel, all granted when the owner turns it on. */
-export const CHANNEL_TOOLS = ['inbox', 'send_message'] as const
+/** The tools a server without Events must offer as well, to ring the doorbell; granted when the owner turns it on. */
 export const DOORBELL_TOOLS = ['subscribe', 'unsubscribe'] as const
+type DoorbellTool = (typeof DOORBELL_TOOLS)[number]
 /** Pages of 100 read at most per pull. */
 const MAX_PAGES = 50
 /** Pages of 100 read at most to find the end of the inbox when the channel is turned on. */
@@ -57,8 +59,14 @@ type Message = typeof Message.Type
 const Inbox = Schema.Struct({ messages: Schema.Array(Message), nextCursor: Schema.String })
 const Subscribed = Schema.Struct({ status: Schema.String, reason: Schema.optional(Schema.String) })
 
-/** A tool of the channel server as an Effect (`channelTool`): its structured result; an error result fails. */
-export type ChannelCall = (name: string, args: Record<string, unknown>) => Effect.Effect<unknown, AppError>
+/**
+ * A tool of the channel server as an Effect (`channelTool`), by what it does: the inbox, the send tool or the doorbell's
+ * two. Its structured result; an error result fails.
+ */
+export type ChannelCall = (
+  tool: TelegramTool | DoorbellTool,
+  args: Record<string, unknown>,
+) => Effect.Effect<unknown, AppError>
 
 /** What the channel needs from the agent: the channel server's tools, main, and the end of a turn. */
 export interface ChannelPorts {
@@ -75,7 +83,7 @@ export type DeliveredReply = { readonly operationId: string; readonly pieces: nu
 
 const AAD = 'channel:secret'
 
-/** An operation id myagent accepts (letters, digits, `_` and `-`, at most 100). */
+/** An operation id mygram accepts (letters, digits, `_` and `-`, at most 100). */
 const myagentId = (prefix: string, id: string) => `${prefix}-${id.replaceAll(/[^\w-]/gu, '-')}`.slice(0, 100)
 
 /** Plain text as Telegram HTML. */
@@ -109,15 +117,37 @@ export function reportChannelFailure(step: 'pull' | 'replies', error: unknown): 
 }
 
 /**
+ * The name `tool` has on `connectionId`, from the tools its connection lists: mygram's own, or mysi's `mygram_` one. The
+ * doorbell's tools are only ever bare. Fails when the server no longer offers the channel's tools.
+ */
+export const channelToolName = (
+  connections: typeof McpConnections.Service,
+  connectionId: string,
+  tool: TelegramTool | DoorbellTool,
+) =>
+  Effect.gen(function* () {
+    if (tool === 'subscribe' || tool === 'unsubscribe') return tool
+    const snapshot = yield* connections.connect(connectionId, { use: 'background' })
+    const names = telegramTools(snapshot.tools.map(({ name }) => name))
+    if (names === undefined)
+      return yield* new InvalidInput({ reason: `${connectionId} no longer offers Telegram's inbox and send tools` })
+    return names[tool]
+  })
+
+/**
  * A tool of the channel server through the MCP connections, called for the agent itself: the owner's exact grant
  * applies as for any call of the model. Its structured result; an error result fails.
  */
 export const channelTool = (connections: typeof McpConnections.Service, connectionId: string): ChannelCall =>
-  Effect.fn('Channel.tool')(function* (name: string, args: Record<string, unknown>) {
+  Effect.fn('Channel.tool')(function* (tool: TelegramTool | DoorbellTool, args: Record<string, unknown>) {
+    const name = yield* channelToolName(connections, connectionId, tool)
     const result = yield* connections.callTool(connectionId, name, args, { caller: 'model' })
     if (result.isError === true) return yield* new UpstreamMcp({ connectionId, reason: 'remote-rpc' })
     return result.structuredContent
   })
+
+/** The inbox read from `cursor`: none (or an empty one) is its start, which the inbox tool reads with no cursor. */
+const after = (cursor: string | undefined) => (cursor === undefined || cursor === '' ? {} : { cursor })
 
 const decodeInbox = (value: unknown) => Schema.decodeUnknownEffect(Inbox)(value).pipe(Effect.mapError(toAppError))
 const decodeSubscribed = (value: unknown) =>
@@ -127,7 +157,7 @@ const decodeSubscribed = (value: unknown) =>
 const readToEnd = Effect.fn('Channel.readToEnd')(function* (call: ChannelCall) {
   let cursor: string | undefined
   for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
-    const inbox = yield* decodeInbox(yield* call('inbox', { ...(cursor === undefined ? {} : { cursor }), limit: 100 }))
+    const inbox = yield* decodeInbox(yield* call('inbox', { ...after(cursor), limit: 100 }))
     cursor = inbox.nextCursor
     if (inbox.messages.length === 0) return cursor
   }
@@ -210,7 +240,7 @@ const pullPages = (input: ChannelInput, record: Recorder, ports: ChannelPorts, n
       if (status === null) return
       const cursor = inboxCursor(db, status.transport)
       if (cursor === undefined) return
-      const inbox = yield* decodeInbox(yield* ports.call('inbox', { cursor, limit: 100 }))
+      const inbox = yield* decodeInbox(yield* ports.call('inbox', { ...after(cursor), limit: 100 }))
       if (!carries(db, status)) return
       for (const message of inbox.messages)
         if (message.direction === 'in' && message.delivery !== 'archive')
@@ -246,7 +276,7 @@ const sendAnswer = (
     yield* Effect.forEach(
       pieces.entries(),
       ([index, piece]) =>
-        ports.call('send_message', { operationId: myagentId(`reply-${index}`, operationId), text: escapeHtml(piece) }),
+        ports.call('send', { operationId: myagentId(`reply-${index}`, operationId), text: escapeHtml(piece) }),
       { discard: true },
     ).pipe(
       Effect.tapError((error) =>
