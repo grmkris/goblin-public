@@ -11,7 +11,7 @@ import type { AgentSigner } from '../contract/index.ts'
 import { toAddress } from './hex.ts'
 import { erc20Balance } from './erc20.ts'
 import { sendSimulated, TransferError, type EvmChain } from './send.ts'
-import { quantity, type JsonRpc, type TxStatus, type WaitOptions } from './rpc.ts'
+import { JsonRpcError, quantity, type JsonRpc, type TxStatus, type WaitOptions } from './rpc.ts'
 
 export type { EvmChain } from './send.ts'
 export { TransferError, type TransferFailure } from './send.ts'
@@ -49,16 +49,28 @@ export interface EvmTransferResult {
 
 const ERC20 = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
 
+/** Reads before anything is signed: a node that does not answer means nothing was sent, so the transfer failed. */
+const beforeSigning = async <A>(read: () => Promise<A>): Promise<A> => {
+  try {
+    return await read()
+  } catch (error) {
+    if (error instanceof JsonRpcError)
+      throw new TransferError('rpc_unavailable', 'The chain did not answer before signing; nothing was sent.')
+    throw error
+  }
+}
+
 const needTopUp = async (input: EnsureFundsInput, token: string): Promise<bigint> => {
-  const held = await erc20Balance(input.rpc, token, input.agent.address)
+  const held = await beforeSigning(() => erc20Balance(input.rpc, token, input.agent.address))
   if (held >= input.amount) return 0n
   const shortfall = input.amount - held
-  if (input.topUp === undefined)
+  const { topUp } = input
+  if (topUp === undefined)
     throw new TransferError(
       'insufficient_funds',
       `The agent wallet holds ${formatUnits(held, 6)} USDC; it needs ${formatUnits(input.amount, 6)}.`,
     )
-  if (shortfall > (await input.topUp.available()))
+  if (shortfall > (await beforeSigning(() => topUp.available())))
     throw new TransferError('allowance_exhausted', 'The allowance is used up for this period (enforced on-chain).')
   return shortfall
 }
@@ -103,7 +115,7 @@ export const ensureUsdc = async (input: EnsureFundsInput): Promise<{ topUpTxHash
 /** Pays `amount` USDC to `to` from the agent, topping up from the owner's allowance first when it is short. */
 export const transferUsdc = async (input: EvmTransferInput): Promise<EvmTransferResult> => {
   const chain = CHAINS[input.chain]
-  await requireGas(input)
+  await beforeSigning(() => requireGas(input))
   const funded = await ensureUsdc(input)
   const data = encodeFunctionData({ abi: ERC20, functionName: 'transfer', args: [toAddress(input.to), input.amount] })
   const paid = await sendSimulated(input, { key: `${input.operationKey}:pay`, to: chain.usdc.address, data })

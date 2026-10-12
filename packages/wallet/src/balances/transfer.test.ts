@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { BASE } from '../chains/index.ts'
 import type { AgentSigner } from '../contract/index.ts'
 import { toHex } from './hex.ts'
-import { field, type JsonRpc } from './rpc.ts'
+import { field, httpJsonRpc, JsonRpcError, type JsonRpc } from './rpc.ts'
 import { transferUsdc, TransferError, type TopUp } from './transfer.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
@@ -16,6 +16,8 @@ interface Sent {
   data: string
   key: string
 }
+
+const down: JsonRpc = () => Promise.reject(new JsonRpcError('eth_getBalance', 'HTTP 429'))
 
 const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; mined?: boolean }) => {
   const sent: Sent[] = []
@@ -112,6 +114,27 @@ describe('EVM transfer', () => {
     await expect(failure).rejects.toBeInstanceOf(TransferError)
     await expect(failure).rejects.toMatchObject({ code: 'allowance_exhausted', uncertain: false })
     expect(h.sent).toHaveLength(0)
+  })
+
+  test('a node that does not answer before signing fails the transfer, and nothing is sent', async () => {
+    const h = harness({ held: 5_000_000n })
+    await expect(transferUsdc({ ...base, amount: 1n, agent: h.agent, rpc: down })).rejects.toMatchObject({
+      code: 'rpc_unavailable',
+      uncertain: false,
+    })
+    expect(h.sent).toHaveLength(0)
+  })
+
+  test('a busy node (429) is asked again before giving up', async () => {
+    const statuses = [429, 429, 200]
+    const fetchFn = Object.assign(
+      () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x1' }), { status: statuses.shift() ?? 200 }),
+        ),
+      { preconnect: () => undefined },
+    )
+    await expect(httpJsonRpc('https://node.test', fetchFn, [0, 0])('eth_chainId', [])).resolves.toBe('0x1')
   })
 
   test('needs gas, and reports a missing receipt as pending', async () => {

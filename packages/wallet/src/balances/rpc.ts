@@ -20,21 +20,31 @@ interface RpcEnvelope {
 
 const isEnvelope = (value: unknown): value is RpcEnvelope => typeof value === 'object' && value !== null
 
-/** A JSON-RPC caller for one endpoint. `fetchFn` is injectable so tests run against a fake node. */
-export const httpJsonRpc = (url: string, fetchFn: typeof fetch = fetch): JsonRpc => {
+/** Public RPCs rate-limit Cloudflare's shared egress (429); a busy node is asked again, briefly. */
+const RETRY_STATUSES = new Set([429, 502, 503, 504])
+const RETRY_DELAYS_MS = [250, 750]
+
+/**
+ * A JSON-RPC caller for one endpoint. `fetchFn` is injectable so tests run against a fake node. A 429 or 5xx is
+ * retried twice: the same request, even a signed transaction, is safe to send again.
+ */
+export const httpJsonRpc = (url: string, fetchFn: typeof fetch = fetch, delays = RETRY_DELAYS_MS): JsonRpc => {
   let id = 0
   return async (method, params) => {
     id += 1
-    const response = await fetchFn(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-    })
+    const body = JSON.stringify({ jsonrpc: '2.0', id, method, params })
+    const post = () => fetchFn(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+    let response = await post()
+    for (const delay of delays) {
+      if (!RETRY_STATUSES.has(response.status)) break
+      await new Promise((resolve) => setTimeout(resolve, delay))
+      response = await post()
+    }
     if (!response.ok) throw new JsonRpcError(method, `HTTP ${response.status}`)
-    const body: unknown = await response.json()
-    if (!isEnvelope(body)) throw new JsonRpcError(method, 'malformed response')
-    if (body.error) throw new JsonRpcError(method, body.error.message ?? 'error', body.error.code)
-    return body.result
+    const answer: unknown = await response.json()
+    if (!isEnvelope(answer)) throw new JsonRpcError(method, 'malformed response')
+    if (answer.error) throw new JsonRpcError(method, answer.error.message ?? 'error', answer.error.code)
+    return answer.result
   }
 }
 

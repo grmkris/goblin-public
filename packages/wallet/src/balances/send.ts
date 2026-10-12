@@ -7,7 +7,13 @@ import type { ChainKey } from '../contract/index.ts'
 
 export type EvmChain = Extract<ChainKey, 'base' | 'ethereum' | 'arbitrum'>
 
-export type TransferFailure = 'insufficient_funds' | 'no_gas' | 'allowance_exhausted' | 'reverted' | 'uncertain'
+export type TransferFailure =
+  | 'insufficient_funds'
+  | 'no_gas'
+  | 'allowance_exhausted'
+  | 'reverted'
+  | 'uncertain'
+  | 'rpc_unavailable'
 
 export class TransferError extends Data.TaggedError('TransferError')<{
   readonly code: TransferFailure
