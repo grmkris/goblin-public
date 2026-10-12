@@ -26,7 +26,10 @@ export type TelegramOutcome = {
   readonly attempt: number
 }
 
-/** How many notices a routine posts in an hour; the rest wait for one digest line (ADR 0041). */
+/**
+ * How many notices a routine posts in its chat (and to Telegram) in an hour; the rest are kept in Activity only and
+ * one digest line counts them (ADR 0041).
+ */
 export const NOTICE_CAP = 20
 export const NOTICE_WINDOW = 3_600_000
 /** How long Activity keeps a notification (ms). */
@@ -47,8 +50,11 @@ export const notificationOf = (row: NoticeRow): NotificationView => ({
 /** A window that ended with notices past its cap: the digest it owes. */
 export type DigestDue = { readonly routineId: string; readonly startedAt: number; readonly folded: number }
 
-/** What a claim did: posted the notice, or folded it into the digest; and a digest the window that ended owes. */
-export type Claim = { readonly posted: boolean; readonly digest?: DigestDue }
+/**
+ * What a claim did: posted the notice, or folded it (kept in Activity only, counted into the digest: `folded`); and a
+ * digest the window that ended owes.
+ */
+export type Claim = { readonly posted: boolean; readonly folded?: true; readonly digest?: DigestDue }
 
 /**
  * Notices and the routines' hours of them (ADR 0041). Every method is synchronous and short, so a claim can run inside
@@ -62,8 +68,9 @@ export class NoticeStore {
 
   /**
    * Keeps `notice` once: a notice already claimed (a replayed delivery) is not kept or counted again. A `capped` one
-   * (an event's) is counted into its routine's hour and kept only while the hour has room, else folded into the hour's
-   * digest; a new hour reports the digest the last one owes. Reminders, answers and digests are not counted.
+   * (an event's) is counted into its routine's hour and posted while the hour has room; past it, it is folded: kept for
+   * Activity as written already (no chat entry) and without a Telegram copy, and counted into the hour's digest. A new
+   * hour reports the digest the last one owes. Reminders, answers and digests are not counted.
    */
   claim(notice: NewNotice, capped: boolean): Claim {
     return this.#db.transaction((tx) => {
@@ -98,8 +105,14 @@ export class NoticeStore {
         .set(room ? { sent: window.sent + 1 } : { folded: window.folded + 1 })
         .where(eq(appNoticeWindows.routineId, notice.routineId))
         .run()
-      if (room) keep()
-      return { posted: room }
+      if (room) {
+        keep()
+        return { posted: true }
+      }
+      tx.insert(appNotices)
+        .values({ ...notice, telegramState: 'none', writtenAt: notice.createdAt })
+        .run()
+      return { posted: false, folded: true }
     })
   }
 

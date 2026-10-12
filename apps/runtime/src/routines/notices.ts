@@ -55,6 +55,8 @@ const post = Effect.fn('routines.postNotice')(function* (notice: NewNotice, capp
   const claim = yield* (yield* Notices).claim(notice, capped)
   if (claim.digest !== undefined) yield* postDigest(claim.digest)
   if (claim.posted) yield* writeNotice(notice.id)
+  // A folded notice is not in the chat, but Activity lists it.
+  if (claim.folded === true) yield* (yield* Changes).publish('notices.changed', { ids: [notice.id] })
 })
 
 /** A notice that is not counted into an hour (a reminder, a digest): kept once and written. */
@@ -180,7 +182,7 @@ const postDigest = Effect.fn('routines.noticeDigest')(function* (due: DigestDue)
     source: 'digest',
     connectionId: definition.trigger.kind === 'event' ? definition.trigger.connectionId : null,
     label,
-    title: `+${String(due.folded)} more from ${label}`,
+    title: `+${String(due.folded)} more from ${label} in Activity`,
     body: null,
     url: null,
   }

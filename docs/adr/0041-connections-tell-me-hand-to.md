@@ -56,7 +56,9 @@ apply to all of them.
   Telegram.
 - An event's text is the producer's own title, summary and link, by convention (MCP Events has no summary field).
   Otherwise it is "<event> from <label>".
-- Each routine gets at most 20 notices an hour. Past that, one digest line says how many more arrived.
+- Each routine gets at most 20 notices an hour in its chat and on Telegram. Past that, a notice is still kept in
+  Activity, and one digest line in the chat says how many more are there (amended 2026-10-12: in the showcase run
+  the job-delivered notice was folded away and never shown).
 - A replayed event that occurred before the routine was confirmed, or more than a day ago, is acknowledged and
   dropped.
 

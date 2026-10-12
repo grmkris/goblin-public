@@ -39,10 +39,13 @@ describe('notices and their hour (ADR 0041)', () => {
     expect(notices.unwritten()).toEqual([])
   })
 
-  it('posts twenty an hour, folds the rest, and owes their digest when the next hour starts', () => {
+  it('posts twenty an hour, keeps the rest for Activity only, and owes their digest when the next hour starts', () => {
     const notices = store()
     for (let index = 0; index < NOTICE_CAP + 5; index++) notices.claim(notice(`n${String(index)}`, T + index), true)
-    expect(notices.recent(0, 100)).toHaveLength(0)
+    // The five past the cap are kept as written (no chat entry), so Activity lists them, with no Telegram copy.
+    const folded = notices.recent(0, 100)
+    expect(folded.map((row) => row.id)).toEqual(['n24', 'n23', 'n22', 'n21', 'n20'])
+    expect(folded.every((row) => row.telegramState === 'none')).toBe(true)
     expect(notices.unwritten()).toHaveLength(NOTICE_CAP)
     expect(notices.claim(notice('next', T + NOTICE_WINDOW + 1), true)).toEqual({
       posted: true,
@@ -62,7 +65,7 @@ describe('notices and their hour (ADR 0041)', () => {
     const notices = store()
     for (let index = 0; index < NOTICE_CAP; index++) notices.claim(notice(`n${String(index)}`, T + index), true)
     expect(notices.claim({ ...notice('reminder', T + 50), source: 'reminder' }, false)).toEqual({ posted: true })
-    expect(notices.claim(notice('one-more', T + 60), true)).toEqual({ posted: false })
+    expect(notices.claim(notice('one-more', T + 60), true)).toEqual({ posted: false, folded: true })
   })
 
   it('lists written notices newest first, marks them read, and forgets old ones', () => {

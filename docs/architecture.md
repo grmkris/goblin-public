@@ -1664,8 +1664,9 @@ that hands nothing over cannot be run by hand (`nothing_to_run`).
 owner's read mark and the Telegram copy's outbox state. A notice is kept once by its id (`notice:<routine>:<eventId>`,
 `notice:<routine>:<slot>`), so a replayed delivery posts nothing again; a notice claimed but not written (a write cut
 short) is written by the routines' sweep. An event's notice is counted into its routine's hour (`app_notice_windows`):
-twenty are posted, the rest folded into one digest line ("+N more from <label>") the next hour's first notice, or the
-sweep, writes. Reminders, answers and digests are not counted. Notifications older than thirty days are pruned. A notice
+twenty are posted, the rest kept for Activity only (as written, with no chat entry and no Telegram copy) and counted
+into one digest line ("+N more from <label> in Activity") the next hour's first notice, or the sweep, writes. Activity
+lists ten read notifications under the unread ones, and Show older adds ten more at a time. Reminders, answers and digests are not counted. Notifications older than thirty days are pruned. A notice
 the owner wants on Telegram carries its words frozen when it is claimed (`notices/telegram.ts`): each due copy is sent
 once per attempt with a stable operation id through the channel it was first tried on, escaped, after the plan,
 resident authority and that channel are checked again; losing any of them suppresses it, a failure retries with backoff

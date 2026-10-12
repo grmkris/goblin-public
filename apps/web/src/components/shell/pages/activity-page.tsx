@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { Attention, NotificationView, OrganizeReceipt, ServerView } from '@goblin/contracts'
@@ -76,7 +77,7 @@ const SOURCES: Readonly<Record<NotificationView['source'], typeof BellIcon>> = {
   digest: LayersIcon,
 }
 
-/** How many read notifications Activity shows under the unread ones. */
+/** How many read notifications Activity shows under the unread ones at first; Show older adds as many again. */
 const READ_SHOWN = 10
 
 /** A notification (ADR 0041), linked to the chat it was posted in: opening the chat reads it. */
@@ -114,8 +115,10 @@ function Notifications({
   readonly now: number
 }) {
   const reading = useMutation(readNotificationsMutation)
+  const [shown, setShown] = useState(READ_SHOWN)
   const fresh = new Set(unread)
-  const read = notifications.filter((notification) => !fresh.has(notification)).slice(0, READ_SHOWN)
+  const older = notifications.filter((notification) => !fresh.has(notification))
+  const read = older.slice(0, shown)
   return (
     <PageSection
       id="notifications"
@@ -144,6 +147,11 @@ function Notifications({
           />
         ))}
       </ul>
+      {older.length > shown && (
+        <Button variant="ghost" size="sm" onClick={() => setShown((count) => count + READ_SHOWN)}>
+          Show older
+        </Button>
+      )}
     </PageSection>
   )
 }
