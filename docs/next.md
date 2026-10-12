@@ -47,10 +47,15 @@ operation reconciliation require fresh owner connections and separate deployed a
     - Fee-inclusive reservations in the ledger.
     - The three userOp rules in `agentPolicy()`. Until they are there, `privy-policy.ts --apply` would delete them.
   - **Estimate:** about a week.
-- **Paid inference.** Users paying for their own inference from the wallet: OpenRouter OAuth PKCE or BYOK, or MPP
-  sessions for an OpenAI-compatible endpoint on Tempo. The wallet speaks MPP `charge` today, not sessions.
+- **Paid inference follow-up.** Production recording now covers per-call MPP charges on Tempo and x402 search on Base.
+  A complete MPP settlement receipt and explorer transaction should be added to the public proof bundle before claiming
+  that payment path as independently reproducible. MPP sessions for an OpenAI-compatible endpoint remain future work.
 - **Self-sent upgrade.** Privy's embedded wallet answers HTTP 500 to a type-4 transaction, so the relay sends the
   owner's EIP-7702 upgrade; the owner can fund the relay.
+
+- **Ethereum and Arbitrum proof.** The wallet supports these chains in its funding, transfer, upgrade and allowance
+  paths, and the UI exposes those operations. A mainnet operation and explorer receipt on each chain are still needed
+  before claiming their hackathon tracks; existing Base and Tempo receipts do not prove either chain.
 
 ## Smaller items
 
