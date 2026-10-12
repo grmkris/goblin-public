@@ -123,7 +123,11 @@ function AllowanceStep({ index, state }: { readonly index: number; readonly stat
   const valid = isPerHour(perHour)
   const action = useAction(async () => {
     await auth.signAllowance({ chain: 'base', perHour, days: DEFAULT_GRANT_DAYS })
-    await client.invalidateQueries({ queryKey: ['me'] })
+    // The allowance changes what the agent can spend, so Home's summary must not show the old status.
+    await Promise.all([
+      client.invalidateQueries({ queryKey: ['me'] }),
+      client.invalidateQueries({ queryKey: ['status'] }),
+    ])
   })
   return (
     <Step
