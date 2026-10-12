@@ -14,6 +14,7 @@ import { urlRequestsOver } from '../../../src/layers/mcp.ts'
 import { CredentialCipher } from '../../../src/mcp/cipher.ts'
 import { McpUrlRequestStore } from '../../../src/mcp/url-requests.ts'
 import { durable } from '../../chats-sqlite.ts'
+import { Changes, makeChanges } from '../../../src/runtime/changes.ts'
 import { FlowEvents } from '../../../src/observability/flows.ts'
 import { SingleFlight } from '../../../src/observability/single-flight.ts'
 import { AgentInput, type AgentInputs } from '../../../src/runtime/input.ts'
@@ -121,6 +122,7 @@ const fixture = async () => {
           events,
           approvals,
           urlRequests,
+          Layer.succeed(Changes, makeChanges()),
           FlowEvents.noop,
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),
           plans(),

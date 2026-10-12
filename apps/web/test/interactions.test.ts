@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { answerText, interactionOf, interactionOperation, openInteractions } from '../src/lib/interactions.ts'
+import {
+  answerText,
+  interactionOf,
+  interactionOperation,
+  openInteractions,
+  stillOpen,
+  waitingOnOwner,
+} from '../src/lib/interactions.ts'
 import type { Part, ToolPart } from '../src/lib/parts.ts'
 
 const mcpCall = (
@@ -42,6 +49,12 @@ const asked = (questions: unknown): ToolPart => ({
   },
 })
 const user = (id: string): Part => ({ kind: 'user', id, text: 'hi' })
+/** What the stores say of URL request `mcp-url:7:g1` and held call `mcp:7:g2`; nothing for one not read. */
+const states = (url?: string, decision?: string) =>
+  new Map([
+    ...(url === undefined ? [] : [['mcp-url:7:g1', url] as const]),
+    ...(decision === undefined ? [] : [['mcp:7:g2', decision] as const]),
+  ])
 /** A call of `name` with `args` whose result says something is switched off here. */
 const switchedOff = (name: string, args: Record<string, unknown>, details: unknown): ToolPart => ({
   kind: 'tool',
@@ -119,6 +132,28 @@ describe('what the agent waits on the owner for', () => {
     expect(interactionOperation({ kind: 'url', callId: 'g1', requestId: 'r', connectionId: 'm', name: 'n' })).toBe(
       'url:g1',
     )
+  })
+  it('keeps a stored ask while its store says it is under way, and counts only a pending one as waiting on you', () => {
+    const request = {
+      kind: 'url',
+      callId: 'g1',
+      requestId: 'mcp-url:7:g1',
+      connectionId: 'myplan',
+      name: 'document_edit',
+    } as const
+    const held = { kind: 'approval', callId: 'g2', approvalId: 'mcp:7:g2', connectionId: 'myplan', name: 'x' } as const
+    const grantAsk = { kind: 'grant', callId: 'g3', connectionId: 'myplan', name: 'y' } as const
+    const open = [request, held, grantAsk]
+    // Not read yet: shown (the card loads), but not counted as waiting on you.
+    expect(stillOpen(open, states())).toEqual(open)
+    expect(waitingOnOwner(open, states())).toBe(1)
+    expect(waitingOnOwner(open, states('pending', 'pending'))).toBe(3)
+    // Answered and on its way: still shown, no longer waiting on you.
+    expect(stillOpen(open, states('retrying', 'dispatching'))).toEqual(open)
+    expect(waitingOnOwner(open, states('retrying', 'dispatching'))).toBe(1)
+    // Ended, or forgotten by its store: it leaves; its outcome row says how it went.
+    expect(stillOpen(open, states('failed', 'completed'))).toEqual([grantAsk])
+    expect(stillOpen(open, states('gone', 'expired'))).toEqual([grantAsk])
   })
   it('reads ask_user questions, and ignores details that do not fit the contract', () => {
     expect(interactionOf(asked([question]))).toEqual({ kind: 'question', callId: 'q1', questions: [question] })

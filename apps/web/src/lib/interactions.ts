@@ -196,6 +196,49 @@ export function openInteractions(parts: readonly Part[]): Interaction[] {
   })
 }
 
+/**
+ * Where a stored ask stands (a held call's or a URL request's state), by its approval or request id: `gone` when its
+ * store no longer has it (pruned), absent while it has not been read.
+ */
+export type StoredStates = ReadonlyMap<string, string>
+
+/** The stored ask's id in its store. */
+export const storedId = (interaction: Interaction): string | undefined =>
+  interaction.kind === 'approval'
+    ? interaction.approvalId
+    : interaction.kind === 'url'
+      ? interaction.requestId
+      : undefined
+
+/** The states a stored ask is still under way in: waiting on the owner, or on its way after their answer. */
+const UNDER_WAY: Readonly<Record<'approval' | 'url', ReadonlySet<string>>> = {
+  approval: new Set(['pending', 'approved', 'dispatching']),
+  url: new Set(['pending', 'retrying']),
+}
+
+/**
+ * The open interactions the dock still shows: every one that is not stored, and a stored one while its store says it is
+ * under way or has not been read yet. One that ended, or that its store forgot, leaves; its outcome row says how it went.
+ */
+export function stillOpen(open: readonly Interaction[], states: StoredStates): Interaction[] {
+  return open.filter((interaction) => {
+    const id = storedId(interaction)
+    if (id === undefined || (interaction.kind !== 'approval' && interaction.kind !== 'url')) return true
+    const state = states.get(id)
+    return state === undefined || UNDER_WAY[interaction.kind].has(state)
+  })
+}
+
+/**
+ * How many of the dock's interactions wait on the owner right now: every one that is not stored, and a stored one only
+ * while it is pending. One under way after their answer, or not read yet, does not.
+ */
+export const waitingOnOwner = (open: readonly Interaction[], states: StoredStates): number =>
+  open.filter((interaction) => {
+    const id = storedId(interaction)
+    return id === undefined || states.get(id) === 'pending'
+  }).length
+
 const OPERATION = {
   approval: 'approval',
   question: 'answer',

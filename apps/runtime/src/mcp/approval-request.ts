@@ -9,6 +9,7 @@ import { requireRoutineSession } from '../routines/authority.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { Conflict, NotFound } from '../http/errors.ts'
 import { objectOrJson } from '../pi/typed-tool.ts'
+import { Changes } from '../runtime/changes.ts'
 import { named } from './labels.ts'
 import { Approvals, McpConnections, McpGrants, McpServers, requireResident } from './service.ts'
 
@@ -19,6 +20,17 @@ export const McpCallInput = Schema.Struct({
 })
 export type McpCallInput = typeof McpCallInput.Type
 export const modelApprovalId = (session: string, callId: string): string => `mcp:${session}:${callId}`
+
+/**
+ * The chat that held a call, told its conversation changed: what it waits on (attention, the rail, Needs you) moved
+ * with the call's state.
+ */
+export const heldCallChanged = (session: string | null) =>
+  Effect.gen(function* () {
+    if (session === null) return
+    const chat = yield* (yield* Chats).chatOf(session)
+    if (Option.isSome(chat)) yield* (yield* Changes).publish('conversations.changed', { ids: [chat.value] })
+  })
 
 /** Prepare an exact call in beforeTool; execution repeats this gate because hook failures cannot grant authority. */
 export const holdModelCall = (session: string, callId: string, taskId: string, input: McpCallInput) =>
@@ -46,6 +58,7 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
       grantVersion: policy.value.version,
     })
     if (row.state !== 'pending') return yield* new Conflict({ reason: 'Held call has already been decided' })
+    yield* heldCallChanged(session)
     return row
   })
 

@@ -572,7 +572,13 @@ When the agent waits on the owner, the request is pinned above the composer unti
 for the exact server and tool). The reply is an ordinary message with a stable operation ID: `answer:<callId>` or
 `grant:<callId>`. Allow first sets the exact grant through `PUT /api/mcp/grants`, and the allowed tool stays allowed.
 In the transcript, both requests leave a quiet receipt. An Allow card is only trusted from goblin's own result for
-the tool that was called, never from a remote result, which always carries `origin`.
+the tool that was called, never from a remote result, which always carries `origin`. A held call and a URL request
+are kept in goblin's store, not settled by a message: each stays pinned while its store says it is under way
+(`stillOpen`: an approval pending, approved or dispatching; a URL request pending or retrying) and leaves once it
+ended or its store forgot it, read from the queries its card keeps (`approvals/hooks.ts`); its outcome row then says
+how it went. Only one that is pending counts as the agent waiting on the owner (`waitingOnOwner`), so presence says
+Working, not Waiting for you, while the turn the owner's answer started runs. Each change of a held call or URL request
+publishes `conversations.changed` for its chat, so attention (the rail, Needs you) follows it at once.
 
 At a keyboard and mouse Enter sends and Shift+Enter breaks the line; on a touch screen Return breaks the line and
 the Send button sends, with ⌘/Ctrl+Enter from a hardware keyboard (`lib/keys.ts`). The composer carries the agent's presence (`lib/presence.ts`): one state for the whole agent, with the most urgent

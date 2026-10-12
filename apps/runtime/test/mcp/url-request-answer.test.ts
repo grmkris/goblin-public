@@ -17,6 +17,7 @@ import { McpUrlRequestStore } from '../../src/mcp/url-requests.ts'
 import { FlowEvents } from '../../src/observability/flows.ts'
 import { SingleFlight } from '../../src/observability/single-flight.ts'
 import { RoutineRuns } from '../../src/routines/service.ts'
+import { Changes, makeChanges } from '../../src/runtime/changes.ts'
 import { scopeOf } from '../../src/setup/scope.ts'
 import { Setups } from '../../src/setup/service.ts'
 import { chatDatabase, durable } from '../chats-sqlite.ts'
@@ -69,6 +70,7 @@ const fixture = async () => {
         SingleFlight.layer,
         FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
         Layer.succeed(UrlRequests, urlRequestsOver(store)),
+        Layer.succeed(Changes, makeChanges()),
         stub(Resident, { require: () => Effect.void }),
         stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),
         stub(Chats, { chatOf: () => Effect.succeed(Option.some(ChatId('41'))) }),

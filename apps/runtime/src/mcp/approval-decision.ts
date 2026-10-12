@@ -12,6 +12,7 @@ import { RoutineRuns } from '../routines/service.ts'
 import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
 import { named } from './labels.ts'
+import { heldCallChanged } from './approval-request.ts'
 import { Approvals, McpConnections, McpServers, requireResident } from './service.ts'
 import type { HeldCallOutcome } from './types.ts'
 
@@ -118,6 +119,7 @@ export const decideApproval = <R>(input: {
     const decision = yield* approvals.decide(input.id, input.allowed)
     if (decision.changed && decision.row.state === 'approved') yield* dispatch(decision.row)
     const row = yield* approvals.get(input.id)
+    if (decision.changed) yield* heldCallChanged(row.sessionId)
     if (row.sessionId !== null && DECIDED.has(row.state)) {
       const result = yield* approvals.result(input.id)
       const labels = yield* (yield* McpServers).labels()

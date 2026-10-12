@@ -10,7 +10,7 @@ import { FlowEvents } from '../observability/flows.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { bound } from '../runtime/boundary.ts'
 import { authority, resumeRoutine } from './approval-decision.ts'
-import { type McpCallInput, waitOnOwner } from './approval-request.ts'
+import { type McpCallInput, heldCallChanged, waitOnOwner } from './approval-request.ts'
 import { urlRequiredResult } from './extension.ts'
 import { named } from './labels.ts'
 import { redactSecretFields } from './redaction.ts'
@@ -56,6 +56,7 @@ export const holdUrlRequest = (
     })
     const connection = named(yield* (yield* McpServers).labels(), input.connectionId)
     yield* waitOnOwner(session, callId, 'mcp-url', `Finish ${connection} · ${input.name} in goblin's card?`)
+    yield* heldCallChanged(session)
     const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(session))
     yield* FlowEvents.record({
       flow: 'url_request',
@@ -194,6 +195,7 @@ export const answerUrlRequest = <R>(input: {
     const claimed = yield* requests.claim(input.id)
     if (claimed.changed) yield* retry(claimed.row, input.action)
     const row = yield* requests.get(input.id)
+    if (claimed.changed) yield* heldCallChanged(row.sessionId)
     const chat = Option.getOrUndefined(yield* (yield* Chats).chatOf(row.sessionId))
     yield* FlowEvents.record({
       ...answerFlow(row, claimed.changed),

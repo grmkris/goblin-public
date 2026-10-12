@@ -4,7 +4,8 @@ import type { AppContext, ComposerSelection, UsageToday } from '@goblin/contract
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
 import { RotateCcwIcon } from 'lucide-react'
 import { modelQuery, usageQuery } from '../agent/queries.ts'
-import { openInteractions } from '../lib/interactions.ts'
+import { useStoredStates } from '../approvals/hooks.ts'
+import { openInteractions, stillOpen, waitingOnOwner } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
@@ -160,13 +161,16 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
   const { projection, status } = conversation
   const running = projection?.running ?? false
   const usage = useQuery(usageQuery).data
-  const waiting = useMemo(() => openInteractions(parts), [parts])
+  const asked = useMemo(() => openInteractions(parts), [parts])
+  // A stored ask (a held call, a URL request) stays until its store says it ended; only a pending one waits on you.
+  const states = useStoredStates(asked)
+  const waiting = useMemo(() => stillOpen(asked, states), [asked, states])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
   const presence = presenceOf({
     status,
     projection,
     parts,
-    waiting: waiting.length,
+    waiting: waitingOnOwner(waiting, states),
     exhausted: usage !== undefined && budgetFraction(usage) >= 1,
   })
   return { running, usage, waiting, context, presence }
