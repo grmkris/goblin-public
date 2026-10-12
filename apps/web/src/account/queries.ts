@@ -1,4 +1,5 @@
 import { mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
+import type { BillingId } from '@goblin/contracts'
 import { account } from '../lib/api.ts'
 
 /**
@@ -31,10 +32,16 @@ export const checkoutMutation = account.apiMutation({ mutationFn: (api, _: void)
 /** The payment provider's portal for an account that has paid before. */
 export const portalMutation = account.apiMutation({ mutationFn: (api, _: void) => api.billing.portal() })
 
+/** How Pro is to be paid (the day pass or monthly), and the path of this app to come back to once it is signed. */
+export interface WalletStart {
+  readonly plan: BillingId
+  readonly back: string | undefined
+}
+
 /** Asks the Goblin Wallet for Pro as a subscription signed once (ADR 0054); the page goes to sign it. */
 export const walletStartMutation = account.apiMutation({
-  mutationFn: (api, back: string | undefined) =>
-    api.billing.walletStart({ payload: back === undefined ? {} : { return: back } }),
+  mutationFn: (api, { plan, back }: WalletStart) =>
+    api.billing.walletStart({ payload: back === undefined ? { plan } : { plan, return: back } }),
 })
 /** Back from signing: the first payment, taken once; the plan is read again once it is paid. */
 export const walletConfirmMutation = mutationOptions({

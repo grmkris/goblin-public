@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerSource } from '@goblin/contracts'
-import { addAndConnectMutation, connectMutation, serversQuery } from './queries.ts'
+import { goblinWalletOf, heldOf } from '../lib/pro.ts'
+import { addAndConnectMutation, connectMutation, serverStatusQuery, serversQuery } from './queries.ts'
 
 /**
  * The owner's label of a connection by its id (ADR 0041), for anything that names one: the id until the list is read,
@@ -9,6 +10,18 @@ import { addAndConnectMutation, connectMutation, serversQuery } from './queries.
 export function useConnectionLabels(): (connectionId: string) => string {
   const servers = useQuery(serversQuery).data
   return (connectionId) => servers?.find((server) => server.connectionId === connectionId)?.label ?? connectionId
+}
+
+/**
+ * The Goblin Wallet the owner connected, as Pro's pages show it (ADR 0054): the dollar stablecoins its status says it
+ * holds (`stablecoinUsd`, the server's claim) and its configured endpoint, whose origin has its Add funds page. Each is
+ * absent until the wallet is connected and its status reads. An account without a plan reads it too: only chat needs
+ * one.
+ */
+export function useGoblinWallet(): { readonly dollars: number | undefined; readonly endpoint: string | undefined } {
+  const wallet = goblinWalletOf(useQuery(serversQuery).data)
+  const status = useQuery(serverStatusQuery(wallet?.connectionId ?? '', wallet?.profile?.status === true)).data
+  return { dollars: heldOf(status), endpoint: wallet?.endpoint }
 }
 
 /**

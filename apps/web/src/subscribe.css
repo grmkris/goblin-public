@@ -1,27 +1,8 @@
 /*
- * goblin Pro paid as a USDC subscription (components/billing.tsx, ADR 0054): the price and its period, what Pro
- * includes, the wallet it is paid from, the three steps, and the receipt the return page shows. Moss is the plan's
- * one colour; every figure is in tabular numerals.
+ * goblin Pro paid as a USDC subscription (components/billing.tsx, ADR 0054): what Pro includes, the wallet it is paid
+ * from, the day pass and monthly to choose between, the three steps, and the receipt the return page shows. Moss is the
+ * plan's one colour; every figure is in tabular numerals.
  */
-.sub-price {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.5rem;
-}
-.sub-price-figure {
-  font-size: 2.125rem;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-}
-.sub-price-per,
-.sub-lede {
-  color: var(--muted-foreground);
-  font-size: var(--text-15);
-  text-wrap: pretty;
-}
 .sub-includes,
 .sub-steps {
   display: flex;
@@ -116,6 +97,93 @@
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
 }
+/*
+ * The two ways to pay: side by side where the column holds both, one above the other on a phone, with no breakpoint.
+ * Each card's action sits at its foot, so the two buttons line up; the card's corner is its button's plus the padding.
+ */
+.sub-choose {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+.sub-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13.5rem), 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sub-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.875rem;
+  border-radius: calc(var(--radius-lg) + 0.875rem);
+  background: var(--card);
+  box-shadow:
+    0 0 0 1px var(--hairline),
+    0 1px 2px oklch(0 0 0 / 0.04);
+}
+/* How Pro is paid now (or the day pass waiting for funds): ringed in the plan's colour. */
+.sub-choice[data-current] {
+  box-shadow:
+    0 0 0 1.5px var(--moss),
+    0 1px 2px oklch(0 0 0 / 0.04);
+}
+.sub-choice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-block-size: 1.25rem;
+}
+.sub-choice-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.sub-choice-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.125rem 0.375rem;
+}
+.sub-choice-figure {
+  font-size: 2.125rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.sub-choice-per {
+  color: var(--muted-foreground);
+  font-size: var(--text-15);
+  text-wrap: pretty;
+}
+.sub-choice-suits {
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+  text-wrap: pretty;
+}
+.sub-choice-act {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block-start: auto;
+  padding-block-start: 0.625rem;
+}
+.sub-choice-hint {
+  color: var(--muted-foreground);
+  font-size: var(--text-13);
+  text-align: center;
+  text-wrap: balance;
+  font-variant-numeric: tabular-nums;
+}
+.sub-choice-hint > a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 /* Three steps, in order: sign once, the payments, cancelling. */
 .sub-steps > li {
   display: grid;
@@ -139,11 +207,6 @@
   font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-.sub-cta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.625rem;
 }
 .sub-cta-note {
   color: var(--muted-foreground);
@@ -210,4 +273,8 @@
   color: var(--muted-foreground);
   font-size: var(--text-13);
   text-wrap: pretty;
+}
+/* The composer's no-plan card (components/plan-needed.tsx), on Start's setup card: goblin's mark in the plan's colour. */
+.setup-card-title[data-tone='plan'] > svg {
+  color: var(--moss);
 }

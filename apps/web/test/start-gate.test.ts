@@ -5,15 +5,15 @@ import { stateOf } from '../src/onboarding/queries.ts'
 
 const plan: BillingState = {
   active: true,
-  source: 'free',
+  source: 'override',
   until: null,
-  dailyCredits: 200,
+  dailyCredits: 800,
   status: 'active',
   hasCustomer: false,
   cancelAtPeriodEnd: false,
   mode: null,
-  plan: 'free',
-  priceCents: 0,
+  plan: 'pro',
+  catalog: [],
 }
 
 /** A signed-in owner with an active plan on a page that waits for Start, Start's state not read yet. */

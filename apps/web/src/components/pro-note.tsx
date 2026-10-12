@@ -2,12 +2,12 @@
 import { useRouterState } from '@tanstack/react-router'
 
 /**
- * Whether the owner may pick a hand-over: on Pro (a subscription or an override), and while the plan is still being
- * read, so Pro never flickers locked. Only a plan known to be free (or none) says no; the agent checks the plan either
- * way.
+ * Whether the owner may pick a hand-over: on Pro (however it is paid, or an override), and while the plan is still
+ * being read, so Pro never flickers locked. Only an account known to have no plan says no; the agent checks the plan
+ * either way.
  */
-export const hasHandOver = (state: { readonly active: boolean; readonly source: string } | undefined): boolean =>
-  state === undefined || (state.active && state.source !== 'free')
+export const hasHandOver = (state: { readonly active: boolean } | undefined): boolean =>
+  state === undefined || state.active
 
 /** "Handing … is part of Pro", with Get Pro: `/subscribe`, returning here. */
 export function ProNote({ children }: { readonly children: string }) {

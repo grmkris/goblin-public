@@ -21,7 +21,10 @@ const LAPSED: BillingState = {
   cancelAtPeriodEnd: false,
   mode: 'test_mode',
   plan: null,
-  priceCents: 1000,
+  catalog: [
+    { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
+    { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
+  ],
 }
 
 /** The real account API served in memory: the plan as `state.plan`, and checkout refused until it is set up. */

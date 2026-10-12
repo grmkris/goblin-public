@@ -41,7 +41,7 @@ describe('labels', () => {
       cancelAtPeriodEnd: false,
       mode: 'test_mode',
       plan: 'pro',
-      priceCents: 1000,
+      catalog: [],
     } as const
     expect(planStatus(paid)).toEqual({ text: 'Active', tone: 'good' })
     expect(planStatus({ ...paid, status: 'past_due' }).tone).toBe('attention')

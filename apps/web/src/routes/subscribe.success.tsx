@@ -11,6 +11,7 @@ import { awaitedBillingQuery, walletConfirmMutation } from '../account/queries.t
 import { dayAndMonth } from '../lib/format.ts'
 import { describeError, messageOf } from '../lib/query/app-error.ts'
 import { parseSubscribedSearch } from '../lib/subscribe-search.ts'
+import { addFundsUrl, usd } from '../lib/pro.ts'
 import { reportUnexpected } from '../lib/unexpected.ts'
 
 /** How often the payment return asks whether the plan is active, and for how long before it asks the owner to check. */
@@ -77,16 +78,33 @@ function Declined({ back }: { readonly back: string | undefined }) {
 /** "$10.00". */
 const dollars = (amountUsd: string): string => `$${Number(amountUsd).toFixed(2)}`
 
-/** The first period's receipt: paid, how much, for which days, its transaction, and what comes next. */
+/** A day pass's receipt: its period is one day (ADR 0054). */
+const isDayPass = (receipt: WalletReceipt): boolean => receipt.periodDays === 1
+
+/** What a receipt's period covers: one day for a day pass, from and to for monthly. */
+const periodOf = (receipt: WalletReceipt): string | undefined => {
+  if (receipt.paidFrom === null) return undefined
+  if (isDayPass(receipt) || receipt.paidThrough === null) return dayAndMonth(receipt.paidFrom)
+  return `${dayAndMonth(receipt.paidFrom)} to ${dayAndMonth(receipt.paidThrough)}`
+}
+
+/** What the subscription takes next, and the most it ever can, in words. */
+const nextOf = (receipt: WalletReceipt): string | undefined => {
+  const price = usd(receipt.amountUsd)
+  if (isDayPass(receipt))
+    return `Next: ${price} on the next day you use goblin. At most ${price} a day, enforced on-chain. Cancel any time in your wallet.`
+  if (receipt.paidThrough === null) return undefined
+  return `Next: ${price} on ${dayAndMonth(receipt.paidThrough)}. At most that every ${String(receipt.periodDays)} days, enforced on-chain. Cancel any time in your wallet.`
+}
+
+/** A payment's receipt: paid, how much, for which days, its transaction, and what comes next. */
 function Receipt({ receipt }: { readonly receipt: WalletReceipt }) {
-  const days =
-    receipt.paidFrom === null || receipt.paidThrough === null
-      ? undefined
-      : `${dayAndMonth(receipt.paidFrom)} to ${dayAndMonth(receipt.paidThrough)}`
+  const period = periodOf(receipt)
+  const next = nextOf(receipt)
   return (
     <section className="sub-receipt" aria-label="Receipt">
       <div className="sub-receipt-head">
-        <span>Subscription payment</span>
+        <span>{isDayPass(receipt) ? 'Day pass payment' : 'Subscription payment'}</span>
         <span>Paid</span>
       </div>
       <div className="sub-receipt-amount">
@@ -96,12 +114,12 @@ function Receipt({ receipt }: { readonly receipt: WalletReceipt }) {
       <dl className="sub-receipt-rows">
         <div>
           <dt>Plan</dt>
-          <dd>goblin Pro</dd>
+          <dd>{isDayPass(receipt) ? 'goblin Pro, day pass' : 'goblin Pro, monthly'}</dd>
         </div>
-        {days !== undefined && (
+        {period !== undefined && (
           <div>
-            <dt>Period</dt>
-            <dd>{days}</dd>
+            <dt>{isDayPass(receipt) ? 'Day' : 'Period'}</dt>
+            <dd>{period}</dd>
           </div>
         )}
         <div>
@@ -109,12 +127,7 @@ function Receipt({ receipt }: { readonly receipt: WalletReceipt }) {
           <dd>Your Goblin Wallet</dd>
         </div>
       </dl>
-      {receipt.paidThrough !== null && (
-        <p className="sub-receipt-next">
-          Next: {dollars(receipt.amountUsd)} on {dayAndMonth(receipt.paidThrough)}. At most that every{' '}
-          {String(receipt.periodDays)} days, enforced on-chain. Cancel any time in your wallet.
-        </p>
-      )}
+      {next !== undefined && <p className="sub-receipt-next">{next}</p>}
       {receipt.explorerUrl !== undefined && (
         <Button
           variant="ghost"
@@ -131,9 +144,20 @@ function Receipt({ receipt }: { readonly receipt: WalletReceipt }) {
   )
 }
 
+/** What confirming did, as the page's line: a day pass on (and today's payment, when it took one), or monthly paid. */
+function paidLine(receipt: WalletReceipt): string {
+  const price = usd(receipt.amountUsd)
+  if (!isDayPass(receipt)) return 'The first payment went through. A copy of the receipt is in your chat.'
+  if (receipt.paidFrom === null)
+    return `Your day pass is on. goblin takes ${price} with your first message on each day you use it; idle days cost nothing.`
+  return `Today's ${price} went through, so goblin answers again.`
+}
+
 /**
- * Back from the Goblin Wallet with a signed subscription: goblin takes the first payment (once, however often this
- * asks), then shows the receipt and the way back. A payment still landing is asked about again every few seconds.
+ * Back from the Goblin Wallet with a signed subscription, or from adding funds for a day pass that could not pay:
+ * goblin turns Pro on and takes what is due (monthly's first payment, an unpaid day's; a fresh day pass takes nothing),
+ * once however often this asks, then shows what it did and the way back. A payment still landing is asked about again
+ * every few seconds.
  */
 function WalletReturn({ subscription, back }: { readonly subscription: string; readonly back: string | undefined }) {
   const confirm = useMutation(walletConfirmMutation)
@@ -149,26 +173,28 @@ function WalletReturn({ subscription, back }: { readonly subscription: string; r
     const timer = setTimeout(() => mutate(subscription), POLL_MS)
     return () => clearTimeout(timer)
   }, [pending, mutate, subscription])
-  if (confirm.data?.status === 'paid')
+  if (confirm.data?.status === 'paid') {
+    const receipt = confirm.data
+    // A fresh day pass takes nothing yet: the first message of each day pays for it, so there is no receipt to show.
+    const nothingTaken = isDayPass(receipt) && receipt.paidFrom === null
     return (
-      <AuthShell
-        title="You're on Pro"
-        description="The first payment went through. A copy of the receipt is in your chat."
-      >
+      <AuthShell title="You're on Pro" description={paidLine(receipt)}>
         <div className="auth-body">
-          <Receipt receipt={confirm.data} />
+          {!nothingTaken && <Receipt receipt={receipt} />}
           <Button size="lg" className="w-full" onClick={goBack}>
             Continue
           </Button>
         </div>
       </AuthShell>
     )
+  }
   const short = confirm.error !== null && describeError(confirm.error).code === 'payment_short'
-  const addFunds = state?.wallet === undefined ? undefined : new URL('/add-funds', state.wallet.manageUrl).href
+  // Add funds in the wallet comes back here, which asks again for the same subscription.
+  const addFunds = state?.wallet === undefined ? undefined : addFundsUrl(state.wallet.manageUrl, location.href)
   return (
     <AuthShell
       title="Confirming your subscription"
-      description="goblin is taking the first payment from your Goblin Wallet. This takes a moment."
+      description="goblin is turning Pro on with your Goblin Wallet. This takes a moment."
       footer={
         <p>
           <Link to="/subscribe" search={back === undefined ? {} : { return: back }}>

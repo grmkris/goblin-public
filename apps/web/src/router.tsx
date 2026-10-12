@@ -1,5 +1,6 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createRouter } from '@tanstack/react-router'
+import { billingStateQuery } from './account/queries.ts'
 import { UpgradePrompt } from './components/upgrade-prompt.tsx'
 import { makeQueryClient } from './lib/query/api-query.ts'
 import { ReportedRouteError } from './lib/query/route-error.tsx'
@@ -10,12 +11,19 @@ import { routeTree } from './routeTree.gen'
 /**
  * One router, and one QueryClient with it, per call: on the server per request, never shared through module state
  * (myapps ADR 0013). An owner request that finds the session gone clears the cache and goes to sign-in; one refused for
- * want of Pro opens the upgrade prompt. A route that fails shows the calm error view with its reference, and a defect
+ * a feature of Pro opens the upgrade prompt, and one refused for want of any plan reads the plan again. A route that fails shows the calm error view with its reference, and a defect
  * is reported as a crash.
  */
 export function getRouter() {
-  // Any call refused for want of Pro asks the owner once, wherever it was made (ADR 0054).
-  const upgrades = makeUpgradePrompts()
+  // Any call refused for a feature Pro has asks the owner once, wherever it was made (ADR 0054); one refused for want of
+  // any plan reads the plan again, without cancelling a read already on its way.
+  const upgrades = makeUpgradePrompts({
+    planGone: () => {
+      queryClient
+        .invalidateQueries({ queryKey: billingStateQuery.queryKey }, { cancelRefetch: false })
+        .catch(reportUnexpected)
+    },
+  })
   const queryClient = makeQueryClient({
     onError: upgrades.offer,
     onUnauthenticated: () => {
