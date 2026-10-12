@@ -451,6 +451,38 @@ describe('the owner API', () => {
     expect(answer).toEqual({ result: true })
   })
 
+  test('return-check names the URL only when it is HTTPS on the origin of a client bound to this owner', async () => {
+    const { call, auth } = setup()
+    const now = Math.floor(Date.now() / 1000)
+    await auth.registerClient({ id: 'gwc_goblin', name: 'goblin', redirectUris: ['https://goblin.example/cb'], now })
+    const id = await auth.openRequest({
+      id: `oauth_${'1'.repeat(40)}`,
+      clientId: 'gwc_goblin',
+      redirectUri: 'https://goblin.example/cb',
+      codeChallenge: 'c'.repeat(43),
+      state: '',
+      scopes: ['wallet:read'],
+      resource: 'https://wallet.test/mcp',
+      now,
+    })
+    const check = async (url: string) => (await call('GET', `/api/return-check?url=${encodeURIComponent(url)}`)).json()
+    const back = 'https://goblin.example/connections/wallet?focus=add_funds'
+    // Nobody has opened the request yet: it is bound to no owner.
+    expect(await check(back)).toEqual({})
+    await auth.viewRequest(id, 'did:privy:owner1', now)
+    expect(await check(back)).toEqual({ url: back, host: 'goblin.example' })
+    for (const refused of [
+      'https://evil.example/',
+      'http://goblin.example/',
+      'https://user:pw@goblin.example/',
+      'javascript:alert(1)',
+      'not a url',
+    ])
+      expect(await check(refused), refused).toEqual({})
+    expect(await (await call('GET', '/api/return-check')).json()).toEqual({})
+    expect((await call('GET', `/api/return-check?url=${encodeURIComponent(back)}`, undefined, 'none')).status).toBe(401)
+  })
+
   test('policy changes: list, decide once, then a second decision is 409', async () => {
     const { call, ledger } = setup()
     expect(await (await call('GET', '/api/policy-changes')).json()).toEqual([])

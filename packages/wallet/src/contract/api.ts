@@ -124,15 +124,29 @@ export const DepositStatus = Schema.Struct({
 })
 export type DepositStatus = typeof DepositStatus.Type
 
-/** `GET /api/oauth/requests/:id` for the consent page, and the owner's answer. */
+/**
+ * `GET /api/oauth/requests/:id` for the consent page, and the owner's answer. The first signed-in read binds the
+ * request to that owner; another owner is refused. `POST …/keep-alive` answers the same view with a later `expiresAt`
+ * while the page stays open (ten minutes from now, never past an hour after the request opened). `expired` is set once
+ * the request passed its time unanswered: the page then sends the owner back to `redirectHost` to connect again.
+ */
 export const OAuthRequestView = Schema.Struct({
   id: Text(80),
   client: Text(120),
   redirectHost: Text(253),
   scopes: Schema.Array(Text(40)),
   expiresAt: Instant,
+  expired: Schema.optional(Schema.Literal(true)),
 })
 export const OAuthDecision = Schema.Struct({ decision: Schema.Literals(['approve', 'deny']) })
+
+/**
+ * `GET /api/return-check?url=<url>`: where `/setup?return=` may send the owner back. `url` and `host` are set only when
+ * the URL is HTTPS (or HTTP on localhost) and its origin is that of a redirect URI of a client the owner has a live
+ * connection with or a pending request bound to; otherwise the answer is empty and the return is ignored.
+ */
+export const ReturnCheck = Schema.Struct({ url: Schema.optional(Text(2048)), host: Schema.optional(Text(253)) })
+export type ReturnCheck = typeof ReturnCheck.Type
 
 /** The route table: method, path, request and response schema of every owner route. */
 export const OwnerRoutes = {
@@ -171,6 +185,8 @@ export const OwnerRoutes = {
     request: OAuthDecision,
     response: Schema.Struct({ redirectTo: Text(2048) }),
   },
+  oauthKeepAlive: { method: 'POST', path: '/api/oauth/requests/:id/keep-alive', response: OAuthRequestView },
+  returnCheck: { method: 'GET', path: '/api/return-check', response: ReturnCheck },
   policyChanges: { method: 'GET', path: '/api/policy-changes', response: Schema.Array(PolicyChange) },
   decidePolicyChange: {
     method: 'POST',

@@ -2,8 +2,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, test } from 'vitest'
 import type { IdentityResult, IdentityVerifier } from '../identity.ts'
 import { checkAccess, disconnect, insufficientScope, listConnections, revokeOwnerConnections } from './access.ts'
+import { fromDurableObjectSql } from '../ledger/sql.ts'
 import { WalletAuth, authClient } from './durable.ts'
 import { type OAuthDeps, routeOAuth } from './routes.ts'
+import { OAuthStore } from './store.ts'
 import { pkceChallenge } from './validation.ts'
 
 const ORIGIN = 'https://wallet.test'
@@ -119,6 +121,14 @@ const exchange = (h: Harness, fields: Record<string, string>) => h.call('/oauth/
 
 const mcpRequest = (accessToken: string) =>
   new Request(RESOURCE, { method: 'POST', headers: { authorization: `Bearer ${accessToken}` } })
+
+/** A live request's end, as the consent view answers it. */
+const expiresAt = async (response: Response): Promise<number> => {
+  expect(response.status).toBe(200)
+  const body: { expiresAt: string; expired?: true } = await response.json()
+  expect(body.expired).toBeUndefined()
+  return Date.parse(body.expiresAt)
+}
 
 describe('OAuth for MCP clients', () => {
   test('metadata names one resource, PKCE S256 and the wallet scopes', async () => {
@@ -253,6 +263,125 @@ describe('OAuth for MCP clients', () => {
     expect((await h.call(path, asOwner('privy-owner'))).status).toBe(404)
     const late = await h.call(path, asOwner('privy-owner', { method: 'POST', body: '{"decision":"approve"}' }))
     expect(late.status).toBe(404)
+  })
+
+  test('an open consent page keeps its request: ten minutes per keep-alive, never past an hour after it opened', async () => {
+    const h = harness()
+    const clientId = await registerClient(h)
+    const authorize = await h.call(await authorizeUrl(clientId))
+    const requestId = new URL(authorize.headers.get('location') ?? '').searchParams.get('request') ?? ''
+    const path = `/api/oauth/requests/${requestId}`
+    const opened = h.clock.ms
+    expect(await expiresAt(await h.call(path, asOwner('privy-owner')))).toBe(opened + 600_000)
+    // Eight minutes in, a keep-alive puts the end ten minutes from now.
+    h.clock.ms += 8 * 60_000
+    const keep = (token = 'privy-owner') => h.call(`${path}/keep-alive`, asOwner(token, { method: 'POST' }))
+    expect(await expiresAt(await keep())).toBe(h.clock.ms + 600_000)
+    // The page keeps it alive every two minutes; from fifty minutes in, the hour after opening is the cap.
+    for (let minute = 10; minute <= 50; minute += 2) {
+      h.clock.ms = opened + minute * 60_000
+      expect(await expiresAt(await keep())).toBe(h.clock.ms + 600_000)
+    }
+    for (const minute of [52, 56, 59]) {
+      h.clock.ms = opened + minute * 60_000
+      expect(await expiresAt(await keep())).toBe(opened + 3_600_000)
+    }
+    // Keep-alive is POST only: a GET is not an OAuth route (the owner API answers it 404).
+    const get = new Request(`${ORIGIN}${path}/keep-alive`, asOwner('privy-owner'))
+    expect(await routeOAuth(get, h.deps)).toBeUndefined()
+    // Past the hour it is expired, and stays so: the view says so (the page links back), and answering is refused.
+    h.clock.ms = opened + 3_600_000
+    for (const response of [await keep(), await h.call(path, asOwner('privy-owner'))]) {
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ expired: true, redirectHost: 'client.example' })
+    }
+    const late = await h.call(path, asOwner('privy-owner', { method: 'POST', body: '{"decision":"approve"}' }))
+    expect(late.status).toBe(404)
+  })
+
+  test('the first owner to open a request is bound to it; another owner can neither read, extend nor answer it', async () => {
+    const h = harness()
+    const clientId = await registerClient(h)
+    const open = async () => {
+      const authorize = await h.call(await authorizeUrl(clientId, { state: `s-${h.clock.ms}` }))
+      return `/api/oauth/requests/${new URL(authorize.headers.get('location') ?? '').searchParams.get('request') ?? ''}`
+    }
+    const read = await open()
+    expect((await h.call(read, asOwner('privy-owner'))).status).toBe(200)
+    const refused = [
+      await h.call(read, asOwner('privy-other')),
+      await h.call(`${read}/keep-alive`, asOwner('privy-other', { method: 'POST' })),
+      await h.call(read, asOwner('privy-other', { method: 'POST', body: '{"decision":"approve"}' })),
+    ]
+    for (const response of refused)
+      expect(await response.json(), String(response.status)).toMatchObject({ error: { code: 'other_owner' } })
+    expect(refused.map((response) => response.status)).toEqual([403, 403, 403])
+    // A keep-alive binds as a read does.
+    h.clock.ms += 1000
+    const kept = await open()
+    expect((await h.call(`${kept}/keep-alive`, asOwner('privy-other', { method: 'POST' }))).status).toBe(200)
+    expect((await h.call(kept, asOwner('privy-owner'))).status).toBe(403)
+    // The bound owner still answers theirs.
+    const approved = await h.call(read, asOwner('privy-owner', { method: 'POST', body: '{"decision":"approve"}' }))
+    const { redirectTo }: { redirectTo: string } = await approved.json()
+    expect(new URL(redirectTo).searchParams.get('code')).toBeTruthy()
+  })
+
+  test('a return goes only to the origins of clients the owner connected or has a request bound to', async () => {
+    const h = harness()
+    const clientId = await registerClient(h)
+    const now = Math.floor(h.clock.ms / 1000)
+    expect(await h.deps.store.returnOrigins(OWNER, now)).toEqual([])
+    const authorize = await h.call(await authorizeUrl(clientId))
+    const requestId = new URL(authorize.headers.get('location') ?? '').searchParams.get('request') ?? ''
+    // Opened but not yet read: bound to nobody.
+    expect(await h.deps.store.returnOrigins(OWNER, now)).toEqual([])
+    await h.call(`/api/oauth/requests/${requestId}`, asOwner('privy-owner'))
+    expect(await h.deps.store.returnOrigins(OWNER, now)).toEqual(['https://client.example'])
+    expect(await h.deps.store.returnOrigins(OTHER, now)).toEqual([])
+    // Once it expires, only a live connection counts.
+    expect(await h.deps.store.returnOrigins(OWNER, now + 601)).toEqual([])
+    await approvedCode(h, clientId)
+    const code = await approvedCode(h, clientId)
+    await exchange(h, {
+      client_id: clientId,
+      redirect_uri: REDIRECT,
+      resource: RESOURCE,
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: VERIFIER,
+    })
+    expect(await h.deps.store.returnOrigins(OWNER, now + 601)).toEqual(['https://client.example'])
+    await revokeOwnerConnections(h.deps.store, OWNER)
+    expect(await h.deps.store.returnOrigins(OWNER, now + 601)).toEqual([])
+  })
+
+  test('a request table from before opened_at gains the column, and its open time starts at the first keep-alive', () => {
+    const db = new DatabaseSync(':memory:')
+    db.prepare(`CREATE TABLE oauth_requests (
+      id TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL,
+      state TEXT NOT NULL, scopes_json TEXT NOT NULL, resource TEXT NOT NULL, status TEXT NOT NULL, owner TEXT,
+      expires_at INTEGER NOT NULL)`).run()
+    db.prepare(`INSERT INTO oauth_requests VALUES ('oauth_old','gwc_a','https://a.example/cb','c','','["wallet:read"]',
+      'https://wallet.test/mcp','pending',NULL,1000)`).run()
+    const host = {
+      storage: {
+        sql: {
+          exec: (query: string, ...bindings: unknown[]) => ({ toArray: () => db.prepare(query).all(...bindings) }),
+        },
+        transactionSync: <T>(write: () => T): T => write(),
+      },
+    }
+    // Twice: the second start finds the column and leaves the table alone.
+    expect(() => new WalletAuth(host)).not.toThrow()
+    const store = new OAuthStore(fromDurableObjectSql(host.storage.sql, host.storage.transactionSync))
+    store.registerClient({ id: 'gwc_a', name: 'a', redirectUris: ['https://a.example/cb'], now: 0 })
+    expect(store.keepAlive('oauth_old', OWNER, 900)).toMatchObject({ expiresAt: 1500, expired: false })
+    for (let now = 1400; now <= 3400; now += 500)
+      expect(store.keepAlive('oauth_old', OWNER, now)).toMatchObject({ expiresAt: now + 600 })
+    for (const now of [3900, 4400, 4499])
+      expect(store.keepAlive('oauth_old', OWNER, now)).toMatchObject({ expiresAt: 4500, expired: false })
+    expect(store.keepAlive('oauth_old', OWNER, 4500)).toMatchObject({ expiresAt: 4500, expired: true })
   })
 
   test('codes expire after two minutes and access tokens after an hour', async () => {

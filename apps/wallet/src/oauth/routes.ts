@@ -4,6 +4,7 @@ import * as Schema from 'effect/Schema'
 import type { WalletEnv } from '../env.ts'
 import { type IdentityVerifier, identityFor, refusalStatus } from '../identity.ts'
 import { type AuthApi, authStore } from './durable.ts'
+import { OTHER_OWNER, type OtherOwner, type RequestRecord } from './store.ts'
 import {
   OAUTH_SCOPES,
   PKCE_CHALLENGE,
@@ -23,7 +24,9 @@ import {
  * - `/.well-known/oauth-protected-resource[/mcp]` and `/.well-known/oauth-authorization-server`: RFC 9728 and 8414.
  * - `POST /oauth/register`: dynamic registration of public clients (PKCE, no secret).
  * - `GET /oauth/authorize`: checks the client, then sends the browser to the web app's `/consent?request=<id>`.
- * - `GET|POST /api/oauth/requests/:id`: the consent page reads and answers the request as the signed-in owner.
+ * - `GET|POST /api/oauth/requests/:id`: the consent page reads and answers the request as the signed-in owner; the
+ *   first owner to read it is bound to it. `POST …/:id/keep-alive` keeps it pending while the page is open (setup
+ *   inside consent takes minutes), at most an hour after it opened.
  * - `POST /oauth/token`: code + PKCE S256, rotating refresh tokens; a replayed refresh token revokes its family.
  * - `POST /oauth/revoke`: RFC 7009.
  * Every token is bound to the resource `<origin>/mcp`.
@@ -66,7 +69,8 @@ const oauthError = (error: string, description: string, status = 400): Response 
   json({ error, error_description: description }, status, true)
 
 /** The owner API's error envelope, for the consent routes. */
-const apiError = (code: string, message: string, status: number): Response => json({ error: { code, message } }, status)
+const apiError = (code: string, message: string, status: number, recovery?: string): Response =>
+  json({ error: { code, message, ...(recovery === undefined ? {} : { recovery }) } }, status)
 
 const seconds = (deps: OAuthDeps): number => Math.floor(deps.now() / 1000)
 
@@ -194,32 +198,42 @@ const iso = (epochSeconds: number): string => new Date(epochSeconds * 1000).toIS
 
 const decodeDecision = Schema.decodeUnknownOption(OAuthDecision)
 
-/** `GET|POST /api/oauth/requests/:id`, as the owner signed in to the web app with Privy. */
-const consent = async (request: Request, id: string, deps: OAuthDeps): Promise<Response> => {
-  const who = await deps.identity.verifyRequest(request)
-  if (!who.ok) return apiError(who.reason, 'Sign in to the wallet to answer this request.', refusalStatus(who.reason))
-  const pending = await deps.store.pendingRequest(id, seconds(deps))
-  if (pending === undefined)
-    return apiError('request_gone', 'This sign-in request expired or was already answered.', 404)
-  if (request.method === 'GET')
-    return json({
-      id,
-      client: pending.clientName,
-      redirectHost: new URL(pending.redirectUri).host,
-      scopes: pending.scopes,
-      expiresAt: iso(pending.expiresAt),
-    })
+const GONE = (): Response => apiError('request_gone', 'This sign-in request expired or was already answered.', 404)
+const OTHER = (): Response =>
+  apiError(
+    OTHER_OWNER,
+    'Another wallet account opened this sign-in request.',
+    403,
+    'Sign in with the account you started with, or start again from your client.',
+  )
+
+/** The consent page's view of a request: who asks, where the owner goes back to, what it may do and until when. */
+const viewOf = (record: RequestRecord) => ({
+  id: record.id,
+  client: record.clientName,
+  redirectHost: new URL(record.redirectUri).host,
+  scopes: record.scopes,
+  expiresAt: iso(record.expiresAt),
+  ...(record.expired ? { expired: true } : {}),
+})
+
+/** A store answer about one request as the page's response: its view, or why there is none for this owner. */
+const viewReply = (found: RequestRecord | OtherOwner | undefined): Response => {
+  if (found === undefined) return GONE()
+  return found === OTHER_OWNER ? OTHER() : json(viewOf(found))
+}
+
+/** `POST /api/oauth/requests/:id`: the owner's answer, sending the browser back to the client's redirect URI. */
+const answer = async (request: Request, id: string, owner: string, deps: OAuthDeps): Promise<Response> => {
+  const found = await deps.store.viewRequest(id, owner, seconds(deps))
+  if (found === undefined || (found !== OTHER_OWNER && found.expired)) return GONE()
+  if (found === OTHER_OWNER) return OTHER()
   const decision = Option.getOrUndefined(decodeDecision(await readFields(request)))
   if (decision === undefined) return apiError('bad_request', 'Send {"decision": "approve" | "deny"}.', 400)
   const approve = decision.decision === 'approve'
   const code = randomToken('gwo_')
-  const decided = await deps.store.decide({
-    id,
-    owner: who.owner.userId,
-    approve,
-    codeHash: await tokenHash(code),
-    now: seconds(deps),
-  })
+  const decided = await deps.store.decide({ id, owner, approve, codeHash: await tokenHash(code), now: seconds(deps) })
+  if (decided === OTHER_OWNER) return OTHER()
   if (decided === undefined) return apiError('request_gone', 'This sign-in request was already answered.', 409)
   const target = new URL(decided.redirectUri)
   if (approve) target.searchParams.set('code', code)
@@ -227,6 +241,19 @@ const consent = async (request: Request, id: string, deps: OAuthDeps): Promise<R
   if (decided.state !== '') target.searchParams.set('state', decided.state)
   target.searchParams.set('iss', new URL(request.url).origin)
   return json({ redirectTo: target.href })
+}
+
+/**
+ * `GET|POST /api/oauth/requests/:id[/keep-alive]`, as the owner signed in to the web app with Privy. Reading or
+ * keeping it alive binds the request to that owner; only they can read, extend or answer it from then on.
+ */
+const consent = async (request: Request, path: ConsentPath, deps: OAuthDeps): Promise<Response> => {
+  const who = await deps.identity.verifyRequest(request)
+  if (!who.ok) return apiError(who.reason, 'Sign in to the wallet to answer this request.', refusalStatus(who.reason))
+  const owner = who.owner.userId
+  if (path.keepAlive) return viewReply(await deps.store.keepAlive(path.id, owner, seconds(deps)))
+  if (request.method === 'GET') return viewReply(await deps.store.viewRequest(path.id, owner, seconds(deps)))
+  return answer(request, path.id, owner, deps)
 }
 
 interface Minted {
@@ -315,7 +342,22 @@ const revoke = async (request: Request, deps: OAuthDeps): Promise<Response> => {
   return json({}, 200, true)
 }
 
-const CONSENT_PATH = /^\/api\/oauth\/requests\/(oauth_[0-9a-f]{40})$/u
+const CONSENT_PATH = /^\/api\/oauth\/requests\/(oauth_[0-9a-f]{40})(\/keep-alive)?$/u
+
+interface ConsentPath {
+  readonly id: string
+  readonly keepAlive: boolean
+}
+
+/** A consent route and its method: reading or answering the request (GET, POST), or keeping it alive (POST). */
+const consentPath = (pathname: string, method: string): ConsentPath | undefined => {
+  const found = CONSENT_PATH.exec(pathname)
+  const id = found?.[1]
+  if (id === undefined) return undefined
+  const keepAlive = found?.[2] !== undefined
+  if (keepAlive ? method !== 'POST' : method !== 'GET' && method !== 'POST') return undefined
+  return { id, keepAlive }
+}
 
 /** The routes that need no store, or none at all. */
 const metadata = (request: Request, url: URL): Response | undefined => {
@@ -340,8 +382,8 @@ export async function routeOAuth(request: Request, deps: OAuthDeps): Promise<Res
   if (pathname === '/oauth/authorize' && method === 'GET') return authorize(url, deps)
   if (pathname === '/oauth/token' && method === 'POST') return token(request, deps)
   if (pathname === '/oauth/revoke' && method === 'POST') return revoke(request, deps)
-  const consentId = CONSENT_PATH.exec(pathname)?.[1]
-  if (consentId !== undefined && (method === 'GET' || method === 'POST')) return consent(request, consentId, deps)
+  const consentRoute = consentPath(pathname, method)
+  if (consentRoute !== undefined) return consent(request, consentRoute, deps)
   return undefined
 }
 

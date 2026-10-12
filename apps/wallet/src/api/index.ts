@@ -15,6 +15,7 @@ import { activity, addressBook, services } from './lists.ts'
 import { checkOperation } from './operations.ts'
 import { me, status } from './me.ts'
 import { decidePolicyChange, policyChanges } from './policy-changes.ts'
+import { returnCheck } from './returns.ts'
 import { allowanceConfirm, allowancePrepare, createAgent, upgrade, upgradePrepare } from './onboarding.ts'
 
 export interface ApiDeps {
@@ -63,6 +64,7 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.deposit.method, OwnerRoutes.deposit.path, deposit),
   compile(OwnerRoutes.depositStatus.method, OwnerRoutes.depositStatus.path, depositStatus),
   compile(OwnerRoutes.revokeAll.method, OwnerRoutes.revokeAll.path, revokeAll),
+  compile(OwnerRoutes.returnCheck.method, OwnerRoutes.returnCheck.path, returnCheck),
 ]
 
 const match = (

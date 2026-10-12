@@ -18,7 +18,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS oauth_requests (
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL,
     state TEXT NOT NULL, scopes_json TEXT NOT NULL, resource TEXT NOT NULL, status TEXT NOT NULL, owner TEXT,
-    expires_at INTEGER NOT NULL)`,
+    expires_at INTEGER NOT NULL, opened_at INTEGER)`,
   `CREATE TABLE IF NOT EXISTS oauth_codes (
     hash TEXT PRIMARY KEY, request_id TEXT NOT NULL, owner TEXT NOT NULL, expires_at INTEGER NOT NULL,
     consumed_at INTEGER)`,
@@ -33,6 +33,10 @@ const SCHEMA = [
 ]
 
 export const REQUEST_TTL_S = 600
+/** A consent page that stays open keeps its request this long past each keep-alive… */
+export const KEEP_ALIVE_S = 600
+/** …but never longer than this after the request opened: setup inside consent takes minutes, not hours. */
+export const MAX_OPEN_S = 3600
 export const CODE_TTL_S = 120
 export const ACCESS_TTL_S = 3600
 export const REFRESH_TTL_S = 30 * 86_400
@@ -49,7 +53,7 @@ export interface ClientRecord {
   readonly redirectUris: readonly string[]
 }
 
-/** A pending consent request as the consent page sees it. */
+/** A pending consent request as the consent page sees it; `expired` once it passed its time unanswered. */
 export interface RequestRecord {
   readonly id: string
   readonly clientId: string
@@ -57,6 +61,49 @@ export interface RequestRecord {
   readonly redirectUri: string
   readonly scopes: readonly string[]
   readonly expiresAt: number
+  readonly expired: boolean
+}
+
+/** The request is bound to another owner: the first one who opened it signed in. */
+export const OTHER_OWNER = 'other_owner'
+export type OtherOwner = typeof OTHER_OWNER
+
+interface PendingRow {
+  client_id: string
+  client_name: string
+  redirect_uri: string
+  scopes_json: string
+  expires_at: number
+  owner: string | null
+  opened_at: number | null
+}
+
+const recordOf = (id: string, row: PendingRow, now: number): RequestRecord => ({
+  id,
+  clientId: row.client_id,
+  clientName: row.client_name,
+  redirectUri: row.redirect_uri,
+  scopes: strings(row.scopes_json),
+  expiresAt: row.expires_at,
+  expired: row.expires_at <= now,
+})
+
+/** Origins of redirect URIs, each once; a stored URI that no longer parses is skipped. */
+const originsOf = (uris: readonly string[]): string[] => [
+  ...new Set(uris.filter((uri) => URL.canParse(uri)).map((uri) => new URL(uri).origin)),
+]
+
+/**
+ * `opened_at` came after the first deployment: a table created before it gets the column once. A request opened
+ * before then counts as opened at its first keep-alive; pending requests live minutes, so nothing else needs it.
+ */
+function addOpenedAt(sql: Sql): void {
+  try {
+    sql.all('SELECT opened_at FROM oauth_requests LIMIT 0')
+  } catch {
+    // expected: "no such column" on a table created before `opened_at`; the column is added here, once
+    sql.run('ALTER TABLE oauth_requests ADD COLUMN opened_at INTEGER')
+  }
 }
 
 /** Where to send the browser after the owner decided: the client's redirect URI and its `state`. */
@@ -127,6 +174,7 @@ export class OAuthStore {
   constructor(sql: Sql) {
     this.#sql = sql
     for (const statement of SCHEMA) sql.run(statement)
+    addOpenedAt(sql)
   }
 
   registerClient(input: { id: string; name: string; redirectUris: readonly string[]; now: number }): void {
@@ -168,8 +216,9 @@ export class OAuthStore {
       )[0]
       if (pending !== undefined) return pending.id
       this.#sql.run(
-        `INSERT INTO oauth_requests (id,client_id,redirect_uri,code_challenge,state,scopes_json,resource,status,expires_at)
-          VALUES (?,?,?,?,?,?,?,'pending',?)`,
+        `INSERT INTO oauth_requests
+          (id,client_id,redirect_uri,code_challenge,state,scopes_json,resource,status,expires_at,opened_at)
+          VALUES (?,?,?,?,?,?,?,'pending',?,?)`,
         input.id,
         input.clientId,
         input.redirectUri,
@@ -178,42 +227,89 @@ export class OAuthStore {
         scopes,
         input.resource,
         input.now + REQUEST_TTL_S,
+        input.now,
       )
       return input.id
     })
   }
 
-  pendingRequest(id: string, now: number): RequestRecord | undefined {
-    const row = this.#sql.all<{
-      client_id: string
-      client_name: string
-      redirect_uri: string
-      scopes_json: string
-      expires_at: number
-    }>(
-      `SELECT r.client_id,c.name client_name,r.redirect_uri,r.scopes_json,r.expires_at
+  #pending(id: string): PendingRow | undefined {
+    return this.#sql.all<PendingRow>(
+      `SELECT r.client_id,c.name client_name,r.redirect_uri,r.scopes_json,r.expires_at,r.owner,r.opened_at
         FROM oauth_requests r JOIN oauth_clients c ON c.id=r.client_id
-        WHERE r.id=? AND r.status='pending' AND r.expires_at>?`,
+        WHERE r.id=? AND r.status='pending'`,
       id,
-      now,
     )[0]
-    if (row === undefined) return undefined
-    return {
-      id,
-      clientId: row.client_id,
-      clientName: row.client_name,
-      redirectUri: row.redirect_uri,
-      scopes: strings(row.scopes_json),
-      expiresAt: row.expires_at,
-    }
   }
 
   /**
-   * The owner's answer, once: approval binds the request to the owner and stores the single-use code. Undefined when
-   * the request expired or was already answered.
+   * A pending request as its owner's consent page reads it, expired or not; undefined once answered or forgotten. The
+   * first signed-in owner to read it while it is open is bound to it, and any other owner is refused from then on.
    */
-  decide(input: { id: string; owner: string; approve: boolean; codeHash: string; now: number }): Decided | undefined {
+  viewRequest(id: string, owner: string, now: number): RequestRecord | OtherOwner | undefined {
     return this.#sql.atomic(() => {
+      const row = this.#pending(id)
+      if (row === undefined) return undefined
+      if (row.owner !== null && row.owner !== owner) return OTHER_OWNER
+      if (row.owner === null && row.expires_at > now)
+        this.#sql.run('UPDATE oauth_requests SET owner=?, opened_at=COALESCE(opened_at,?) WHERE id=?', owner, now, id)
+      return recordOf(id, row, now)
+    })
+  }
+
+  /**
+   * The consent page is still open: the request stays pending `KEEP_ALIVE_S` from now, never past `MAX_OPEN_S` after
+   * it opened and never shorter than it was. Binds the owner as a read does. An expired request stays expired.
+   */
+  keepAlive(id: string, owner: string, now: number): RequestRecord | OtherOwner | undefined {
+    return this.#sql.atomic(() => {
+      const row = this.#pending(id)
+      if (row === undefined) return undefined
+      if (row.owner !== null && row.owner !== owner) return OTHER_OWNER
+      if (row.expires_at <= now) return recordOf(id, row, now)
+      const opened = row.opened_at ?? now
+      const extended = Math.max(row.expires_at, Math.min(now + KEEP_ALIVE_S, opened + MAX_OPEN_S))
+      this.#sql.run(
+        'UPDATE oauth_requests SET owner=?, opened_at=?, expires_at=? WHERE id=?',
+        owner,
+        opened,
+        extended,
+        id,
+      )
+      return recordOf(id, { ...row, expires_at: extended }, now)
+    })
+  }
+
+  /**
+   * The origins the owner's own clients redirect to: every redirect URI of a client with a live connection of theirs
+   * or a pending request bound to them. `/setup?return=` may send the owner back to one of these, and nowhere else.
+   */
+  returnOrigins(owner: string, now: number): string[] {
+    const rows = this.#sql.all<{ redirect_uris_json: string }>(
+      `SELECT redirect_uris_json FROM oauth_clients WHERE id IN (
+        SELECT client_id FROM oauth_families WHERE owner=? AND revoked_at IS NULL
+        UNION SELECT client_id FROM oauth_requests WHERE owner=? AND status='pending' AND expires_at>?)`,
+      owner,
+      owner,
+      now,
+    )
+    return originsOf(rows.flatMap((row) => strings(row.redirect_uris_json)))
+  }
+
+  /**
+   * The owner's answer, once: approval stores the single-use code. Undefined when the request expired or was already
+   * answered; `other_owner` when another owner opened it first.
+   */
+  decide(input: {
+    id: string
+    owner: string
+    approve: boolean
+    codeHash: string
+    now: number
+  }): Decided | OtherOwner | undefined {
+    return this.#sql.atomic(() => {
+      const bound = this.#pending(input.id)?.owner
+      if (typeof bound === 'string' && bound !== input.owner) return OTHER_OWNER
       const row = this.#sql.all<{ redirect_uri: string; state: string }>(
         `UPDATE oauth_requests SET status=?, owner=? WHERE id=? AND status='pending' AND expires_at>?
           RETURNING redirect_uri,state`,

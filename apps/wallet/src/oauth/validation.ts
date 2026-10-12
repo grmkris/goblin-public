@@ -35,6 +35,17 @@ export const validRedirect = (value: unknown): value is string => {
   )
 }
 
+/**
+ * A URL the wallet may send the owner back to once setup is done: HTTPS, or HTTP on loopback for local development,
+ * without credentials. Whether its origin is one of the owner's clients is the store's to say (`returnOrigins`).
+ */
+export const returnUrl = (value: string): URL | undefined => {
+  if (value.length > 2048 || !URL.canParse(value)) return undefined
+  const url = new URL(value)
+  const secure = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK.has(url.hostname))
+  return secure && url.username === '' && url.password === '' ? url : undefined
+}
+
 /** The one protected resource: this origin's `/mcp`, exactly. */
 export const mcpResource = (origin: string): string => `${origin}/mcp`
 
