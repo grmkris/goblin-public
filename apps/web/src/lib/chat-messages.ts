@@ -111,6 +111,12 @@ export function failureReason(raw: string): TurnFailure {
       text: "This model isn't available right now. Pick another model below and send again.",
       provider: true,
     }
+  // Pi compacts once on an overflow; this is what is left when even the compacted conversation does not fit.
+  if (/exceeds the context window|maximum context length|context[_ ]length[_ ]exceeded/iu.test(raw))
+    return {
+      text: 'This conversation is too long for the model, even after compacting. Start a new thread to go on.',
+      provider: false,
+    }
   const line =
     raw
       .split('\n')
@@ -130,6 +136,14 @@ function assistantFailure(
 ): TurnFailure | undefined {
   if (message.stopReason === 'error') return failureReason(isString(message.errorMessage) ? message.errorMessage : '')
   if (message.stopReason === 'aborted') return { text: 'Stopped before answering.', provider: false, stopped: true }
+  // A reasoning model can spend the whole limit thinking (glm-5.3 does on a long chat): then there is nothing to go on
+  // from, and asking it to continue meets the same wall.
+  if (message.stopReason === 'length' && content === '' && calls.length === 0)
+    return {
+      text: 'It spent its whole output limit thinking and wrote no answer. Send again, or pick another model below.',
+      provider: false,
+      cutOff: true,
+    }
   if (message.stopReason === 'length')
     return { text: 'Cut off at the output limit. Ask it to continue.', provider: false, cutOff: true }
   if (content === '' && calls.length === 0 && message.stopReason === 'stop')

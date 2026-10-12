@@ -1193,9 +1193,13 @@ quota or outage failure points at the picker.
 
 Every response may run to 32 768 tokens (`MAX_OUTPUT_TOKENS`, `pi/model.ts`): reasoning models spend part of it
 thinking. pi-ai sends the limit on every request, less whatever the context leaves short of the window, so Pi
-compacts while the context still leaves a whole answer (`reserveTokens` in `pi/harness.ts`). An answer that reaches
-the limit ends with `stopReason: 'length'`: the chat shows "Cut off at the output limit" under what it wrote, and
-Telegram adds the same line.
+compacts while the context still leaves a whole answer (`reserveTokens` in `pi/harness.ts`). pi-ai estimates the
+context from the last answer's usage, its thinking included, so one long reasoning answer can leave the next request a
+single token: below `MIN_ANSWER_ROOM` (4 096) goblin's stream sends nothing and fails as a context overflow, which Pi
+compacts and retries once. An answer that reaches the limit ends with `stopReason: 'length'`: the chat shows "Cut off
+at the output limit" under what it wrote (or, when it wrote nothing but thinking, says so and points at the picker),
+and Telegram adds the same line. glm-5.3 on the Token Plan thinks until the limit on hard prompts and ignores a thinking
+budget (probed 2026-10-12), which is why the picker says so.
 
 Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `GOBLIN_MEMORY_MODEL`. Set it to a
 cheap offered model; the code does not choose by price. Unset or not offered, it falls back to the default

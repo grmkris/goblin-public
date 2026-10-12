@@ -23,7 +23,8 @@ const KNOWN: Readonly<Record<string, Known>> = {
   'gemini-3.8-flash': { label: 'Gemini 3.8 Flash', route: 'Google', note: 'Fast, sees images', images: true },
   'qwen3.8-flash': { label: 'Qwen 3.8 Flash', route: 'Alibaba Cloud', note: 'Fast, sees images', images: true },
   'qwen3.8-max': { label: 'Qwen 3.8 Max', route: 'Alibaba Cloud', note: 'Larger, sees images', images: true },
-  'glm-5.3': { label: 'GLM 5.3', route: 'Alibaba Cloud', note: 'Text only', images: false },
+  // Probed 2026-10-12: it thinks until its output limit on hard prompts, whatever budget it is given.
+  'glm-5.3': { label: 'GLM 5.3', route: 'Alibaba Cloud', note: 'Thinks at length, text only', images: false },
   'deepseek-v4-pro': { label: 'DeepSeek V4 Pro', route: 'Alibaba Cloud', note: 'Larger, text only', images: false },
   // Probed 2026-10-12 on the Token Plan: calls tools.
   'deepseek-v4.1-flash': {

@@ -208,7 +208,15 @@ describe('Pi committed state projected for the chat', () => {
       text: 'The first half',
       failure: { text: 'Cut off at the output limit. Ask it to continue.', provider: false, cutOff: true },
     })
-    expect(assistant({ stopReason: 'length' })).toMatchObject({ failure: { cutOff: true } })
+    expect(assistant({ stopReason: 'length' })).toMatchObject({
+      failure: {
+        text: 'It spent its whole output limit thinking and wrote no answer. Send again, or pick another model below.',
+        cutOff: true,
+      },
+    })
+    expect(
+      assistant({ stopReason: 'error', errorMessage: 'The conversation exceeds the context window: 900 tokens left' }),
+    ).toMatchObject({ failure: { text: expect.stringContaining('too long for the model'), provider: false } })
     expect(assistant({ stopReason: 'stop', content: [{ type: 'text', text: 'Hi' }] })).not.toHaveProperty('failure')
     expect(
       assistant({ stopReason: 'toolUse', content: [{ type: 'toolCall', id: 'c', name: 'mcp_list', arguments: {} }] }),

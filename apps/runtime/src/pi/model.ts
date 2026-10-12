@@ -1,6 +1,8 @@
 import { createModels, createProvider } from '@earendil-works/pi-ai/models'
 import { stream, streamSimple } from '@earendil-works/pi-ai/api/openai-completions'
-import type { Model, ProviderStreams } from '@earendil-works/pi-ai'
+import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-options'
+import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
+import type { AssistantMessage, Model, ProviderStreams } from '@earendil-works/pi-ai'
 import type { ModelOption } from '@goblin/contracts'
 import type { RuntimeEnv } from '../env.ts'
 import { modelOptions } from '../models.ts'
@@ -39,8 +41,46 @@ function makePiModel(
   }
 }
 
-/** How every model's requests reach LiteLLM: its OpenAI-compatible chat completions API. */
-export const LITELLM_STREAMS: ProviderStreams = { stream, streamSimple }
+/**
+ * The least room an answer is sent with. pi-ai clamps the output limit to what the context leaves, down to one token,
+ * and a reasoning model spends a small limit thinking: glm-5.3 on a full Personal chat answered one token, cut off,
+ * which Pi does not take for a full context. Below this the request is not sent: it fails as a context overflow, so
+ * Pi compacts the conversation and tries once more.
+ */
+export const MIN_ANSWER_ROOM = 4096
+
+/** A response that never reached the provider: the context leaves too little room for an answer. */
+function tooFull(model: Model<'openai-completions'>, room: number) {
+  const events = createAssistantMessageEventStream()
+  const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  const message: AssistantMessage = {
+    role: 'assistant',
+    content: [],
+    api: model.api,
+    provider: model.provider,
+    model: model.id,
+    usage: { ...zero, totalTokens: 0, cost: { ...zero, total: 0 } },
+    stopReason: 'error',
+    // Worded to match pi-ai's overflow patterns ("exceeds the context window"), which start Pi's compaction.
+    errorMessage: `The conversation exceeds the context window: ${String(room)} tokens left for the answer.`,
+    timestamp: Date.now(),
+  }
+  events.push({ type: 'error', reason: 'error', error: message })
+  events.end()
+  return events
+}
+
+/** How every model's requests reach LiteLLM: its OpenAI-compatible chat completions API, never with a starved answer. */
+export const LITELLM_STREAMS: ProviderStreams = {
+  stream,
+  streamSimple: (model, context, options) => {
+    const wanted = options?.maxTokens ?? model.maxTokens
+    const room = clampMaxTokensToContext(model, context, wanted)
+    // SAFETY: goblin's provider serves only openai-completions models (makePiModel).
+    const target = model as Model<'openai-completions'>
+    return room < Math.min(MIN_ANSWER_ROOM, wanted) ? tooFull(target, room) : streamSimple(target, context, options)
+  },
+}
 
 /**
  * Every offered model (`models.ts`), the default first; `model` is the default for new sessions. `streams` carries
