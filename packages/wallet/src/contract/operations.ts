@@ -52,6 +52,17 @@ export const Payment = Schema.Struct({
   reference: Schema.optional(Text(512)),
   explorerUrl: Schema.optional(Text(256)),
   settledAt: Schema.optional(Instant),
+  /**
+   * An x402 payment's EIP-3009 authorization: who signed it, its nonce and the unix second it stops being valid. Kept so
+   * an unknown outcome can be checked on chain later (`authorizationState`), never to pay again.
+   */
+  authorization: Schema.optional(
+    Schema.Struct({
+      from: Address,
+      nonce: Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{64}$/u)),
+      validBefore: Schema.String.check(Schema.isPattern(/^\d{1,20}$/u)),
+    }),
+  ),
 })
 export type Payment = typeof Payment.Type
 

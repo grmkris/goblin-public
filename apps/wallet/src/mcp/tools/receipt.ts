@@ -11,8 +11,9 @@ import type { Toolbox } from '../toolbox.ts'
 const receiptOf = (operationId: string) =>
   Effect.gen(function* () {
     const op = yield* readOperation(operationId)
-    if (op.payment === undefined)
-      return yield* failure('no_receipt', `Operation ${operationId} has no payment yet (${op.status}).`, 409)
+    // An unknown outcome may carry its evidence (a tx hash, an x402 authorization) but no settled payment: no receipt.
+    if (op.payment?.settledAt === undefined)
+      return yield* failure('no_receipt', `Operation ${operationId} has no settled payment yet (${op.status}).`, 409)
     return op
   })
 

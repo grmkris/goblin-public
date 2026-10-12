@@ -250,5 +250,6 @@ const outcomeOf = async (
   return {
     outcome: 'uncertain',
     reason: `The service answered HTTP ${response.status} without a payment receipt; the payment may have gone through.`,
+    ...(payment === undefined ? {} : { payment }),
   }
 }

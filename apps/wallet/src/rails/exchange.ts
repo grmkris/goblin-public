@@ -128,7 +128,11 @@ export const swapExecute = async (operation: Operation, payload: unknown, deps: 
       ...(deps.now === undefined ? {} : { now: deps.now }),
     })
     if (result.status === 'pending')
-      return { outcome: 'uncertain', reason: 'The swap was sent but has not confirmed yet.' }
+      return {
+        outcome: 'uncertain',
+        reason: 'The swap was sent but has not confirmed yet.',
+        payment: { rail: 'lifi', txHash: result.txHash, explorerUrl: result.explorerUrl },
+      }
     if (result.status === 'reverted') return { outcome: 'failed', reason: 'The chain rejected the swap.' }
     const now = (deps.now ?? (() => new Date()))()
     return { outcome: 'settled', payment: paymentOf('lifi', result.explorerUrl, result.txHash, now) }
@@ -200,7 +204,11 @@ export const bridgeExecute = async (operation: Operation, payload: unknown, deps
       ...(deps.now === undefined ? {} : { now: deps.now }),
     })
     if (result.status === 'pending')
-      return { outcome: 'uncertain', reason: 'The bridge deposit was sent but has not confirmed yet.' }
+      return {
+        outcome: 'uncertain',
+        reason: 'The bridge deposit was sent but has not confirmed yet.',
+        payment: { rail: 'relay', txHash: result.txHash, explorerUrl: result.explorerUrl },
+      }
     if (result.status === 'reverted') return { outcome: 'failed', reason: 'The chain rejected the bridge deposit.' }
     const now = (deps.now ?? (() => new Date()))()
     return {

@@ -216,7 +216,18 @@ describe('x402 payment', () => {
         operationKey: 'op-x402-4',
         fetchFn: fakeFetch(answer).fn,
       })
-    expect((await run(() => new Response('', { status: 500 }))).outcome).toBe('unknown')
+    const failed = await run(() => new Response('', { status: 500 }))
+    expect(failed.outcome).toBe('unknown')
+    // The unknown outcome keeps the signed authorization so it can be checked on chain, never resent.
+    expect(failed.payment).toMatchObject({
+      rail: 'x402',
+      authorization: {
+        from: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/u),
+        nonce: expect.stringMatching(/^0x[0-9a-fA-F]{64}$/u),
+        validBefore: expect.stringMatching(/^\d+$/u),
+      },
+    })
+    expect(failed.payment?.settledAt).toBeUndefined()
     expect(
       (await run(() => new Response('', { status: 402, headers: { 'payment-required': EXA_PAYMENT_REQUIRED } })))
         .outcome,
@@ -230,5 +241,6 @@ describe('x402 payment', () => {
       fetchFn: down,
     })
     expect(lost.outcome).toBe('unknown')
+    expect(lost.payment?.authorization?.nonce).toMatch(/^0x[0-9a-fA-F]{64}$/u)
   })
 })

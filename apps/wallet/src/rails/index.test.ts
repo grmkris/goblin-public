@@ -153,7 +153,8 @@ describe('paid fetch', () => {
         }),
       }),
     )
-    expect((await refused.payPaidFetch(operation(terms), EXA, {})).outcome).toBe('uncertain')
+    const unknown = await refused.payPaidFetch(operation(terms), EXA, {})
+    expect(unknown).toMatchObject({ outcome: 'uncertain', payment: { rail: 'x402', authorization: { from: AGENT } } })
     const silent = createRails(deps({ fetchFn: exaFetch({ paid: () => new Response('boom', { status: 500 }) }) }))
     expect((await silent.payPaidFetch(operation(terms), EXA, {})).outcome).toBe('uncertain')
     const nobody = createRails(deps({ signer: undefined, fetchFn: exaFetch() }))
@@ -282,6 +283,21 @@ describe('transfer', () => {
     const poor: JsonRpc = async (method) => (method === 'eth_getBalance' ? word(10n ** 15n) : word(0n))
     const broke = await createRails(deps({ rpcFor: () => poor })).transfer(operation(terms))
     expect(broke).toMatchObject({ outcome: 'failed', reason: expect.stringContaining('holds') })
+  })
+
+  test('a transfer still unconfirmed is uncertain and keeps its transaction for a later check', async () => {
+    const unmined: JsonRpc = async (method) => (method === 'eth_getTransactionReceipt' ? null : word(5_000_000n))
+    const rails = createRails(deps({ rpcFor: () => unmined }))
+    const outcome = await rails.transfer(operation(await rails.quoteTransfer(input)))
+    expect(outcome).toMatchObject({
+      outcome: 'uncertain',
+      payment: {
+        rail: 'transfer',
+        txHash: expect.stringMatching(/^0x/u),
+        explorerUrl: expect.stringContaining('/tx/'),
+      },
+    })
+    expect(outcome.outcome === 'uncertain' && outcome.payment?.settledAt).toBeFalsy()
   })
 
   test('a signer that fails mid-send is uncertain', async () => {

@@ -5,6 +5,8 @@
  * must match the terms the owner approved.
  */
 import * as Data from 'effect/Data'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 import { ExactEvmScheme } from '@x402/evm/exact/client'
 import { x402Client, x402HTTPClient } from '@x402/fetch'
 import type { PaymentPayload, PaymentRequired, PaymentRequirements } from '@x402/fetch'
@@ -274,16 +276,42 @@ export const payX402 = async (input: PayX402Input): Promise<X402Paid> => {
   if (challenge === undefined) throw new X402Error('bad_challenge', 'the 402 carries no readable x402 challenge')
   const offer = checkOffer(selectBaseOffer(challenge), input)
   const payload = await signPayload(input, challenge, offer)
+  const authorization = authorizationOf(payload)
+  // What an unknown outcome keeps so it can be checked on chain later; the authorization itself is never resent.
+  const evidence: Payment | undefined = authorization === undefined ? undefined : { rail: 'x402', authorization }
   const headers = new x402HTTPClient(new x402Client()).encodePaymentSignatureHeader(payload)
   let response: Response
   try {
     response = await send(fetchFn, input.request, headers)
   } catch {
     // expected: the paid request may have reached the server; the caller records the operation as uncertain.
-    return { outcome: 'unknown', payment: undefined, response: new Response(null, { status: 599 }) }
+    return { outcome: 'unknown', payment: evidence, response: new Response(null, { status: 599 }) }
   }
   const payment = paymentOf(response, now())
-  if (payment !== undefined) return { outcome: 'settled', payment, response }
+  if (payment !== undefined)
+    return {
+      outcome: 'settled',
+      payment: authorization === undefined ? payment : { ...payment, authorization },
+      response,
+    }
   // The authorization is out: a 402 or any answer without a receipt cannot revoke it, so it is never `unsettled`.
-  return { outcome: 'unknown', payment: undefined, response }
+  return { outcome: 'unknown', payment: evidence, response }
+}
+
+const Eip3009 = Schema.Struct({
+  authorization: Schema.Struct({
+    from: Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{40}$/u)),
+    nonce: Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{64}$/u)),
+    validBefore: Schema.Union([Schema.String, Schema.Number]),
+  }),
+})
+const decodeEip3009 = Schema.decodeUnknownOption(Eip3009)
+
+/** The signed EIP-3009 authorization in an x402 payload (Base USDC's `exact` scheme), or undefined for another kind. */
+export const authorizationOf = (payload: PaymentPayload): NonNullable<Payment['authorization']> | undefined => {
+  const decoded = decodeEip3009(payload.payload)
+  if (Option.isNone(decoded)) return undefined
+  const { from, nonce, validBefore } = decoded.value.authorization
+  const seconds = String(validBefore)
+  return /^\d{1,20}$/u.test(seconds) ? { from, nonce, validBefore: seconds } : undefined
 }

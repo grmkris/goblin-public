@@ -90,7 +90,11 @@ const evmTransfer = async (operation: Operation, deps: RailsDeps, chain: EvmChai
     ...(deps.wait === undefined ? {} : { wait: deps.wait }),
   })
   if (result.status === 'pending')
-    return { outcome: 'uncertain', reason: 'The transfer was sent but has not confirmed yet.' }
+    return {
+      outcome: 'uncertain',
+      reason: 'The transfer was sent but has not confirmed yet.',
+      payment: { rail: 'transfer', txHash: result.txHash, explorerUrl: result.explorerUrl },
+    }
   if (result.status === 'reverted') return { outcome: 'failed', reason: 'The chain rejected the transfer.' }
   const now = (deps.now ?? (() => new Date()))()
   return { outcome: 'settled', payment: explorerPayment('transfer', result.explorerUrl, result.txHash, now) }
