@@ -1,7 +1,7 @@
 import { registerAppTool } from '@modelcontextprotocol/ext-apps/server'
 import type { McpServer } from '@modelcontextprotocol/server'
 import { TOOLS, WalletOpenInput, type WalletStatusResult } from '@goblin/wallet/contract'
-import { readStatus } from '../../services/programs/status.ts'
+import { readStatusWithSetup } from '../../services/programs/status.ts'
 import { dashboardMeta } from '../apps.ts'
 import { answer, refusal } from '../results.ts'
 import { standard } from '../standard.ts'
@@ -10,12 +10,15 @@ import type { Toolbox } from '../toolbox.ts'
 const dashboardText = (result: WalletStatusResult): string =>
   `Wallet dashboard: paid ${result.status.paid}, funding ${result.status.funding}, ${result.limits.length} limits, ${result.recent?.length ?? 0} recent spends.`
 
-/** The dashboard's data; `focus` opens the App on that part (Add funds, for an owner who must fund the agent first). */
+/**
+ * The dashboard's data and what setup still needs (`setup`, empty once finished: the App shows a setup card while it
+ * is not); `focus` opens the App on that part (Add funds, for an owner who must fund the agent first).
+ */
 async function open(box: Toolbox, input: WalletOpenInput) {
-  const result = await box.run(readStatus)
-  if (!result.ok) return refusal(result.failure)
+  const read = await box.run(readStatusWithSetup)
+  if (!read.ok) return refusal(read.failure)
   const focus = input.focus === undefined ? {} : { focus: input.focus }
-  return answer(dashboardText(result.value), { ...result.value, ...focus })
+  return answer(dashboardText(read.value.result), { ...read.value.result, setup: read.value.setup, ...focus })
 }
 
 export function registerWalletOpen(server: McpServer, box: Toolbox): void {

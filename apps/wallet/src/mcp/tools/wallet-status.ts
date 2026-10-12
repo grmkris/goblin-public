@@ -39,10 +39,8 @@ export function registerWalletStatus(server: McpServer, box: Toolbox): void {
       ]
         .filter((line) => line !== '')
         .join('\n')
-      return answer(text, {
-        ...read.value.result,
-        ...(read.value.setup.length === 0 ? {} : { setup: read.value.setup }),
-      })
+      // `setup` is always there, empty once finished, so the App can tell "ready" from "not said".
+      return answer(text, { ...read.value.result, setup: read.value.setup })
     },
   )
 }
