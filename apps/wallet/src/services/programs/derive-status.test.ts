@@ -50,6 +50,7 @@ describe('deriveStatus', () => {
       tokens: [{ symbol: 'USDC', balance: '15', remaining: '3', spendable: '3' }],
       periodEndsAt: '2026-10-12T11:00:00.000Z',
       expiresAt: '2026-10-19T10:00:00.000Z',
+      stablecoinUsd: '15',
     })
   })
 
@@ -85,6 +86,34 @@ describe('deriveStatus', () => {
     expect(deriveStatus(empty)).toMatchObject({ funding: 'not_verified', paid: 'not_verified' })
     expect(deriveStatus({ ...base, unread: ['arbitrum'] })).toMatchObject({ funding: 'ready', paid: 'ready' })
     expect(deriveStatus({ ...empty, revoked: true }).paid).toBe('blocked')
+  })
+
+  test('the stablecoin total adds USDC, USDC.e and pathUSD of both holders on every chain, exactly', () => {
+    const coin = (symbol: string, balance: string, holder: ChainBalance['holder']): ChainBalance => ({
+      ...usdc('tempo', balance, holder),
+      symbol,
+    })
+    const eth: ChainBalance = { ...usdc('base', '3', 'agent'), symbol: 'ETH', decimals: 18 }
+    const balances = [
+      usdc('base', '0.000001', 'owner'),
+      usdc('arbitrum', '1.1', 'agent'),
+      coin('USDC.e', '0.478447', 'agent'),
+      coin('pathUSD', '2', 'owner'),
+      eth,
+    ]
+    expect(deriveStatus({ ...base, balances })).toMatchObject({ stablecoinUsd: '3.578448' })
+    expect(deriveStatus({ ...base, balances }).stablecoinUsdPartial).toBeUndefined()
+    expect(deriveStatus({ ...base, balances: [eth] }).stablecoinUsd).toBe('0')
+  })
+
+  test('the stablecoin total says it is partial when a chain was unread, and is absent when none was read', () => {
+    expect(deriveStatus({ ...base, unread: ['arbitrum'] })).toMatchObject({
+      stablecoinUsd: '15',
+      stablecoinUsdPartial: true,
+    })
+    const unreadable = deriveStatus({ ...base, balances: [], verified: false })
+    expect(unreadable.stablecoinUsd).toBeUndefined()
+    expect(unreadable.stablecoinUsdPartial).toBeUndefined()
   })
 
   test('an empty wallet is blocked for funding', () => {

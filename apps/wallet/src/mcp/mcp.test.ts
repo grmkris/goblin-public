@@ -122,8 +122,9 @@ describe('the MCP endpoint', () => {
   test("wallet_status returns goblin's WalletStatus shape with a text fallback", async () => {
     const result = await call('wallet_status')
     expect(result.content?.[0]?.text).toContain('Wallet: paid blocked, funding ready')
+    expect(result.content?.[0]?.text).toContain('Stablecoins held by the owner and the agent: $12.5.')
     expect(result.structuredContent).toMatchObject({
-      status: { kind: 'wallet', funding: 'ready', paid: 'blocked' },
+      status: { kind: 'wallet', funding: 'ready', paid: 'blocked', stablecoinUsd: '12.5' },
     })
   })
 

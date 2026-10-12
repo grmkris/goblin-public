@@ -54,6 +54,23 @@ const tightestRemaining = (limits: readonly LimitView[]): bigint | undefined => 
 const short = (value: string): string => value.slice(0, 64)
 const min = (a: bigint, b: bigint): bigint => (a < b ? a : b)
 
+/** The dollar stablecoins the wallet holds: USDC on the EVM chains, USDC.e and pathUSD on Tempo, each worth one dollar. */
+const STABLECOINS: ReadonlySet<string> = new Set(['USDC', 'USDC.e', 'pathUSD'])
+
+/**
+ * The stablecoin dollars the owner and the agent hold on every chain that was read, summed in base units. None when no
+ * chain could be read; partial when some could not, since their funds are unknown rather than zero.
+ */
+const stablecoins = (input: StatusInput): Pick<WalletStatus, 'stablecoinUsd' | 'stablecoinUsdPartial'> => {
+  if (!input.verified) return {}
+  const held = input.balances.filter((balance) => STABLECOINS.has(balance.symbol))
+  const total = held.reduce((sum, balance) => sum + parseUnits(balance.balance, WEI), 0n)
+  return {
+    stablecoinUsd: short(formatUnits(total, WEI)),
+    ...(input.unread.length === 0 ? {} : { stablecoinUsdPartial: true as const }),
+  }
+}
+
 type Readiness = WalletStatus['paid']
 
 /** A chain that could not be read turns a "no" into "not verified": the money may be there. A "yes" stands. */
@@ -93,5 +110,6 @@ export function deriveStatus(input: StatusInput): WalletStatus {
     tokens,
     ...(hourEnds === undefined ? {} : { periodEndsAt: short(hourEnds) }),
     expiresAt: short(input.grantExpiresAt),
+    ...stablecoins(input),
   }
 }

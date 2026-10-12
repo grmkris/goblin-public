@@ -1,9 +1,16 @@
 import type { McpServer } from '@modelcontextprotocol/server'
-import { TOOLS } from '@goblin/wallet/contract'
+import { TOOLS, type WalletStatus } from '@goblin/wallet/contract'
 import { setupSentence } from '../../services/programs/setup.ts'
 import { readStatusWithSetup } from '../../services/programs/status.ts'
 import { answer, refusal } from '../results.ts'
 import type { Toolbox } from '../toolbox.ts'
+
+/** The stablecoin dollars held, and whether a chain that could not be read leaves the total short. */
+const stablecoinLine = (status: WalletStatus): string => {
+  if (status.stablecoinUsd === undefined) return ''
+  const partial = status.stablecoinUsdPartial === true ? ' on the chains that could be read (some could not)' : ''
+  return `Stablecoins held by the owner and the agent: $${status.stablecoinUsd}${partial}.`
+}
 
 export function registerWalletStatus(server: McpServer, box: Toolbox): void {
   server.registerTool(
@@ -23,6 +30,7 @@ export function registerWalletStatus(server: McpServer, box: Toolbox): void {
       )
       const text = [
         `Wallet: paid ${status.paid}, funding ${status.funding}.`,
+        stablecoinLine(status),
         ...tokens,
         `${limits.length} limits are in force; ask for allowances to see each layer.`,
         status.expiresAt === undefined ? '' : `The grant expires ${status.expiresAt}.`,

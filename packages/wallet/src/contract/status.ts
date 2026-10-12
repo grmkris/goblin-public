@@ -8,8 +8,8 @@ const Short = Schema.String.check(Schema.isMaxLength(64))
 
 /**
  * The part of `wallet_status` goblin's first-class profile reads (goblin's `WalletStatus`, ADR 0043): readiness, each
- * token's balance, what its limit has left and can spend now, when the period ends and when the grant expires. Keep it
- * exactly this shape; extra fields live beside it in `WalletStatusResult`.
+ * token's balance, what its limit has left and can spend now, when the period ends, when the grant expires, and the
+ * stablecoin dollars held. Keep it this shape (goblin mirrors it); extra fields live beside it in `WalletStatusResult`.
  */
 export const WalletStatus = Schema.Struct({
   kind: Schema.Literal('wallet'),
@@ -25,6 +25,13 @@ export const WalletStatus = Schema.Struct({
   ).check(Schema.isMaxLength(8)),
   periodEndsAt: Schema.optional(Short),
   expiresAt: Schema.optional(Short),
+  /**
+   * The dollar stablecoins (USDC, USDC.e, pathUSD) the owner and the agent hold on every chain that was read, a decimal
+   * string. Absent when no chain could be read.
+   */
+  stablecoinUsd: Schema.optional(Short),
+  /** Set when some chain could not be read: `stablecoinUsd` counts only the chains that answered, so it may be more. */
+  stablecoinUsdPartial: Schema.optional(Schema.Literal(true)),
 })
 export type WalletStatus = typeof WalletStatus.Type
 
