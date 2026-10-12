@@ -7,11 +7,18 @@
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { type ChainKey, chainByKey } from '../chains/index.ts'
-import type { AgentSigner, SignedAuthorization, TransactionFees, TypedDataJson } from '../contract/signer.ts'
+import type {
+  AgentSigner,
+  SignedAuthorization,
+  TransactionFees,
+  TypedDataJson,
+  UserOperation,
+} from '../contract/signer.ts'
 import type { Address, Hex } from '../contract/ids.ts'
 import { type PrivyClient, privyError } from '../privy/client.ts'
 import { walletRpc } from '../privy/wallets.ts'
 import type { TempoAgent, TempoTransactionJson } from '../tempo/index.ts'
+import { toPrivyJson } from '../userop/index.ts'
 
 export interface PrivyAgentConfig {
   readonly privy: PrivyClient
@@ -158,6 +165,26 @@ export class PrivyAgentSigner implements TempoAgent {
       s: signed.s,
       yParity: Number(signed.y_parity),
     }
+  }
+
+  /**
+   * Signs (never sends) a UserOperation from the agent's 7702-upgraded address: Privy signs the DeleGator's EIP-712
+   * digest of it, and its policy checks each call of the batch.
+   */
+  async signUserOperation(input: { chain: ChainKey; userOp: UserOperation; operationKey: string }): Promise<Hex> {
+    const chain = chainByKey(input.chain, this.#config.live)
+    const data = await this.#rpc(
+      {
+        method: 'eth_signUserOperation',
+        params: {
+          contract: chain.delegation.delegator,
+          chain_id: `0x${chain.id.toString(16)}`,
+          user_operation: toPrivyJson(input.userOp),
+        },
+      },
+      input.operationKey,
+    )
+    return field(data, 'signature', SIGNATURE, 'invalid_signature_response')
   }
 
   /** Signs (never sends) a Tempo type-118 transaction; resolves with the signed serialized `0x76…` bytes. */

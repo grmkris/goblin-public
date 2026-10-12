@@ -17,6 +17,8 @@ export type TransferFailure =
   | 'rpc_unavailable'
   | 'invalid_amount'
   | 'fee_ceiling'
+  | 'unsupported'
+  | 'bad_signature'
 
 export class TransferError extends Data.TaggedError('TransferError')<{
   readonly code: TransferFailure

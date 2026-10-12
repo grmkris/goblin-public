@@ -29,6 +29,26 @@ export interface TransactionFees {
 }
 
 /**
+ * An ERC-4337 v0.7 UserOperation in its unpacked form (quantities as bigints). The DeleGator validates its signature
+ * over its own EIP-712 `PackedUserOperation` digest (`@goblin/wallet/userop` `delegatorDigest`).
+ */
+export interface UserOperation {
+  readonly sender: Address
+  readonly nonce: bigint
+  readonly callData: Hex
+  readonly callGasLimit: bigint
+  readonly verificationGasLimit: bigint
+  readonly preVerificationGas: bigint
+  readonly maxFeePerGas: bigint
+  readonly maxPriorityFeePerGas: bigint
+  readonly paymaster?: Address
+  readonly paymasterVerificationGasLimit?: bigint
+  readonly paymasterPostOpGasLimit?: bigint
+  readonly paymasterData?: Hex
+  readonly signature: Hex
+}
+
+/**
  * The agent's signer: one Privy server wallet the owner owns, with this service as its policy-bound additional signer.
  * Every method takes a stable `operationKey`, reused as Privy's idempotency key, so a retry never signs twice. The
  * rails code against this interface; tests use a local viem account.

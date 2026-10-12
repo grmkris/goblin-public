@@ -134,7 +134,7 @@ export const nodes: readonly Node[] = [
     runtime: 'browser',
     mayImport: ['@goblin/ui', '@goblin/wallet'],
     forbids: Object.fromEntries(
-      ['privy', 'signer', 'relay', 'x402', 'tempo', 'lifi', 'bridge'].map((module) => [
+      ['privy', 'signer', 'relay', 'x402', 'tempo', 'lifi', 'bridge', 'bundler'].map((module) => [
         `@goblin/wallet/${module}`,
         'server signing and Privy app credentials never enter the browser bundle',
       ]),

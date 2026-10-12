@@ -36,6 +36,15 @@ export interface DelegationFramework {
   }
 }
 
+/**
+ * ERC-4337 on a chain: the v0.7 EntryPoint the DeleGator trusts (its `entryPoint()`), and Pimlico's ERC-20 paymaster,
+ * which takes the gas of a UserOperation in the chain's USDC. Every EVM send of the wallet is a UserOperation.
+ */
+export interface AccountAbstraction {
+  readonly entryPoint: Address
+  readonly paymaster: Address
+}
+
 export interface Chain {
   readonly id: number
   readonly caip2: string
@@ -46,6 +55,8 @@ export interface Chain {
   /** The USD stablecoin the wallet settles in on this chain. */
   readonly usdc: StableToken
   readonly delegation: DelegationFramework
+  /** Null where the wallet sends no UserOperations: Tempo (its own fee token) and the testnets. */
+  readonly aa: AccountAbstraction | null
 }
 
 const DELEGATION_FRAMEWORK_V1_3_0: DelegationFramework = {
@@ -78,36 +89,52 @@ const testnetUsdc = (address: Address): StableToken => ({
   eip3009: { name: 'USDC', version: '2' },
 })
 
-const chain = (spec: Omit<Chain, 'caip2' | 'delegation'>): Chain => ({
+/** EntryPoint v0.7 and Pimlico's ERC-20 paymaster: the same addresses on Base, Ethereum and Arbitrum. */
+const PIMLICO_V07: AccountAbstraction = {
+  entryPoint: '0x0000000071727De22E5E9d8BAf0edAc6f37da032',
+  paymaster: '0x777777777777AeC03fd955926DbF81597e66834C',
+}
+
+const chain = (spec: Omit<Chain, 'caip2' | 'delegation' | 'aa'>, aa: AccountAbstraction | null = null): Chain => ({
   ...spec,
   caip2: `eip155:${spec.id}`,
   delegation: DELEGATION_FRAMEWORK_V1_3_0,
+  aa,
 })
 
-export const BASE = chain({
-  id: 8453,
-  name: 'Base',
-  testnet: false,
-  explorerUrl: 'https://basescan.org',
-  rpcUrl: 'https://mainnet.base.org',
-  usdc: usdCoin('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'),
-})
-export const ETHEREUM = chain({
-  id: 1,
-  name: 'Ethereum',
-  testnet: false,
-  explorerUrl: 'https://etherscan.io',
-  rpcUrl: 'https://ethereum-rpc.publicnode.com',
-  usdc: usdCoin('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
-})
-export const ARBITRUM = chain({
-  id: 42161,
-  name: 'Arbitrum One',
-  testnet: false,
-  explorerUrl: 'https://arbiscan.io',
-  rpcUrl: 'https://arb1.arbitrum.io/rpc',
-  usdc: usdCoin('0xaf88d065e77c8cC2239327C5EDb3A432268e5831'),
-})
+export const BASE = chain(
+  {
+    id: 8453,
+    name: 'Base',
+    testnet: false,
+    explorerUrl: 'https://basescan.org',
+    rpcUrl: 'https://mainnet.base.org',
+    usdc: usdCoin('0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'),
+  },
+  PIMLICO_V07,
+)
+export const ETHEREUM = chain(
+  {
+    id: 1,
+    name: 'Ethereum',
+    testnet: false,
+    explorerUrl: 'https://etherscan.io',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
+    usdc: usdCoin('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+  },
+  PIMLICO_V07,
+)
+export const ARBITRUM = chain(
+  {
+    id: 42161,
+    name: 'Arbitrum One',
+    testnet: false,
+    explorerUrl: 'https://arbiscan.io',
+    rpcUrl: 'https://arb1.arbitrum.io/rpc',
+    usdc: usdCoin('0xaf88d065e77c8cC2239327C5EDb3A432268e5831'),
+  },
+  PIMLICO_V07,
+)
 /** Tempo's TIP-20 USDC.e (Stargate bridged): no EIP-3009, so x402 `exact` does not run here; Tempo has its own rail. */
 export const TEMPO = chain({
   id: 4217,
