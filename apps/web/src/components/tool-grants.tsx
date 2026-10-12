@@ -5,7 +5,7 @@ import { useId, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { NotFound } from '@goblin/contracts/api'
-import { Badge, Button, Receipt, Switch } from '@goblin/ui'
+import { Badge, Button, NativeSelect, NativeSelectOption, Receipt, Switch } from '@goblin/ui'
 import { CircleAlertIcon } from 'lucide-react'
 import { appGrantMutation, askFirstMutation, refreshToolsMutation, toolGrantMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
@@ -62,15 +62,18 @@ function ToolRow({
         {tool.description && <span className="grant-about">{tool.description}</span>}
       </span>
       {tool.granted && (
-        <Button
-          size="xs"
-          variant={tool.askFirst === true ? 'outline' : 'ghost'}
+        // A choice, never a toggle on a label: it shows the policy in force and changes only once the runtime has the
+        // new one (the value follows the cache, so a refused change stays as it was).
+        <NativeSelect
+          size="sm"
+          aria-label={`When ${tool.title ?? tool.name} is called`}
+          value={tool.askFirst === true ? 'ask' : 'run'}
           disabled={pending}
-          aria-pressed={tool.askFirst === true}
-          onClick={() => onAskFirst(tool.askFirst !== true)}
+          onChange={(event) => onAskFirst(event.target.value === 'ask')}
         >
-          {tool.askFirst === true ? 'Ask first' : 'Run when needed'}
-        </Button>
+          <NativeSelectOption value="run">Runs without asking</NativeSelectOption>
+          <NativeSelectOption value="ask">Asks you first</NativeSelectOption>
+        </NativeSelect>
       )}
       <Switch
         checked={tool.granted}
@@ -83,7 +86,24 @@ function ToolRow({
   )
 }
 
-/** An App and the exact tools it uses: one switch allows them all, and each stays listed and adjustable. */
+/** An App's name from its `ui://` resource: "ui://goblin-wallet/dashboard" is the Dashboard App. */
+function appName(uri: string): string {
+  const last =
+    uri
+      .replace(/^ui:\/\//u, '')
+      .split('/')
+      .findLast((part) => part !== '') ?? uri
+  const words = last
+    .replace(/\.[a-z]+$/u, '')
+    .replaceAll(/[-_]+/gu, ' ')
+    .trim()
+  return words === '' ? 'Its App' : `${words.charAt(0).toUpperCase()}${words.slice(1)} App`
+}
+
+/**
+ * An App and the exact tools it uses: one switch allows them all, and each stays listed and adjustable. A switch has
+ * no middle state, so a group only partly allowed says how many of its tools are.
+ */
 function AppGroup({
   connectionId,
   uri,
@@ -102,20 +122,28 @@ function AppGroup({
   readonly onAskFirst: (tool: ToolView, enabled: boolean) => void
 }) {
   const id = useId()
+  const granted = tools.filter((tool) => tool.granted).length
+  const partly = granted > 0 && granted < tools.length
   return (
     <li className="grant-app">
       <div className="grant-row">
         <AppTile origin={connectionId} />
         <span className="grant-text">
           <span id={id} className="grant-name">
-            Its App
+            {appName(uri)}
           </span>
           <code className="grant-about">{uri}</code>
         </span>
+        {partly && (
+          <span id={`${id}-count`} className="grant-count">
+            {`${granted} of ${tools.length} allowed`}
+          </span>
+        )}
         <Switch
-          checked={tools.every((tool) => tool.granted)}
+          checked={granted === tools.length}
           disabled={tools.some((tool) => pending.has(tool.name))}
           aria-labelledby={id}
+          {...(partly ? { 'aria-describedby': `${id}-count` } : {})}
           onCheckedChange={(checked) => onAllow(checked)}
         />
       </div>

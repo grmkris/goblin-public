@@ -1376,7 +1376,13 @@
     line-height: 1.45;
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 2;
+  }
+  .grant-count {
+    flex: none;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
   }
   code.grant-about {
     font-family: var(--font-mono);
