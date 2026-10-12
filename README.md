@@ -128,10 +128,10 @@ Goblin-owned code is available under the [MIT License](LICENSE). [NOTICE](NOTICE
 
 goblin is the author's entry to the Colosseum Crypto World's Fair (14 September to 12 October 2026), and all of it was
 built within that window: the repository's first commit is 4 October 2026 and Goblin Wallet was built on 12 October.
-goblin reuses patterns (the 7702 upgrade, the Privy signer and policy, the allowance and MCP OAuth) from the author's
-Sidequest, a separate project begun on 25 September that goblin reaches only as an MCP server, and it uses the
-author's myapps services (mygram, myinbox, myplan, mytab; begun 28 September) as connected MCP servers. Built on open
-source and third-party services: Cloudflare Agents SDK, Pi, Effect, Alchemy, Privy, MetaMask Delegation Framework
-v1.3.0, x402, mppx, LI.FI, Relay, viem and shadcn. Built with AI coding agents (Claude Code, Codex).
+goblin draws on prior author-owned work and connects to external MCP services; those projects are not part of this
+contest submission. Built on open source and third-party services: Cloudflare Agents SDK, Pi, Effect, Alchemy,
+Privy, MetaMask Delegation Framework v1.3.0, x402, mppx, LI.FI, Relay, viem and shadcn.
+Built with AI coding agents (Claude Code, Codex).
 
-Core Goblin-owned code is source available under [PolyForm Noncommercial 1.0.0](LICENSE). The three Wallet workspaces use MIT. Third-party terms and same-owner reuse are described in [NOTICE](NOTICE.md). See [ADR 0046](docs/adr/0046-production-promotion-and-public-source.md) for branches and publication.
+Goblin-owned code is available under the [MIT License](LICENSE). Third-party terms and author-owned reuse are described
+in [NOTICE](NOTICE.md). See [ADR 0046](docs/adr/0046-production-promotion-and-public-source.md) for branches and publication.

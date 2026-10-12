@@ -2,6 +2,7 @@
   "name": "@goblin/runtime",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./agent": "./src/agent.ts",
