@@ -19,6 +19,16 @@ export interface SignedAuthorization {
 }
 
 /**
+ * Fee bounds for a signed transaction, in wei. The wallet's fee-ceiling check computes them, so the fee the signer signs
+ * is the one the ceiling allowed.
+ */
+export interface TransactionFees {
+  readonly gasLimit: bigint
+  readonly maxFeePerGas: bigint
+  readonly maxPriorityFeePerGas: bigint
+}
+
+/**
  * The agent's signer: one Privy server wallet the owner owns, with this service as its policy-bound additional signer.
  * Every method takes a stable `operationKey`, reused as Privy's idempotency key, so a retry never signs twice. The
  * rails code against this interface; tests use a local viem account.
@@ -32,6 +42,8 @@ export interface AgentSigner {
     to: Address
     data: Hex
     value?: bigint
+    /** When given, the signed transaction carries exactly these fee bounds instead of the signer's own choice. */
+    fees?: TransactionFees
     operationKey: string
   }): Promise<Hex>
   signAuthorization(input: {

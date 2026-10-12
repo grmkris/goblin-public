@@ -7,7 +7,7 @@
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { type ChainKey, chainByKey } from '../chains/index.ts'
-import type { AgentSigner, SignedAuthorization, TypedDataJson } from '../contract/signer.ts'
+import type { AgentSigner, SignedAuthorization, TransactionFees, TypedDataJson } from '../contract/signer.ts'
 import type { Address, Hex } from '../contract/ids.ts'
 import { type PrivyClient, privyError } from '../privy/client.ts'
 import { walletRpc } from '../privy/wallets.ts'
@@ -94,9 +94,11 @@ export class PrivyAgentSigner implements TempoAgent {
     to: Address
     data: Hex
     value?: bigint
+    fees?: TransactionFees
     operationKey: string
   }): Promise<Hex> {
     const chain = chainByKey(input.chain, this.#config.live)
+    const { fees } = input
     const data = await this.#rpc(
       {
         method: 'eth_sendTransaction',
@@ -108,6 +110,13 @@ export class PrivyAgentSigner implements TempoAgent {
             data: input.data,
             value: `0x${(input.value ?? 0n).toString(16)}`,
             chain_id: chain.id,
+            ...(fees === undefined
+              ? {}
+              : {
+                  gas_limit: `0x${fees.gasLimit.toString(16)}`,
+                  max_fee_per_gas: `0x${fees.maxFeePerGas.toString(16)}`,
+                  max_priority_fee_per_gas: `0x${fees.maxPriorityFeePerGas.toString(16)}`,
+                }),
           },
         },
       },

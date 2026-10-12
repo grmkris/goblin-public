@@ -1,7 +1,7 @@
 import { decodeFunctionData, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
 import { BASE, BASE_SEPOLIA } from '../chains/index.ts'
-import type { AgentSigner } from '../contract/index.ts'
+import type { AgentSigner, TransactionFees } from '../contract/index.ts'
 import { toHex } from './hex.ts'
 import { field, httpJsonRpc, JsonRpcError, type JsonRpc } from './rpc.ts'
 import { transferUsdc, TransferError, type TopUp } from './transfer.ts'
@@ -15,6 +15,7 @@ interface Sent {
   to: string
   data: string
   key: string
+  fees?: TransactionFees | undefined
 }
 
 const down: JsonRpc = () => Promise.reject(new JsonRpcError('eth_getBalance', 'HTTP 429'))
@@ -25,8 +26,8 @@ const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; min
     address: AGENT,
     signTypedData: () => Promise.reject(new Error('unused')),
     signAuthorization: () => Promise.reject(new Error('unused')),
-    sendTransaction: async ({ to, data, operationKey }) => {
-      sent.push({ to, data, key: operationKey })
+    sendTransaction: async ({ to, data, fees, operationKey }) => {
+      sent.push({ to, data, key: operationKey, fees })
       return toHex(`0x${sent.length.toString(16).padStart(64, '0')}`)
     },
   }
@@ -182,6 +183,13 @@ describe('EVM transfer', () => {
       uncertain: false,
     })
     expect(h.sent).toHaveLength(0)
+  })
+
+  test('signs with the fee bounds the ceiling allowed: padded gas, twice the base fee plus the tip', async () => {
+    const h = harness({ held: 5_000_000n })
+    await transferUsdc({ ...base, amount: 1n, agent: h.agent, rpc: h.rpc })
+    // 100k gas × 1.3, 2 × 0.01 gwei + 0.001 gwei.
+    expect(h.sent[0]?.fees).toEqual({ gasLimit: 130_000n, maxFeePerGas: 21_000_000n, maxPriorityFeePerGas: 1_000_000n })
   })
 
   test('pays the testnet token on the testnet when the wallet is not live', async () => {

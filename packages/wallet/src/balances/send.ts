@@ -1,7 +1,7 @@
 import type { Hex } from 'viem'
 import * as Data from 'effect/Data'
 import { formatUnits } from '../amounts/index.ts'
-import type { AgentSigner } from '../contract/index.ts'
+import type { AgentSigner, TransactionFees } from '../contract/index.ts'
 import { toHex } from './hex.ts'
 import { field, quantity, waitForReceipt, type JsonRpc, type TxStatus, type WaitOptions } from './rpc.ts'
 import type { ChainKey } from '../contract/index.ts'
@@ -80,7 +80,8 @@ interface FeeCall {
   readonly value?: bigint | undefined
 }
 
-const readFee = async (rpc: JsonRpc, call: FeeCall): Promise<bigint> => {
+/** The padded gas estimate and EIP-1559 bounds (twice the base fee plus the tip) a call is signed with. */
+const readFees = async (rpc: JsonRpc, call: FeeCall): Promise<TransactionFees> => {
   const { value, ...rest } = call
   const tx = { ...rest, ...(value === undefined ? {} : { value: `0x${value.toString(16)}` }) }
   const [gas, block, tip] = await Promise.all([
@@ -90,24 +91,29 @@ const readFee = async (rpc: JsonRpc, call: FeeCall): Promise<bigint> => {
     rpc('eth_maxPriorityFeePerGas', []).then(quantity, () => GWEI / 10n),
   ])
   const baseFee = quantity(field(block, 'baseFeePerGas') ?? '0x0')
-  return ((gas * 13n) / 10n) * (baseFee * 2n + tip)
+  return { gasLimit: (gas * 13n) / 10n, maxFeePerGas: baseFee * 2n + tip, maxPriorityFeePerGas: tip }
 }
 
-/** Estimates a call's worst-case fee and refuses it above the chain's ceiling, before anything is signed. */
-export const checkFeeCeiling = async (input: SendContext, call: FeeCall): Promise<void> => {
+/**
+ * Estimates a call's worst-case fee and refuses it above the chain's ceiling, before anything is signed. The bounds it
+ * returns are the ones signed, so the ceiling binds the transaction rather than only predicting it.
+ */
+export const checkFeeCeiling = async (input: SendContext, call: FeeCall): Promise<TransactionFees> => {
   const ceiling = input.feeCeiling ?? AGENT_FEE_CEILINGS[input.chain]
-  let fee: bigint
+  let fees: TransactionFees
   try {
-    fee = await readFee(input.rpc, call)
+    fees = await readFees(input.rpc, call)
   } catch {
     // expected: without a fee estimate the ceiling cannot be checked, so nothing is signed.
     throw new TransferError('rpc_unavailable', 'The chain did not answer the fee estimate; nothing was sent.')
   }
+  const fee = fees.gasLimit * fees.maxFeePerGas
   if (fee > ceiling)
     throw new TransferError(
       'fee_ceiling',
       `The network fee (up to ${formatUnits(fee, 18)} ETH) is above the wallet's ceiling on this chain; nothing was sent.`,
     )
+  return fees
 }
 
 export interface SendStep {
@@ -127,7 +133,7 @@ export const sendSimulated = async (input: SendContext, call: SendStep): Promise
     ...(call.value === undefined ? {} : { value: call.value }),
   }
   await simulate(input.rpc, probe)
-  await checkFeeCeiling(input, probe)
+  const fees = await checkFeeCeiling(input, probe)
   let hash: Hex
   try {
     hash = toHex(
@@ -136,6 +142,7 @@ export const sendSimulated = async (input: SendContext, call: SendStep): Promise
         to: call.to,
         data: call.data,
         ...(call.value === undefined ? {} : { value: call.value }),
+        fees,
         operationKey: call.key,
       }),
     )

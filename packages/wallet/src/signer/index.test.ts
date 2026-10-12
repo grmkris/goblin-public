@@ -285,6 +285,18 @@ describe('the Privy agent signer', () => {
       chain_type: 'ethereum',
       params: { transaction: { to: BASE.delegation.manager, data: '0xcafe', value: '0x0', chain_id: 8453 } },
     })
+    await signerOf(privy.client).sendTransaction({
+      chain: 'base',
+      to: BASE.delegation.manager,
+      data: '0xcafe',
+      fees: { gasLimit: 130_000n, maxFeePerGas: 21_000_000n, maxPriorityFeePerGas: 1_000_000n },
+      operationKey: 'op-5b',
+    })
+    expect(privy.seen[1]?.body).toMatchObject({
+      params: {
+        transaction: { gas_limit: '0x1fbd0', max_fee_per_gas: '0x1406f40', max_priority_fee_per_gas: '0xf4240' },
+      },
+    })
     const bad = await fakePrivy(() => Response.json({ data: { hash: 'pending' } }))
     await expect(
       signerOf(bad.client).sendTransaction({ chain: 'base', to: AGENT, data: '0x', value: 1n, operationKey: 'op-6' }),
