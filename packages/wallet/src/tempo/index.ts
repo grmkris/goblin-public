@@ -4,6 +4,7 @@
  * Before anything is signed, every call in the transaction is checked against the approved terms: only USDC.e
  * `transfer`/`transferWithMemo` to the approved recipient, within the caller's cap.
  */
+import * as Data from 'effect/Data'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { Receipt } from 'mppx'
@@ -61,14 +62,18 @@ export interface TempoAgent extends AgentSigner {
   signTempoTransaction(input: { operationKey: string; transaction: TempoTransactionJson }): Promise<string>
 }
 
+/** True when the signer can also sign Tempo transactions. */
+export const isTempoAgent = (signer: AgentSigner): signer is TempoAgent =>
+  'signTempoTransaction' in signer && typeof signer.signTempoTransaction === 'function'
+
 export type TempoFailure = 'bad_challenge' | 'terms_changed' | 'above_cap' | 'unsafe_call' | 'sign_failed'
 
-export class TempoError extends Error {
+export class TempoError extends Data.TaggedError('TempoError')<{
   readonly code: TempoFailure
+  readonly message: string
+}> {
   constructor(code: TempoFailure, message: string) {
-    super(message)
-    this.name = 'TempoError'
-    this.code = code
+    super({ code, message })
   }
 }
 

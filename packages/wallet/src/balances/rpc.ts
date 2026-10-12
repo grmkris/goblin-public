@@ -1,13 +1,15 @@
+import * as Data from 'effect/Data'
+
 /** A minimal JSON-RPC client over `fetch`, shared by the rails. No viem client, so it runs anywhere `fetch` does. */
 
 export type JsonRpc = (method: string, params: readonly unknown[]) => Promise<unknown>
 
-export class JsonRpcError extends Error {
+export class JsonRpcError extends Data.TaggedError('JsonRpcError')<{
+  readonly message: string
   readonly code: number | undefined
+}> {
   constructor(method: string, message: string, code?: number) {
-    super(`${method}: ${message}`)
-    this.name = 'JsonRpcError'
-    this.code = code
+    super({ message: `${method}: ${message}`, code })
   }
 }
 

@@ -1,4 +1,5 @@
 import type { Hex } from 'viem'
+import * as Data from 'effect/Data'
 import type { AgentSigner } from '../contract/index.ts'
 import { toHex } from './hex.ts'
 import { waitForReceipt, type JsonRpc, type TxStatus, type WaitOptions } from './rpc.ts'
@@ -8,15 +9,14 @@ export type EvmChain = Extract<ChainKey, 'base' | 'ethereum' | 'arbitrum'>
 
 export type TransferFailure = 'insufficient_funds' | 'no_gas' | 'allowance_exhausted' | 'reverted' | 'uncertain'
 
-export class TransferError extends Error {
+export class TransferError extends Data.TaggedError('TransferError')<{
   readonly code: TransferFailure
+  readonly message: string
   /** True when money may have moved; the caller must not retry blind. */
   readonly uncertain: boolean
+}> {
   constructor(code: TransferFailure, message: string, uncertain = false) {
-    super(message)
-    this.name = 'TransferError'
-    this.code = code
-    this.uncertain = uncertain
+    super({ code, message, uncertain })
   }
 }
 

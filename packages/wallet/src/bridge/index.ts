@@ -4,6 +4,8 @@
  * it is signed: from the agent, on the origin chain, zero native value, only an exact-amount USDC approval to Relay's
  * depository and the deposit into that same depository. Then Relay is polled until the funds land or are refunded.
  */
+import * as Data from 'effect/Data'
+import * as Schema from 'effect/Schema'
 import { decodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
 import { toHex } from '../balances/hex.ts'
@@ -20,40 +22,44 @@ const CHAINS: Readonly<Record<ChainKey, Chain>> = { base: BASE, ethereum: ETHERE
 
 export type BridgeFailure = 'unsupported' | 'bad_quote' | 'expired' | 'insufficient_funds'
 
-export class BridgeError extends Error {
+export class BridgeError extends Data.TaggedError('BridgeError')<{
   readonly code: BridgeFailure
+  readonly message: string
+}> {
   constructor(code: BridgeFailure, message: string) {
-    super(message)
-    this.name = 'BridgeError'
-    this.code = code
+    super({ code, message })
   }
 }
 
-export interface BridgeStep {
-  readonly id: 'approve' | 'deposit'
-  readonly to: string
-  readonly data: string
-}
+const BridgeStepSchema = Schema.Struct({
+  id: Schema.Literals(['approve', 'deposit']),
+  to: Schema.String,
+  data: Schema.String,
+})
+export type BridgeStep = typeof BridgeStepSchema.Type
 
-/** A frozen bridge quote. Strings only, so it is JSON-safe for the ledger. */
-export interface FrozenBridge {
-  readonly from: EvmChain
-  readonly to: ChainKey
-  readonly requestId: string
-  readonly steps: readonly BridgeStep[]
+/** A frozen bridge quote. Strings only, so it is JSON-safe for the ledger; `decodeFrozenBridge` reads it back. */
+export const FrozenBridgeSchema = Schema.Struct({
+  from: Schema.Literals(['base', 'ethereum', 'arbitrum']),
+  to: Schema.Literals(['base', 'ethereum', 'arbitrum', 'tempo']),
+  requestId: Schema.String,
+  steps: Schema.Array(BridgeStepSchema),
   /** USDC base units sent on the origin chain. */
-  readonly amountIn: string
-  readonly amountOut: string
-  readonly amountOutMin: string
-  readonly amountInUsd: string
-  readonly feesUsd: string
-  readonly timeEstimateSeconds: number
+  amountIn: Schema.String,
+  amountOut: Schema.String,
+  amountOutMin: Schema.String,
+  amountInUsd: Schema.String,
+  feesUsd: Schema.String,
+  timeEstimateSeconds: Schema.Int,
   /** The destination-chain recipient. */
-  readonly recipient: string
-  readonly agent: string
-  readonly quotedAt: string
-  readonly expiresAt: string
-}
+  recipient: Schema.String,
+  agent: Schema.String,
+  quotedAt: Schema.String,
+  expiresAt: Schema.String,
+})
+export type FrozenBridge = typeof FrozenBridgeSchema.Type
+
+export const decodeFrozenBridge = Schema.decodeUnknownSync(FrozenBridgeSchema)
 
 export interface BridgeQuoteInput {
   readonly from: ChainKey
@@ -246,11 +252,24 @@ export const relayDelivery = async (
   return { delivery: 'pending', detail, txHashes: [] }
 }
 
-/** Executes a frozen bridge: the approval (if quoted), the deposit, then Relay's delivery status. */
-export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeResult> => {
+/** Refuses an expired quote or one that does not match this wallet; returns the origin chain. */
+const assertRunnable = (input: ExecuteBridgeInput): Chain => {
   const { bridge } = input
   if ((input.now ?? (() => new Date()))().getTime() > Date.parse(bridge.expiresAt))
     throw new BridgeError('expired', 'The quote expired; ask for a new one.')
+  const origin = CHAINS[bridge.from]
+  const known = bridge.steps.every(
+    (step) => step.to.toLowerCase() === (step.id === 'deposit' ? RELAY_DEPOSITORY : origin.usdc.address.toLowerCase()),
+  )
+  if (!known || bridge.agent.toLowerCase() !== input.agent.address.toLowerCase())
+    throw new BridgeError('bad_quote', 'The frozen quote does not match this wallet; ask for a new one.')
+  return origin
+}
+
+/** Executes a frozen bridge: the approval (if quoted), the deposit, then Relay's delivery status. */
+export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeResult> => {
+  const { bridge } = input
+  const origin = assertRunnable(input)
   const context = { agent: input.agent, rpc: input.rpc, chain: bridge.from, wait: input.wait }
   let deposit: { hash: string; status: 'success' | 'reverted' | 'pending' } | undefined
   for (const step of bridge.steps) {
@@ -268,7 +287,7 @@ export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeRe
     if (step.id === 'deposit') deposit = sent
   }
   if (deposit === undefined) throw new BridgeError('bad_quote', 'The quote has no deposit step.')
-  const explorerUrl = `${CHAINS[bridge.from].explorerUrl}/tx/${deposit.hash}`
+  const explorerUrl = `${origin.explorerUrl}/tx/${deposit.hash}`
   if (deposit.status !== 'success') {
     return {
       txHash: deposit.hash,

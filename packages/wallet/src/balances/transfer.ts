@@ -49,7 +49,7 @@ export interface EvmTransferResult {
 
 const ERC20 = parseAbi(['function transfer(address to, uint256 amount) returns (bool)'])
 
-const needTopUp = async (input: EvmTransferInput, token: string): Promise<bigint> => {
+const needTopUp = async (input: EnsureFundsInput, token: string): Promise<bigint> => {
   const held = await erc20Balance(input.rpc, token, input.agent.address)
   if (held >= input.amount) return 0n
   const shortfall = input.amount - held
@@ -63,34 +63,55 @@ const needTopUp = async (input: EvmTransferInput, token: string): Promise<bigint
   return shortfall
 }
 
+const requireGas = async (input: { agent: AgentSigner; rpc: JsonRpc }): Promise<void> => {
+  const gas = quantity(await input.rpc('eth_getBalance', [input.agent.address, 'latest']))
+  if (gas === 0n) throw new TransferError('no_gas', 'The agent wallet has no gas on this chain.')
+}
+
+export interface EnsureFundsInput {
+  readonly chain: EvmChain
+  /** Base units of the chain's USDC the agent is about to spend. */
+  readonly amount: bigint
+  readonly operationKey: string
+  readonly agent: AgentSigner
+  readonly rpc: JsonRpc
+  readonly topUp?: TopUp | undefined
+  readonly wait?: WaitOptions | undefined
+}
+
+/** Makes sure the agent holds `amount` USDC, redeeming exactly the shortfall from the owner's allowance if it is short. */
+export const ensureUsdc = async (input: EnsureFundsInput): Promise<{ topUpTxHash?: Hex; topUpAmount?: bigint }> => {
+  const chain = CHAINS[input.chain]
+  const shortfall = await needTopUp(input, chain.usdc.address)
+  if (shortfall === 0n || input.topUp === undefined) return {}
+  await requireGas(input)
+  const data = await input.topUp.redeemCalldata(shortfall)
+  const redeemed = await sendSimulated(input, {
+    key: `${input.operationKey}:topup`,
+    to: chain.delegation.manager,
+    data,
+  })
+  if (redeemed.status !== 'success')
+    throw new TransferError(
+      redeemed.status === 'pending' ? 'uncertain' : 'reverted',
+      'The allowance top-up did not confirm.',
+      redeemed.status === 'pending',
+    )
+  return { topUpTxHash: redeemed.hash, topUpAmount: shortfall }
+}
+
 /** Pays `amount` USDC to `to` from the agent, topping up from the owner's allowance first when it is short. */
 export const transferUsdc = async (input: EvmTransferInput): Promise<EvmTransferResult> => {
   const chain = CHAINS[input.chain]
-  const gas = quantity(await input.rpc('eth_getBalance', [input.agent.address, 'latest']))
-  if (gas === 0n) throw new TransferError('no_gas', 'The agent wallet has no gas on this chain.')
-  const shortfall = await needTopUp(input, chain.usdc.address)
-  let topUpTxHash: Hex | undefined
-  if (shortfall > 0n && input.topUp !== undefined) {
-    const data = await input.topUp.redeemCalldata(shortfall)
-    const redeemed = await sendSimulated(input, {
-      key: `${input.operationKey}:topup`,
-      to: chain.delegation.manager,
-      data,
-    })
-    if (redeemed.status !== 'success')
-      throw new TransferError(
-        redeemed.status === 'pending' ? 'uncertain' : 'reverted',
-        'The allowance top-up did not confirm.',
-        redeemed.status === 'pending',
-      )
-    topUpTxHash = redeemed.hash
-  }
+  await requireGas(input)
+  const funded = await ensureUsdc(input)
   const data = encodeFunctionData({ abi: ERC20, functionName: 'transfer', args: [toAddress(input.to), input.amount] })
   const paid = await sendSimulated(input, { key: `${input.operationKey}:pay`, to: chain.usdc.address, data })
   return {
     txHash: paid.hash,
     status: paid.status,
     explorerUrl: `${chain.explorerUrl}/tx/${paid.hash}`,
-    ...(topUpTxHash === undefined ? {} : { topUpTxHash, topUpAmount: shortfall }),
+    ...(funded.topUpTxHash === undefined ? {} : { topUpTxHash: funded.topUpTxHash }),
+    ...(funded.topUpAmount === undefined ? {} : { topUpAmount: funded.topUpAmount }),
   }
 }

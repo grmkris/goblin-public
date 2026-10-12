@@ -4,6 +4,7 @@
  * USDC offer is eligible (not Circle Gateway, not Solana), nothing above the caller's cap is signed, and the payment
  * must match the terms the owner approved.
  */
+import * as Data from 'effect/Data'
 import { ExactEvmScheme } from '@x402/evm/exact/client'
 import { x402Client, x402HTTPClient } from '@x402/fetch'
 import type { PaymentPayload, PaymentRequired, PaymentRequirements } from '@x402/fetch'
@@ -19,12 +20,12 @@ const USDC_DOMAIN = BASE.usdc.eip3009 ?? { name: 'USD Coin', version: '2' }
 
 export type X402Failure = 'no_offer' | 'above_cap' | 'terms_changed' | 'bad_challenge' | 'refused' | 'sign_failed'
 
-export class X402Error extends Error {
+export class X402Error extends Data.TaggedError('X402Error')<{
   readonly code: X402Failure
+  readonly message: string
+}> {
   constructor(code: X402Failure, message: string) {
-    super(message)
-    this.name = 'X402Error'
-    this.code = code
+    super({ code, message })
   }
 }
 

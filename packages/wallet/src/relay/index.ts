@@ -4,6 +4,8 @@
  * to pay above a per-chain ceiling. The signed bytes are stored before they are broadcast, so a crash retries the
  * exact same transaction, never a second one.
  */
+import * as Data from 'effect/Data'
+import { privateKeyToAccount } from 'viem/accounts'
 import { recoverAuthorizationAddress } from 'viem/utils'
 import { keccak256, type Address, type Hex, type LocalAccount } from 'viem'
 import { toAddress, toHex } from '../balances/hex.ts'
@@ -50,12 +52,12 @@ export const DEFAULT_GAS_CEILINGS: Readonly<Record<RelayChain, GasCeiling>> = {
   tempo: { maxFeePerGas: 3n * GWEI, gasLimit: 1_000_000n },
 }
 
-export class RelayError extends Error {
+export class RelayError extends Data.TaggedError('RelayError')<{
   readonly code: 'bad_request' | 'gas_ceiling' | 'dropped' | 'reverted'
+  readonly message: string
+}> {
   constructor(code: RelayError['code'], message: string) {
-    super(message)
-    this.name = 'RelayError'
-    this.code = code
+    super({ code, message })
   }
 }
 
@@ -295,3 +297,6 @@ export const memoryRelayStore = (): RelayStore => {
     pending: async (chain) => [...rows.values()].filter((row) => row.chain === chain && row.status === 'pending'),
   }
 }
+
+/** The relay's signing account from its private key secret. The key never leaves this account object. */
+export const relayAccountFromKey = (privateKey: string): LocalAccount => privateKeyToAccount(toHex(privateKey))

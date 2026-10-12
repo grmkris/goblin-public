@@ -4,6 +4,8 @@
  * (the LI.FI Diamond, the agent as sender, price impact within bounds), simulated from the agent, and approvals are
  * for the exact sell amount, never unlimited.
  */
+import * as Data from 'effect/Data'
+import * as Schema from 'effect/Schema'
 import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
 import { toAddress, toHex } from '../balances/hex.ts'
@@ -34,34 +36,39 @@ export const BASE_TOKENS: readonly SwapToken[] = [
 
 export type SwapFailure = 'unsupported' | 'bad_quote' | 'price_impact' | 'expired' | 'insufficient_funds'
 
-export class SwapError extends Error {
+export class SwapError extends Data.TaggedError('SwapError')<{
   readonly code: SwapFailure
+  readonly message: string
+}> {
   constructor(code: SwapFailure, message: string) {
-    super(message)
-    this.name = 'SwapError'
-    this.code = code
+    super({ code, message })
   }
 }
 
-/** A frozen quote. Strings only, so it is JSON-safe for the ledger. */
-export interface FrozenSwap {
-  readonly chain: 'base'
-  readonly sell: SwapToken
-  readonly buy: SwapToken
+const SwapTokenSchema = Schema.Struct({ symbol: Schema.String, address: Schema.String, decimals: Schema.Int })
+
+/** A frozen quote. Strings only, so it is JSON-safe for the ledger; `decodeFrozenSwap` reads it back. */
+export const FrozenSwapSchema = Schema.Struct({
+  chain: Schema.Literal('base'),
+  sell: SwapTokenSchema,
+  buy: SwapTokenSchema,
   /** Base units of the sell token. */
-  readonly sellAmount: string
-  readonly buyAmount: string
-  readonly buyAmountMin: string
-  readonly transaction: { readonly to: string; readonly data: string; readonly value: string; readonly chainId: number }
-  readonly approvalAddress: string
-  readonly sellUsd: string
-  readonly buyUsd: string
-  readonly feesUsd: string
-  readonly tool: string
-  readonly agent: string
-  readonly quotedAt: string
-  readonly expiresAt: string
-}
+  sellAmount: Schema.String,
+  buyAmount: Schema.String,
+  buyAmountMin: Schema.String,
+  transaction: Schema.Struct({ to: Schema.String, data: Schema.String, value: Schema.String, chainId: Schema.Int }),
+  approvalAddress: Schema.String,
+  sellUsd: Schema.String,
+  buyUsd: Schema.String,
+  feesUsd: Schema.String,
+  tool: Schema.String,
+  agent: Schema.String,
+  quotedAt: Schema.String,
+  expiresAt: Schema.String,
+})
+export type FrozenSwap = typeof FrozenSwapSchema.Type
+
+export const decodeFrozenSwap = Schema.decodeUnknownSync(FrozenSwapSchema)
 
 export interface SwapQuoteInput {
   readonly sell: string
@@ -222,6 +229,11 @@ export const executeSwap = async (input: ExecuteSwapInput): Promise<SwapResult> 
   const { swap } = input
   if ((input.now ?? (() => new Date()))().getTime() > Date.parse(swap.expiresAt))
     throw new SwapError('expired', 'The quote expired; ask for a new one.')
+  if (
+    swap.transaction.to.toLowerCase() !== LIFI_DIAMOND.toLowerCase() ||
+    swap.agent.toLowerCase() !== input.agent.address.toLowerCase()
+  )
+    throw new SwapError('bad_quote', 'The frozen quote does not match this wallet; ask for a new one.')
   const sellAmount = BigInt(swap.sellAmount)
   const held =
     swap.sell.address === NATIVE

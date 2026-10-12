@@ -164,3 +164,5 @@ export const getAllowanceState = async (input: AllowanceInput): Promise<Allowanc
 export { erc20Balance } from './erc20.ts'
 export * from './transfer.ts'
 export * from './send.ts'
+export * from './rpc.ts'
+export * from './hex.ts'
