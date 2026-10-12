@@ -1893,12 +1893,23 @@ runtime calls for MPP inference. It hands over the service's 402 `WWW-Authentica
 charge like any spend, signs it in Tempo's sponsored form (the service's fee payer pays the fee) and returns the
 credential, never fetching. The operation stays uncertain, its amount held, until the caller reports the service's
 `Payment-Receipt`, which settles it only when Tempo shows the agent's transfer under that challenge's memo. An agent
-that holds less USDC.e than the charge is refused before anything is signed, as `insufficient_funds` naming its address
-and `add_funds`; a Tempo balance that cannot be read does not block signing.
+that holds less USDC.e than the charge is refused before anything is signed, as `insufficient_funds`: when the owner's
+Base allowance can refill the float, with "Refilling from your Base allowance; try again in about a minute." and
+`retryAfterSeconds`, otherwise naming its address and `add_funds`. A Tempo balance that cannot be read does not block
+signing.
+
+The wallet keeps that USDC.e, the Tempo float, topped up from the owner's Base allowance ([ADR
+0051](adr/0051-tempo-float-refilled-from-the-base-allowance.md)). Under $1 it bridges Base USDC to the agent's own
+Tempo address through Relay, back to $3, as one UserOperation that redeems the shortfall and its gas. It is capped by
+the allowance left this period and the owner's Base USDC, and skipped under $0.50. It runs on the owner's
+`WalletLedger` alarm, one refill at a time (`rails/float.ts`, `ledger/float.ts`). Three things set the alarm: a
+confirmed Base allowance (the seed), an MPP payment that leaves the float low, and a charge refused for funds. Each
+refill is an activity row ("Moved $3.00 to Tempo for paid inference") that the spend windows do not count.
 
 Paid inference and MPP services pay from the agent's own wallet on Tempo, in USDC.e. `wallet_status` names it as
-`payFrom` (the address, and the USDC.e it holds when Tempo could be read) and, below about two paid calls (0.05 USDC.e),
-says where to send USDC.e. `add_funds` and the owner's `POST /api/deposits` give a one-off Relay deposit address
+`payFrom` (the address, and the USDC.e it holds when Tempo could be read) and `float` (its thresholds, whether a refill
+is on its way, and whether the allowance refills it). Below about two paid calls (0.05 USDC.e), it says the
+allowance keeps it topped up, or, only when the allowance cannot, where to send USDC.e and why. `add_funds` and the owner's `POST /api/deposits` give a one-off Relay deposit address
 (`rails/deposit.ts`): ETH or USDC sent there on Base, Arbitrum or Ethereum arrives as USDC.e with the agent on Tempo, or,
 for the owner's route, as ETH or USDC in the owner's account on Base. `add_funds_status` follows the address. Neither
 signs nor spends; whoever sends pays. `wallet_open` (and `wallet_home`) with `focus: "add_funds"` opens the App on Add
