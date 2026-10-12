@@ -111,16 +111,24 @@ function BackToChannel({ app }: { readonly app: AppView | undefined }) {
 
 const px = (value: string): number => Math.round(Number.parseFloat(value) || 0)
 
-/** The device's safe-area insets in pixels, read through a probe (CSS knows them; script only through layout). */
-function safeInsets(host: HTMLElement): Insets {
+/**
+ * The device's safe-area insets in pixels, read through a hidden probe (CSS knows them; script only through layout).
+ * The probe is placed once, on the body, outside the page it measures: reading it never changes the page, so the
+ * page's own observers never see a measurement (one that added a probe to the page measured again for ever).
+ */
+function safeAreaProbe() {
   const probe = document.createElement('div')
+  probe.setAttribute('aria-hidden', 'true')
   probe.style.cssText =
-    'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)'
-  host.appendChild(probe)
-  const style = getComputedStyle(probe)
-  const insets = { top: 0, right: px(style.paddingRight), bottom: px(style.paddingBottom), left: px(style.paddingLeft) }
-  probe.remove()
-  return insets
+    'position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)'
+  document.body.appendChild(probe)
+  return {
+    read: (): Insets => {
+      const style = getComputedStyle(probe)
+      return { top: 0, right: px(style.paddingRight), bottom: px(style.paddingBottom), left: px(style.paddingLeft) }
+    },
+    remove: () => probe.remove(),
+  }
 }
 
 /**
@@ -134,8 +142,10 @@ function useCoveredEdges(id: string, main: RefObject<HTMLElement | null>, bar: b
     const room = main.current
     if (room === null) return undefined
     const covers = () => [...room.querySelectorAll(':scope > [data-app-cover]')]
+    const probe = safeAreaProbe()
+    // Reads layout only: it never writes to the room, so neither observer below is woken by it.
     const measure = () => {
-      const safe = safeInsets(room)
+      const safe = probe.read()
       const tops = covers().map((cover) => cover.getBoundingClientRect().top)
       const bottom = room.getBoundingClientRect().bottom
       const covered = bar && tops.length > 0 ? Math.round(bottom - Math.min(...tops)) : safe.bottom
@@ -155,6 +165,7 @@ function useCoveredEdges(id: string, main: RefObject<HTMLElement | null>, bar: b
     return () => {
       children.disconnect()
       sizes.disconnect()
+      probe.remove()
     }
   }, [id, main, bar, keyboard, setInsets])
   useEffect(() => () => setInsets(id, undefined), [id, setInsets])
