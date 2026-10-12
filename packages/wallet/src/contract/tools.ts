@@ -99,6 +99,40 @@ export const OperationCheck = Schema.Struct({
 })
 export type OperationCheck = typeof OperationCheck.Type
 
+/**
+ * `POST /api/deposits` and the `add_funds` tool: a one-off Relay deposit address. Whatever is sent there from `from`, in
+ * `asset`, arrives as `receive`, usually within seconds: `USDC.e` in the agent's wallet on Tempo (what it pays MPP
+ * services and paid inference with), `ETH` or `USDC` in the owner's account on Base. The address serves this quote only.
+ */
+export const DepositRequest = Schema.Struct({
+  from: Schema.Literals(['base', 'arbitrum', 'ethereum']),
+  asset: Schema.Literals(['ETH', 'USDC']),
+  /** Decimal amount of `asset` the sender will send. */
+  amount: TokenAmount,
+  receive: Schema.Literals(['ETH', 'USDC', 'USDC.e']),
+})
+export type DepositRequest = typeof DepositRequest.Type
+
+/** `wallet_open` and `wallet_home`: `focus` opens the App on that part, e.g. Add funds for an owner who must fund it. */
+export const WalletOpenInput = Schema.Struct({ focus: Schema.optional(Schema.Literal('add_funds')) })
+export type WalletOpenInput = typeof WalletOpenInput.Type
+
+/**
+ * `add_funds`: a one-off Relay deposit address (`DepositRequest`). `receive` defaults to `USDC.e`, which lands in the
+ * agent's wallet on Tempo, where paid inference and MPP services are paid from. Nothing is signed or spent.
+ */
+export const AddFundsInput = Schema.Struct({
+  from: DepositRequest.fields.from,
+  asset: DepositRequest.fields.asset,
+  amount: DepositRequest.fields.amount,
+  receive: Schema.optional(DepositRequest.fields.receive),
+})
+export type AddFundsInput = typeof AddFundsInput.Type
+
+/** `add_funds_status`: Relay's progress for a deposit address `add_funds` gave. */
+export const AddFundsStatusInput = Schema.Struct({ deposit_address: Address })
+export type AddFundsStatusInput = typeof AddFundsStatusInput.Type
+
 export const PolicyChangeInput = Schema.Struct({
   /** What the agent asks for, e.g. raise the hourly limit to $30, or allow a new service. */
   change: Text(400),
@@ -150,4 +184,6 @@ export const TOOLS = {
   receipt: 'receipt',
   policyChange: 'request_policy_change',
   viewState: 'view_state',
+  addFunds: 'add_funds',
+  addFundsStatus: 'add_funds_status',
 } as const

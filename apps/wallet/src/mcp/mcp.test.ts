@@ -3,6 +3,7 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, test } from 'vitest'
 import { defaultWiring, unconfiguredRails, type Wiring } from '../context.ts'
 import { WalletLedger } from '../ledger/durable.ts'
+import { RailError } from '../rails/deps.ts'
 import type { RailsPort } from '../services/rails.ts'
 import { testEnv } from '../test-env.ts'
 import { type McpAuthenticator, challenge } from './auth.ts'
@@ -20,6 +21,7 @@ const ledgerFor = () => {
 
 const OWNER = '0x1111111111111111111111111111111111111111'
 const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const DEPOSIT = '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f'
 const rails: RailsPort = {
   ...unconfiguredRails,
   balances: () =>
@@ -40,6 +42,20 @@ const rails: RailsPort = {
         enforcedBy: 'MetaMask ERC20PeriodTransfer',
       },
     ]),
+  depositAddress: (input) =>
+    input.from === 'ethereum'
+      ? Promise.reject(new RailError('Relay refused the quote: amount too low.'))
+      : Promise.resolve({
+          requestId: '0x1791',
+          depositAddress: DEPOSIT,
+          ...input,
+          receive: input.receive ?? 'USDC.e',
+          expectedOut: '4.98',
+          feesUsd: '0.02',
+          recipient: '0x4444444444444444444444444444444444444444',
+          timeEstimateSeconds: 1,
+        }),
+  depositProgress: (depositAddress) => Promise.resolve({ depositAddress, status: 'success', txHashes: ['0xab'] }),
 }
 const ledgers = new Map<string, WalletLedger>()
 const wiring: Wiring = {
@@ -298,6 +314,27 @@ describe('the App tools and views', () => {
     const result = await call('wallet_open')
     expect(result.structuredContent).toMatchObject({ status: { kind: 'wallet' }, recent: expect.any(Array) })
     expect(result.content?.[0]?.text).toContain('Wallet dashboard')
+  })
+
+  test('wallet_open with focus add_funds tells the App to open on Add funds', async () => {
+    expect((await call('wallet_open', { focus: 'add_funds' })).structuredContent).toMatchObject({ focus: 'add_funds' })
+    expect((await call('wallet_open')).structuredContent).not.toHaveProperty('focus')
+  })
+
+  test('add_funds gives a deposit address that lands as USDC.e with the agent on Tempo, and follows it', async () => {
+    const quoted = await call('add_funds', { from: 'base', asset: 'ETH', amount: '0.002' })
+    expect(quoted.structuredContent).toMatchObject({ deposit: { depositAddress: DEPOSIT, receive: 'USDC.e' } })
+    expect(quoted.content?.[0]?.text).toContain(`Send 0.002 ETH on Base to ${DEPOSIT}`)
+    expect(quoted.content?.[0]?.text).toContain('on Tempo, which pays paid inference')
+    const followed = await call('add_funds_status', { deposit_address: DEPOSIT })
+    expect(followed.content?.[0]?.text).toContain('filled; the funds have arrived')
+  })
+
+  test("a rail's refusal keeps its words instead of reading as a rail that did not answer", async () => {
+    expect(await call('add_funds', { from: 'ethereum', asset: 'USDC', amount: '0.1' })).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'rail_refused', message: 'Relay refused the quote: amount too low.' } },
+    })
   })
 
   test('wallet_home is the same view as an app-only global entrypoint', async () => {

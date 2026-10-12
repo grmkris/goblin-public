@@ -1,6 +1,9 @@
 import type {
+  AddFundsInput,
   ChainBalance,
   ChainKey,
+  DepositAddress,
+  DepositStatus,
   LimitView,
   Operation,
   Payment,
@@ -16,6 +19,7 @@ import type { ReceiptFinding } from '@goblin/wallet/tempo'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { RailError } from '../rails/deps.ts'
 import { failure, type WalletFailure } from './errors.ts'
 
 /** The bounded response of a paid request. */
@@ -88,6 +92,10 @@ export interface RailsPort {
   check(operation: Operation): Promise<CheckFinding>
   /** Relays the owner's signed EIP-7702 authorization. */
   upgrade(request: UpgradeRequest): Promise<Operation>
+  /** A one-off Relay deposit address; USDC.e (the default) lands with the agent on Tempo. Signs and spends nothing. */
+  depositAddress(input: AddFundsInput): Promise<DepositAddress>
+  /** Relay's progress for a deposit address; `unknown` when Relay does not say. */
+  depositProgress(depositAddress: string): Promise<DepositStatus>
 }
 
 export class Rails extends Context.Service<
@@ -100,6 +108,11 @@ export const railsLayer = (rails: RailsPort): Layer.Layer<Rails> =>
     use: (call) =>
       Effect.tryPromise({
         try: () => call(rails),
-        catch: () => failure('rail_unavailable', 'The payment rail did not answer.', 502, 'Try again in a moment.'),
+        // A rail's own refusal (testnets, no agent yet, a quote Relay refused) keeps its words; anything else is
+        // a rail that did not answer.
+        catch: (error) =>
+          error instanceof RailError
+            ? failure('rail_refused', error.message, 409)
+            : failure('rail_unavailable', 'The payment rail did not answer.', 502, 'Try again in a moment.'),
       }),
   })

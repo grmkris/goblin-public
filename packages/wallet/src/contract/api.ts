@@ -5,7 +5,7 @@ import { LimitView, WalletLimits } from './limits.ts'
 import { Operation } from './operations.ts'
 import { Recipient, ServiceRule } from './services.ts'
 import { WalletStatusResult } from './status.ts'
-import { OperationCheck } from './tools.ts'
+import { DepositRequest, OperationCheck } from './tools.ts'
 
 /**
  * The owner API the web app calls with `authorization: Bearer <Privy access token>`. Every route acts for the signed-in
@@ -71,20 +71,6 @@ export type PolicyChange = typeof PolicyChange.Type
 
 export const PolicyChangeDecision = Schema.Struct({ decision: Schema.Literals(['applied', 'dismissed']) })
 export type PolicyChangeDecision = typeof PolicyChangeDecision.Type
-
-/**
- * `POST /api/deposits` and the `add_funds` tool: a one-off Relay deposit address. Whatever is sent there from `from`, in
- * `asset`, arrives as `receive`, usually within seconds: `USDC.e` in the agent's wallet on Tempo (what it pays MPP
- * services and paid inference with), `ETH` or `USDC` in the owner's account on Base. The address serves this quote only.
- */
-export const DepositRequest = Schema.Struct({
-  from: Schema.Literals(['base', 'arbitrum', 'ethereum']),
-  asset: Schema.Literals(['ETH', 'USDC']),
-  /** Decimal amount of `asset` the sender will send. */
-  amount: TokenAmount,
-  receive: Schema.Literals(['ETH', 'USDC', 'USDC.e']),
-})
-export type DepositRequest = typeof DepositRequest.Type
 
 export const DepositAddress = Schema.Struct({
   requestId: Text(80),

@@ -2,6 +2,8 @@ import { McpServer } from '@modelcontextprotocol/server'
 import { registerViews } from './apps.ts'
 import { registerViewState } from './tools/view-state.ts'
 import { registerWalletOpen } from './tools/wallet-open.ts'
+import { registerAddFunds } from './tools/add-funds.ts'
+import { registerAddFundsStatus } from './tools/add-funds-status.ts'
 import { registerAllowances } from './tools/allowances.ts'
 import { registerBalances } from './tools/balances.ts'
 import { registerOperation } from './tools/operation.ts'
@@ -40,6 +42,8 @@ export function walletServer(box: Toolbox): McpServer {
   registerBridgeQuote(server, box)
   registerBridgeExecute(server, box)
   registerPolicyChange(server, box)
+  registerAddFunds(server, box)
+  registerAddFundsStatus(server, box)
   registerViews(server, box)
   registerWalletOpen(server, box)
   registerViewState(server, box)

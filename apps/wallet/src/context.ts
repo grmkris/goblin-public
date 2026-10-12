@@ -64,6 +64,8 @@ export const unconfiguredRails: RailsPort = {
   allowances: unavailable,
   check: unavailable,
   upgrade: unavailable,
+  depositAddress: unavailable,
+  depositProgress: unavailable,
 }
 
 const notConfigured = (what: string) => (): Promise<never> =>

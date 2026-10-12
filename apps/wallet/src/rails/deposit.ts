@@ -1,5 +1,6 @@
 import { BridgeError, depositStatus as relayDepositStatus, quoteDepositAddress } from '@goblin/wallet/bridge'
 import type { DepositAddress, DepositRequest, DepositStatus } from '@goblin/wallet/contract'
+import type { RailsPort } from '../services/rails.ts'
 import { RailError, type RailsDeps } from './deps.ts'
 
 type DepositDeps = Pick<RailsDeps, 'live' | 'profile' | 'fetchFn'>
@@ -38,3 +39,9 @@ export const depositProgress = async (address: string, fetchFn?: typeof fetch): 
     return { depositAddress: address, status: 'unknown', txHashes: [] }
   }
 }
+
+/** The deposit half of the rails: `add_funds` defaults to USDC.e, which lands with the agent on Tempo. */
+export const depositRails = (deps: RailsDeps): Pick<RailsPort, 'depositAddress' | 'depositProgress'> => ({
+  depositAddress: (input) => depositAddress({ ...input, receive: input.receive ?? 'USDC.e' }, deps),
+  depositProgress: (address) => depositProgress(address, deps.fetchFn),
+})

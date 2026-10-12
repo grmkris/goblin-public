@@ -1,6 +1,6 @@
 import type { ChainBalance } from '@goblin/wallet/contract'
 import { describe, expect, test } from 'vitest'
-import { setupGaps, setupSentence } from './setup.ts'
+import { fundingSentence, setupGaps, setupSentence } from './setup.ts'
 
 const OWNER = '0x1111111111111111111111111111111111111111'
 const usdc = (balance: string): ChainBalance => ({
@@ -43,5 +43,20 @@ describe('setup gaps', () => {
     expect(setupSentence(['upgrade the account on Base', 'sign the spending allowance'], 'https://wallet.test')).toBe(
       "Setup isn't finished; ask the owner to upgrade the account on Base, then sign the spending allowance at https://wallet.test/. Paid tools stay blocked until then.",
     )
+  })
+
+  test('the funding sentence names the agent address on Tempo when it holds too little, and stays quiet otherwise', () => {
+    const AGENT = '0x4444444444444444444444444444444444444444'
+    const at = (held?: string) => ({
+      address: AGENT,
+      chain: 'tempo' as const,
+      token: 'USDC.e' as const,
+      ...(held === undefined ? {} : { held }),
+    })
+    expect(fundingSentence(at('0'))).toContain(`The agent wallet ${AGENT} holds 0 USDC.e on Tempo`)
+    expect(fundingSentence(at('0.049999'))).toContain('add_funds')
+    expect(fundingSentence(at('0.05'))).toBeUndefined()
+    expect(fundingSentence(at())).toBeUndefined()
+    expect(fundingSentence(undefined)).toBeUndefined()
   })
 })

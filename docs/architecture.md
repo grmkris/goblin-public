@@ -1791,6 +1791,15 @@ charge like any spend, signs it in Tempo's sponsored form (the service's fee pay
 credential, never fetching. The operation stays uncertain, its amount held, until the caller reports the service's
 `Payment-Receipt`, which settles it only when Tempo shows the agent's transfer under that challenge's memo.
 
+Paid inference and MPP services pay from the agent's own wallet on Tempo, in USDC.e. `wallet_status` names it as
+`payFrom` (the address, and the USDC.e it holds when Tempo could be read) and, below about two paid calls (0.05 USDC.e),
+says where to send USDC.e. `add_funds` and the owner's `POST /api/deposits` give a one-off Relay deposit address
+(`rails/deposit.ts`): ETH or USDC sent there on Base, Arbitrum or Ethereum arrives as USDC.e with the agent on Tempo, or,
+for the owner's route, as ETH or USDC in the owner's account on Base. `add_funds_status` follows the address. Neither
+signs nor spends; whoever sends pays. `wallet_open` (and `wallet_home`) with `focus: "add_funds"` opens the App on Add
+funds. A rail's own refusal (testnets, no agent yet, a quote Relay refused) reaches the caller as `rail_refused` with its
+words; only a rail that did not answer is `rail_unavailable`.
+
 `wallet_status` counts as spendable only the funds the agent can reach: its own wallet's, and the owner's on a chain an
 allowance (or Tempo access key) covers, under the tightest layer. A chain whose RPC fails is listed in `unread` with no
 rows, never as a zero balance, and turns a "no" into "not verified". The dashboard App and the owner's Home share one

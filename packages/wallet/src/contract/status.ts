@@ -48,11 +48,25 @@ export const ChainBalance = Schema.Struct({
 })
 export type ChainBalance = typeof ChainBalance.Type
 
+/**
+ * The address paid inference and MPP services are paid from: the agent's own wallet, on Tempo, in USDC.e. Sending
+ * USDC.e there on Tempo (or through `add_funds` from another chain) funds it. `held` is absent when Tempo was not read.
+ */
+export const PayFrom = Schema.Struct({
+  address: Address,
+  chain: Schema.Literal('tempo'),
+  token: Schema.Literal('USDC.e'),
+  held: Schema.optional(TokenAmount),
+})
+export type PayFrom = typeof PayFrom.Type
+
 /** `wallet_status` structured content: goblin's `WalletStatus` plus what the App shows. */
 export const WalletStatusResult = Schema.Struct({
   status: WalletStatus,
   owner: Schema.Struct({ address: Address, upgraded: Schema.Boolean }),
   agent: Schema.Struct({ address: Address }),
+  /** Absent until the owner has created the agent wallet. */
+  payFrom: Schema.optional(PayFrom),
   balances: Schema.Array(ChainBalance),
   /** Chains whose balances could not be read just now: unknown, never zero. Their rows are absent from `balances`. */
   unread: Schema.optional(Schema.Array(ChainKey)),
@@ -61,6 +75,8 @@ export const WalletStatusResult = Schema.Struct({
   recent: Schema.optional(Schema.Array(Operation).check(Schema.isMaxLength(10))),
   /** The owner's wallet app, where a waiting spend is approved (`/approve/<operation id>`) and limits are changed. */
   site: Schema.optional(Text(256)),
+  /** The App opens on this part when the caller asked for it (`wallet_open` with `focus`). */
+  focus: Schema.optional(Schema.Literal('add_funds')),
   checkedAt: Instant,
 })
 export type WalletStatusResult = typeof WalletStatusResult.Type

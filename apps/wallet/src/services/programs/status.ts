@@ -1,4 +1,4 @@
-import type { LimitView, WalletStatusResult } from '@goblin/wallet/contract'
+import type { ChainBalance, ChainKey, LimitView, PayFrom, WalletStatusResult } from '@goblin/wallet/contract'
 import * as Clock from 'effect/Clock'
 import * as DateTime from 'effect/DateTime'
 import * as Effect from 'effect/Effect'
@@ -20,6 +20,22 @@ export const readLimits = Effect.gen(function* () {
   const theirs = yield* rails.use((port) => port.allowances()).pipe(Effect.orElseSucceed((): LimitView[] => []))
   return [...mine, ...theirs]
 })
+
+/** The agent's Tempo address and its USDC.e: what paid inference and MPP services pay from. */
+const payFromOf = (
+  agent: string | undefined,
+  balances: readonly ChainBalance[],
+  unread: readonly ChainKey[],
+): PayFrom | undefined => {
+  if (agent === undefined) return undefined
+  const row = balances.find((entry) => entry.chain === 'tempo' && entry.holder === 'agent' && entry.symbol === 'USDC.e')
+  return {
+    address: agent,
+    chain: 'tempo',
+    token: 'USDC.e',
+    ...(unread.includes('tempo') ? {} : { held: row?.balance ?? '0' }),
+  }
+}
 
 /** `wallet_status` and `GET /api/status`: goblin's `WalletStatus` plus what the App shows. */
 export const readStatus = Effect.gen(function* () {
@@ -44,6 +60,7 @@ export const readStatus = Effect.gen(function* () {
     grantExpiresAt: grant.expiresAt,
     now,
   })
+  const payFrom = payFromOf(profile.agentAddress, balances, unread)
   const result: WalletStatusResult = {
     status,
     owner: {
@@ -51,6 +68,7 @@ export const readStatus = Effect.gen(function* () {
       upgraded: profile.chains.some((chain) => chain.upgraded),
     },
     agent: { address: profile.agentAddress ?? NO_ADDRESS },
+    ...(payFrom === undefined ? {} : { payFrom }),
     balances,
     ...(unread.length === 0 ? {} : { unread }),
     limits,
