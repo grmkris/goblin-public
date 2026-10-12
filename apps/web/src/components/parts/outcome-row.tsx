@@ -40,15 +40,21 @@ function sentence({ kind, name, state }: Continuation, connection: string): stri
   return `You refused ${name} on ${connection}`
 }
 
+/** What the agent does with an outcome kept for its next turn (nothing could pay for one when it was decided). */
+const keptNote = ({ state }: Continuation): string =>
+  state === 'completed' ? 'goblin reads the result on your next message' : 'goblin reads this on your next message'
+
 /**
  * How a call held for the owner ended (ADR 0028, ADR 0042): one quiet line in the transcript where the turn goes on,
- * never the owner's own message. It opens to the server's answer, shown as its data.
+ * never the owner's own message. It opens to the server's answer, shown as its data. `kept`: no turn went on from it
+ * yet, so the line says when the agent reads it.
  */
-export function OutcomeRow({ outcome }: { readonly outcome: McpOutcome }) {
+export function OutcomeRow({ outcome, kept = false }: { readonly outcome: McpOutcome; readonly kept?: boolean }) {
   const labels = useConnectionLabels()
   const { continuation, result } = outcome
   const connection = labels(continuation.connectionId)
-  const text = sentence(continuation, connection)
+  const said = sentence(continuation, connection)
+  const text = kept ? `${said} · ${keptNote(continuation)}` : said
   const state = STATE[continuation.state]
   if (result === undefined)
     return (

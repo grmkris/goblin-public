@@ -22,6 +22,10 @@ import { askResult } from '../internal-client.ts'
 import type { MovePhase } from '../../src/chats/mover.ts'
 import { moveState, readRounds } from './move-probe.ts'
 import { ownerSend } from './probe-reads.ts'
+import { addUsage, utcDay } from '../../src/budget.ts'
+
+/** Thousandths of a Credit the `approvals/spent` lever adds to today: more than any fixture plan allows a day. */
+const SPENT_MILLI = 1_000_000_000
 
 export class OwnerAgent extends PersonalAgent {
   readonly #mcp = new AppsMcpFixture()
@@ -92,9 +96,18 @@ export class OwnerAgent extends PersonalAgent {
       return Response.json({ released: queueModel(this).release(input) })
     }
     if (path === '/test/approvals/calls') return Response.json(this.#mcp.calls)
+    // Today's Credits spent past any plan's allowance (`spent`), and given back (`unspent`).
+    if (path === '/test/approvals/spent') return this.#spend(SPENT_MILLI)
+    if (path === '/test/approvals/unspent') return this.#spend(-SPENT_MILLI)
     if (path === '/test/approvals/recovery')
       return Response.json(await approvalsProbe(this.ctx.storage, this.env.CREDENTIAL_KEY))
     return super.onRequest(request)
+  }
+  /** Adds `milli` thousandths of a Credit to today's usage. */
+  #spend(milli: number): Response {
+    const now = Math.floor(Date.now() / 1000)
+    addUsage(drizzle(this.ctx.storage), utcDay(now).day, 0, milli, now)
+    return Response.json({ milli })
   }
   /** An open report highlight in main, as the decisions would propose it, fenced on main as it is (ADR 0031). */
   #seedDecision() {

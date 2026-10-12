@@ -131,7 +131,7 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
   const busy = decision.isPending
   const error =
     decision.error !== null
-      ? messageOf(decision.error, 'record your decision')
+      ? messageOf(decision.error, 'record your decision', { showRecovery: true })
       : read.error !== null
         ? messageOf(read.error, 'read the call')
         : ''

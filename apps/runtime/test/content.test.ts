@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { logMessage } from '../src/memory/log.ts'
-import { ownerContent, threadHeadContent, threadStartedContent, topicSeedContent } from '../src/pi/content.ts'
+import {
+  outcomeContent,
+  ownerContent,
+  threadHeadContent,
+  threadStartedContent,
+  topicSeedContent,
+} from '../src/pi/content.ts'
 
 describe('the owner message with App context', () => {
   it('stays the owner’s plain words when no App shared anything', () => {
@@ -75,6 +81,22 @@ describe("a chat's note of a Thread started from its composer", () => {
     expect(logMessage({ kind: 'app.thread_head', model })).toEqual({
       kind: 'user',
       text: '[the owner started a thread: "Plan the trip"]',
+    })
+  })
+})
+
+describe("a decided call's outcome kept for the next turn", () => {
+  it("stays in the chat's memory as a user line, as the turn it would have started keeps it", () => {
+    const outcome = {
+      continuation: { kind: 'approval', connectionId: 'board', name: 'post', state: 'completed' },
+      origin: { connectionId: 'board', trust: 'untrusted' },
+      result: { posted: true },
+    } as const
+    const content = outcomeContent('Board', 'Approved "Board" (board) · post; the held call returned.', outcome)
+    const model = [{ role: 'user' as const, content, timestamp: 1 }]
+    expect(logMessage({ kind: 'app.mcp_outcome', model })).toEqual({
+      kind: 'user',
+      text: content.map((block) => block.text).join('\n'),
     })
   })
 })

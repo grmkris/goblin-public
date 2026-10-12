@@ -42,6 +42,8 @@ export type ChatMessage =
       readonly author?: string
       /** How a held call ended, when this is its outcome (from its connection). */
       readonly outcome?: McpOutcome
+      /** The outcome was kept for the agent's next turn (`app.mcp_outcome`): nothing could pay for one then. */
+      readonly kept?: true
       /** The thread a note shared into main came from. */
       readonly thread?: string
       /** The Personas the owner asked instead of Goblin (`app.persona_ask`), and in what order. */

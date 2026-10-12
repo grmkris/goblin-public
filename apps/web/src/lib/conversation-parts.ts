@@ -147,6 +147,7 @@ function userPart(message: Extract<ChatMessage, { role: 'user' }>): Part {
     ...(message.selections && { selections: message.selections }),
     ...(message.author !== undefined && { author: message.author }),
     ...(message.outcome !== undefined && { outcome: message.outcome }),
+    ...(message.kept === true && { kept: true as const }),
     ...(message.thread !== undefined && { thread: message.thread }),
     ...(message.timestamp !== undefined && { at: message.timestamp }),
   }
@@ -228,8 +229,20 @@ export function conversationParts(projection: ConversationProjection, echo?: Ech
   )
   const sending = echo !== undefined && landed === undefined
   if (sending) parts.push({ kind: 'user', id: echo.id, key: echo.id, text: echo.text })
-  const shown = [...parts, ...liveParts(projection, context, seen)]
+  const shown = keptLast([...parts, ...liveParts(projection, context, seen)])
   return uniqueKeys(placeApps([...settledHolds(shown), ...workingParts(projection, shown, sending)]))
+}
+
+/**
+ * A kept outcome waits for the agent's next turn only while it is the newest part: once anything follows it (the
+ * owner's next message, its echo, a turn), the agent has it, and the row reads as any other outcome.
+ */
+function keptLast(parts: readonly Part[]): Part[] {
+  return parts.map((part, index) => {
+    if (part.kind !== 'user' || part.kept !== true || index === parts.length - 1) return part
+    const { kept: _, ...read } = part
+    return read
+  })
 }
 
 /**

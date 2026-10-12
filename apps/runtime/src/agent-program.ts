@@ -6,6 +6,7 @@ import {
   type CreateConversation,
   type UpdateConversation,
 } from '@goblin/contracts'
+import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Apps } from './apps/service.ts'
@@ -220,20 +221,56 @@ export const submitOwner = (input: OwnerSubmit) =>
     })
   })
 
+/** The passive entry a decided call's outcome is kept in when no turn can go on from it. */
+const KEPT_OUTCOME = 'app.mcp_outcome'
+
+/**
+ * A decided call's outcome kept in its chat as a passive entry: the same content a turn would have gone on from, which
+ * the model reads with the owner's next message, while no run starts now. The entry's data is the call and its state,
+ * for whatever reads the entry without its words.
+ */
+const keepOutcome = (chat: string, outcome: HeldCallOutcome, operationId: string) =>
+  Effect.gen(function* () {
+    const content = outcomeContent(outcome.from, outcome.text, outcome.outcome)
+    const model = [{ role: 'user' as const, content, timestamp: yield* Clock.currentTimeMillis }]
+    yield* (yield* ChatOperations).passiveWrite(chat, {
+      requestId: operationId,
+      origin: 'owner',
+      entry: { kind: KEPT_OUTCOME, data: { ...outcome.outcome.continuation }, model },
+    })
+    return 'kept' as const
+  })
+
 /**
  * How a held call the owner decided ended, into the chat that held it: the turn goes on from it, but it is not the
- * owner's message (no routine question takes it as an answer) and the web shows it as one quiet row.
+ * owner's message (no routine question takes it as an answer) and the web shows it as one quiet row. When nothing can
+ * pay for a turn now, the call has still run (or been refused), so its outcome is kept in the chat for the next turn
+ * instead of lost behind the budget's refusal. The operation id delivers it once however often the decision is
+ * answered: one kept before stays kept, one a turn took stays the turn's.
  */
 export const sendOutcome = (chat: string, outcome: HeldCallOutcome, operationId: string) =>
   Effect.gen(function* () {
-    yield* requireBudget
-    return yield* (yield* ChatOperations).send<Conversations | RoutineControl | PiSessions | AgentInput>({
-      chat,
-      operationId,
-      receipt: { kind: 'mcp_outcome', origin: 'owner' },
-      flow: { flow: 'send', via: 'app', actor: 'owner' },
-      content: outcomeContent(outcome.from, outcome.text, outcome.outcome),
-    })
+    const operations = yield* ChatOperations
+    const earlier = Option.getOrUndefined(yield* operations.receipt(chat, operationId))
+    if (earlier?.kind === `write:${KEPT_OUTCOME}`) return 'kept' as const
+    const turn = Effect.andThen(
+      requireBudget,
+      operations.send<Conversations | RoutineControl | PiSessions | AgentInput>({
+        chat,
+        operationId,
+        receipt: { kind: 'mcp_outcome', origin: 'owner' },
+        flow: { flow: 'send', via: 'app', actor: 'owner' },
+        content: outcomeContent(outcome.from, outcome.text, outcome.outcome),
+      }),
+    )
+    return yield* turn.pipe(
+      Effect.as('turn' as const),
+      Effect.catchTag('BudgetExhausted', () =>
+        earlier === undefined || earlier.state === 'refused'
+          ? keepOutcome(chat, outcome, operationId)
+          : Effect.succeed('turn' as const),
+      ),
+    )
   })
 
 /** The owner's message into `chat` with what came with it, as the owner API and a decided approval send it. */

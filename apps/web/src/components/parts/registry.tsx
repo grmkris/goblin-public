@@ -256,7 +256,7 @@ export const PartView = memo(
 function PartRow({ part, canSwitchModel }: { readonly part: Part; readonly canSwitchModel: boolean }) {
   switch (part.kind) {
     case 'user':
-      if (part.outcome !== undefined) return <OutcomeRow outcome={part.outcome} />
+      if (part.outcome !== undefined) return <OutcomeRow outcome={part.outcome} kept={part.kept === true} />
       return (
         <UserText
           text={part.text}

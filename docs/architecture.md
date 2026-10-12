@@ -788,6 +788,12 @@ for the model, then an `McpOutcome` block (`{ continuation: { kind, connectionId
 result as untrusted data). It starts the turn and settles the asks before it, but no routine question takes it as an
 answer. The web shows it as one quiet row (`parts/outcome-row.tsx`) that opens to the server's answer; it is no scroll
 anchor or Turn map entry. A routine run or a Persona fork, which take plain text, gets the words and the block as JSON.
+The call has run by the time its outcome goes back, so the budget never turns the decision away: when nothing can pay
+for a turn (`BudgetExhausted`), the same content is kept in the chat as a passive `app.mcp_outcome` entry
+(`ChatOperations.passiveWrite`, receipt kind `write:app.mcp_outcome`, data the call and its state), no run starts, the
+decision answers 200, and the model reads it with the owner's next message. The operation id keeps it once however
+often the decision is answered. The main chat's memory and the retrieval index keep it as they keep the input it would
+have been, and while it is the transcript's newest part its row adds "goblin reads the result on your next message".
 
 **Step-up.** The transport throws on HTTP 403 `insufficient_scope` (`onInsufficientScope: 'throw'`), which is
 `ScopeRequired { connectionId, scope }` (the challenge's scope tokens, validated and capped), not `UpstreamMcp`: the

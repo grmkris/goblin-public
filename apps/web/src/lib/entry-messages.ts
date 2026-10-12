@@ -1,6 +1,7 @@
 // A conversation's Pi entries as transcript messages: the model's own messages, the entries the shell draws itself
-// (thread heads, Persona answers and asks, Topic seeds, Delegate results, "+" notes), and none for what a marker or a
-// later edit leaves out. Committed entries never change, so each is projected once.
+// (thread heads, Persona answers and asks, Topic seeds, Delegate results, "+" notes), passive notes marked by their
+// kind (a routine's report, a decided call's kept outcome), and none for what a marker or a later edit leaves out.
+// Committed entries never change, so each is projected once.
 import {
   DelegateResultData,
   NoticeData,
@@ -77,6 +78,17 @@ function personaAsk(entry: Record<string, unknown>): ChatMessage[] {
   })
 }
 
+/**
+ * What a passive note's kind adds to its message: a routine's report is the Routine's, and a decided call's outcome
+ * kept for the next turn (`app.mcp_outcome`) says so, since no turn went on from it.
+ */
+function marked(kind: unknown, item: ChatMessage): ChatMessage {
+  if (item.role !== 'user') return item
+  if (kind === 'app.routine') return { ...item, author: 'Routine' }
+  if (kind === 'app.mcp_outcome') return { ...item, kept: true }
+  return item
+}
+
 /** Committed entries never change, so each one is projected once and reused while it stays in the transcript. */
 const projected = new WeakMap<Record<string, unknown>, readonly ChatMessage[]>()
 function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
@@ -90,9 +102,7 @@ function messagesOf(entry: Record<string, unknown>): readonly ChatMessage[] {
   if (messages === undefined && entry.kind === 'app.thread_started') messages = threadStarted(entry)
   if (messages === undefined && entry.kind === 'app.persona_ask') messages = personaAsk(entry)
   messages ??= records(entry.model).flatMap((message, index) =>
-    entryMessage(message, `${identifier(entry.id)}:${index}`, thread).map((item) =>
-      entry.kind === 'app.routine' && item.role === 'user' ? { ...item, author: 'Routine' } : item,
-    ),
+    entryMessage(message, `${identifier(entry.id)}:${index}`, thread).map((item) => marked(entry.kind, item)),
   )
   projected.set(entry, messages)
   return messages

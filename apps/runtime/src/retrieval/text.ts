@@ -40,9 +40,11 @@ function userText(content: unknown): { readonly text: string; readonly author?: 
 function rawEntry(entry: EntryRecord): Omit<IndexedEntry, 'at'> | undefined {
   const message = entry.model?.[0]
   switch (entry.kind) {
-    // The owner's words: an input, or a message addressed to Personas (which starts no run of Goblin's).
+    // The owner's words: an input, or a message addressed to Personas (which starts no run of Goblin's); and a decided
+    // call's outcome kept for the next turn, indexed as the input it would otherwise have been.
     case 'pi.user':
     case 'app.persona_ask':
+    case 'app.mcp_outcome':
       return message?.role === 'user' ? { role: 'user', ...userText(message.content) } : undefined
     case 'pi.assistant': {
       if (message?.role !== 'assistant') return undefined

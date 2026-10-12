@@ -77,6 +77,11 @@ export type Part =
       readonly author?: string
       /** How a held call ended, when this is its outcome: one quiet row, not a message (`outcome-row.tsx`). */
       readonly outcome?: McpOutcome
+      /**
+       * The outcome waits for the agent's next turn: it was kept because nothing could pay for one, and nothing came
+       * after it yet (`conversation-parts.ts`).
+       */
+      readonly kept?: true
       /** The thread a note shared into main came from. */
       readonly thread?: string
       /** When it was written (epoch ms), where Pi knows. */
@@ -203,6 +208,7 @@ const sameUser = (a: UserPart, b: UserPart) =>
   a.selections === b.selections &&
   a.author === b.author &&
   a.outcome === b.outcome &&
+  a.kept === b.kept &&
   a.thread === b.thread &&
   a.at === b.at
 

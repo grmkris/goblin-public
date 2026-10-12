@@ -5,7 +5,7 @@ import { Config, Effect, Schema } from 'effect'
 import { expect } from 'vitest'
 import { callOwner } from '../owner-client.ts'
 import Stack from './owner-stack.ts'
-import { approvalsCase } from './approvals-case.ts'
+import { approvalKeptCase, approvalsCase } from './approvals-case.ts'
 import { decisionsOwnerCase } from './decisions-owner-case.ts'
 import { appsCase } from './apps-case.ts'
 import { agentAppViewCase } from './agent-app-view-case.ts'
@@ -44,6 +44,10 @@ harness.test(
     const { url } = yield* stack
     yield* Effect.promise(() => approvalsCase(url))
   }),
+)
+harness.test(
+  'native: an approval with no Credits left runs once, answers 200 and keeps its outcome for the next turn',
+  stack.pipe(Effect.flatMap(({ url }) => Effect.promise(() => approvalKeptCase(url)))),
 )
 harness.test(
   'native: an owner App is kept per call, launches from it, closes with its conversation and is granted live',

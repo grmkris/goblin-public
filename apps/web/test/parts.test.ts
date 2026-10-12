@@ -180,6 +180,33 @@ describe('a thread started with + in main', () => {
   })
 })
 
+describe("a decided call's outcome kept for the next turn", () => {
+  const outcome = {
+    continuation: { kind: 'approval', connectionId: 'board', name: 'post', state: 'completed' },
+    origin: { connectionId: 'board', trust: 'untrusted' },
+    result: { posted: true },
+  }
+  const content = [
+    { type: 'text', text: '[from Board]' },
+    { type: 'text', text: 'Approved "Board" (board) · post; the held call returned.' },
+    { type: 'text', text: JSON.stringify(outcome) },
+  ]
+  const kept = { id: 3, kind: 'app.mcp_outcome', data: outcome.continuation, model: [{ role: 'user', content }] }
+  it('is its outcome row, marked as waiting for the next turn while nothing came after it', () => {
+    const [part] = conversationParts(snapshot([kept]))
+    expect(part).toMatchObject({ kind: 'user', author: 'Board', outcome, kept: true })
+  })
+  it('reads as any other outcome once something follows it', () => {
+    const next = { id: 4, model: [{ role: 'user', content: 'what did it say?' }] }
+    const [part] = conversationParts(snapshot([kept, next]))
+    expect(part).toMatchObject({ kind: 'user', outcome })
+    expect(part).not.toHaveProperty('kept')
+    // The same outcome sent as a turn is never marked.
+    const sent = { id: 3, model: [{ role: 'user', content }] }
+    expect(conversationParts(snapshot([sent]))[0]).not.toHaveProperty('kept')
+  })
+})
+
 describe('how long a tool ran', () => {
   it('counts to now while running and to the result once done', () => {
     expect(elapsedMs(toolAt('running', { startedAt: 1_000 }), 3_500)).toBe(2_500)

@@ -15,6 +15,13 @@ const args = {
   accessToken: 'fixture-private',
 }
 const decodeCalls = Schema.decodeUnknownSync(Schema.Array(Schema.Struct({ name: Schema.String, args: Schema.Unknown })))
+const decodeSeen = Schema.decodeUnknownSync(
+  Schema.Struct({
+    requests: Schema.Array(
+      Schema.Struct({ messages: Schema.Array(Schema.Struct({ role: Schema.String, text: Schema.String })) }),
+    ),
+  }),
+)
 const decodeApproval = Schema.decodeUnknownSync(ApprovalView)
 export function approvalId(value: unknown): string | undefined {
   if (Array.isArray(value)) return value.map(approvalId).find((id) => id !== undefined)
@@ -148,4 +155,50 @@ export async function approvalsCase(base: string): Promise<void> {
     exact: { operationKey: 'same-operation', rewardToken: '0x123', accessToken: 'fixture-private' },
     view: { arguments: { accessToken: '[redacted]' } },
   })
+}
+
+/** Every model request the owner's agent made, oldest first: its messages. */
+const seen = async (base: string, owner: Person) =>
+  decodeSeen(await (await lever(base, owner, 'queue/seen')).json()).requests.map((request) => request.messages)
+/** A request's messages as one text. */
+const joined = (messages: readonly { readonly text: string }[]) => messages.map((message) => message.text).join('\n')
+
+/**
+ * An approval when nothing can pay for a turn (F1): the call runs once and the decision answers 200, while the outcome
+ * is kept in the chat as an `app.mcp_outcome` entry that starts no turn; the owner's next message reads it.
+ */
+export async function approvalKeptCase(base: string): Promise<void> {
+  const owner = await person(base)
+  await grantPlan(base, owner)
+  const me = signedIn(base, owner)
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: SERVER }, payload: {} }))
+  await grant(me, true)
+  await mark(me, true)
+  const held = await hold(me, { operationKey: 'op-kept' })
+  await lever(base, owner, 'approvals/spent')
+  const approved = await call(base, owner, held.path, { allowed: true })
+  expect(approved.status).toBe(200)
+  expect(decodeApproval(await approved.json()).state).toBe('completed')
+  expect(await calls(base, owner)).toEqual([{ name: TOOL, args: { operationKey: 'op-kept' } }])
+  await showing(me, held.thread, 'app.mcp_outcome')
+  // Answered again, the decision keeps the outcome once and runs nothing.
+  expect((await decide(me, held.id, true)).state).toBe('completed')
+  expect(await calls(base, owner)).toHaveLength(1)
+  const kept = 'the held call returned'
+  expect((await seen(base, owner)).some((messages) => joined(messages).includes(kept))).toBe(false)
+  await lever(base, owner, 'approvals/unspent')
+  const next = 'what did the board say?'
+  const sent = await callOwner(me, (api) =>
+    api.conversations.submit({
+      params: { id: held.thread },
+      payload: { input: next, operationId: crypto.randomUUID() },
+    }),
+  )
+  expect(sent.accepted).toBe(true)
+  await showing(me, held.thread, `echo: ${next}`)
+  const turn = (await seen(base, owner)).find(
+    (messages) => messages.findLast((message) => message.role === 'user')?.text === next,
+  )
+  expect(turn).toBeDefined()
+  expect(joined(turn ?? []).match(/the held call returned/gu)).toHaveLength(1)
 }

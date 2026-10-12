@@ -20,7 +20,8 @@ export function capped(text: string): string {
 /**
  * Entries of main the memory keeps as `user`: the owner's words, a note shared from a thread, the note naming a
  * thread the owner started with "+", a thread head (a Thread started from the composer, or a turn moved out), a
- * message the owner addressed to Personas, a Persona's attributed answer and a Delegate's result (ADR 0033).
+ * message the owner addressed to Personas, a Persona's attributed answer, a Delegate's result (ADR 0033) and a decided
+ * call's outcome kept for the next turn (`app.mcp_outcome`), as the turn it would have started keeps it.
  */
 const USER_KINDS: ReadonlySet<string> = new Set([
   'pi.user',
@@ -30,6 +31,7 @@ const USER_KINDS: ReadonlySet<string> = new Set([
   'app.persona_ask',
   'app.persona',
   'app.delegate_result',
+  'app.mcp_outcome',
 ])
 
 /** The memory's message for a main entry, or none for entries it leaves out (system, compaction, its own views). */
