@@ -19,6 +19,32 @@ wallet then creates the **agent signer**: a Privy server wallet the owner owns, 
 signer bound to a Privy policy. MCP OAuth (dynamic client registration, PKCE, resource-bound tokens, rotating refresh
 tokens) is a port of Sidequest's, with its consent page in the wallet's web app.
 
+**The wallet onboards and funds itself, inside the connection** (amended 2026-10-12, Kris's "goblin_fixes" note: an
+owner approved goblin's consent with a fresh wallet, no agent wallet, no funds, no allowance, and goblin got a wallet
+that could not pay).
+- **The agent wallet is made for the owner.** The first time `/setup` or `/consent` sees a signed-in owner without one,
+  the page calls the idempotent `POST /api/onboarding/agent` once ("Creating your agent wallet…"). The owner wallet stays
+  Privy's embedded, not imported, wallet at index 0, in the browser as in the Worker; the agent wallet never counts.
+- **Setup is one task a screen, resuming from server state** (`/api/me`, `/api/status`): Add funds (the owner's address
+  as a QR code, USDC on Base polled every five seconds, Continue once it covers the upgrade's gas ceiling; another chain
+  or token through a Relay deposit, folded away), then Turn on spending (the limits in words with a Change; the upgrade's
+  two confirmations and the allowance's one, as a list that a reload rebuilds from `/api/me`), then Done. `/setup?return=`
+  goes back to the client on Done, but only to a URL `GET /api/return-check` vouches for: HTTPS (or HTTP on localhost)
+  on the origin of a redirect URI of a client the owner has a live connection with, or a pending request bound to them.
+  Any other return is ignored, so `/setup` is never an open redirect.
+- **Consent includes setup.** An owner who is not set up sees "<client> wants to use your wallet", then the setup
+  screens, then Approve; a quiet "Connect now, finish later" approves at once. The client's name is the one it
+  registered.
+- **A consent request lives while its page does.** It opens for ten minutes; the page posts
+  `POST /api/oauth/requests/:id/keep-alive` every two minutes and when shown again, each extending it to ten minutes from
+  then, never past an hour after it opened (`oauth_requests.opened_at`). The first signed-in owner to read or keep it
+  alive is bound to it; any other owner is refused (403 `other_owner`) on read, keep-alive and answer. An expired request
+  still reads, as `expired`, so the page can send the owner back to the client to connect again. Codes stay 120 seconds.
+- **The dashboard App leads with setup while it is unfinished.** `wallet_status` and `wallet_open` always carry `setup`
+  (empty once finished); the App shows "Your wallet isn't ready for <host> yet", the gaps as a checklist and Finish
+  setup, which opens `/setup` through the host. It never shows an unread amount as its figure, and lists no limits
+  before any is in force.
+
 **Every limit names the layer that enforces it.** There are five, and each can only narrow the next:
 - **On-chain allowance.** The owner's account is upgraded with EIP-7702 to MetaMask's `EIP7702StatelessDeleGator`
   (the owner signs; since ADR 0050 the upgrade is their own UserOperation, gas paid in USDC) and signs an ERC-7710 delegation to the agent signer with
