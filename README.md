@@ -99,3 +99,11 @@ Run `bun run check:public` for the complete product and tooling gates after inst
 [Architecture](docs/architecture.md), [decisions](docs/adr/) and [glossary](GLOSSARY.md) explain the implementation. [Publication](PUBLICATION.md) explains the private-dev to production to public-source flow. Promote verifies core Goblin and Wallet production before publishing the accepted source.
 
 Goblin-owned code is available under the [MIT License](LICENSE). [NOTICE](NOTICE.md) lists author-owned provenance and third-party terms, including React Leaflet's Hippocratic-2.1 license. Feedback is welcome through Issues.
+
+## Hackathon disclosure (draft, for the owner to confirm)
+
+goblin's repository started on 4 October 2026, and most of the resident agent predates the Colosseum Crypto World's
+Fair submission. Goblin Wallet (`apps/wallet`, `apps/wallet-web`, `packages/wallet`, ADR 0045) and its goblin host
+changes were built on 12 October 2026. Patterns for the 7702 upgrade, the Privy signer and policy, the allowance and
+MCP OAuth were ported from the author's earlier project Sidequest. The code was written by AI coding agents (Claude Code
+with Claude Opus and Sonnet, and OpenAI Codex) under the author's direction, with a Codex review of the money paths.
