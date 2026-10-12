@@ -78,6 +78,8 @@ export type AppPlacement = {
   /** Fixed on its page; inline the App picks its height up to this. */
   readonly height: number
   readonly surface?: 'inline' | 'page'
+  /** The safe-area insets the App must clear at the screen's edges, when its place reaches them. */
+  readonly insets?: { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number }
 }
 
 export type Device = {
@@ -106,6 +108,7 @@ export function hostContext(read: TokenReader, device: Device, placement: AppPla
     timeZone: device.timeZone,
     platform: device.touch && !device.hover ? 'mobile' : 'web',
     deviceCapabilities: { touch: device.touch, hover: device.hover },
+    ...(placement.insets === undefined ? {} : { safeAreaInsets: placement.insets }),
   }
 }
 

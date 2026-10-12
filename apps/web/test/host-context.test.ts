@@ -48,6 +48,19 @@ describe('the host context an MCP App receives', () => {
       containerDimensions: { width: 390, height: 700 },
     })
   })
+  it('tells an App on its page which screen edges it must clear, and says nothing of insets otherwise', () => {
+    const page = hostContext(read, device, {
+      mode: 'fullscreen',
+      available: ['fullscreen'],
+      width: 390,
+      height: 760,
+      surface: 'page',
+      insets: { top: 0, right: 0, bottom: 34, left: 0 },
+    })
+    expect(page).toMatchObject({ surface: 'page', safeAreaInsets: { top: 0, right: 0, bottom: 34, left: 0 } })
+    const inline = hostContext(read, device, { mode: 'inline', available: ['inline'], width: 640, height: 600 })
+    expect('safeAreaInsets' in inline).toBe(false)
+  })
   it('keeps an inline App between a usable minimum and most of the viewport', () => {
     expect(inlineHeight(undefined, 900)).toBe(440)
     expect(inlineHeight(40, 900)).toBe(160)

@@ -30,13 +30,14 @@ import {
   appToolCallMutation,
   perform,
 } from '../../apps/queries.ts'
-import { type AppCalls, createAppBridge } from '../../lib/app-bridge.ts'
+import { type AppCalls, createAppBridge, type ResultDelivery } from '../../lib/app-bridge.ts'
 import type { StatePush } from '../../lib/agent-app-bridge.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
 import type { QuestionAnswerReceipt } from '../../lib/app-message.ts'
 import { isString, records } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import { type AppPlacement, type Device, hostContext, inlineHeight } from '../../lib/host-context.ts'
+import { useAppGrantAsks } from './grant-ask.tsx'
 import { LinkOffer } from './offers.tsx'
 import { browserZone } from '../../lib/format.ts'
 
@@ -152,7 +153,7 @@ async function attachApp(
   placement: () => AppPlacement,
   signal: AbortSignal,
   frame: { readonly calls: AppCalls; readonly events: FrameEvents },
-): Promise<{ readonly bridge: AppBridge; readonly push?: StatePush } | undefined> {
+): Promise<{ readonly bridge: AppBridge; readonly push?: StatePush; readonly deliver?: ResultDelivery } | undefined> {
   const html = await appHtml(selection, frame.calls)
   if (signal.aborted) return undefined
   element.srcdoc = sandboxProxy(window.location.origin)
@@ -187,9 +188,33 @@ async function attachApp(
   return attached
 }
 
+/** The frame's events as they are when the bridge asks, not as they were when it was attached. */
+function relayTo(events: () => FrameEvents): FrameEvents {
+  return {
+    report: (message) => events().report(message),
+    resize: (asked) => events().resize(asked),
+    close: () => events().close(),
+    requestMode: (mode) => events().requestMode(mode),
+    share: (shared) => events().share(shared),
+    offerLink: (link) => events().offerLink(link),
+    offerDownload: (file) => events().offerDownload(file),
+    askGrant: (name) => events().askGrant(name),
+    ...(events().message === undefined
+      ? {}
+      : { message: (receipt: QuestionAnswerReceipt) => events().message?.(receipt) ?? false }),
+  }
+}
+
+/** What makes an App a different App: an MCP App's server, resource, arguments and fate; an agent app's launch. */
+const identityOf = (selection: AppSelection): AppSelection | string =>
+  selection.kind === 'mcp'
+    ? JSON.stringify([selection.connectionId, selection.uri, selection.arguments, selection.cancelled ?? null])
+    : selection
+
 /**
- * The App's iframe and bridge. `placement` may change freely; only `selection` (re)loads the App. An agent app's
- * `revision` follows the feed, and a newer one is pushed into the frame.
+ * The App's iframe and bridge. `placement` may change freely; only a different App (its identity) reloads it. A newer
+ * result of the same MCP call is handed to the live App, so coming back to its page never loads it twice. An agent
+ * app's `revision` follows the feed, and a newer one is pushed into the frame.
  */
 export function AppFrame({
   selection,
@@ -209,35 +234,29 @@ export function AppFrame({
   const iframe = useRef<HTMLIFrameElement>(null)
   const bridge = useRef<AppBridge>(undefined)
   const push = useRef<StatePush>(undefined)
+  const deliver = useRef<ResultDelivery>(undefined)
+  const identity = identityOf(selection)
   // The bridge outlives renders: what it relays to, where it is placed and which revision it wants are read as they
   // are when it asks, not as they were when it was attached.
-  const current = useEffectEvent(() => ({ events, placement, revision }))
+  const current = useEffectEvent(() => ({ events, placement, revision, selection }))
   useEffect(() => {
     const controller = new AbortController()
     const element = iframe.current
-    const relay: FrameEvents = {
-      report: (message) => current().events.report(message),
-      resize: (asked) => current().events.resize(asked),
-      close: () => current().events.close(),
-      requestMode: (mode) => current().events.requestMode(mode),
-      share: (shared) => current().events.share(shared),
-      offerLink: (link) => current().events.offerLink(link),
-      offerDownload: (file) => current().events.offerDownload(file),
-      askGrant: (name) => current().events.askGrant(name),
-      ...(current().events.message === undefined
-        ? {}
-        : { message: (receipt: QuestionAnswerReceipt) => current().events.message?.(receipt) ?? false }),
-    }
+    const relay = relayTo(() => current().events)
     if (element)
-      attachApp(element, selection, () => current().placement, controller.signal, {
+      attachApp(element, current().selection, () => current().placement, controller.signal, {
         calls: appCalls(queryClient),
         events: relay,
       })
         .then((attached) => {
           bridge.current = attached?.bridge
           push.current = attached?.push
+          deliver.current = attached?.deliver
           const wanted = current().revision
           if (wanted !== undefined) push.current?.want(wanted)
+          // A result that arrived while the App was loading is its first one, not a reload.
+          const shown = current().selection
+          if (shown.kind === 'mcp') deliver.current?.(shown.result)
         })
         .catch((cause: unknown) => {
           if (!controller.signal.aborted) relay.report(loadFailure(cause))
@@ -245,9 +264,13 @@ export function AppFrame({
     return () => {
       bridge.current = undefined
       push.current = undefined
+      deliver.current = undefined
       controller.abort()
     }
-  }, [selection, queryClient])
+  }, [identity, queryClient])
+  useEffect(() => {
+    if (selection.kind === 'mcp') deliver.current?.(selection.result)
+  }, [selection])
   useEffect(() => {
     if (revision !== undefined) push.current?.want(revision)
   }, [revision])
@@ -304,6 +327,26 @@ export function McpApp({ selection, onClose }: { readonly selection: McpSelectio
 }
 
 type Room = { readonly width: number; readonly height: number }
+type Insets = NonNullable<AppPlacement['insets']>
+
+const px = (value: string): number => Math.round(Number.parseFloat(value) || 0)
+
+/** The device's safe-area insets in pixels, read through a probe (CSS knows them; script only through layout). */
+function safeInsets(host: HTMLElement): Insets {
+  const probe = document.createElement('div')
+  probe.style.cssText =
+    'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)'
+  host.appendChild(probe)
+  const style = getComputedStyle(probe)
+  const insets = {
+    top: px(style.paddingTop),
+    right: px(style.paddingRight),
+    bottom: px(style.paddingBottom),
+    left: px(style.paddingLeft),
+  }
+  probe.remove()
+  return insets
+}
 
 /**
  * An App given a page of its own (a connection's App, ADR 0043): it fills the room below the page's bar and is told
@@ -312,14 +355,26 @@ type Room = { readonly width: number; readonly height: number }
 export function McpAppPage({ selection, onClose }: { readonly selection: McpSelection; readonly onClose: () => void }) {
   const [error, setError] = useState('')
   const [link, setLink] = useState<URL>()
-  const [room, setRoom] = useState<Room>()
+  const [room, setRoom] = useState<Room & { readonly insets: Insets }>()
   const box = useRef<HTMLDivElement>(null)
+  const grants = useAppGrantAsks(selection.connectionId)
   useLayoutEffect(() => {
     const node = box.current
     if (node === null) return undefined
+    // The page reaches the screen's bottom (and sides in landscape), so the App is told which edge it must clear;
+    // the top is already cleared by the page bar.
     const measure = () => {
       const { width, height } = node.getBoundingClientRect()
-      setRoom((last) => (last?.width === width && last.height === height ? last : { width, height }))
+      const { right, bottom, left } = safeInsets(node)
+      setRoom((last) =>
+        last?.width === width &&
+        last.height === height &&
+        last.insets.bottom === bottom &&
+        last.insets.left === left &&
+        last.insets.right === right
+          ? last
+          : { width, height, insets: { top: 0, right, bottom, left } },
+      )
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -334,11 +389,11 @@ export function McpAppPage({ selection, onClose }: { readonly selection: McpSele
     share: () => undefined,
     offerLink: setLink,
     offerDownload: () => undefined,
-    askGrant: async () => false,
+    askGrant: grants.ask,
   }
   return (
     <>
-      {(error !== '' || link !== undefined) && (
+      {(error !== '' || link !== undefined || grants.card !== null) && (
         <div className="flex flex-col gap-3 px-4 pt-3">
           {error && (
             <Alert variant="destructive">
@@ -348,13 +403,21 @@ export function McpAppPage({ selection, onClose }: { readonly selection: McpSele
           {link && (
             <LinkOffer link={link} connectionId={selectionOrigin(selection)} onDone={() => setLink(undefined)} />
           )}
+          {grants.card}
         </div>
       )}
       <div ref={box} className="flex min-h-0 flex-1 flex-col">
         {room !== undefined && (
           <AppFrame
             selection={selection}
-            placement={{ mode: 'fullscreen', available: ['fullscreen'], ...room, surface: 'page' }}
+            placement={{
+              mode: 'fullscreen',
+              available: ['fullscreen'],
+              width: room.width,
+              height: room.height,
+              insets: room.insets,
+              surface: 'page',
+            }}
             events={events}
           />
         )}
