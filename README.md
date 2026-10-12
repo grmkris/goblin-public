@@ -83,7 +83,8 @@ Every limit names the layer that enforces it: the on-chain allowance, Privy's po
 hour and week) or goblin's spending rules (ADR 0044). A spend over the limit, or to a new recipient, becomes a URL
 request to the wallet's Approve page, where the owner checks the frozen terms; goblin then retries the call with the
 same operation id, which never pays twice. goblin connects the wallet like any MCP server, shows its status on the
-connection card and its dashboard App under Services. Try it at goblin.surf → Connections → Goblin Wallet.
+connection card and its dashboard App under Services. It also tops up Mercator's own balance from the wallet before a
+job Mercator is short for, within a rule the owner sets ($5 a top-up and $20 a day by default, ADR 0049). Try it at goblin.surf → Connections → Goblin Wallet.
 
 Proven on mainnet on 12 October 2026, from goblin dev:
 

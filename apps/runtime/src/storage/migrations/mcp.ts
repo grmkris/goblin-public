@@ -1,8 +1,8 @@
 import { BREAK, type Migration } from './migration.ts'
 
 /**
- * The MCP 2026 client (ADR 0042, keys from `20261030000000_`) and spending rules (ADR 0044): added by their own
- * migrations, so dev keeps its data.
+ * The MCP 2026 client (ADR 0042, keys from `20261030000000_`), spending rules (ADR 0044) and top-ups (ADR 0049): added
+ * by their own migrations, so dev keeps its data.
  */
 export const MCP_MIGRATIONS: readonly Migration[] = [
   {
@@ -26,5 +26,11 @@ export const MCP_MIGRATIONS: readonly Migration[] = [
       'CREATE TABLE app_mcp_spend (approval_id TEXT PRIMARY KEY NOT NULL, connection_id TEXT NOT NULL, tool TEXT NOT NULL, day TEXT NOT NULL, micros INTEGER NOT NULL, standing INTEGER NOT NULL, at INTEGER NOT NULL)',
       'CREATE INDEX app_mcp_spend_day ON app_mcp_spend (connection_id, tool, day)',
     ].join(BREAK),
+  },
+  {
+    // A top-up of a prepaid server (ADR 0049) is recorded with where it goes: `<chain>:<token>:<address>`.
+    key: '20261031000400_mcp_topup',
+    tables: ['app_mcp_spend'],
+    sql: 'ALTER TABLE app_mcp_spend ADD COLUMN destination TEXT',
   },
 ]

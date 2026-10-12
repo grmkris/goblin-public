@@ -27,6 +27,7 @@ import { ChatOperations, Chats, Conversations } from '../../../src/chats/service
 import { Files } from '../../../src/files/service.ts'
 import { Invocations, Personas } from '../../../src/personas/service.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
+import { Notices } from '../../../src/notices/service.ts'
 import { RoutineControl, RoutineRuns, RoutineUsage } from '../../../src/routines/service.ts'
 import { Skills } from '../../../src/skills/service.ts'
 import {
@@ -133,6 +134,8 @@ const fixture = async () => {
           // here reaches them.
           Layer.mergeAll(stub(ChatOperations), stub(Skills), stub(Chats), stub(RoutineRuns), stub(Apps), stub(Budget)),
           Layer.mergeAll(stub(Setups), stub(Conversations), stub(Files), stub(Invocations), stub(Personas)),
+          // A top-up's receipt (ADR 0049) writes a notice; no test here reaches it.
+          stub(Notices),
           stub(PiSessions),
           stub(RoutineControl),
           stub(RoutineUsage),

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { ServerProfile, ToolView } from '@goblin/contracts'
+import type { ServerProfile, ToolView, WalletStatus } from '@goblin/contracts'
 import {
   compactAmount,
+  prepaidBalance,
   recommendedApplied,
   recommendedList,
   topUpOf,
+  topUpSentence,
   walletSummary,
 } from '../src/components/first-class.tsx'
 import { purposeGroups } from '../src/components/tool-grants.tsx'
@@ -100,5 +102,26 @@ describe("the wallet's one line on its card", () => {
     const apart = { ...shared, tokens: [shared.tokens[0]!, { ...shared.tokens[1]!, remaining: '2.5' }] }
     expect(walletSummary(apart, undefined)).toBe('0.006375 ETH, 5 left · 0.5003 USDC, 2.5 left')
     expect(walletSummary({ ...shared, tokens: [] }, undefined)).toBe('no balance read')
+  })
+})
+
+describe("a prepaid server's balance and top-up rule (ADR 0049)", () => {
+  const prepaid = { chain: 'tempo', token: 'USDC.e', perTopUp: '5', daily: '20' }
+  it('reads the balance in the token it is paid in, and says the rule in the owner’s words', () => {
+    const read: WalletStatus = {
+      kind: 'wallet',
+      paid: 'ready',
+      funding: 'ready',
+      tokens: [
+        { symbol: 'pathUSD', balance: '3' },
+        { symbol: 'USDC.e', balance: '0.55' },
+      ],
+    }
+    expect(prepaidBalance(prepaid, read)).toBe('0.55')
+    expect(prepaidBalance(prepaid, { ...read, tokens: [] })).toBeUndefined()
+    expect(prepaidBalance(prepaid, null)).toBeUndefined()
+    expect(topUpSentence(prepaid)).toBe(
+      'goblin tops it up from your Goblin Wallet: up to $5 a top-up and $20 a day without asking.',
+    )
   })
 })

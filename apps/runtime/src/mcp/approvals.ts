@@ -13,8 +13,11 @@ import { sha256Hex } from '../runtime/digest.ts'
 export type ApprovalRow = typeof approvals.$inferSelect
 export type HeldCall = {
   readonly id: string
-  /** Only the model or an App's call is ever held for the owner; paid inference's payments never are (ADR 0047). */
-  readonly caller: Exclude<McpCaller, 'inference'>
+  /**
+   * Only the model or an App's call is ever held for the owner; paid inference's payments (ADR 0047) and top-ups (ADR
+   * 0049) never are: the owner's rule recorded a top-up before it goes out.
+   */
+  readonly caller: Exclude<McpCaller, 'inference' | 'funding'>
   readonly sessionId?: string
   readonly sourceCallId?: string
   readonly taskId?: string
@@ -214,13 +217,14 @@ export class McpApprovalStore {
   }
   /**
    * The dispatch met a URL request (ADR 0042): the server answered, nothing completed, and the call goes on as the
-   * request the caller has just kept. The approval's dispatch is spent; it keeps no result (`metUrlRequest`).
+   * request the caller has just kept. So does an approved job whose top-up the wallet asks the owner about first (ADR
+   * 0049), before its own dispatch. The approval is spent; it keeps no result (`metUrlRequest`).
    */
   toUrlRequest(id: string, now: number): void {
     this.#db
       .update(approvals)
       .set({ state: 'completed', updatedAt: now })
-      .where(and(eq(approvals.id, id), eq(approvals.state, 'dispatching')))
+      .where(and(eq(approvals.id, id), sql`${approvals.state} IN ('approved', 'dispatching')`))
       .run()
   }
   fail(id: string, state: 'failed' | 'uncertain', now: number): void {

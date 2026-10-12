@@ -14,9 +14,10 @@ import { metUrlRequest, urlRequestId } from './approvals.ts'
 import { type McpCallInput, heldCallChanged, modelApprovalId, waitOnOwner } from './approval-request.ts'
 import { urlRequiredResult } from './extension.ts'
 import { keepLateApp } from './kept-app.ts'
+import { NAMELESS, topUpOf, topUpReceipt, topUpSettledText, transferOutcome } from './top-up.ts'
 import { named } from './labels.ts'
 import { redactSecretFields } from './redaction.ts'
-import { Approvals, McpConnections, McpServers, UrlRequests } from './service.ts'
+import { Approvals, McpConnections, McpServers, UrlRequests, requireResident } from './service.ts'
 import type { HeldCallOutcome, UrlAnswer, UrlPrompt } from './types.ts'
 import type { UrlRequestRow } from './url-requests.ts'
 
@@ -130,11 +131,16 @@ const retry = (row: UrlRequestRow, action: UrlAnswer['action']) =>
     const requests = yield* UrlRequests
     const prompt = yield* requests.prompt(row.id)
     const args = yield* requests.arguments(row.id)
+    // A top-up's transfer (ADR 0049) goes again as goblin's own `funding` call, under its record, never an approval:
+    // the conversation's tool scope is the model's, so it needs current authority only.
+    const topUp = yield* topUpOf(row, args)
     // The manager checks authority again right before it sends, from inside its own guard: the plan, then the rest.
-    const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
+    const authorize = yield* bound(
+      Effect.andThen(requirePlan(), topUp === undefined ? authority(row) : requireResident),
+    )
     const connections = yield* McpConnections
     const outcome = yield* connections.callModelTool(row.connectionId, row.name, args, {
-      ...(yield* approvedFrom(row)),
+      ...(topUp === undefined ? yield* approvedFrom(row) : { caller: 'funding' as const }),
       authorize,
       answer: { inputKey: prompt.inputKey, action, requestState: prompt.requestState },
       heldTool: yield* requests.tool(row.id),
@@ -145,6 +151,16 @@ const retry = (row: UrlRequestRow, action: UrlAnswer['action']) =>
       return yield* action === 'decline' ? requests.decline(row.id) : requests.again(row.id, outcome.prompt)
     yield* requests.finish(row.id, action === 'accept' ? 'completed' : 'declined', outcome.result)
     if (action === 'accept') yield* keepLateApp(row.sessionId, row.sourceCallId, row)
+    if (action === 'accept' && topUp !== undefined && transferOutcome(outcome.result, NAMELESS).moved)
+      yield* topUpReceipt({
+        session: row.sessionId,
+        prepaid: topUp.connectionId,
+        wallet: row.connectionId,
+        tool: row.name,
+        arguments: {},
+        micros: topUp.micros,
+        operation: topUp.approvalId,
+      })
     // expected: a failed re-list marks the connection stale, so its next use opens it again.
     yield* Effect.ignore(connections.refreshTools(row.connectionId))
   }).pipe(
@@ -236,7 +252,17 @@ export const answerUrlRequest = <R>(input: {
         origin: { connectionId: row.connectionId, trust: 'untrusted' },
         ...Option.match(result, { onNone: () => ({}), onSome: (value) => ({ result: redactSecretFields(value) }) }),
       }
-      const text = settledText(row, named(labels, row.connectionId))
+      const topUp = yield* topUpOf(row, yield* requests.arguments(row.id))
+      const said = settledText(row, named(labels, row.connectionId))
+      const text =
+        topUp === undefined
+          ? said
+          : topUpSettledText(row.state, Option.getOrUndefined(result), {
+              wallet: named(labels, row.connectionId),
+              prepaid: named(labels, topUp.connectionId),
+              micros: topUp.micros,
+              otherwise: said,
+            })
       const from = labels.get(row.connectionId) ?? row.connectionId
       yield* input.continue(row.sessionId, { text, outcome, from }, `mcp-url-continue:${row.id}`)
     }

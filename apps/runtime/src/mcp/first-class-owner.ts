@@ -1,10 +1,11 @@
-import type { SpendingChange, SpendingView, WalletStatus } from '@goblin/contracts'
+import type { SpendingChange, SpendingView, TopUpChange, TopUpView, WalletStatus } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { NotFound } from '../http/errors.ts'
 import { profileOf } from './first-class.ts'
 import { McpConnections, McpGrants, Spending } from './service.ts'
 import { type SpendRule, microsOf } from './spend.ts'
+import { TOP_UP_TOOL, topUpRule } from './top-up.ts'
 
 // What the owner does with a first-class server (ADR 0043): allow its recommended grants in one go, and read its status
 // line. Both are the owner's own acts, through the owner API.
@@ -109,4 +110,35 @@ export const raiseRule = (connectionId: string, tool: string, runUpTo: string) =
     const spending = yield* Spending
     const daily = (yield* spending.rule(connectionId, tool))?.daily ?? perJob * 4
     yield* spending.setRule(connectionId, tool, { perJob, daily })
+  })
+
+/**
+ * How goblin tops up a prepaid first-class server from the Goblin Wallet (ADR 0049): the owner's rule (the profile's
+ * default until they change it) and what it moved today; null for a server without its own balance.
+ */
+export const topUpView = (connectionId: string) =>
+  Effect.gen(function* () {
+    const { prepaid } = yield* profileFor(connectionId)
+    if (prepaid === undefined) return null
+    const rule = yield* topUpRule(connectionId, prepaid)
+    const moved = yield* (yield* Spending).spentToday(connectionId, TOP_UP_TOOL)
+    return {
+      chain: prepaid.chain,
+      token: prepaid.token,
+      perTopUp: plain(rule.perJob),
+      daily: plain(rule.daily ?? rule.perJob),
+      movedToday: plain(moved),
+    } satisfies TopUpView
+  })
+
+/** Sets the owner's top-up rule for a prepaid first-class server (ADR 0049). */
+export const setTopUp = (connectionId: string, change: TopUpChange) =>
+  Effect.gen(function* () {
+    const { prepaid } = yield* profileFor(connectionId)
+    const perJob = microsOf(change.perTopUp)
+    const daily = microsOf(change.daily)
+    if (prepaid === undefined || perJob === undefined || daily === undefined)
+      return yield* new NotFound({ what: `prepaid balance of ${connectionId}` })
+    yield* (yield* Spending).setRule(connectionId, TOP_UP_TOOL, { perJob, daily })
+    return yield* topUpView(connectionId)
   })

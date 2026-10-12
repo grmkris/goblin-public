@@ -35,6 +35,7 @@ import {
   requireResident,
 } from '../mcp/service.ts'
 import { SpendStore, dayOf } from '../mcp/spend.ts'
+import { assertRecordedTopUp } from '../mcp/top-up.ts'
 import type { McpManagerOptions, UrlPrompt } from '../mcp/types.ts'
 import { type HeldUrlRequest, McpUrlRequestStore } from '../mcp/url-requests.ts'
 import type { SingleFlight } from '../observability/single-flight.ts'
@@ -110,6 +111,8 @@ export const spendingOver = (store: SpendStore) =>
     standing: (approvalId) => Effect.sync(() => store.standing(approvalId)),
     record: (call, rule) =>
       Effect.flatMap(Clock.currentTimeMillis, (now) => Effect.sync(() => store.record(call, now, rule))),
+    find: (approvalId) => Effect.sync(() => store.find(approvalId)),
+    count: (connectionId, tool) => Effect.sync(() => store.count(connectionId, tool)),
   })
 
 export const urlRequestsOver = (store: McpUrlRequestStore) =>
@@ -163,13 +166,19 @@ export const urlRequestsOver = (store: McpUrlRequestStore) =>
  * The owner's decision on a call by the model or an App: an ask-first tool's call goes out only as the held call the
  * owner approved, with exactly its reviewed arguments, conversation and grant version (and the retry of a URL request
  * its dispatch met, with the owner's answer, under the same); `authorize`, the caller's own check, runs after the
- * arguments are hashed and before the held call is read.
+ * arguments are hashed and before the held call is read. goblin's top-up of a prepaid server goes out only as recorded.
  */
 export const heldCalls =
-  (approvals: McpApprovalStore, grants: Grants): NonNullable<McpManagerOptions['authorizeTool']> =>
+  (approvals: McpApprovalStore, grants: Grants, spend: SpendStore): NonNullable<McpManagerOptions['authorizeTool']> =>
   (call, approvalId, dispatch, authorize) =>
     Effect.gen(function* () {
       if (call.caller === 'human') return
+      // A top-up goes out only as goblin recorded it under the owner's rule (ADR 0049): that record is their decision.
+      if (call.caller === 'funding') {
+        const operation = call.arguments['operation_id']
+        const row = typeof operation === 'string' ? spend.find(operation) : undefined
+        return yield* attemptSync(() => assertRecordedTopUp(row, call.arguments))
+      }
       const grant = { connectionId: call.connectionId, capability: 'tool' as const, name: call.name }
       const policy = grants.policy(grant)
       if (approvalId === undefined) {
@@ -211,6 +220,7 @@ export const McpHostLive: Layer.Layer<
     yield* Effect.sync(() => approvals.recover(now))
     const urlRequests = new McpUrlRequestStore(db, cipher)
     yield* Effect.sync(() => urlRequests.recover(now))
+    const spend = new SpendStore(db)
     const skillState = new SqliteSkillState(db)
     const host = mcpHost({
       servers,
@@ -221,7 +231,7 @@ export const McpHostLive: Layer.Layer<
       registries: new RegistryStore(db),
       skillsEnabled: (connectionId) => skillState.enabled(connectionId),
       offers: new ConnectionEventOffers(db),
-      authorizeTool: heldCalls(approvals, grants),
+      authorizeTool: heldCalls(approvals, grants, spend),
       appUrl: env.APP_URL,
       fetch: input.mcpFetch,
       report: mcpReporter(input.telemetry),
@@ -231,7 +241,7 @@ export const McpHostLive: Layer.Layer<
       host,
       Layer.succeed(Approvals, approvalsOver(approvals)),
       Layer.succeed(UrlRequests, urlRequestsOver(urlRequests)),
-      Layer.succeed(Spending, spendingOver(new SpendStore(db))),
+      Layer.succeed(Spending, spendingOver(spend)),
       Layer.succeed(Cipher, cipher),
     )
   }),

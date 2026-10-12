@@ -28,7 +28,7 @@ import type { SettledOffer } from './events/offers.ts'
 import type { EventDescriptor } from './events/protocol.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
-import type { SpendRule, Spent } from './spend.ts'
+import type { SpendRule, Spent, SpentRow } from './spend.ts'
 import type { HeldUrlRequest, UrlRequestRow } from './url-requests.ts'
 
 declare module '../runtime/changes.ts' {
@@ -293,6 +293,10 @@ export class Spending extends Context.Service<
     readonly standing: (approvalId: string) => Effect.Effect<boolean>
     /** Records a paid call against today, once per held call; with `rule`, only when it still fits. */
     readonly record: (call: Spent, rule?: SpendRule) => Effect.Effect<boolean>
+    /** The paid call recorded as `approvalId`, if any (a top-up by its operation id, ADR 0049). */
+    readonly find: (approvalId: string) => Effect.Effect<SpentRow | undefined>
+    /** How many paid calls of the tool were ever recorded. */
+    readonly count: (connectionId: string, tool: string) => Effect.Effect<number>
   }
 >()('goblin/mcp/Spending') {}
 

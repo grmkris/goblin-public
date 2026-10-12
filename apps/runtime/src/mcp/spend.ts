@@ -8,14 +8,21 @@ import { appMcpSpend as spend, appMcpSpendRules as rules } from '../storage/mcp-
 /** A rule: jobs up to `perJob` run without asking, until the day's total would pass `daily`; micro-dollars. */
 export type SpendRule = { readonly perJob: number; readonly daily?: number }
 
-/** A paid call to record: the held call it went out as, its tool, its amount, and whether it ran under the rule. */
+/**
+ * A paid call to record: the held call it went out as, its tool, its amount, and whether it ran under the rule; for a
+ * top-up (ADR 0049), where it goes (`<chain>:<token>:<address>`).
+ */
 export type Spent = {
   readonly approvalId: string
   readonly connectionId: string
   readonly tool: string
   readonly micros: number
   readonly standing: boolean
+  readonly destination?: string
 }
+
+/** A paid call as recorded. */
+export type SpentRow = Spent & { readonly day: string; readonly at: number }
 
 /** A plain decimal amount: digits, then at most six after a point. */
 const AMOUNT = /^(\d{1,9})(?:\.(\d{1,6}))?$/u
@@ -105,6 +112,25 @@ export class SpendStore {
     return this.#db.select().from(spend).where(eq(spend.approvalId, approvalId)).get()?.standing === true
   }
 
+  /** The paid call recorded as `approvalId`, if any. */
+  find(approvalId: string): SpentRow | undefined {
+    const row = this.#db.select().from(spend).where(eq(spend.approvalId, approvalId)).get()
+    if (row === undefined) return undefined
+    const { destination, ...rest } = row
+    return { ...rest, ...(destination === null ? {} : { destination }) }
+  }
+
+  /** How many paid calls of the tool were ever recorded: a top-up's operation is numbered after them (ADR 0049). */
+  count(connectionId: string, tool: string): number {
+    return (
+      this.#db
+        .select({ count: sql<number>`count(*)` })
+        .from(spend)
+        .where(and(eq(spend.connectionId, connectionId), eq(spend.tool, tool)))
+        .get()?.count ?? 0
+    )
+  }
+
   /**
    * Records a paid call against its day, once per held call. With `rule`, only when it still fits: the check and the
    * record are one transaction, so two calls at once cannot both fit under the day's total. True when it is recorded.
@@ -123,7 +149,7 @@ export class SpendStore {
         if (!withinRule(rule, call.micros, spent)) return false
       }
       tx.insert(spend)
-        .values({ ...call, day, at: now })
+        .values({ ...call, destination: call.destination ?? null, day, at: now })
         .run()
       return true
     })

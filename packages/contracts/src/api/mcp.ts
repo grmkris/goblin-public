@@ -31,6 +31,8 @@ import {
   SpendingChange,
   SpendingView,
   UrlRequestAnswer,
+  TopUpChange,
+  TopUpView,
   UrlRequestView,
   WalletStatus,
 } from '../mcp.ts'
@@ -198,6 +200,19 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     params: { id: ConnectionParam },
     payload: SpendingChange,
     success: Schema.NullOr(SpendingView),
+    error: [ApiErrors.notFound],
+  }),
+  /** `GET /api/mcp/:id/top-up`: how goblin tops up a prepaid server from the Goblin Wallet (ADR 0049). */
+  HttpApiEndpoint.get('topUp', '/mcp/:id/top-up', {
+    params: { id: ConnectionParam },
+    success: Schema.NullOr(TopUpView),
+    error: [ApiErrors.notFound],
+  }),
+  /** `PUT /api/mcp/:id/top-up`: sets the top-up rule. */
+  HttpApiEndpoint.put('setTopUp', '/mcp/:id/top-up', {
+    params: { id: ConnectionParam },
+    payload: TopUpChange,
+    success: Schema.NullOr(TopUpView),
     error: [ApiErrors.notFound],
   }),
   /** `POST /api/mcp/:id/step-up`: sign in again with more access (ADR 0042); the URL to open, in a new tab. */

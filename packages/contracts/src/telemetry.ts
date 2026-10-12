@@ -125,8 +125,8 @@ export const RunAttribute = {
 
 /**
  * The conversation flows that record a `flow` event: how people and agents move through conversations (replies, "+",
- * start thread, move, Personas, Delegates, Topics, routines, Telegram, decision proposals, URL requests and step-ups),
- * plus browser crashes.
+ * start thread, move, Personas, Delegates, Topics, routines, Telegram, decision proposals, URL requests, step-ups and
+ * top-ups), plus browser crashes.
  */
 export const FlowName = Schema.Literals([
   'send',
@@ -167,6 +167,8 @@ export const FlowName = Schema.Literals([
   'scope_required',
   /** The owner started signing a connection in again with more access. */
   'step_up',
+  /** goblin moved funds from the Goblin Wallet to a prepaid server's own balance, or was refused (ADR 0049). */
+  'top_up',
 ])
 export type FlowName = typeof FlowName.Type
 

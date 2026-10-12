@@ -19,10 +19,23 @@ type Profile = ServerProfile & {
    * kept from the model by the server's App-only visibility.
    */
   readonly payment?: { readonly tool: string }
+  /**
+   * The tool that tops up a prepaid server's own balance (ADR 0049): reached by the `funding` caller only, and only as a
+   * top-up goblin recorded under the owner's rule, to the address the prepaid server's own status reports.
+   */
+  readonly funding?: { readonly tool: string }
 }
 
 const Readiness = Schema.Literals(['ready', 'blocked', 'not_verified'])
 const Amount = Schema.String
+
+/** An EVM address, and the one a wallet reports when it has none yet. */
+const Address = Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{40}$/u))
+const NO_ADDRESS = /^0x0{40}$/u
+
+/** An address goblin may send funds to: a real EVM address, not the zero one; anything else is no address at all. */
+const fundable = (address: string | undefined): address is string =>
+  address !== undefined && Schema.is(Address)(address) && !NO_ADDRESS.test(address)
 
 /** The part of Mercator's `get_connection_status` answer goblin reads; anything else in it is ignored. */
 const MercatorStatus = Schema.Struct({
@@ -48,10 +61,15 @@ const MercatorStatus = Schema.Struct({
           }),
         ),
       ),
+      /** The owner's Mercator wallet on Tempo, where its balance is funded (its output schema, 2026-10-12). */
+      walletAddress: Schema.optional(Schema.String),
     }),
   ),
 })
 const decodeMercator = Schema.decodeUnknownOption(MercatorStatus)
+
+/** Mercator's balance is USDC.e on Tempo (its Tempo Wallet payments); goblin funds it there (ADR 0049). */
+const MERCATOR_BALANCE = { chain: 'tempo', token: 'USDC.e' } as const
 
 /** At most this many characters of any one value the server reports, and this many tokens. */
 const SHORT = 64
@@ -77,6 +95,7 @@ type Reported = {
   readonly payFrom?:
     | { readonly address: string; readonly chain: string; readonly token: string; readonly held?: string | undefined }
     | undefined
+  readonly depositTo?: { readonly address: string; readonly chain: string; readonly token: string } | undefined
 }
 const shaped = ({
   paid,
@@ -87,6 +106,7 @@ const shaped = ({
   stablecoinUsd,
   stablecoinUsdPartial,
   payFrom,
+  depositTo,
 }: Reported): WalletStatus => ({
   kind: 'wallet' as const,
   paid,
@@ -111,13 +131,24 @@ const shaped = ({
           ...optionalShort('held', payFrom.held),
         },
       }),
+  ...(depositTo === undefined
+    ? {}
+    : {
+        depositTo: { address: short(depositTo.address), chain: short(depositTo.chain), token: short(depositTo.token) },
+      }),
 })
 
-/** Mercator's wallet, read from its status tool: readiness, balances and limits, and when they run out. */
+/**
+ * Mercator's wallet, read from its status tool: readiness, balances and limits, when they run out, and where its
+ * balance is funded (its wallet address, on Tempo in USDC.e).
+ */
 export const mercatorWallet = (structured: unknown): WalletStatus | undefined =>
   Option.getOrUndefined(
     Option.map(decodeMercator(structured), ({ readiness, account }) =>
       shaped({
+        depositTo: fundable(account?.walletAddress)
+          ? { address: account.walletAddress, ...MERCATOR_BALANCE }
+          : undefined,
         paid: readiness.paidExecution,
         funding: readiness.funding,
         tokens: readiness.tokens.map(({ symbol, balance, remainingAllowance, spendableNow }) => ({
@@ -132,10 +163,6 @@ export const mercatorWallet = (structured: unknown): WalletStatus | undefined =>
       }),
     ),
   )
-
-/** An EVM address, and the one a wallet reports when it has none yet. */
-const Address = Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{40}$/u))
-const NO_ADDRESS = /^0x0{40}$/u
 
 /**
  * The part of Goblin Wallet's `wallet_status` answer goblin reads: its `status`, which has goblin's own shape, and
@@ -201,6 +228,8 @@ const MERCATOR: Profile = {
   statusTool: { name: 'get_connection_status', read: mercatorWallet },
   // Its `fund_wallet` tool hands the owner off to this page; the Agentic Wallet's top-up takes the slot once it exists.
   topUp: { url: 'https://mercator.sh/account' },
+  // goblin tops its balance up from the Goblin Wallet before a job it is short for (ADR 0049).
+  prepaid: { ...MERCATOR_BALANCE, perTopUp: '5', daily: '20' },
 }
 
 /**
@@ -259,6 +288,7 @@ const WALLET: Profile = {
   status: true,
   statusTool: { name: 'wallet_status', read: goblinWallet },
   payment: { tool: 'pay_challenge' },
+  funding: { tool: 'transfer' },
 }
 
 const PROFILES: readonly Profile[] = [MERCATOR, CLOUDFLARE, WALLET]
@@ -273,5 +303,6 @@ export const profileView = ({
   statusTool: __,
   scope: ___,
   payment: ____,
+  funding: _____,
   ...view
 }: Profile): ServerProfile => view

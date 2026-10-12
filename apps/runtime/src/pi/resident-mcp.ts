@@ -26,6 +26,8 @@ import { McpCallInput, holdModelCall, approvalResult } from '../mcp/approval-req
 import { sendApproved } from '../mcp/approval-decision.ts'
 import { keepModelApp } from '../mcp/kept-app.ts'
 import { holdUrlRequest } from '../mcp/url-request.ts'
+import { fundJob } from '../mcp/fund-job.ts'
+import { prepaidJob } from '../mcp/top-up.ts'
 
 /** What a model's MCP tool checks before it runs: resident authority, then a routine run's own, when it is one. */
 const executionAuthority = (session: string) => Effect.andThen(requireResident, requireRoutineSession(session))
@@ -333,12 +335,21 @@ export function residentMcpExtension(run: RunProgram) {
               // or with the URL request the server asked first (ADR 0042).
               if (held?.state === 'approved') {
                 const sent = yield* sendApproved(held, requestFor(api, context.abortSignal))
-                if (sent.kind === 'url') return new ReadyResult(sent.result)
+                if (sent.kind !== 'complete') return new ReadyResult(sent.result)
                 return new ReadyResult(mcpModelResult(input.connectionId, sent.result))
               }
               if (held !== undefined) return new ReadyResult(yield* approvalResult(session, api.callId, held.id, input))
               const connections = yield* McpConnections
               const recheck = yield* bound(dispatchAuthority(session, input))
+              // A granted prepaid job is funded first (ADR 0049), once the call still has its authority.
+              const { endpoint } = yield* connections.server(input.connectionId)
+              if (Option.isSome(yield* (yield* McpGrants).policy(input.connectionId, input.name))) {
+                const call = { ...input, session, callId: api.callId, taskId: String(api.taskId), endpoint }
+                if (prepaidJob(endpoint, input.name, input.arguments) !== undefined)
+                  yield* dispatchAuthority(session, input)
+                const funding = yield* fundJob(call)
+                if (funding.kind !== 'go') return new ReadyResult(funding.result)
+              }
               return yield* connections
                 .callModelTool(input.connectionId, input.name, input.arguments, {
                   authorize: recheck,

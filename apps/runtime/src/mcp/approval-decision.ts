@@ -3,7 +3,7 @@ import type { McpOutcome } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { requirePlan } from '../billing/gates.ts'
-import type { AppError } from '../http/errors.ts'
+import { type AppError, Conflict } from '../http/errors.ts'
 import { bound } from '../runtime/boundary.ts'
 import { type ApprovalRow, metUrlRequest } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
@@ -12,9 +12,11 @@ import { heldCallChanged } from './approval-request.ts'
 import { keepLateApp } from './kept-app.ts'
 import { profileOf } from './first-class.ts'
 import { authority, resumeRoutine } from './held-authority.ts'
-import { Approvals, McpConnections, McpServers, Spending } from './service.ts'
+import { Approvals, McpConnections, McpGrants, McpServers, Spending } from './service.ts'
 import { microsOf } from './spend.ts'
 import type { HeldCallOutcome, McpRequestOptions, McpToolResult } from './types.ts'
+import { fundJob } from './fund-job.ts'
+import { prepaidJob } from './top-up.ts'
 import { holdUrlRequest } from './url-request.ts'
 
 /**
@@ -37,6 +39,8 @@ const countSpend = (row: ApprovalRow, args: Record<string, unknown>) =>
 export type ApprovedOutcome =
   | { readonly kind: 'complete'; readonly result: McpToolResult }
   | { readonly kind: 'url'; readonly result: ToolExecutionResult }
+  /** A prepaid server's job that could not be funded (ADR 0049): not sent; `note` says why, in goblin's words. */
+  | { readonly kind: 'unfunded'; readonly result: ToolExecutionResult; readonly note: string }
 
 /**
  * Sends an approved held call, exactly its frozen arguments, once: the manager checks authority again right before it
@@ -49,7 +53,6 @@ export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) 
   Effect.gen(function* () {
     const approvals = yield* Approvals
     const args = yield* approvals.arguments(row.id)
-    yield* countSpend(row, args)
     const context =
       row.sessionId === null || row.sourceCallId === null || row.taskId === null
         ? undefined
@@ -68,6 +71,34 @@ export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) 
       authorize,
     }
     const connections = yield* McpConnections
+    // A prepaid server's job is funded first (ADR 0049), once the call still has its authority.
+    if (row.caller === 'model' && context !== undefined && prepaidJob(row.endpoint, row.name, args) !== undefined) {
+      yield* Effect.andThen(requirePlan(), authority(row))
+      // No money moves for a call that would be refused: the grant and endpoint the owner reviewed still hold.
+      const policy = Option.getOrUndefined(yield* (yield* McpGrants).policy(row.connectionId, row.name))
+      if (
+        policy?.version !== row.grantVersion ||
+        (yield* connections.server(row.connectionId)).endpoint !== row.endpoint
+      )
+        return yield* new Conflict({ reason: 'held call no longer has its reviewed authority' })
+      const call = { ...context, session: context.sessionId, callId: context.sourceCallId }
+      const funding = yield* fundJob({
+        ...call,
+        connectionId: row.connectionId,
+        endpoint: row.endpoint,
+        name: row.name,
+        arguments: args,
+      })
+      if (funding.kind === 'refused') {
+        yield* approvals.fail(row.id, 'failed')
+        return { kind: 'unfunded', result: funding.result, note: funding.note } satisfies ApprovedOutcome
+      }
+      if (funding.kind === 'asked') {
+        yield* approvals.toUrlRequest(row.id)
+        return { kind: 'url', result: funding.result } satisfies ApprovedOutcome
+      }
+    }
+    yield* countSpend(row, args)
     if (row.caller !== 'model' || context === undefined) {
       const result = yield* connections.callTool(row.connectionId, row.name, args, { ...options, caller: row.caller })
       yield* approvals.finish(row.id, result)
@@ -104,11 +135,15 @@ export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) 
     ),
   )
 
-/** The owner's approval sends the held call; how it ended is recorded, which their card and the conversation show. */
+/**
+ * The owner's approval sends the held call; how it ended is recorded, which their card and the conversation show. A
+ * job that could not be funded answers why (ADR 0049), for the conversation.
+ */
 const dispatch = (row: ApprovalRow) =>
   Effect.andThen(resumeRoutine(row), sendApproved(row)).pipe(
+    Effect.map((sent) => (sent.kind === 'unfunded' ? sent.note : undefined)),
     // expected: a dispatch that did not complete was recorded as failed or uncertain above
-    Effect.ignore,
+    Effect.orElseSucceed(() => undefined),
   )
 
 /** What the model reads once a held call is decided; `connection` is how the call's connection reads (`named`). */
@@ -142,7 +177,7 @@ export const decideApproval = <R>(input: {
   Effect.gen(function* () {
     const approvals = yield* Approvals
     const decision = yield* approvals.decide(input.id, input.allowed)
-    if (decision.changed && decision.row.state === 'approved') yield* dispatch(decision.row)
+    const unfunded = decision.changed && decision.row.state === 'approved' ? yield* dispatch(decision.row) : undefined
     const row = yield* approvals.get(input.id)
     if (decision.changed) yield* heldCallChanged(row.sessionId)
     // A dispatch that met a URL request goes on as that request: its answer, not this decision, continues the turn.
@@ -160,7 +195,8 @@ export const decideApproval = <R>(input: {
         origin: { connectionId: row.connectionId, trust: 'untrusted' },
         ...Option.match(result, { onNone: () => ({}), onSome: (value) => ({ result: redactSecretFields(value) }) }),
       }
-      const text = decisionText(row, named(labels, row.connectionId))
+      const said = decisionText(row, named(labels, row.connectionId))
+      const text = unfunded === undefined ? said : `${said} ${unfunded}`
       const from = labels.get(row.connectionId) ?? row.connectionId
       yield* input.continue(row.sessionId, { text, outcome, from }, `mcp-decision-continue:${row.id}`)
     }

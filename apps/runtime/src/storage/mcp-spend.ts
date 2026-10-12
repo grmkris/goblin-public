@@ -18,7 +18,8 @@ export const appMcpSpendRules = sqliteTable(
 
 /**
  * Every paid call goblin sent, by the held call it went out as (ADR 0044): its amount and UTC day, for the day's total.
- * `standing`: it ran under the owner's rule, without asking.
+ * `standing`: it ran under the owner's rule, without asking. A top-up of a prepaid server (ADR 0049, tool `topup`, by
+ * its operation id) also keeps where it goes, `destination`: `<chain>:<token>:<address>`, the address lower case.
  */
 export const appMcpSpend = sqliteTable(
   'app_mcp_spend',
@@ -30,6 +31,7 @@ export const appMcpSpend = sqliteTable(
     micros: integer('micros').notNull(),
     standing: integer('standing', { mode: 'boolean' }).notNull(),
     at: integer('at').notNull(),
+    destination: text('destination'),
   },
   (table) => [index('app_mcp_spend_day').on(table.connectionId, table.tool, table.day)],
 )

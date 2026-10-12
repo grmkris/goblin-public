@@ -1,12 +1,20 @@
 // A server goblin supports first-class (ADR 0043) on its Connections card: its wallet as its status tool reports it (the
-// server's claim), Review recommended access until those grants are in place, then the rule for its paid tool.
+// server's claim), how goblin tops up a prepaid one from the Goblin Wallet (ADR 0049), Review recommended access until
+// those grants are in place, then the rule for its paid tool.
 import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerProfile, ServerView, ToolView, WalletStatus } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
 import { CircleAlertIcon, WalletIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
-import { allowRecommendedMutation, serverStatusQuery, setSpendingMutation, spendingQuery } from '../mcp/queries.ts'
+import {
+  allowRecommendedMutation,
+  serverStatusQuery,
+  setSpendingMutation,
+  setTopUpMutation,
+  spendingQuery,
+  topUpQuery,
+} from '../mcp/queries.ts'
 
 const dateOf = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 
@@ -189,6 +197,9 @@ export function FirstClassSummary({
   return (
     <>
       {status.data != null && <WalletLine wallet={status.data} profile={profile} />}
+      {profile.prepaid !== undefined && server.status === 'connected' && (
+        <PrepaidLine connectionId={server.connectionId} profile={profile} wallet={status.data} balance={false} />
+      )}
       {tools !== undefined && !applied && <RecommendedReview server={server} profile={profile} tools={tools} />}
     </>
   )
@@ -211,6 +222,96 @@ export function FirstClassAccess({
 
 /** Up to two dollar amounts, as the owner's form takes them: empty, or a plain decimal with at most two places. */
 const AMOUNT = /^\d{1,6}(?:\.\d{1,2})?$/u
+
+/** A prepaid server's own balance, in the token it is paid in, as its status line reads; nothing until it is read. */
+export const prepaidBalance = (
+  prepaid: NonNullable<ServerProfile['prepaid']>,
+  wallet: WalletStatus | null | undefined,
+): string | undefined => wallet?.tokens.find((token) => token.symbol === prepaid.token)?.balance
+
+/** The top-up rule in the owner's words. */
+export const topUpSentence = (rule: { readonly perTopUp: string; readonly daily: string }): string =>
+  `goblin tops it up from your Goblin Wallet: up to $${rule.perTopUp} a top-up and $${rule.daily} a day without asking.`
+
+/**
+ * A prepaid server's own balance (its status line, when `balance` and read) and how goblin tops it up from the Goblin
+ * Wallet (ADR 0049), the profile's default until the owner changes it; Change opens the rule in place. Above the rule,
+ * goblin does not move money and the job says what to approve.
+ */
+export function PrepaidLine({
+  connectionId,
+  profile,
+  wallet,
+  balance = true,
+}: {
+  readonly connectionId: string
+  readonly profile: ServerProfile
+  readonly wallet?: WalletStatus | null | undefined
+  readonly balance?: boolean
+}) {
+  const view = useQuery(topUpQuery(connectionId)).data
+  const save = useMutation(setTopUpMutation)
+  const [editing, setEditing] = useState(false)
+  const [perTopUp, setPerTopUp] = useState<string>()
+  const [daily, setDaily] = useState<string>()
+  const prepaid = profile.prepaid
+  if (prepaid === undefined) return null
+  const rule = view ?? { perTopUp: prepaid.perTopUp, daily: prepaid.daily }
+  const each = perTopUp ?? rule.perTopUp
+  const day = daily ?? rule.daily
+  const valid = AMOUNT.test(each) && AMOUNT.test(day)
+  const held = balance ? prepaidBalance(prepaid, wallet) : undefined
+  return (
+    <div className="prepaid-line">
+      <p className="server-note tabular-nums">
+        {held === undefined ? '' : `${profile.title} balance $${compactAmount(held)}. `}
+        {topUpSentence(rule)}{' '}
+        <Button variant="link" size="xs" aria-expanded={editing} onClick={() => setEditing(!editing)}>
+          {editing ? 'Close' : 'Change'}
+        </Button>
+      </p>
+      {editing && (
+        <form
+          className="spending-rule-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (valid) save.mutate({ connectionId, perTopUp: each, daily: day }, { onSuccess: () => setEditing(false) })
+          }}
+        >
+          <label>
+            Up to $
+            <input
+              inputMode="decimal"
+              value={each}
+              aria-invalid={!AMOUNT.test(each)}
+              onChange={(event) => setPerTopUp(event.target.value.trim())}
+            />
+            a top-up
+          </label>
+          <label>
+            $
+            <input
+              inputMode="decimal"
+              value={day}
+              aria-invalid={!AMOUNT.test(day)}
+              onChange={(event) => setDaily(event.target.value.trim())}
+            />
+            a day
+          </label>
+          <Button size="sm" type="submit" disabled={!valid} pending={save.isPending}>
+            Save
+          </Button>
+        </form>
+      )}
+      {save.error !== null && (
+        <Receipt tone="error">
+          <CircleAlertIcon aria-hidden />
+          <span>{messageOf(save.error, 'change the top-up rule')}</span>
+        </Receipt>
+      )}
+    </div>
+  )
+}
 
 /**
  * The owner's spending rule for a first-class server's paid tool (ADR 0044): every job asks first, or jobs up to an

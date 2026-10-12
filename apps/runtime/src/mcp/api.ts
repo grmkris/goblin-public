@@ -21,8 +21,10 @@ import {
 import {
   allowRecommended as allowRecommendedGrants,
   setSpending as setSpendingRule,
+  setTopUp as setTopUpRule,
   serverStatus as statusOf,
   spendingView,
+  topUpView,
 } from './first-class-owner.ts'
 import { urlRequestView } from './url-request.ts'
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
@@ -119,6 +121,8 @@ const allowRecommended = endpoint('allowRecommended')(({ params }) => allowRecom
 const spending = endpoint('spending')(({ params }) => spendingView(params.id))
 const setSpending = endpoint('setSpending')(({ params, payload }) => setSpendingRule(params.id, payload))
 const serverStatus = endpoint('serverStatus')(({ params }) => statusOf(params.id))
+const topUp = endpoint('topUp')(({ params }) => topUpView(params.id))
+const setTopUp = endpoint('setTopUp')(({ params, payload }) => setTopUpRule(params.id, payload))
 const disconnect = endpoint('disconnect')(({ params }) => disconnectOwnerServer(params.id))
 const removeServer = endpoint('removeServer')(({ params }) => removeOwnerServer(params.id))
 const callTool = endpoint('callTool')(({ params, headers, payload }) =>
@@ -180,6 +184,8 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       serverStatus,
       spending,
       setSpending,
+      topUp,
+      setTopUp,
       disconnect,
       removeServer,
       callTool,

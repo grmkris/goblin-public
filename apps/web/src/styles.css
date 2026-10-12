@@ -1272,6 +1272,13 @@
   .run-up-to-amount > input[aria-invalid='true'] {
     border-color: var(--destructive);
   }
+  /* A prepaid server's balance and top-up rule on its card and in Start (components/first-class.tsx, ADR 0049). */
+  .prepaid-line {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
   /* A first-class server's spending rule on its card (components/first-class.tsx, ADR 0044). */
   .spending-rule {
     display: flex;

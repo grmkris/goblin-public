@@ -47,6 +47,7 @@ describe('first-class servers (ADR 0043)', () => {
       app: { tool: 'open_mercator' },
       status: true,
       topUp: { url: 'https://mercator.sh/account' },
+      prepaid: { chain: 'tempo', token: 'USDC.e', perTopUp: '5', daily: '20' },
     })
     expect(view.recommended.ask).toEqual(['create_job'])
     expect(view.recommended.run).not.toContain('create_job')
@@ -60,14 +61,19 @@ describe('first-class servers (ADR 0043)', () => {
     expect(Object.keys(profileView(cloudflare))).not.toContain('scope')
   })
 
-  it("reads Mercator's wallet from its status answer: readiness, balance, what is left, and when the period ends", () => {
+  it("reads Mercator's wallet from its status answer: readiness, balance, what is left, when the period ends and where it is funded", () => {
     expect(mercatorWallet(status())).toEqual({
       kind: 'wallet',
       paid: 'ready',
       funding: 'ready',
       tokens: [{ symbol: 'USDC.e', balance: '12.5', remaining: '4.75', spendable: '4.75' }],
       periodEndsAt: '2026-10-17T00:00:00Z',
+      depositTo: { address: `0x${'c'.repeat(40)}`, chain: 'tempo', token: 'USDC.e' },
     })
+    // An address that is not one reads as none, and the rest still reads: goblin never funds what it cannot check.
+    const odd = status({ account: { ...status().account, walletAddress: 'mercator-wallet' } })
+    expect(mercatorWallet(odd)).toMatchObject({ paid: 'ready' })
+    expect(mercatorWallet(odd)?.depositTo).toBeUndefined()
   })
 
   it('bounds what the server says, and reads nothing from an answer that does not fit', () => {

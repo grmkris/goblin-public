@@ -115,6 +115,23 @@ export type SpendingView = typeof SpendingView.Type
 export const SpendingChange = Schema.Struct({ perJob: Schema.NullOr(Dollars), daily: Schema.NullOr(Dollars) })
 export type SpendingChange = typeof SpendingChange.Type
 
+/**
+ * How goblin tops up a prepaid server's own balance from the Goblin Wallet (ADR 0049): up to `perTopUp` a top-up and
+ * `daily` a day without asking, what it moved today (UTC), all in dollars, and the chain and token it moves.
+ */
+export const TopUpView = Schema.Struct({
+  chain: Schema.String,
+  token: Schema.String,
+  perTopUp: Schema.String,
+  daily: Schema.String,
+  movedToday: Schema.String,
+})
+export type TopUpView = typeof TopUpView.Type
+
+/** The owner's top-up rule: up to `perTopUp` a top-up and `daily` a day without asking; above it, goblin asks. */
+export const TopUpChange = Schema.Struct({ perTopUp: Dollars, daily: Dollars })
+export type TopUpChange = typeof TopUpChange.Type
+
 /** What `POST /api/mcp/:id/connect` answers: where to send the owner's browser, when sign-in is needed. */
 export const ConnectStart = Schema.Struct({ authorizationUrl: Schema.optional(Schema.String) })
 export type ConnectStart = typeof ConnectStart.Type
@@ -249,6 +266,14 @@ export const ServerProfile = Schema.Struct({
   status: Schema.Boolean,
   /** Where the owner adds funds when its status says the wallet needs them: goblin's own https link. */
   topUp: Schema.optional(Schema.Struct({ url: Schema.String })),
+  /**
+   * It keeps its own prepaid balance, which goblin tops up from the Goblin Wallet (ADR 0049): the chain and token the
+   * balance is in (its status reports it, and where to send it), and the default rule, in dollars: up to `perTopUp` a
+   * top-up and `daily` a day without asking.
+   */
+  prepaid: Schema.optional(
+    Schema.Struct({ chain: Schema.String, token: Schema.String, perTopUp: Schema.String, daily: Schema.String }),
+  ),
 })
 export type ServerProfile = typeof ServerProfile.Type
 
@@ -283,6 +308,11 @@ export const WalletStatus = Schema.Struct({
    * holds there (a decimal string; absent when that chain could not be read).
    */
   payFrom: Schema.optional(Schema.Struct({ address: Short, chain: Short, token: Short, held: Schema.optional(Short) })),
+  /**
+   * Where the server's own prepaid balance is funded (ADR 0049), when its status says so: the address, and the chain
+   * and token it takes. The balance itself is the token's in `tokens`.
+   */
+  depositTo: Schema.optional(Schema.Struct({ address: Short, chain: Short, token: Short })),
 })
 export type WalletStatus = typeof WalletStatus.Type
 

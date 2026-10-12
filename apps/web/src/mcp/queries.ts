@@ -27,6 +27,7 @@ export const mcpKeys = {
   status: (connectionId: string) => ['mcp', 'status', connectionId] as const,
   app: (connectionId: string, tool: string) => ['mcp', 'app', connectionId, tool] as const,
   spending: (connectionId: string) => ['mcp', 'spending', connectionId] as const,
+  topUp: (connectionId: string) => ['mcp', 'top-up', connectionId] as const,
   events: (connectionId: string) => ['mcp', 'events', connectionId] as const,
   access: (connectionId: string) => ['mcp', 'access', connectionId] as const,
 }
@@ -288,6 +289,27 @@ export const setSpendingMutation = mutationOptions({
   }),
   onSuccess: (view, { connectionId }, _result, { client }) => {
     client.setQueryData(mcpKeys.spending(connectionId), view)
+  },
+})
+
+/** How goblin tops up a prepaid server from the Goblin Wallet: the owner's rule and what it moved today (ADR 0049). */
+export const topUpQuery = (connectionId: string) =>
+  owner.apiQuery({
+    queryKey: mcpKeys.topUp(connectionId),
+    queryFn: (api) => api.mcp.topUp({ params: { id: connectionId } }),
+  })
+
+/** Sets the owner's top-up rule: up to `perTopUp` a top-up and `daily` a day without asking. */
+export const setTopUpMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, change: { readonly connectionId: string; readonly perTopUp: string; readonly daily: string }) =>
+      api.mcp.setTopUp({
+        params: { id: change.connectionId },
+        payload: { perTopUp: change.perTopUp, daily: change.daily },
+      }),
+  }),
+  onSuccess: (view, { connectionId }, _result, { client }) => {
+    client.setQueryData(mcpKeys.topUp(connectionId), view)
   },
 })
 
