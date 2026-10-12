@@ -102,7 +102,12 @@ const SUGGESTED: readonly Suggested[] = [
     id: 'wallet',
     title: 'Goblin Wallet',
     description: 'Balances, limits you set and receipts, and a wallet your agent pays for search and services from.',
-    endpoint: 'https://wallet-dev.goblin.surf/mcp',
+    endpoint: {
+      local: 'https://wallet-dev.goblin.surf/mcp',
+      dev: 'https://wallet-dev.goblin.surf/mcp',
+      test: 'https://wallet-dev.goblin.surf/mcp',
+      prod: 'https://wallet.goblin.surf/mcp',
+    },
     signIn: true,
   },
   {

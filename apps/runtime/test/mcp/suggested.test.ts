@@ -21,6 +21,10 @@ describe('the suggested servers', () => {
       added: false,
     })
     expect(suggestions('dev', new Set([endpoint])).find((item) => item.id === 'wallet')?.added).toBe(true)
+    // Prod never sends an owner to the dev wallet.
+    expect(suggestions('prod', new Set()).find((item) => item.id === 'wallet')?.endpoint).toBe(
+      'https://wallet.goblin.surf/mcp',
+    )
   })
   it('suggests only https endpoints, each id once', () => {
     const all = suggestions(undefined, new Set())
