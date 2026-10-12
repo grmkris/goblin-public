@@ -1,0 +1,1050 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the agent policy > the mainnet document (snapshot) 1`] = `
+{
+  "chain_type": "ethereum",
+  "name": "Goblin Wallet agent signer v2",
+  "owner_id": "k6jmz9g665ljwkdpy3c01xhy",
+  "rules": [
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chainId",
+          "field_source": "ethereum_typed_data_domain",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "verifyingContract",
+          "field_source": "ethereum_typed_data_domain",
+          "operator": "eq",
+          "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+        {
+          "field": "from",
+          "field_source": "ethereum_typed_data_message",
+          "operator": "eq",
+          "typed_data": {
+            "primary_type": "TransferWithAuthorization",
+            "types": {
+              "EIP712Domain": [
+                {
+                  "name": "name",
+                  "type": "string",
+                },
+                {
+                  "name": "version",
+                  "type": "string",
+                },
+                {
+                  "name": "chainId",
+                  "type": "uint256",
+                },
+                {
+                  "name": "verifyingContract",
+                  "type": "address",
+                },
+              ],
+              "TransferWithAuthorization": [
+                {
+                  "name": "from",
+                  "type": "address",
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "value",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validBefore",
+                  "type": "uint256",
+                },
+                {
+                  "name": "nonce",
+                  "type": "bytes32",
+                },
+              ],
+            },
+          },
+          "value": "{{wallet.address}}",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_typed_data_message",
+          "operator": "lte",
+          "typed_data": {
+            "primary_type": "TransferWithAuthorization",
+            "types": {
+              "EIP712Domain": [
+                {
+                  "name": "name",
+                  "type": "string",
+                },
+                {
+                  "name": "version",
+                  "type": "string",
+                },
+                {
+                  "name": "chainId",
+                  "type": "uint256",
+                },
+                {
+                  "name": "verifyingContract",
+                  "type": "address",
+                },
+              ],
+              "TransferWithAuthorization": [
+                {
+                  "name": "from",
+                  "type": "address",
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "value",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validBefore",
+                  "type": "uint256",
+                },
+                {
+                  "name": "nonce",
+                  "type": "bytes32",
+                },
+              ],
+            },
+          },
+          "value": "5000000",
+        },
+      ],
+      "method": "eth_signTypedData_v4",
+      "name": "USDC payment on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "_permissionContexts",
+                  "type": "bytes[]",
+                },
+                {
+                  "name": "_modes",
+                  "type": "bytes32[]",
+                },
+                {
+                  "name": "_executionCallDatas",
+                  "type": "bytes[]",
+                },
+              ],
+              "name": "redeemDelegations",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "function_name",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "redeemDelegations",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "Redeem allowance on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "transfer",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "transfer.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "USDC transfer on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chainId",
+          "field_source": "ethereum_typed_data_domain",
+          "operator": "eq",
+          "value": "1",
+        },
+        {
+          "field": "verifyingContract",
+          "field_source": "ethereum_typed_data_domain",
+          "operator": "eq",
+          "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        },
+        {
+          "field": "from",
+          "field_source": "ethereum_typed_data_message",
+          "operator": "eq",
+          "typed_data": {
+            "primary_type": "TransferWithAuthorization",
+            "types": {
+              "EIP712Domain": [
+                {
+                  "name": "name",
+                  "type": "string",
+                },
+                {
+                  "name": "version",
+                  "type": "string",
+                },
+                {
+                  "name": "chainId",
+                  "type": "uint256",
+                },
+                {
+                  "name": "verifyingContract",
+                  "type": "address",
+                },
+              ],
+              "TransferWithAuthorization": [
+                {
+                  "name": "from",
+                  "type": "address",
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "value",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validBefore",
+                  "type": "uint256",
+                },
+                {
+                  "name": "nonce",
+                  "type": "bytes32",
+                },
+              ],
+            },
+          },
+          "value": "{{wallet.address}}",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_typed_data_message",
+          "operator": "lte",
+          "typed_data": {
+            "primary_type": "TransferWithAuthorization",
+            "types": {
+              "EIP712Domain": [
+                {
+                  "name": "name",
+                  "type": "string",
+                },
+                {
+                  "name": "version",
+                  "type": "string",
+                },
+                {
+                  "name": "chainId",
+                  "type": "uint256",
+                },
+                {
+                  "name": "verifyingContract",
+                  "type": "address",
+                },
+              ],
+              "TransferWithAuthorization": [
+                {
+                  "name": "from",
+                  "type": "address",
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "value",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validBefore",
+                  "type": "uint256",
+                },
+                {
+                  "name": "nonce",
+                  "type": "bytes32",
+                },
+              ],
+            },
+          },
+          "value": "5000000",
+        },
+      ],
+      "method": "eth_signTypedData_v4",
+      "name": "USDC payment on 1",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "1",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "_permissionContexts",
+                  "type": "bytes[]",
+                },
+                {
+                  "name": "_modes",
+                  "type": "bytes32[]",
+                },
+                {
+                  "name": "_executionCallDatas",
+                  "type": "bytes[]",
+                },
+              ],
+              "name": "redeemDelegations",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "function_name",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "redeemDelegations",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "Redeem allowance on 1",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "1",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "transfer",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "transfer.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "USDC transfer on 1",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chainId",
+          "field_source": "ethereum_typed_data_domain",
+          "operator": "eq",
+          "value": "42161",
+        },
+        {
+          "field": "verifyingContract",
+          "field_source": "ethereum_typed_data_domain",
+          "operator": "eq",
+          "value": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        },
+        {
+          "field": "from",
+          "field_source": "ethereum_typed_data_message",
+          "operator": "eq",
+          "typed_data": {
+            "primary_type": "TransferWithAuthorization",
+            "types": {
+              "EIP712Domain": [
+                {
+                  "name": "name",
+                  "type": "string",
+                },
+                {
+                  "name": "version",
+                  "type": "string",
+                },
+                {
+                  "name": "chainId",
+                  "type": "uint256",
+                },
+                {
+                  "name": "verifyingContract",
+                  "type": "address",
+                },
+              ],
+              "TransferWithAuthorization": [
+                {
+                  "name": "from",
+                  "type": "address",
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "value",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validBefore",
+                  "type": "uint256",
+                },
+                {
+                  "name": "nonce",
+                  "type": "bytes32",
+                },
+              ],
+            },
+          },
+          "value": "{{wallet.address}}",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_typed_data_message",
+          "operator": "lte",
+          "typed_data": {
+            "primary_type": "TransferWithAuthorization",
+            "types": {
+              "EIP712Domain": [
+                {
+                  "name": "name",
+                  "type": "string",
+                },
+                {
+                  "name": "version",
+                  "type": "string",
+                },
+                {
+                  "name": "chainId",
+                  "type": "uint256",
+                },
+                {
+                  "name": "verifyingContract",
+                  "type": "address",
+                },
+              ],
+              "TransferWithAuthorization": [
+                {
+                  "name": "from",
+                  "type": "address",
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "value",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                },
+                {
+                  "name": "validBefore",
+                  "type": "uint256",
+                },
+                {
+                  "name": "nonce",
+                  "type": "bytes32",
+                },
+              ],
+            },
+          },
+          "value": "5000000",
+        },
+      ],
+      "method": "eth_signTypedData_v4",
+      "name": "USDC payment on 42161",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "42161",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "_permissionContexts",
+                  "type": "bytes[]",
+                },
+                {
+                  "name": "_modes",
+                  "type": "bytes32[]",
+                },
+                {
+                  "name": "_executionCallDatas",
+                  "type": "bytes[]",
+                },
+              ],
+              "name": "redeemDelegations",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "function_name",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "redeemDelegations",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "Redeem allowance on 42161",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "42161",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "transfer",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "transfer.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "USDC transfer on 42161",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "4217",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x20C000000000000000000000b9537d11c60E8b50",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "transfer",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "transfer.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_signTransaction",
+      "name": "USDC.e transfer on 4217",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "4217",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x20C000000000000000000000b9537d11c60E8b50",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "to",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+                {
+                  "name": "memo",
+                  "type": "bytes32",
+                },
+              ],
+              "name": "transferWithMemo",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "transferWithMemo.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_signTransaction",
+      "name": "USDC.e transferWithMemo on 4217",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "USDC approve LI.FI on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "LI.FI call on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "USDC approve Relay on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+      ],
+      "method": "eth_sendTransaction",
+      "name": "Relay call on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "contract",
+          "field_source": "ethereum_7702_authorization",
+          "operator": "eq",
+          "value": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B",
+        },
+      ],
+      "method": "eth_sign7702Authorization",
+      "name": "Allow DeleGator upgrade",
+    },
+    {
+      "action": "DENY",
+      "conditions": [],
+      "method": "exportPrivateKey",
+      "name": "Deny export",
+    },
+  ],
+  "version": "1.0",
+}
+`;
