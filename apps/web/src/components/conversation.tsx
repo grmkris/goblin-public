@@ -1,5 +1,6 @@
 import {
   Empty,
+  EmptyDescription,
   EmptyHeader,
   EmptyTitle,
   MessageScroller,
@@ -11,6 +12,7 @@ import {
   useMessageScroller,
 } from '@goblin/ui'
 import { memo, type ReactNode, useMemo, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { TELEGRAM_AUTHOR } from '@goblin/contracts'
 import { HistoryIcon } from 'lucide-react'
 import { isOwnTurn, type Part, partKey, samePart } from '../lib/parts.ts'
@@ -19,6 +21,7 @@ import { PartView } from './parts/registry.tsx'
 import { OpenThread } from './parts/text-part.tsx'
 import { type ChatThreads, MessageFooter } from './shell/thread-summary.tsx'
 import { glide } from '../lib/motion.ts'
+import { serversQuery } from '../mcp/queries.ts'
 import { type Turn, TurnMap } from './turn-map.tsx'
 
 type ConversationProps = {
@@ -38,6 +41,20 @@ type ConversationProps = {
   readonly after?: (part: Part) => ReactNode
   /** What comes after the parts (Personas still answering). */
   readonly trail?: ReactNode
+}
+
+/** In an empty chat, the first-class servers goblin could use once the owner connects them (ADR 0043). */
+function NotConnectedYet() {
+  const offers = (useQuery(serversQuery).data ?? []).filter(
+    (server) => server.profile !== undefined && server.status !== 'connected',
+  )
+  const [first] = offers
+  if (first?.profile === undefined) return null
+  return (
+    <EmptyDescription>
+      Connect {first.profile.title} on Connections, so goblin can search the web and get outside work done.
+    </EmptyDescription>
+  )
 }
 
 /**
@@ -112,6 +129,7 @@ export function Conversation({
                 <Empty className="m-auto">
                   <EmptyHeader>
                     <EmptyTitle>No messages yet</EmptyTitle>
+                    <NotConnectedYet />
                   </EmptyHeader>
                 </Empty>
               ) : (

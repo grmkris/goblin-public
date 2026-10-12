@@ -626,7 +626,9 @@ it (search, describe, quote, job, result), and a model's call to a connection th
 wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that tool is allowed) and offers
 Allow recommended (`POST /api/mcp/:id/recommended`, `mcp/first-class-owner.ts`) until those grants are in place; a tool
 the server does not list now is skipped. Its own App opens as a page, `/connections/<id>/app` (`server-app.tsx`): its
-app tool called as the owner, rendered in the same sandboxed frame as any MCP App and trusted for nothing. Connections
+app tool called as the owner, rendered in the same sandboxed frame as any MCP App and trusted for nothing. Until a
+first-class server is connected, onboarding points to it: Activity's "Get started" row (`connect-offer.tsx`, Connect or
+Not now, the dismissal kept in the browser), the empty chat's line and the Pro welcome. Connections
 also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
 comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
 the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built

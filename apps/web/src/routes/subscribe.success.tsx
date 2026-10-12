@@ -35,9 +35,21 @@ function PaymentReturn() {
   }
   if (billing.data?.active)
     return (
-      <AuthShell title="Your agent is ready" description="Pro is active.">
+      <AuthShell
+        title="Your agent is ready"
+        description="Pro is active. Connect Mercator next, so goblin can search the web and get outside work done for you."
+      >
         <Button size="lg" className="w-full" nativeButton={false} render={<Link to="/" />}>
           Open your agent
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="w-full"
+          nativeButton={false}
+          render={<Link to="/connections" hash="connection-mercator" />}
+        >
+          Connect Mercator
         </Button>
       </AuthShell>
     )
