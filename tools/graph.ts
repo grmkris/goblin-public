@@ -80,6 +80,7 @@ export const nodes: readonly Node[] = [
           'src/pi/files.ts',
           'src/pi/home.ts',
           'src/pi/memory.ts',
+          'src/pi/onboarding.ts',
           'src/pi/organize.ts',
           'src/pi/persona-turn.ts',
           'src/pi/resident-mcp.ts',

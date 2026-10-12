@@ -42,6 +42,7 @@ import { nowSeconds } from './clock.ts'
 import { type MovePhase } from './chats/mover.ts'
 import { budgetExtension } from './pi/budget.ts'
 import { decisionsExtension } from './pi/decisions.ts'
+import { onboardingExtension } from './pi/onboarding.ts'
 import { retrievalExtension } from './pi/retrieval.ts'
 import { type Applied } from './agent-model.ts'
 import { routinesExtension } from './pi/routines.ts'
@@ -115,7 +116,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     const subagents = this.#subagents.extension
     const retrieval = retrievalExtension(run)
     const learning = [skillLearningExtension(run), decisionsExtension(run, env.AI !== undefined)]
-    const base = [...execution, ...learning, ...appsExtension(apps, run), organize, retrieval]
+    const base = [...execution, ...learning, ...appsExtension(apps, run), organize, retrieval, onboardingExtension(run)]
     const own = [serversExtension(run, env.STAGE), subagents, routinesExtension(run), this.#telemetry.diagnose]
     const extras = [this.#thread, memory, recall, this.#personas.extension, ...routineKit.extra]
     this.harness = makePiHarness(this.#pi, [...base, ...own], extras, apps, this.#telemetry.recorder)

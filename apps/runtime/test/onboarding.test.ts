@@ -6,7 +6,9 @@ import { afterEach } from 'vitest'
 import { OnboardingLive } from '../src/layers/onboarding.ts'
 import { profileOf, profileView } from '../src/mcp/first-class.ts'
 import { McpConnections, McpGrants, McpServers } from '../src/mcp/service.ts'
-import { changeOnboarding, onboardingState, onboardingView } from '../src/onboarding/program.ts'
+import { Budget } from '../src/budget.ts'
+import { Chats } from '../src/chats/service.ts'
+import { changeOnboarding, onboardingContext, onboardingState, onboardingView } from '../src/onboarding/program.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
 import { stub } from './http/api/fixture.ts'
 import { OnboardingStore } from '../src/onboarding/store.ts'
@@ -59,6 +61,12 @@ const start = (servers: readonly ServerView[], grants: readonly Grant[], dollars
         }),
         // SAFETY: Start reads only the stage's free-plan dollars from the instance input.
         Layer.succeed(AgentInput, { env: { FREE_WALLET_USD: '5' } } as AgentInputs),
+        // Main is session `s1`; the day's allowance is none until the wallet holds the free plan's dollars.
+        // SAFETY: the setup note reads only main's chat id and its session from the directory.
+        stub(Chats, { primary: '1', session: (chat: string) => Effect.succeed(chat === '1' ? 's1' : 's2') } as never),
+        stub(Budget, {
+          today: () => Effect.succeed({ used: 0, limit: Number(dollars) >= 5 ? 200 : 0, resetsAt: 0 }),
+        }),
       ),
     ),
   )
@@ -131,4 +139,24 @@ describe('first-run Start (ADR 0048)', () => {
     store.noteConnect('mercator', { step: 'mercator', recommend: true }, 1000)
     expect(store.takeConnect('mercator', 1000 + 31 * 60)).toBeUndefined()
   })
+
+  it.effect('tells goblin in main only what setup misses, one line each, and nothing once it is all there', () =>
+    Effect.gen(function* () {
+      const missing = yield* onboardingContext('s1')
+      expect(missing).toContain('The Goblin Wallet is not funded')
+      expect(missing).not.toContain('Mercator is not connected')
+      expect(missing).not.toContain('ask_user')
+      expect(yield* onboardingContext('s2')).toBeUndefined()
+    }).pipe(Effect.provide(start(everything, allowed, '3'))),
+  )
+
+  it.effect('asks goblin to propose Topics and Personas right after the kickoff, even with nothing missing', () =>
+    Effect.gen(function* () {
+      expect(yield* onboardingContext('s1')).toBeUndefined()
+      yield* changeOnboarding({ status: 'done', step: 'goblin', kickoff: true })
+      const kickoff = yield* onboardingContext('s1')
+      expect(kickoff).toContain('ask_user')
+      expect(kickoff).not.toContain('Setup still missing')
+    }).pipe(Effect.provide(start(everything, allowed, '6.5'))),
+  )
 })
