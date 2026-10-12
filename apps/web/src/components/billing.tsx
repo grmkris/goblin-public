@@ -45,7 +45,7 @@ function walletLine(wallet: WalletPlan): string {
 /** When the paid period ends or renews, in words. */
 function periodLine(state: BillingState): string {
   if (state.source === 'free')
-    return `Free: ${String(state.dailyCredits)} model Credits a day, no routines. Pro gives 800 a day and routines.`
+    return `Free: ${String(state.dailyCredits)} model Credits a day, and routines that tell you. Pro adds hand-overs to goblin or a Persona, 800 Credits a day and subagents.`
   if (state.source === 'wallet' && state.wallet !== undefined) return walletLine(state.wallet)
   if (state.until === null)
     return state.active ? 'Included with your account.' : 'Subscribe to use your personal agent.'
@@ -122,8 +122,8 @@ export function BillingCard() {
 
 /** What Pro includes, in the owner's words (`billing/plans.ts`). */
 const INCLUDES = [
+  ['Hand-overs to goblin or a Persona', 'Events and schedules handled for you while you are away.'],
   ['800 Credits a day', "For your agent's model, every day."],
-  ['Routines', 'Events and schedules that run while you are away.'],
   ['Subagents', 'Long jobs handed off and reported back.'],
 ] as const
 

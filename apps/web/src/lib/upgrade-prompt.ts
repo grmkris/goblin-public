@@ -68,11 +68,9 @@ export function makeUpgradePrompts(): UpgradePrompts {
 /** What the prompt says a feature is, in the owner's words: known ones by name, any other as "this". */
 const FEATURES: Readonly<Record<string, string>> = {
   agent: 'Your agent comes with goblin Pro.',
-  routines: 'Routines run while you are away. They come with goblin Pro.',
-  subagents: 'Subagents take long jobs off your hands. They come with goblin Pro.',
-  handover: 'Handing an event to a topic or a persona comes with goblin Pro.',
-  hand_over: 'Handing an event to a topic or a persona comes with goblin Pro.',
+  hand_over: 'Handing an event or a schedule to goblin or a Persona is part of Pro.',
+  subagents: 'Subagents take long jobs off your hands. They are part of Pro.',
 }
 
 export const featureLine = (feature: string | undefined): string =>
-  (feature === undefined ? undefined : FEATURES[feature]) ?? 'This comes with goblin Pro.'
+  (feature === undefined ? undefined : FEATURES[feature]) ?? 'This is part of goblin Pro.'

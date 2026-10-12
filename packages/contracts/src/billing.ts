@@ -20,7 +20,10 @@ export type WalletPlan = typeof WalletPlan.Type
 /** The account's current allowance; checkout return URLs never prove payment. */
 export const BillingState = Schema.Struct({
   active: Schema.Boolean,
-  /** `free`: no Pro, on the deployment's free plan (its Credits, no routines). `wallet`: Pro paid from the wallet. */
+  /**
+   * `free`: no Pro, on the deployment's free plan (its Credits, and routines that tell you; hand-overs to goblin or a
+   * Persona and subagents are Pro). `wallet`: Pro paid from the Goblin Wallet.
+   */
   source: Schema.Literals(['override', 'subscription', 'wallet', 'free', 'none']),
   until: Schema.NullOr(Schema.Number),
   /** The daily model allowance in estimated Token Plan Credits (ADR 0026). */
