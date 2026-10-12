@@ -23,7 +23,10 @@ export function Section({
   )
 }
 
-/** A number that matters, large and steady, under its label; `note` is a muted line under it. */
+/**
+ * A number that matters, large and steady, under its label; `note` is a muted line under it. A grid of them fits as
+ * many columns as its width holds (`frame.css`).
+ */
 export function Stat({
   label,
   value,
@@ -34,7 +37,7 @@ export function Stat({
   readonly note?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div data-slot="stat" className="flex min-w-0 flex-col gap-1">
       <p className="text-sm text-muted-foreground">{label}</p>
       <p className="text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
       {note !== undefined && <p className="text-sm text-muted-foreground">{note}</p>}

@@ -41,3 +41,25 @@
     gap: 1.5rem;
   }
 }
+/*
+ * Numbers side by side (a grid of `Stat`) fit as many columns as the width holds, each at least 8rem, so a phone shows
+ * two and a page all of them: the view's own column count is a guess about a width it cannot know.
+ */
+.grid:has(> [data-slot='stat']) {
+  grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr));
+}
+/* On touch, a field is as tall as the button beside it (a Button is 44px there), so a form row lines up. */
+@media (pointer: coarse) {
+  [data-slot='input'][data-variant='default'],
+  [data-slot='native-select']:not([data-size='sm']) {
+    block-size: 2.75rem;
+  }
+}
+/* A map, chart or diagram in a flex or grid box takes its spacing from the box's gap, and the box's full width. */
+:is(.flex, .grid) > :is(.kit-map, .kit-chart, .kit-diagram) {
+  min-inline-size: 0;
+  margin-block: 0;
+}
+.flex-col > :is(.kit-map, .kit-chart, .kit-diagram) {
+  align-self: stretch;
+}
