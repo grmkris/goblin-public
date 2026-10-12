@@ -49,6 +49,8 @@ export interface NetworkBalances {
   readonly assets: readonly AssetRow[]
   /** Read, and something on it is above zero. */
   readonly funded: boolean
+  /** The owner holds stablecoins here but no on-chain allowance was read, so the agent cannot draw on them. */
+  readonly ownerOutOfReach: boolean
 }
 
 const holdingOf = (row: ChainBalance | undefined): Holding | undefined =>
@@ -80,9 +82,15 @@ function assetsOf(rows: readonly ChainBalance[]): AssetRow[] {
   })
 }
 
-function groupOf(chain: ChainKey, rows: readonly ChainBalance[], ownerSeen: boolean): NetworkBalances {
+function groupOf(
+  chain: ChainKey,
+  rows: readonly ChainBalance[],
+  ownerSeen: boolean,
+  allowed: boolean,
+): NetworkBalances {
   const read = networkRead(chain, rows, ownerSeen)
   const assets = read ? assetsOf(rows) : []
+  const ownerStable = assets.some((asset) => asset.role === 'payments' && asset.owner?.positive === true)
   return {
     chain,
     read,
@@ -90,6 +98,7 @@ function groupOf(chain: ChainKey, rows: readonly ChainBalance[], ownerSeen: bool
     ownerAddress: rows.find((row) => row.holder === 'owner')?.address,
     assets,
     funded: assets.some((asset) => asset.agent?.positive === true || asset.owner?.positive === true),
+    ownerOutOfReach: ownerStable && !allowed,
   }
 }
 
@@ -102,6 +111,7 @@ export function balanceGroups(status: WalletStatusResult): readonly NetworkBalan
       chain,
       status.balances.filter((row) => row.chain === chain),
       ownerSeen,
+      status.limits.some((limit) => limit.layer === 'onchain' && limit.chain === chain),
     ),
   )
 }

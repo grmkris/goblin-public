@@ -31,16 +31,6 @@ export function minMicros(values: readonly bigint[]): bigint | undefined {
   return smallest
 }
 
-/** Dollars held: the stablecoin balances added. */
-export const sumUsd = (balances: readonly { readonly symbol: string; readonly balance: string }[]): string =>
-  usdOf(sumMicros(balances.filter((row) => isStable(row.symbol)).map((row) => microsOf(row.balance))))
-
-/** The status's own spendable figures of its stablecoins, added. ETH pays gas, not services. */
-export const spendableUsd = (
-  tokens: readonly { readonly symbol: string; readonly spendable?: string | undefined }[],
-): string =>
-  usdOf(sumMicros(tokens.filter((token) => isStable(token.symbol)).map((token) => microsOf(token.spendable ?? '0'))))
-
 /** For `toSorted`: smaller amounts first. */
 export function byMicros(a: bigint, b: bigint): number {
   if (a === b) return 0

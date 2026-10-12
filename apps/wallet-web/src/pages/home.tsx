@@ -1,149 +1,147 @@
-import { Card, CardContent } from '@goblin/ui'
-import type { Operation, WalletStatusResult } from '@goblin/wallet/contract'
-import { ChevronRight } from 'lucide-react'
-import { useActivity, useLimits, useStatus } from '../api/queries.tsx'
+// Home: the same overview as the dashboard App, with the owner's actions beside it: approve what waits, fund the
+// account, set an allowance on another network.
+import { Button } from '@goblin/ui'
+import type { ChainSetup, Operation, WalletStatusResult } from '@goblin/wallet/contract'
+import type { UseQueryResult } from '@tanstack/react-query'
+import { useActivity, useMe, useStatus } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
-import { AddressChip, Amount, ChainBadge, formatUsd, LimitMeter, ReceiptRow, timeUntil } from '../ui/index.ts'
 import { Async } from '../ui/async.tsx'
-import { EmptyState, Page, RowList, Section } from '../ui/page.tsx'
-import { isStable, spendableUsd, sumUsd } from '../views/money.ts'
+import { EmptyState, Page, Section } from '../ui/page.tsx'
+import { NEXT_LABEL } from '../views/overview-copy.ts'
+import {
+  type Attention,
+  attentionOf,
+  balanceGroups,
+  boundariesOf,
+  type NextAction,
+  nextActionOf,
+  spendingOf,
+} from '../views/overview-model.ts'
+import {
+  AttentionList,
+  BalanceGroups,
+  BoundaryList,
+  OverviewColumns,
+  RecentWork,
+  SpendingSummary,
+} from '../views/overview.tsx'
 import { OtherNetworks } from './other-networks.tsx'
 
-const HOLDER = { owner: 'Your account', agent: 'Agent wallet' } as const
+const QUIET_LINK =
+  'rounded-sm text-sm text-muted-foreground underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring pointer-fine:hover:underline'
 
-function PendingApproval({ operation }: { readonly operation: Operation }) {
-  return (
-    <Link
-      to={`/approve/${operation.id}`}
-      className="flex items-center justify-between gap-4 rounded-xl bg-card p-4 ring-1 ring-attention/60 transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-ring active:bg-muted pointer-fine:hover:bg-muted"
-    >
-      <span className="flex min-w-0 flex-col gap-1">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <span aria-hidden className="size-1.5 rounded-full bg-attention" />
-          Your agent is waiting for you
-        </span>
-        <span className="truncate text-sm text-muted-foreground">{operation.terms.subject}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        <Amount usd={operation.terms.amountUsd} size="md" align="end" />
-        <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
-      </span>
+/** Where each next step happens on the owner site: a page, or a section further down Home. */
+const NEXT_TARGET: Record<Exclude<NextAction, 'wait'>, string> = {
+  finish_setup: '/',
+  renew_access: '/limits',
+  refresh: '/',
+  set_allowance: '#networks',
+  add_funds: '#add-funds',
+}
+
+function NextStep({ action, onRefresh }: { readonly action: NextAction; readonly onRefresh: () => void }) {
+  if (action === 'wait') return null
+  if (action === 'refresh')
+    return (
+      <Button type="button" variant="outline" onClick={onRefresh}>
+        {NEXT_LABEL.refresh}
+      </Button>
+    )
+  const target = NEXT_TARGET[action]
+  return target.startsWith('#') ? (
+    <Button nativeButton={false} render={<a href={target} />}>
+      {NEXT_LABEL[action]}
+    </Button>
+  ) : (
+    <Button nativeButton={false} render={<Link to={target} />}>
+      {NEXT_LABEL[action]}
+    </Button>
+  )
+}
+
+function attentionAction(item: Attention) {
+  return item.kind === 'approval' ? (
+    <Button size="sm" nativeButton={false} render={<Link to={`/approve/${item.operation.id}`} />}>
+      Review
+    </Button>
+  ) : (
+    <Link to="/activity" className={QUIET_LINK}>
+      Check in Activity
     </Link>
   )
 }
 
-function Balance({ status }: { readonly status: WalletStatusResult }) {
-  const spendable = spendableUsd(status.status.tokens)
-  const chains = new Set(status.balances.map((row) => row.chain)).size
+function Overview({
+  status,
+  setups,
+  activity,
+  onRefresh,
+}: {
+  readonly status: WalletStatusResult
+  readonly setups: readonly ChainSetup[] | undefined
+  readonly activity: UseQueryResult<readonly Operation[]>
+  readonly onRefresh: () => void
+}) {
+  const spending = spendingOf(status, setups === undefined ? {} : { setups })
+  const next = spending.blocker === undefined ? undefined : nextActionOf(spending.blocker)
   return (
-    <Card>
-      <CardContent>
-        <div className="flex flex-col gap-5">
-          <div className="flex flex-col gap-2">
-            <span className="text-sm text-muted-foreground">Your agent can spend now</span>
-            <Amount usd={spendable} size="hero" />
-            <span className="text-sm text-muted-foreground tabular-nums">
-              of {formatUsd(sumUsd(status.balances))} across {chains} {chains === 1 ? 'chain' : 'chains'}
-              {status.status.periodEndsAt !== undefined && (
-                <>, the hourly limit resets {timeUntil(status.status.periodEndsAt)}</>
-              )}
-            </span>
-          </div>
-          <ul className="flex flex-col divide-y divide-border border-t border-border">
-            {status.balances.map((row) => (
-              <li
-                key={`${row.chain}-${row.holder}-${row.symbol}`}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <span className="flex min-w-0 flex-col gap-1">
-                  <span className="text-sm font-medium">{HOLDER[row.holder]}</span>
-                  <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                    <ChainBadge chain={row.chain} />
-                    <AddressChip address={row.address} chain={row.chain} />
-                  </span>
-                </span>
-                <Amount
-                  usd={isStable(row.symbol) ? row.balance : undefined}
-                  token={{ symbol: row.symbol, amount: row.balance }}
-                  size="md"
-                  align="end"
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
-      </CardContent>
-    </Card>
+    <>
+      <SpendingSummary
+        spending={spending}
+        action={next === undefined || next === 'wait' ? undefined : <NextStep action={next} onRefresh={onRefresh} />}
+      />
+      <OverviewColumns>
+        <Async query={activity} rows={3}>
+          {(rows) => (
+            <RecentWork
+              operations={rows}
+              action={
+                <Link to="/activity" className={QUIET_LINK}>
+                  See all
+                </Link>
+              }
+            />
+          )}
+        </Async>
+        <BoundaryList
+          boundaries={boundariesOf(spending, status.limits)}
+          chain={spending.spend.chain}
+          expiresAt={status.status.expiresAt}
+          action={
+            <Link to="/limits" className={QUIET_LINK}>
+              All limits
+            </Link>
+          }
+        />
+      </OverviewColumns>
+      <Section title="Balances">
+        <BalanceGroups groups={balanceGroups(status)} />
+      </Section>
+    </>
   )
 }
 
 export function HomePage() {
   const status = useStatus()
-  const limits = useLimits()
   const activity = useActivity()
-  const waiting = activity.data?.find((operation) => operation.status === 'awaiting_approval')
+  const me = useMe()
   return (
-    <Page title="Home" description="What your agent can spend, what it has spent, and who is enforcing each limit.">
-      {waiting !== undefined && <PendingApproval operation={waiting} />}
-      <Async query={status} rows={2}>
+    <Page title="Home" description="What your agent can spend, what needs you, and what it did.">
+      {activity.data !== undefined && <AttentionList items={attentionOf(activity.data)} actionFor={attentionAction} />}
+      <Async query={status} rows={3}>
         {(data) =>
           data === undefined ? (
-            <EmptyState title="Balances are not available yet" description="Your limits and activity below are live." />
+            <EmptyState title="Balances are not available yet" description="Your activity and limits are still live." />
           ) : (
-            <Balance status={data} />
+            <Overview
+              status={data}
+              setups={me.data?.chains}
+              activity={activity}
+              onRefresh={() => void status.refetch()}
+            />
           )
         }
       </Async>
-      <Section
-        title="Limits"
-        action={
-          <Link to="/limits" className="text-sm text-muted-foreground underline-offset-4 pointer-fine:hover:underline">
-            Edit
-          </Link>
-        }
-      >
-        <Async query={limits} rows={2}>
-          {(rows) => (
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,19rem),1fr))] gap-3">
-              {rows.map((limit) => (
-                <Card key={`${limit.layer}-${limit.period}-${limit.chain ?? ''}`}>
-                  <CardContent>
-                    <LimitMeter limit={limit} />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </Async>
-      </Section>
-      <Section
-        title="Recent activity"
-        action={
-          <Link
-            to="/activity"
-            className="text-sm text-muted-foreground underline-offset-4 pointer-fine:hover:underline"
-          >
-            See all
-          </Link>
-        }
-      >
-        <Async query={activity}>
-          {(rows) =>
-            rows.length === 0 ? (
-              <EmptyState
-                title="Nothing spent yet"
-                description="When your agent pays for something, it shows up here with its receipt."
-              />
-            ) : (
-              <RowList>
-                {rows.slice(0, 5).map((operation) => (
-                  <ReceiptRow key={operation.id} operation={operation} />
-                ))}
-              </RowList>
-            )
-          }
-        </Async>
-      </Section>
       <OtherNetworks />
     </Page>
   )

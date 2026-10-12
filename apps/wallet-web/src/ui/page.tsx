@@ -31,18 +31,21 @@ export function Page({
 }
 
 export function Section({
+  id,
   title,
   action,
   children,
   className,
 }: {
+  /** An anchor another part of the page links to. */
+  readonly id?: string
   readonly title: string
   readonly action?: ReactNode
   readonly children: ReactNode
   readonly className?: string
 }) {
   return (
-    <section className={cn('flex flex-col gap-3', className)}>
+    <section id={id} className={cn('flex scroll-mbs-20 flex-col gap-3', className)}>
       <div className="flex min-h-8 items-center justify-between gap-3">
         <h2 className="text-base font-semibold tracking-tight">{title}</h2>
         {action}

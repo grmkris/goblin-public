@@ -179,6 +179,13 @@ describe('unknown is not zero', () => {
     expect(groups.find((group) => group.chain === 'base')).toMatchObject({ read: true, funded: true })
   })
 
+  it('says when the owner holds stablecoins the agent cannot draw on', () => {
+    const tempo = chainRead('tempo', { owner: '20.5' })
+    const groups = balanceGroups(status(allRead({ owner: '3' }, { tempo }), [...LEDGER, allowance('base', '1')]))
+    expect(groups.find((group) => group.chain === 'tempo')?.ownerOutOfReach).toBe(true)
+    expect(groups.find((group) => group.chain === 'base')?.ownerOutOfReach).toBe(false)
+  })
+
   it('makes the available amount unknown when Base could not be read', () => {
     const rows = allRead({}).filter((row) => row.chain !== 'base')
     const spending = spendingOf(status([usdc('base', 'agent', '0'), ...rows]), { now: NOW })

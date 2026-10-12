@@ -184,7 +184,7 @@ export function OtherNetworks() {
   const data = me.data
   if (data === undefined || !showsOtherNetworks(data)) return null
   return (
-    <Section title="Other networks">
+    <Section id="networks" title="Other networks">
       <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
         Your agent can spend on Arbitrum and Ethereum too, once your account is upgraded there and you set an allowance.
         You sign each step. We pay the gas.
