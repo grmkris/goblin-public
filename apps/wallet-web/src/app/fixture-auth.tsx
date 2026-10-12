@@ -1,6 +1,6 @@
 import { type ReactNode, useMemo, useState } from 'react'
 import { OWNER } from '../api/fixtures.ts'
-import { type Auth, AuthContext } from './auth.tsx'
+import { type Auth, AuthContext, type OwnerChain } from './auth.tsx'
 
 const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 600))
 
@@ -10,8 +10,8 @@ export function FixtureAuthProvider({
   onAllowance,
   children,
 }: {
-  readonly onUpgrade: () => void
-  readonly onAllowance: () => void
+  readonly onUpgrade: (chain: OwnerChain) => void
+  readonly onAllowance: (input: { readonly chain: OwnerChain; readonly perHour: string }) => void
   readonly children: ReactNode
 }) {
   const [signedIn, setSignedIn] = useState(true)
@@ -22,14 +22,14 @@ export function FixtureAuthProvider({
       getToken: () => Promise.resolve('fixture'),
       login: () => setSignedIn(true),
       logout: () => setSignedIn(false),
-      upgrade: async () => {
+      upgrade: async (chain) => {
         await pause()
-        onUpgrade()
+        onUpgrade(chain)
         return 'confirmed'
       },
-      signAllowance: async () => {
+      signAllowance: async ({ chain, perHour }) => {
         await pause()
-        onAllowance()
+        onAllowance({ chain, perHour })
       },
     }),
     [signedIn, onUpgrade, onAllowance],

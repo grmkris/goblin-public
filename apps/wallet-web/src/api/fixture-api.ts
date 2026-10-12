@@ -1,4 +1,13 @@
-import { type ApprovalView, type Connection, type Me, type PolicyChange, termsHash } from '@goblin/wallet/contract'
+import type { EvmChain } from '@goblin/wallet/balances'
+import {
+  type ApprovalView,
+  type ChainSetup,
+  type Connection,
+  DEFAULT_GRANT_DAYS,
+  type Me,
+  type PolicyChange,
+  termsHash,
+} from '@goblin/wallet/contract'
 import {
   ADDRESS_BOOK,
   AGENT,
@@ -29,28 +38,36 @@ interface World {
 
 export interface FixtureApi extends WalletApi {
   /** What the fixture signer does when the owner signs: the same state change the server would make. */
-  readonly simulate: { readonly upgrade: () => void; readonly allowance: () => void }
+  readonly simulate: {
+    readonly upgrade: (chain: EvmChain) => void
+    readonly allowance: (input: { readonly chain: EvmChain; readonly perHour: string }) => void
+  }
 }
 
-const allowanceState = (): Me['chains'] => [
-  {
-    chain: 'base',
-    upgraded: true,
-    allowance: {
-      perHour: '20',
-      expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-      delegationHash: `0x${'9a'.repeat(32)}`,
-    },
-  },
-]
+/** One chain's setup changed, the others kept: the chain is added when the owner had not set it up before. */
+const withSetup = (chains: Me['chains'], chain: EvmChain, patch: Partial<ChainSetup>): Me['chains'] => {
+  const existing = chains.find((entry) => entry.chain === chain)
+  const next: ChainSetup = { ...(existing ?? { chain, upgraded: false }), ...patch }
+  return existing === undefined ? [...chains, next] : chains.map((entry) => (entry.chain === chain ? next : entry))
+}
 
 function simulate(world: World): FixtureApi['simulate'] {
   return {
-    upgrade: () => {
-      world.me = { ...world.me, chains: [{ chain: 'base', upgraded: true }] }
+    upgrade: (chain) => {
+      world.me = { ...world.me, chains: withSetup(world.me.chains, chain, { upgraded: true }) }
     },
-    allowance: () => {
-      world.me = { ...world.me, chains: allowanceState(), ...(ME.limits === undefined ? {} : { limits: ME.limits }) }
+    allowance: ({ chain, perHour }) => {
+      const allowance = {
+        perHour,
+        expiresAt: new Date(Date.now() + DEFAULT_GRANT_DAYS * 86_400_000).toISOString(),
+        delegationHash: `0x${'9a'.repeat(32)}`,
+      }
+      const limits = world.me.limits ?? ME.limits
+      world.me = {
+        ...world.me,
+        chains: withSetup(world.me.chains, chain, { upgraded: true, allowance }),
+        ...(limits === undefined ? {} : { limits }),
+      }
     },
   }
 }

@@ -148,6 +148,8 @@ export const ME: Me = {
       allowance: { perHour: '20', expiresAt: ahead(60 * 24 * 6), delegationHash: tx('9a') },
     },
     { chain: 'tempo', upgraded: true },
+    // Halfway on Arbitrum and not started on Ethereum, so Home's "Other networks" shows each state.
+    { chain: 'arbitrum', upgraded: true },
   ],
   limits: { perCall: '5', perHour: '20', perWeek: '50', expiresAt: ahead(60 * 24 * 6), version: 3 },
 }
