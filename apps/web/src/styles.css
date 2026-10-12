@@ -1150,6 +1150,98 @@
   .server-part > .server-note {
     margin-top: 0.5rem;
   }
+  /*
+   * A paid job on its approval card (components/paid-job.tsx, ADR 0044): the amount first and largest, the services it
+   * runs, the wallet; then "Approve, and up to $X without asking" with its amount in place.
+   */
+  .paid-job {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .paid-job-amount {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .paid-job-route {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-13);
+    overflow-wrap: anywhere;
+  }
+  .paid-job-steps {
+    margin-left: 0.5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .run-up-to {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+  }
+  .run-up-to-amount {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .run-up-to-amount > input[aria-invalid='true'] {
+    border-color: var(--destructive);
+  }
+  /* A first-class server's spending rule on its card (components/first-class.tsx, ADR 0044). */
+  .spending-rule {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+  .spending-rule-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    font-size: var(--text-13);
+  }
+  .spending-rule-form > label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .spending-rule-form input,
+  .run-up-to-amount > input {
+    width: 6ch;
+    min-height: 2rem;
+    padding: 0 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+  .spending-rule-form input[aria-invalid='true'] {
+    border-color: var(--destructive);
+  }
+  @media (pointer: coarse) {
+    .spending-rule-form input {
+      min-height: 2.75rem;
+    }
+  }
+  .run-up-to-note {
+    color: var(--muted-foreground);
+    font-size: var(--text-13);
+  }
+  @media (pointer: coarse) {
+    .run-up-to-amount > input {
+      min-height: 2.75rem;
+    }
+  }
   /* A server's events (components/event-health.tsx): its name, where its subscription stands, when one last came. */
   .event-list {
     display: flex;

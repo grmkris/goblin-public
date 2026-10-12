@@ -1,8 +1,20 @@
 import { createMcpHandler } from '@modelcontextprotocol/server'
+import * as Effect from 'effect/Effect'
 import { describe, expect, it } from 'vitest'
-import { allowRecommended, serverStatus } from '../../src/mcp/first-class-owner.ts'
+import {
+  allowRecommended,
+  raiseRule,
+  serverStatus,
+  setSpending,
+  spendingView,
+} from '../../src/mcp/first-class-owner.ts'
 import { lowLevelServer } from './low-level-server.ts'
 import { hostOf } from './manager.ts'
+import * as Layer from 'effect/Layer'
+import { spendingOver } from '../../src/layers/mcp.ts'
+import { Spending } from '../../src/mcp/service.ts'
+import { SpendStore } from '../../src/mcp/spend.ts'
+import { chatDatabase, durable } from '../chats-sqlite.ts'
 import { MemoryCredentials, MemoryGrants } from './memory.ts'
 
 const MERCATOR = { connectionId: 'mercator', endpoint: 'https://mercator.sh/mcp/auth', label: 'Mercator' }
@@ -69,6 +81,35 @@ describe('what the owner does with a first-class server (ADR 0043)', () => {
       })
       await expect(mcp.run(serverStatus('nowhere'))).rejects.toMatchObject({ _tag: 'NotFound' })
     } finally {
+      await mcp.dispose()
+    }
+  })
+
+  it("sets and reads the paid tool's rule, and approving with 'up to' starts a daily total at four times the amount", async () => {
+    const mcp = await host()
+    const { db, close } = chatDatabase()
+    const spending = Layer.succeed(Spending, spendingOver(new SpendStore(durable(db))))
+    const run = <A, E, R>(program: Effect.Effect<A, E, R>) =>
+      // SAFETY: the spending programs need only the host's services and Spending.
+      mcp.run(Effect.provide(program, spending) as Effect.Effect<A, E>)
+    try {
+      expect(await run(spendingView('mercator'))).toEqual({ tool: 'create_job', spentToday: '0' })
+      await run(raiseRule('mercator', 'create_job', '5'))
+      expect(await run(spendingView('mercator'))).toMatchObject({ perJob: '5', daily: '20' })
+      expect(await run(setSpending('mercator', { perJob: '2.5', daily: null }))).toEqual({
+        tool: 'create_job',
+        perJob: '2.5',
+        spentToday: '0',
+      })
+      expect(await run(setSpending('mercator', { perJob: null, daily: null }))).toEqual({
+        tool: 'create_job',
+        spentToday: '0',
+      })
+      // Raising the rule is only for the profile's paid tool.
+      await run(raiseRule('mercator', 'search_services', '5'))
+      expect(await run(spendingView('mercator'))).not.toHaveProperty('perJob')
+    } finally {
+      close()
       await mcp.dispose()
     }
   })

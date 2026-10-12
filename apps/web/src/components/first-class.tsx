@@ -1,19 +1,19 @@
 // A server goblin supports first-class (ADR 0043) on its Connections card: our words for it, its wallet as its status
 // tool reports it (the server's claim), and Allow recommended until its recommended grants are in place.
-import type { ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { ServerProfile, ServerView, ToolView, WalletStatus } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
 import { CircleAlertIcon, WalletIcon } from 'lucide-react'
 import { messageOf } from '../lib/query/app-error.ts'
-import { allowRecommendedMutation, serverStatusQuery } from '../mcp/queries.ts'
+import { allowRecommendedMutation, serverStatusQuery, setSpendingMutation, spendingQuery } from '../mcp/queries.ts'
 
-const day = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+const dateOf = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 
 /** When a wallet's period ends, as a day; nothing for a date that does not read. */
 const endsOn = (at: string | undefined): string | undefined =>
-  at === undefined || Number.isNaN(Date.parse(at)) ? undefined : day.format(Date.parse(at))
+  at === undefined || Number.isNaN(Date.parse(at)) ? undefined : dateOf.format(Date.parse(at))
 
 /** Whether the recommended grants are in place: every listed free tool allowed, every listed paid one asking first. */
 export const recommendedApplied = (profile: ServerProfile, tools: readonly ToolView[]): boolean => {
@@ -95,6 +95,9 @@ export function FirstClassPart({
           </Button>
         </div>
       )}
+      {profile.spend !== undefined && applied && (
+        <SpendingRule connectionId={server.connectionId} tool={profile.spend.tool} />
+      )}
       {allow.error !== null && (
         <Receipt tone="error">
           <CircleAlertIcon aria-hidden />
@@ -102,5 +105,82 @@ export function FirstClassPart({
         </Receipt>
       )}
     </section>
+  )
+}
+
+/** Up to two dollar amounts, as the owner's form takes them: empty, or a plain decimal with at most two places. */
+const AMOUNT = /^\d{1,6}(?:\.\d{1,2})?$/u
+
+/**
+ * The owner's spending rule for a first-class server's paid tool (ADR 0044): every job asks first, or jobs up to an
+ * amount run without asking until the day's total passes a second one. Today's spend is shown beside it; the wallet's
+ * own limit stays the hard stop.
+ */
+export function SpendingRule({ connectionId, tool }: { readonly connectionId: string; readonly tool: string }) {
+  const view = useQuery(spendingQuery(connectionId)).data
+  const save = useMutation(setSpendingMutation)
+  const [perJob, setPerJob] = useState<string>()
+  const [daily, setDaily] = useState<string>()
+  const job = perJob ?? view?.perJob ?? ''
+  const day = daily ?? view?.daily ?? ''
+  const valid = AMOUNT.test(job) && (day === '' || AMOUNT.test(day))
+  const ruled = view?.perJob !== undefined
+  return (
+    <div className="spending-rule">
+      <p className="server-note tabular-nums">
+        {ruled
+          ? `${tool}: jobs up to $${view.perJob}${view.daily === undefined ? '' : `, $${view.daily} a day,`} run without asking.`
+          : `${tool}: every job asks you first.`}{' '}
+        Spent today: ${view?.spentToday ?? '0'}.
+      </p>
+      <form
+        className="spending-rule-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (valid) save.mutate({ connectionId, perJob: job, daily: day === '' ? null : day })
+        }}
+      >
+        <label>
+          Up to $
+          <input
+            inputMode="decimal"
+            value={job}
+            aria-invalid={job !== '' && !AMOUNT.test(job)}
+            onChange={(event) => setPerJob(event.target.value.trim())}
+          />
+          a job
+        </label>
+        <label>
+          $
+          <input
+            inputMode="decimal"
+            value={day}
+            aria-invalid={day !== '' && !AMOUNT.test(day)}
+            onChange={(event) => setDaily(event.target.value.trim())}
+          />
+          a day
+        </label>
+        <Button size="sm" type="submit" disabled={!valid} pending={save.isPending && save.variables.perJob !== null}>
+          Run without asking
+        </Button>
+        {ruled && (
+          <Button
+            size="sm"
+            variant="ghost"
+            type="button"
+            pending={save.isPending && save.variables.perJob === null}
+            onClick={() => save.mutate({ connectionId, perJob: null, daily: null })}
+          >
+            Always ask
+          </Button>
+        )}
+      </form>
+      {save.error !== null && (
+        <Receipt tone="error">
+          <CircleAlertIcon aria-hidden />
+          <span>{messageOf(save.error, 'change the spending rule')}</span>
+        </Receipt>
+      )}
+    </div>
   )
 }

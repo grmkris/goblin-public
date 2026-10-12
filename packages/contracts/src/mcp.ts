@@ -88,8 +88,32 @@ export const AppGrantChange = Schema.Struct({
 export type AppGrantChange = typeof AppGrantChange.Type
 
 /** `POST /api/mcp/approvals/:id`: the owner's decision on a held call. */
-export const ApprovalDecision = Schema.Struct({ allowed: Schema.Boolean })
+/** A dollar amount as a plain decimal: digits, then at most two after a point (ADR 0044). */
+export const Dollars = Schema.String.check(Schema.isPattern(/^\d{1,6}(?:\.\d{1,2})?$/u))
+export type Dollars = typeof Dollars.Type
+
+/**
+ * The owner's decision on a held call. `runUpTo`: approve it, and from now on run this paid tool's jobs up to that much
+ * without asking (ADR 0044); its daily total stays as it was, or starts at four times the amount.
+ */
+export const ApprovalDecision = Schema.Struct({ allowed: Schema.Boolean, runUpTo: Schema.optional(Dollars) })
 export type ApprovalDecision = typeof ApprovalDecision.Type
+
+/**
+ * A first-class server's paid tool and the owner's rule for it (ADR 0044), with what it spent today (UTC): amounts in
+ * dollars. No `perJob`: every job asks first.
+ */
+export const SpendingView = Schema.Struct({
+  tool: Schema.String,
+  perJob: Schema.optional(Schema.String),
+  daily: Schema.optional(Schema.String),
+  spentToday: Schema.String,
+})
+export type SpendingView = typeof SpendingView.Type
+
+/** The owner's rule for a paid tool: run jobs up to `perJob` without asking, `daily` a day at most; null for none. */
+export const SpendingChange = Schema.Struct({ perJob: Schema.NullOr(Dollars), daily: Schema.NullOr(Dollars) })
+export type SpendingChange = typeof SpendingChange.Type
 
 /** What `POST /api/mcp/:id/connect` answers: where to send the owner's browser, when sign-in is needed. */
 export const ConnectStart = Schema.Struct({ authorizationUrl: Schema.optional(Schema.String) })

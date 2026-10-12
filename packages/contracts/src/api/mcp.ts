@@ -26,6 +26,8 @@ import {
   StepUp,
   ToolCall,
   ToolView,
+  SpendingChange,
+  SpendingView,
   UrlRequestAnswer,
   UrlRequestView,
   WalletStatus,
@@ -175,6 +177,19 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
     params: { id: ConnectionParam },
     success: Schema.NullOr(WalletStatus),
     error: [ApiErrors.notFound, ...REMOTE],
+  }),
+  /** `GET /api/mcp/:id/spending`: a first-class server's paid tool and the owner's rule for it (ADR 0044). */
+  HttpApiEndpoint.get('spending', '/mcp/:id/spending', {
+    params: { id: ConnectionParam },
+    success: Schema.NullOr(SpendingView),
+    error: [ApiErrors.notFound],
+  }),
+  /** `PUT /api/mcp/:id/spending`: sets the rule (a null `perJob` removes it: every job asks first again). */
+  HttpApiEndpoint.put('setSpending', '/mcp/:id/spending', {
+    params: { id: ConnectionParam },
+    payload: SpendingChange,
+    success: Schema.NullOr(SpendingView),
+    error: [ApiErrors.notFound],
   }),
   /** `POST /api/mcp/:id/step-up`: sign in again with more access (ADR 0042); the URL to open, in a new tab. */
   HttpApiEndpoint.post('stepUp', '/mcp/:id/step-up', {

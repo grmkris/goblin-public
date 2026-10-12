@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client'
+import { ApprovalCard } from '../../src/components/approval-card.tsx'
 import { AccessCard } from '../../src/components/interaction-cards.tsx'
 import { UrlRequestCard } from '../../src/components/url-request-card.tsx'
 import { withQueryClient } from './with-query-client.tsx'
@@ -46,6 +47,15 @@ if (root)
           onAnswer={async (text) => {
             record(text)
             return true
+          }}
+        />
+        <ApprovalCard
+          interaction={{
+            kind: 'approval',
+            callId: 'c4',
+            approvalId: 'mcp:41:c4',
+            connectionId: 'mercator',
+            name: 'create_job',
           }}
         />
         <output id="answered" />

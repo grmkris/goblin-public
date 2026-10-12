@@ -163,7 +163,11 @@ against the UTC day in the same transaction that checks the day's total (`app_mc
 through the approved dispatch above (`sendApproved`) and answers in the same turn. Calls the owner approves on a card
 count toward the day too. Only the model's calls in a conversation reach the hold step; agent apps, the Telegram
 channel and the skills learner are refused an ask-first tool as before. `mcp_list` tells the model each paid tool's
-rule ("asks above $5 a job or past $20 today").
+rule ("asks above $5 a job or past $20 today"). A paid job's approval card (`components/paid-job.tsx`) shows its price
+first and largest, the services its plan runs, and the wallet's line with a link to the server's App, and offers
+"Approve, and up to $X without asking", which sets the rule as it approves (`ApprovalDecision.runUpTo`; the daily
+total stays, or starts at four times the amount). On Connections the paid tool's rule is set or removed
+(`GET`/`PUT /api/mcp/:id/spending`), with what it spent today.
 
 ## Accounts
 

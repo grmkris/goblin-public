@@ -44,13 +44,58 @@ const view = (id: string, state: string) => {
   }
 }
 
+/** Mercator, first-class (ADR 0043), and a paid job held on it, with the wallet its status tool reports. */
+const MERCATOR = {
+  connectionId: 'mercator',
+  label: 'Mercator',
+  endpoint: 'https://mercator.sh/mcp/auth',
+  status: 'connected',
+  live: true,
+  source: 'config',
+  eventHealth: [],
+  profile: {
+    id: 'mercator',
+    title: 'Mercator',
+    description: 'Search the web and get outside work done.',
+    recommended: { run: ['search_services'], ask: ['create_job'] },
+    spend: { tool: 'create_job', argument: 'approved_total', currency: 'USD' },
+    app: { tool: 'open_mercator' },
+    status: true,
+  },
+}
+const JOB = {
+  id: 'mcp:41:c4',
+  connectionId: 'mercator',
+  name: 'create_job',
+  arguments: {
+    approved_total: '1.25',
+    idempotency_key: 'job-1',
+    plan: {
+      nodes: [
+        { id: 'news', serviceId: 'exa-search' },
+        { id: 'brief', serviceId: 'summarize', dependsOn: ['news'] },
+      ],
+    },
+  },
+  conversation: '41',
+  state: 'pending',
+  expiresAt: 4_102_444_800_000,
+}
+const WALLET = {
+  kind: 'wallet',
+  paid: 'ready',
+  funding: 'ready',
+  tokens: [{ symbol: 'USDC.e', balance: '12.5', remaining: '4.75' }],
+  periodEndsAt: '2026-10-17T00:00:00Z',
+}
+
 const errors: string[] = []
 
 async function drive(browser: Browser, origin: string, label: string, options: BrowserContextOptions) {
   const page = await browser.newPage(options)
   page.on('pageerror', (error) => errors.push(`${label}: ${error.message}`))
   const answers: string[] = []
-  await page.route('**/api/mcp/servers', (route) => route.fulfill({ json: [WORKER] }))
+  await page.route('**/api/mcp/servers', (route) => route.fulfill({ json: [WORKER, MERCATOR] }))
   await page.route('**/api/mcp/url-requests/*', (route) => {
     const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1) ?? '')
     if (route.request().method() !== 'POST') return route.fulfill({ json: view(id, 'pending') })
@@ -62,6 +107,19 @@ async function drive(browser: Browser, origin: string, label: string, options: B
     return route.fulfill({ json: view(id, state) })
   })
   await page.route('**/api/mcp/sq-worker/step-up', (route) => route.fulfill({ json: { authorizationUrl: AUTHORIZE } }))
+  // A paid Mercator job held for the owner (ADR 0044): the card reads the call, the wallet and the spending rule.
+  const decisions: unknown[] = []
+  await page.route('**/api/mcp/approvals/*', (route) => {
+    if (route.request().method() === 'POST') {
+      decisions.push(route.request().postDataJSON())
+      return route.fulfill({ json: { ...JOB, state: 'approved' } })
+    }
+    return route.fulfill({ json: JOB })
+  })
+  await page.route('**/api/mcp/mercator/status', (route) => route.fulfill({ json: WALLET }))
+  await page.route('**/api/mcp/mercator/spending', (route) =>
+    route.fulfill({ json: { tool: 'create_job', spentToday: '0' } }),
+  )
   await page.goto(`${origin}holds.html`)
   await page.getByText('Approve the new agent "Worker".').waitFor()
   await page.getByText('This link goes to approvals.example.org').waitFor()
@@ -76,6 +134,10 @@ async function drive(browser: Browser, origin: string, label: string, options: B
   assert.equal(await open.getAttribute('href'), OWN)
   assert.equal(await open.getAttribute('target'), '_blank')
   assert.equal(await open.getAttribute('rel'), 'noopener noreferrer')
+  // The paid job: its price first, the services it runs, the wallet; approving can raise the rule in one go.
+  await page.getByText('$1.25').waitFor()
+  await page.getByText('exa-search → summarize').waitFor()
+  await page.getByText(/Wallet: 12\.5 USDC\.e, 4\.75 left until/u).waitFor()
   await page.screenshot({ path: path.join(out, `${label}-cards.png`), fullPage: true })
   const width = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert(width <= 0, `${label}: scrolls sideways by ${String(width)}px`)
@@ -92,6 +154,9 @@ async function drive(browser: Browser, origin: string, label: string, options: B
   await page.getByRole('button', { name: 'Cancel' }).first().click()
   await page.getByText('Allow the work role.').waitFor({ state: 'detached' })
   assert.deepEqual(answers, ['mcp-url:41:c1:accept', 'mcp-url:41:c1:accept', 'mcp-url:41:c2:decline'])
+  await page.getByRole('button', { name: 'Approve, and up to' }).click()
+  await page.getByText('Approved. Sending the call…').waitFor()
+  assert.deepEqual(decisions, [{ allowed: true, runUpTo: '5' }])
   await page.getByText('It asks for: sidequest:read sidequest:work').waitFor()
   // Continue waits for a sign-in to start: nothing has changed for the agent before it.
   assert(await page.getByRole('button', { name: 'Continue' }).isDisabled())

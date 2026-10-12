@@ -18,7 +18,12 @@ import {
   ownerResource,
   setAskFirst,
 } from './approval-owner.ts'
-import { allowRecommended as allowRecommendedGrants, serverStatus as statusOf } from './first-class-owner.ts'
+import {
+  allowRecommended as allowRecommendedGrants,
+  setSpending as setSpendingRule,
+  serverStatus as statusOf,
+  spendingView,
+} from './first-class-owner.ts'
 import { urlRequestView } from './url-request.ts'
 import { connectCallback, disconnectOwnerServer, ownerServers, removeOwnerServer, suggestedServers } from './program.ts'
 import { Events, McpConnections, McpGrants, McpServers } from './service.ts'
@@ -92,7 +97,7 @@ const events = endpoint('events')(({ params }) =>
   ),
 )
 const decideApproval = endpoint('decideApproval')(({ params, payload }) =>
-  decideOwnerApproval(params.id, payload.allowed),
+  decideOwnerApproval(params.id, payload.allowed, payload.runUpTo),
 )
 const urlRequest = endpoint('urlRequest')(({ params }) => urlRequestView(params.id))
 const answerUrlRequest = endpoint('answerUrlRequest')(({ params, payload }) =>
@@ -108,6 +113,8 @@ const stepUp = endpoint('stepUp')(({ params, payload }) =>
   ),
 )
 const allowRecommended = endpoint('allowRecommended')(({ params }) => allowRecommendedGrants(params.id))
+const spending = endpoint('spending')(({ params }) => spendingView(params.id))
+const setSpending = endpoint('setSpending')(({ params, payload }) => setSpendingRule(params.id, payload))
 const serverStatus = endpoint('serverStatus')(({ params }) => statusOf(params.id))
 const disconnect = endpoint('disconnect')(({ params }) => disconnectOwnerServer(params.id))
 const removeServer = endpoint('removeServer')(({ params }) => removeOwnerServer(params.id))
@@ -167,6 +174,8 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       stepUp,
       allowRecommended,
       serverStatus,
+      spending,
+      setSpending,
       disconnect,
       removeServer,
       callTool,

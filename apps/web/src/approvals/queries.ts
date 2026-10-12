@@ -1,4 +1,4 @@
-import type { ApprovalView, UrlRequestView } from '@goblin/contracts'
+import type { ApprovalDecision, ApprovalView, UrlRequestView } from '@goblin/contracts'
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
 import { owner } from '../lib/api.ts'
 
@@ -22,13 +22,21 @@ export const approvalQuery = (id: string) =>
     refetchInterval: (query) => (awaitingApproval(query.state.data) ? 5000 : false),
   })
 
-/** The owner's decision on held call `id`; its answer is the call as it now stands. */
+/**
+ * The owner's decision on held call `id`; its answer is the call as it now stands. `runUpTo` also sets the paid tool's
+ * spending rule (ADR 0044), so the connection's spending is read again.
+ */
 export const decideApprovalMutation = (id: string) =>
   mutationOptions({
     ...owner.apiMutation({
-      mutationFn: (api, allowed: boolean) => api.mcp.decideApproval({ params: { id }, payload: { allowed } }),
+      mutationFn: (api, decision: ApprovalDecision) => api.mcp.decideApproval({ params: { id }, payload: decision }),
     }),
-    onSuccess: (view, _allowed, _result, { client }) => client.setQueryData(approvalKeys.detail(id), view),
+    onSuccess: (view, decision, _result, { client }) => {
+      client.setQueryData(approvalKeys.detail(id), view)
+      if (decision.runUpTo !== undefined)
+        return client.invalidateQueries({ queryKey: ['mcp', 'spending', view.connectionId] })
+      return undefined
+    },
   })
 
 /** Whether a URL request still waits: on the owner, or on its retry. */

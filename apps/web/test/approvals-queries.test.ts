@@ -58,7 +58,7 @@ describe('approval queries', () => {
     try {
       await vi.waitFor(() => expect(read.getCurrentResult().data?.state).toBe('pending'))
       const decide = new MutationObserver(client, decideApprovalMutation('apr-1'))
-      await decide.mutate(false)
+      await decide.mutate({ allowed: false })
       expect(client.getQueryData(approvalQuery('apr-1').queryKey)).toMatchObject({ state: 'refused' })
       expect(read.getCurrentResult().data?.state).toBe('refused')
     } finally {

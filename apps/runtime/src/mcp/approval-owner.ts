@@ -7,6 +7,7 @@ import { type AppError, NotFound } from '../http/errors.ts'
 import { resumePersona } from '../personas/ask.ts'
 import { RoutineControl, RoutineRuns } from '../routines/service.ts'
 import { decideApproval } from './approval-decision.ts'
+import { raiseRule } from './first-class-owner.ts'
 import { answerUrlRequest } from './url-request.ts'
 import { Approvals, McpConnections, McpGrants, Resident } from './service.ts'
 import type { HeldCallOutcome } from './types.ts'
@@ -55,9 +56,16 @@ export const ownerContinuation = continuation(
   sendOutcome,
 )
 
-/** The owner's decision on a held call, as the owner API runs it. */
-export const decideOwnerApproval = (id: string, allowed: boolean) =>
-  decideApproval({ id, allowed, continue: ownerContinuation })
+/**
+ * The owner's decision on a held call, as the owner API runs it; `runUpTo` also sets the paid tool's spending rule once
+ * the call is decided (ADR 0044).
+ */
+export const decideOwnerApproval = (id: string, allowed: boolean, runUpTo?: string) =>
+  Effect.gen(function* () {
+    const view = yield* decideApproval({ id, allowed, continue: ownerContinuation })
+    if (allowed && runUpTo !== undefined) yield* raiseRule(view.connectionId, view.name, runUpTo)
+    return view
+  })
 
 /** The owner's answer to a URL request (ADR 0042), as the owner API runs it. */
 export const answerOwnerUrlRequest = (id: string, action: 'accept' | 'decline') =>

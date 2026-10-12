@@ -26,6 +26,7 @@ export const mcpKeys = {
   tools: (connectionId: string) => ['mcp', 'tools', connectionId] as const,
   status: (connectionId: string) => ['mcp', 'status', connectionId] as const,
   app: (connectionId: string, tool: string) => ['mcp', 'app', connectionId, tool] as const,
+  spending: (connectionId: string) => ['mcp', 'spending', connectionId] as const,
   events: (connectionId: string) => ['mcp', 'events', connectionId] as const,
 }
 
@@ -253,6 +254,30 @@ export const serverStatusQuery = (connectionId: string, connected: boolean) =>
       : skipToken,
     staleTime: 60_000,
   })
+
+/** A first-class server's paid tool and the owner's spending rule for it, with today's total (ADR 0044). */
+export const spendingQuery = (connectionId: string) =>
+  owner.apiQuery({
+    queryKey: mcpKeys.spending(connectionId),
+    queryFn: (api) => api.mcp.spending({ params: { id: connectionId } }),
+  })
+
+/** Sets the owner's spending rule for a paid tool; a null `perJob` makes every job ask first again. */
+export const setSpendingMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (
+      api,
+      change: { readonly connectionId: string; readonly perJob: string | null; readonly daily: string | null },
+    ) =>
+      api.mcp.setSpending({
+        params: { id: change.connectionId },
+        payload: { perJob: change.perJob, daily: change.daily },
+      }),
+  }),
+  onSuccess: (view, { connectionId }, _result, { client }) => {
+    client.setQueryData(mcpKeys.spending(connectionId), view)
+  },
+})
 
 /**
  * A first-class server's own App, as the owner opens it (ADR 0043): its app tool called as the owner, and the `ui://`
