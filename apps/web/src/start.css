@@ -309,7 +309,7 @@
 /* The welcome: what goblin is made of, as three small pieces; what is still to come is drawn as a placeholder. */
 .start-pieces {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   width: 100%;
   margin: 0;
@@ -364,6 +364,27 @@
   color: var(--muted-foreground);
   font-size: 0.875rem;
   text-wrap: pretty;
+}
+/* On a phone the pieces are rows: the mark beside its name and line. */
+@media (max-width: 35.99rem) {
+  .start-pieces {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+  .start-pieces > li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 0.75rem;
+    padding: 0.75rem;
+  }
+  .start-piece-mark {
+    grid-row: span 2;
+    margin-bottom: 0;
+  }
+  .start-pieces > li[data-soon] .start-piece-mark {
+    grid-row: auto;
+  }
 }
 
 /* The wallet still needs setup: its own list, each line its words as plain text. */
@@ -618,7 +639,7 @@
     transition-timing-function: var(--start-ease);
   }
   .start-segments > li[data-done] {
-    background: color-mix(in oklch, var(--shell-active) 70%, transparent);
+    background: color-mix(in oklch, var(--shell-active) 45%, transparent);
   }
   .start-segments > li[data-current] {
     height: 0.375rem;
