@@ -7,9 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import { viteSingleFile } from 'vite-plugin-singlefile'
 
+const VIEWS = ['dashboard', 'receipt'] as const
+
 export default defineConfig(({ mode }) => {
-  if (mode !== 'dashboard' && mode !== 'receipt')
-    throw new Error('build a view with --mode dashboard or --mode receipt')
+  // The builds always name a view; a tool that loads the config without one (knip) gets the dashboard's.
+  const view = VIEWS.find((name) => name === mode) ?? 'dashboard'
   return {
     resolve: {
       tsconfigPaths: true,
@@ -22,7 +24,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: false,
       cssCodeSplit: false,
       assetsInlineLimit: 100_000_000,
-      rolldownOptions: { input: `views/${mode}.html` },
+      rolldownOptions: { input: `views/${view}.html` },
     },
   }
 })
