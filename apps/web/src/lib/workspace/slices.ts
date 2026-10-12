@@ -7,10 +7,12 @@ import type {
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
+  SidebarPins,
   TopicView,
   WorkspaceChange,
   WorkspaceSnapshot,
 } from '@goblin/contracts'
+import { EMPTY_SIDEBAR } from '@goblin/contracts'
 
 /**
  * What each conversation that is not idle is doing, by its id. A plain record, not a Map: Query keeps the entries that
@@ -37,6 +39,8 @@ export type Slices = {
   readonly notifications: readonly NotificationView[]
   /** Each connection's tool list as the feed last named it (a digest), by connection id: a change means read it again. */
   readonly tools: Readonly<Record<string, string>>
+  /** The owner's pinned servers and App views (ADR 0053). */
+  readonly sidebar: SidebarPins
 }
 export type Slice = keyof Slices
 
@@ -51,6 +55,7 @@ export const SLICE_NAMES: readonly Slice[] = [
   'proposals',
   'notifications',
   'tools',
+  'sidebar',
 ]
 
 export const EMPTY_WORKSPACE: Slices = {
@@ -64,6 +69,7 @@ export const EMPTY_WORKSPACE: Slices = {
   proposals: [],
   notifications: [],
   tools: {},
+  sidebar: EMPTY_SIDEBAR,
 }
 
 /** How many settled Persona answers and organizing receipts the slices keep: enough for Activity and Tasks. */
@@ -186,6 +192,12 @@ const SLICES: { readonly [K in Slice]: SliceOf<Slices[K]> } = {
         ? { ...value, [change.connectionId]: change.digest }
         : value,
   },
+  sidebar: {
+    read: (snapshot) => snapshot.sidebar ?? EMPTY_SIDEBAR,
+    // An answer the owner's edit showed first is newer than the feed's repeat of an older revision.
+    apply: (value, change) =>
+      change.type === 'sidebar' && change.sidebar.revision >= value.revision ? change.sidebar : value,
+  },
 }
 
 /** Slice `slice` as the snapshot describes it. */
@@ -207,6 +219,7 @@ export const fromSnapshot = (snapshot: WorkspaceSnapshot): Slices => ({
   proposals: sliceOf('proposals', snapshot),
   notifications: sliceOf('notifications', snapshot),
   tools: sliceOf('tools', snapshot),
+  sidebar: sliceOf('sidebar', snapshot),
 })
 
 /**
@@ -226,6 +239,7 @@ export const applyChanges = (slices: Slices, changes: readonly WorkspaceChange[]
   proposals: sliceAfter('proposals', slices.proposals, changes),
   notifications: sliceAfter('notifications', slices.notifications, changes),
   tools: sliceAfter('tools', slices.tools, changes),
+  sidebar: sliceAfter('sidebar', slices.sidebar, changes),
 })
 
 /** `apps` with each App the owner just changed shown as that call will leave it, the latest last. */

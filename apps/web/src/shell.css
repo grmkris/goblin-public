@@ -779,6 +779,74 @@
   width: 0.875rem;
   height: 0.875rem;
 }
+/*
+ * A pinned row (ADR 0053): its link, and its menu at the row's end. With a mouse the menu shows while the row is
+ * pointed at, focused or open; on a touch screen it is always there, a full finger wide.
+ */
+.sidebar-pin {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.sidebar-pin > .sidebar-row {
+  padding-inline-end: 2.25rem;
+}
+.sidebar-row-more {
+  position: absolute;
+  inset-inline-end: 0.125rem;
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 0.3125rem;
+  color: var(--shell-muted);
+  touch-action: manipulation;
+}
+.sidebar-row-more > svg {
+  width: 1rem;
+  height: 1rem;
+}
+.sidebar-row-more:active {
+  background: var(--shell-pressed);
+  color: var(--shell-foreground);
+}
+.sidebar-row-more:focus-visible {
+  outline: 2px solid var(--shell-ring);
+  outline-offset: -2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sidebar-row-more {
+    opacity: 0;
+    transition: opacity 120ms var(--ease-out);
+  }
+  .sidebar-pin:hover > .sidebar-row {
+    background: var(--shell-hover);
+    color: var(--shell-foreground);
+  }
+  .sidebar-pin:hover > .sidebar-row[aria-current='page'] {
+    background: var(--shell-active);
+    color: var(--shell-active-foreground);
+  }
+  .sidebar-pin:hover > .sidebar-row-more,
+  .sidebar-row-more:focus-visible,
+  .sidebar-row-more[data-popup-open] {
+    opacity: 1;
+  }
+  .sidebar-row-more:hover {
+    background: var(--shell-hover);
+    color: var(--shell-foreground);
+  }
+}
+@media (pointer: coarse), (any-pointer: coarse) {
+  .sidebar-pin > .sidebar-row {
+    padding-inline-end: 3rem;
+  }
+  .sidebar-row-more {
+    inset-inline-end: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+}
 
 /*
  * A message from someone other than Goblin (a Persona, a Delegate): its mark beside its name and what it is, as Slack

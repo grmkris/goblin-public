@@ -13,6 +13,7 @@ import type {
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
+  SidebarPins,
   TopicView,
 } from '@goblin/contracts'
 import { type Activity, EMPTY_WORKSPACE, activityOf } from './slices.ts'
@@ -92,6 +93,9 @@ export function useProposals<T>(select?: (proposals: readonly DecisionProposal[]
 /** The newest notifications (ADR 0041), newest first: Tell me's notices, digests and answers. */
 export const useNotifications = (): readonly NotificationView[] =>
   useSlice(workspaceQueries.notifications, EMPTY_WORKSPACE.notifications, whole)
+
+/** The owner's pinned servers and App views (ADR 0053), as stored: what the sidebar adds by default is not in it. */
+export const useSidebarPins = (): SidebarPins => useSlice(workspaceQueries.sidebar, EMPTY_WORKSPACE.sidebar, whole)
 
 /** What is wrong with the feed, or with the owner's last change to it, in words; empty when nothing is. */
 export function useFeedStatus(): string {

@@ -140,6 +140,7 @@ class WorkspaceSync {
       proposals: this.#cached('proposals'),
       notifications: this.#cached('notifications'),
       tools: this.#cached('tools'),
+      sidebar: this.#cached('sidebar'),
     }
   }
 
@@ -157,6 +158,7 @@ class WorkspaceSync {
       proposals: cached.proposals ?? EMPTY_WORKSPACE.proposals,
       notifications: cached.notifications ?? EMPTY_WORKSPACE.notifications,
       tools: cached.tools ?? EMPTY_WORKSPACE.tools,
+      sidebar: cached.sidebar ?? EMPTY_WORKSPACE.sidebar,
     }
   }
 
@@ -215,6 +217,7 @@ export const workspaceQueries = {
   receipts: sliceQuery('receipts'),
   proposals: sliceQuery('proposals'),
   notifications: sliceQuery('notifications'),
+  sidebar: sliceQuery('sidebar'),
   /** Empty until the feed or one of the owner's changes to it goes wrong. */
   status: queryOptions({
     queryKey: workspaceKeys.status,

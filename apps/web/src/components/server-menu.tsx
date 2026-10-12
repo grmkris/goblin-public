@@ -1,5 +1,5 @@
-// A connection's less frequent actions behind one button (Rename, Add another connection, Refresh, Disconnect, Remove)
-// and Remove's confirmation.
+// A connection's less frequent actions behind one button (Rename, Add another connection, Pin to sidebar, Refresh,
+// Disconnect, Remove) and Remove's confirmation.
 import { useMutation } from '@tanstack/react-query'
 import type { ServerView } from '@goblin/contracts'
 import {
@@ -22,6 +22,7 @@ import {
 import { removeServerMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { connectionName } from '../lib/labels.ts'
+import { PinMenuItem } from './shell/pin-toggle.tsx'
 
 export type Action = 'connect' | 'disconnect' | 'refresh'
 
@@ -44,6 +45,7 @@ export function ServerMenu({
 }) {
   const connected = server.status === 'connected'
   const name = connectionName(server)
+  const hasApp = (server.profile?.app?.tool ?? server.entrypoint) !== undefined
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -67,6 +69,7 @@ export function ServerMenu({
         {connected && (
           <>
             <DropdownMenuSeparator />
+            {hasApp && <PinMenuItem pin={{ kind: 'server', connectionId: server.connectionId }} />}
             <DropdownMenuItem onClick={() => onAct('refresh')}>
               <RefreshCwIcon aria-hidden />
               Look for new tools

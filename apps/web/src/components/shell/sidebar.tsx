@@ -1,12 +1,28 @@
 import { type ReactNode, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { Link, useRouterState } from '@tanstack/react-router'
-import type { AppView, ConversationView, PersonaView, TopicView } from '@goblin/contracts'
-import { ChevronRightIcon, HashIcon, LayoutGridIcon, MessagesSquareIcon, PlusIcon } from 'lucide-react'
+import { type AppView, type ConversationView, type PersonaView, type TopicView, pinKey } from '@goblin/contracts'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@goblin/ui'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ChevronRightIcon,
+  EllipsisIcon,
+  HashIcon,
+  LayoutGridIcon,
+  MessagesSquareIcon,
+  PinOffIcon,
+  PlusIcon,
+} from 'lucide-react'
 import { jobTrouble } from '../../lib/app-jobs.ts'
 import { agentApps, appOrigin } from '../../lib/app-names.ts'
-import { entrypoints } from '../../lib/entrypoints.ts'
 import { activePersonas } from '../../lib/personas.ts'
+import { type ShownPin, targetOf } from '../../lib/pins.ts'
 import { isUnread, threadTitle } from '../../lib/threads.ts'
 import { channels, topicThreads } from '../../lib/topics.ts'
 import {
@@ -18,7 +34,7 @@ import {
   usePersonas,
   useTopics,
 } from '../../lib/workspace/hooks.ts'
-import { serversQuery } from '../../mcp/queries.ts'
+import { type Pins, usePins } from '../../sidebar/hooks.ts'
 import { AppTile } from '../apps/app-tile.tsx'
 import { PersonaAvatar } from '../persona-avatar.tsx'
 import { useCurrent, useFolded, useRecentThreads } from './sidebar-state.ts'
@@ -173,24 +189,89 @@ function AppRow({ app, current }: { readonly app: AppView; readonly current: boo
   )
 }
 
-/** Each connected server's own App (its global entrypoint), opened from anywhere; nothing when no server has one. */
-function Services({ path }: { readonly path: string }) {
-  const listed = entrypoints(useQuery(serversQuery).data ?? [])
-  if (listed.length === 0) return null
+/** A pinned row's menu: move it up or down among the pins, or unpin it. */
+function PinMenu({ pin, pins }: { readonly pin: ShownPin; readonly pins: Pins }) {
+  const target = targetOf(pin)
   return (
-    <Section id="services" label="Services">
-      {listed.map(({ connectionId, title }) => (
-        <li key={connectionId}>
-          <Link
-            to="/connections/$connectionId/app"
-            params={{ connectionId }}
-            className="sidebar-row"
-            aria-current={path === `/connections/${connectionId}/app` ? 'page' : undefined}
-          >
-            <AppTile origin={connectionId} />
-            <span className="sidebar-row-name">{title}</span>
-          </Link>
-        </li>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<button type="button" className="sidebar-row-more" aria-label={`More for ${pin.title}`} />}
+      >
+        <EllipsisIcon aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem disabled={!pins.canMove(target, -1)} onClick={() => pins.move(target, -1)}>
+          <ArrowUpIcon aria-hidden />
+          Move up
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!pins.canMove(target, 1)} onClick={() => pins.move(target, 1)}>
+          <ArrowDownIcon aria-hidden />
+          Move down
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => pins.unpin(target)}>
+          <PinOffIcon aria-hidden />
+          Unpin
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/** One pin: a server opens its own App in its thread; a view opens that App's page. */
+function PinnedRow({ pin, pins, current }: { readonly pin: ShownPin; readonly pins: Pins; readonly current: boolean }) {
+  const label = (
+    <>
+      <AppTile origin={pin.kind === 'server' ? pin.connectionId : appOrigin(pin.app)} />
+      <span className="sidebar-row-name">{pin.title}</span>
+    </>
+  )
+  const page = current ? 'page' : undefined
+  return (
+    <li className="sidebar-pin">
+      {pin.kind === 'server' ? (
+        <Link
+          to="/connections/$connectionId/app"
+          params={{ connectionId: pin.connectionId }}
+          className="sidebar-row"
+          aria-current={page}
+        >
+          {label}
+        </Link>
+      ) : (
+        <Link to="/a/$appId" params={{ appId: pin.appId }} className="sidebar-row" aria-current={page}>
+          {label}
+        </Link>
+      )}
+      <PinMenu pin={pin} pins={pins} />
+    </li>
+  )
+}
+
+/** The App id of each server's own App, by connection: the page a pinned server is current on. */
+const serverApps = (apps: readonly AppView[]): ReadonlyMap<string, string> =>
+  new Map(
+    apps.flatMap((app) =>
+      app.source.kind === 'mcp' && app.source.entrypoint === true ? [[app.source.connectionId, app.id]] : [],
+    ),
+  )
+
+/**
+ * The owner's pins (ADR 0053), in their order: servers with their own App and single App views, mixed. A connected
+ * server with its own App is pinned until the owner unpins it. Nothing when nothing is pinned.
+ */
+function Pinned({ path }: { readonly path: string }) {
+  const pins = usePins()
+  const opened = useApps(serverApps)
+  if (pins.shown.length === 0) return null
+  const isCurrent = (pin: ShownPin) =>
+    pin.kind === 'server'
+      ? path === `/connections/${pin.connectionId}/app` || path === `/a/${opened.get(pin.connectionId) ?? ''}`
+      : path === `/a/${pin.appId}`
+  return (
+    <Section id="pinned" label="Pinned">
+      {pins.shown.map((pin) => (
+        <PinnedRow key={pinKey(targetOf(pin))} pin={pin} pins={pins} current={isCurrent(pin)} />
       ))}
     </Section>
   )
@@ -252,7 +333,7 @@ function AddTopic() {
 
 /**
  * The sidebar: the Topics as channels (Personal first, each with its live threads under it, the archived folded at the
- * end, then Add topic), then the Personas (a click opens a profile), then the agent apps. A click on a channel opens it; on a thread, opens it in the panel.
+ * end, then Add topic), then the Personas (a click opens a profile), then the owner's pins, then the agent apps. A click on a channel opens it; on a thread, opens it in the panel.
  */
 export function Sidebar() {
   const current = useCurrent()
@@ -274,7 +355,7 @@ export function Sidebar() {
           <AddTopic />
         </Section>
         <Personas path={path} />
-        <Services path={path} />
+        <Pinned path={path} />
         {apps.length > 0 && (
           <Section
             id="apps"

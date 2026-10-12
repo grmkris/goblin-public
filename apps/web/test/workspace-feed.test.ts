@@ -580,6 +580,7 @@ describe('what goes stale with a feed change', () => {
       proposals: undefined,
       notifications: undefined,
       tools: undefined,
+      sidebar: undefined,
     }
     expect(staleAfter(none, before)).toEqual([])
   })

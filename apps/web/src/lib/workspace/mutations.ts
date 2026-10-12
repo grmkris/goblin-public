@@ -4,6 +4,7 @@ import { markReadMutation, startThreadMutation, updateConversationMutation } fro
 import { undoMutation } from '../../organize/queries.ts'
 import { createPersonaMutation, updatePersonaMutation } from '../../personas/queries.ts'
 import { setTopicSetupMutation } from '../../setup/queries.ts'
+import { sidebarEditMutation } from '../../sidebar/queries.ts'
 import { createTopicMutation, updateTopicMutation } from '../../topics/queries.ts'
 import { messageOf } from '../query/app-error.ts'
 import { applyWorkspaceChanges, setFeedStatus, workspaceKeys, workspaceQueries, workspaceSync } from './sync.ts'
@@ -37,6 +38,14 @@ export const closeWorkspaceAppMutation = mutationOptions({
     if (started !== undefined) workspaceSync(client).appRefused(started)
   },
   onSuccess: (app, _change, started, { client }) => workspaceSync(client).appAnswered(app, started),
+})
+
+/** A change to the sidebar's pins (ADR 0053): the pins show as the server answers, applied or stale. */
+export const editWorkspaceSidebarMutation = mutationOptions({
+  ...sidebarEditMutation,
+  onError: (failure, _edit, _context, { client }) => setFeedStatus(client, messageOf(failure, 'change the pins')),
+  onSuccess: (result, _edit, _context, { client }) =>
+    applyWorkspaceChanges(client, [{ type: 'sidebar', sidebar: result.sidebar }]),
 })
 
 /**

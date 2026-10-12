@@ -7,6 +7,7 @@ import {
   OrganizeReceipt,
   PersonaInvocationView,
   PersonaView,
+  SidebarPins,
   TopicView,
   WorkspaceChange,
   type WorkspaceSnapshot,
@@ -25,6 +26,7 @@ const decodeSnapshotFrame = Schema.decodeUnknownSync(
     receipts: Schema.optional(Items),
     proposals: Schema.optional(Items),
     notifications: Schema.optional(Items),
+    sidebar: Schema.optional(Schema.Unknown),
   }),
 )
 const decodeChangeFrame = Schema.decodeUnknownSync(Items)
@@ -32,6 +34,7 @@ const decodeConversation = Schema.decodeUnknownOption(ConversationView)
 const decodeActivity = Schema.decodeUnknownOption(ConversationActivity)
 const decodeApp = Schema.decodeUnknownOption(AppView)
 const decodeChange = Schema.decodeUnknownOption(WorkspaceChange)
+const decodeSidebar = Schema.decodeUnknownOption(SidebarPins)
 
 /** The items `decode` reads, in order: one this tab cannot read (a newer server's kind or field) is skipped. */
 const readable = <A>(items: readonly unknown[], decode: (item: unknown) => Option.Option<A>): A[] =>
@@ -44,6 +47,7 @@ const readable = <A>(items: readonly unknown[], decode: (item: unknown) => Optio
 export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
   const frame = decodeSnapshotFrame(data)
   const { topics, personas, invocations, receipts, proposals, notifications } = frame
+  const sidebar = Option.getOrUndefined(decodeSidebar(frame.sidebar))
   return {
     conversations: readable(frame.conversations, decodeConversation),
     activity: readable(frame.activity, decodeActivity),
@@ -58,6 +62,7 @@ export function decodeSnapshot(data: unknown): WorkspaceSnapshot {
     ...(notifications !== undefined && {
       notifications: readable(notifications, Schema.decodeUnknownOption(NotificationView)),
     }),
+    ...(sidebar !== undefined && { sidebar }),
   }
 }
 

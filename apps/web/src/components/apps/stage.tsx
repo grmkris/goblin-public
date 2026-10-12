@@ -22,7 +22,9 @@ import { MessageOffer } from './message-offer.tsx'
 import { receiptText } from '../../lib/app-message.ts'
 import { useAppPlacement } from './placement.ts'
 import { appNames } from '../../lib/app-names.ts'
+import { appPin } from '../../lib/pins.ts'
 import { useApps } from '../../lib/workspace/hooks.ts'
+import { PinButton } from '../shell/pin-toggle.tsx'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
 const AXES = ['x', 'y', 'width', 'height'] as const
@@ -176,7 +178,7 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
   )
 }
 
-/** The host's bar above the App in its transcript: its name, to its page, and close. On its page the pill does this. */
+/** The host's bar above the App in its transcript: its name, pin it, to its page, and close. Its page has its own bar. */
 function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
   const { id } = instance.app
@@ -185,6 +187,7 @@ function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly
     <div className="app-chrome">
       <span className="app-chrome-title">{title}</span>
       {instance.app.source.kind === 'agent' && <AppJobs jobs={instance.app.source.jobs} />}
+      <PinButton pin={appPin(instance.app, title)} />
       <ChromeButton label="Open as a page" icon={PanelRightOpenIcon} onClick={onPage} />
       <ChromeButton label="Close the app" icon={XIcon} onClick={() => host.close(instance.app.id)} />
     </div>
