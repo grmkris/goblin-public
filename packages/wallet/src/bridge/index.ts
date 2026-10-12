@@ -1,8 +1,11 @@
 /**
  * Bridges with Relay (`api.relay.link/quote/v2`, keyless): Base, Ethereum or Arbitrum USDC to USDC on Base, Ethereum,
- * Arbitrum or Tempo (USDC.e). A quote is frozen; execution runs exactly the quoted steps. Every step is checked before
- * it is signed: from the agent, on the origin chain, zero native value, only an exact-amount USDC approval to Relay's
- * depository and the deposit into that same depository. Then Relay is polled until the funds land or are refunded.
+ * Arbitrum or Tempo (USDC.e). A quote is frozen; execution runs exactly the quoted steps. Every step is decoded and
+ * checked when quoted and again before it is signed: from the agent, on the origin chain, zero native value, at most
+ * one USDC `approve` of exactly the amount to Relay's depository, then one `depositErc20` of exactly that amount of
+ * origin USDC by the agent into that depository. The destination recipient is bound by Relay's order id, which the
+ * wallet cannot decode: it is checked against the quote's `details` (recipient, currencies, chains, amount in). A
+ * quote without a USD valuation is refused. Then Relay is polled until the funds land or are refunded.
  */
 import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
@@ -79,10 +82,13 @@ export interface BridgeQuoteInput {
 
 const isEvmOrigin = (chain: ChainKey): chain is EvmChain => chain !== 'tempo'
 
-const usd = (value: unknown): string => {
-  const text = typeof value === 'string' ? value : '0'
-  const [whole = '0', fraction = ''] = text.split('.')
-  return /^\d+$/u.test(whole) ? `${whole}${fraction === '' ? '' : `.${fraction.slice(0, 6)}`}` : '0'
+/** A USD decimal from Relay cut to six decimals; a missing or malformed value is refused, never read as zero. */
+const usd = (value: unknown, what: string): string => {
+  const text = typeof value === 'string' ? value : ''
+  const [whole = '', fraction = ''] = text.split('.')
+  if (!/^\d+$/u.test(whole) || !/^\d*$/u.test(fraction))
+    throw new BridgeError('bad_quote', `The quote has no USD value for ${what}.`)
+  return `${whole}${fraction === '' ? '' : `.${fraction.slice(0, 6)}`}`
 }
 
 const text = (value: unknown, what: string): string => {
@@ -91,47 +97,93 @@ const text = (value: unknown, what: string): string => {
 }
 
 const APPROVE = parseAbi(['function approve(address spender, uint256 amount) returns (bool)'])
+const DEPOSIT = parseAbi(['function depositErc20(address depositor, address token, uint256 amount, bytes32 id)'])
 
-const checkStep = (item: unknown, id: string, input: BridgeQuoteInput, amountIn: bigint): BridgeStep => {
+const same = (a: unknown, b: string): boolean => typeof a === 'string' && a.toLowerCase() === b.toLowerCase()
+
+/** Why a step's calldata is not the exact approval or deposit the wallet runs, or undefined when it is. */
+const stepMismatch = (step: BridgeStep, origin: Chain, agent: string, amountIn: bigint): string | undefined => {
+  try {
+    if (step.id === 'approve') {
+      if (!same(step.to, origin.usdc.address)) return 'The approval is not for USDC.'
+      const [spender, amount] = decodeFunctionData({ abi: APPROVE, data: toHex(step.data) }).args
+      return same(spender, RELAY_DEPOSITORY) && amount === amountIn
+        ? undefined
+        : 'The approval is not the exact amount to Relay.'
+    }
+    if (!same(step.to, RELAY_DEPOSITORY)) return "The deposit is not into Relay's depository."
+    const [depositor, token, amount] = decodeFunctionData({ abi: DEPOSIT, data: toHex(step.data) }).args
+    return same(depositor, agent) && same(token, origin.usdc.address) && amount === amountIn
+      ? undefined
+      : 'The deposit is not the quoted amount of USDC from the agent.'
+  } catch {
+    // expected: calldata that does not decode as approve/depositErc20 is refused by the caller.
+    return `The ${step.id} step calls a function the wallet does not run.`
+  }
+}
+
+/** At most one approval, then exactly one deposit, each exactly the quoted amount. */
+const checkSteps = (steps: readonly BridgeStep[], origin: Chain, agent: string, amountIn: bigint): void => {
+  const ids = steps.map((step) => step.id).join(',')
+  if (ids !== 'deposit' && ids !== 'approve,deposit')
+    throw new BridgeError('bad_quote', 'The quote does not approve then deposit.')
+  for (const step of steps) {
+    const mismatch = stepMismatch(step, origin, agent, amountIn)
+    if (mismatch !== undefined) throw new BridgeError('bad_quote', mismatch)
+  }
+}
+
+/** Relay's `details` must restate the request: who receives, which currencies on which chains, and the amount in. */
+const checkDetails = (details: unknown, input: BridgeQuoteInput, recipient: string, amountIn: bigint): void => {
+  const origin = CHAINS[input.from]
+  const destination = CHAINS[input.to]
+  const currencyIn = field(details, 'currencyIn')
+  const currencyOut = field(details, 'currencyOut')
+  if (!same(field(details, 'recipient'), recipient)) throw new BridgeError('bad_quote', 'The quote pays someone else.')
+  const matches =
+    same(field(field(currencyIn, 'currency'), 'address'), origin.usdc.address) &&
+    field(field(currencyIn, 'currency'), 'chainId') === origin.id &&
+    field(currencyIn, 'amount') === amountIn.toString() &&
+    same(field(field(currencyOut, 'currency'), 'address'), destination.usdc.address) &&
+    field(field(currencyOut, 'currency'), 'chainId') === destination.id
+  if (!matches) throw new BridgeError('bad_quote', 'The quote does not restate the requested bridge.')
+}
+
+const readStep = (item: unknown, id: string, input: BridgeQuoteInput): BridgeStep => {
   const data = field(item, 'data')
   const to = text(field(data, 'to'), 'step target')
   const calldata = text(field(data, 'data'), 'step calldata')
-  const origin = CHAINS[input.from]
-  if (
-    text(field(data, 'from'), 'step sender').toLowerCase() !== input.agent.toLowerCase() ||
-    field(data, 'chainId') !== origin.id
-  )
+  if (!same(field(data, 'from'), input.agent) || field(data, 'chainId') !== CHAINS[input.from].id)
     throw new BridgeError('bad_quote', 'A step is not for the agent wallet on the origin chain.')
   const value = field(data, 'value')
   if (value !== undefined && !['0', '0x0', ''].includes(text(value, 'step value')))
     throw new BridgeError('bad_quote', 'A step sends native value.')
-  if (id === 'approve') {
-    if (to.toLowerCase() !== origin.usdc.address.toLowerCase())
-      throw new BridgeError('bad_quote', 'The approval is not for USDC.')
-    const [spender, amount] = decodeFunctionData({ abi: APPROVE, data: toHex(calldata) }).args
-    if (spender.toLowerCase() !== RELAY_DEPOSITORY || amount > amountIn)
-      throw new BridgeError('bad_quote', 'The approval is not the exact amount to Relay.')
-    return { id: 'approve', to, data: calldata }
-  }
-  if (id === 'deposit' && to.toLowerCase() === RELAY_DEPOSITORY) return { id: 'deposit', to, data: calldata }
-  throw new BridgeError('bad_quote', `The quote has a step the wallet does not run (${id}).`)
+  if (id !== 'approve' && id !== 'deposit')
+    throw new BridgeError('bad_quote', `The quote has a step the wallet does not run (${id}).`)
+  return { id, to, data: calldata }
 }
 
 const stepsOf = (raw: unknown, input: BridgeQuoteInput, amountIn: bigint): BridgeStep[] => {
   const steps = field(raw, 'steps')
   if (!Array.isArray(steps) || steps.length === 0 || steps.length > 2)
     throw new BridgeError('bad_quote', 'The quote has no runnable steps.')
-  return steps.map((step: unknown) => {
+  const read = steps.map((step: unknown) => {
     const items = field(step, 'items')
     if (field(step, 'kind') !== 'transaction' || !Array.isArray(items) || items.length !== 1)
       throw new BridgeError('bad_quote', 'A quote step is not a single transaction.')
-    return checkStep(items[0], text(field(step, 'id'), 'step id'), input, amountIn)
+    return readStep(items[0], text(field(step, 'id'), 'step id'), input)
   })
+  checkSteps(read, CHAINS[input.from], input.agent, amountIn)
+  return read
 }
+
+/** A fee Relay omits is zero; a fee it lists without a USD value is refused. */
+const feeUsd = (fee: unknown, name: string): bigint =>
+  fee === undefined ? 0n : parseUnits(usd(field(fee, 'amountUsd'), `the ${name} fee`), 6)
 
 const feesUsd = (raw: unknown): string => {
   const fees = field(raw, 'fees')
-  const parts = ['gas', 'relayer', 'app'].map((name) => parseUnits(usd(field(field(fees, name), 'amountUsd')), 6))
+  const parts = ['gas', 'relayer', 'app'].map((name) => feeUsd(field(fees, name), name))
   return formatUnits(
     parts.reduce((total, part) => total + part, 0n),
     6,
@@ -166,8 +218,7 @@ export const quoteBridge = async (input: BridgeQuoteInput): Promise<FrozenBridge
   if (!response.ok) throw new BridgeError('bad_quote', `Relay answered ${response.status}.`)
   const raw: unknown = await response.json()
   const details = field(raw, 'details')
-  if (text(field(details, 'recipient'), 'recipient').toLowerCase() !== recipient.toLowerCase())
-    throw new BridgeError('bad_quote', 'The quote pays someone else.')
+  checkDetails(details, input, recipient, amountIn)
   const now = (input.now ?? (() => new Date()))()
   const out = field(details, 'currencyOut')
   return {
@@ -178,7 +229,7 @@ export const quoteBridge = async (input: BridgeQuoteInput): Promise<FrozenBridge
     amountIn: amountIn.toString(),
     amountOut: text(field(out, 'amount'), 'amount out'),
     amountOutMin: text(field(out, 'minimumAmount'), 'minimum received'),
-    amountInUsd: usd(field(field(details, 'currencyIn'), 'amountUsd')),
+    amountInUsd: usd(field(field(details, 'currencyIn'), 'amountUsd'), 'the amount in'),
     feesUsd: feesUsd(raw),
     timeEstimateSeconds:
       typeof field(details, 'timeEstimate') === 'number' ? Number(field(details, 'timeEstimate')) : 60,
@@ -258,11 +309,9 @@ const assertRunnable = (input: ExecuteBridgeInput): Chain => {
   if ((input.now ?? (() => new Date()))().getTime() > Date.parse(bridge.expiresAt))
     throw new BridgeError('expired', 'The quote expired; ask for a new one.')
   const origin = CHAINS[bridge.from]
-  const known = bridge.steps.every(
-    (step) => step.to.toLowerCase() === (step.id === 'deposit' ? RELAY_DEPOSITORY : origin.usdc.address.toLowerCase()),
-  )
-  if (!known || bridge.agent.toLowerCase() !== input.agent.address.toLowerCase())
+  if (!same(bridge.agent, input.agent.address) || !/^\d+$/u.test(bridge.amountIn))
     throw new BridgeError('bad_quote', 'The frozen quote does not match this wallet; ask for a new one.')
+  checkSteps(bridge.steps, origin, bridge.agent, BigInt(bridge.amountIn))
   return origin
 }
 

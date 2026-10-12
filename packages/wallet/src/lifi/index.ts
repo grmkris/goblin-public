@@ -1,8 +1,9 @@
 /**
  * Token swaps on Base through LI.FI (`li.quest/v1/quote`, keyless). A quote is frozen: the transaction request LI.FI
  * returned is what executes, byte for byte, until it expires. Before anything is signed the transaction is checked
- * (the LI.FI Diamond, the agent as sender, price impact within bounds), simulated from the agent, and approvals are
- * for the exact sell amount, never unlimited.
+ * (the LI.FI Diamond, the agent as sender, price impact within bounds), its calldata is decoded and must pay the agent
+ * exactly the quoted swap (`verify.ts`), it is simulated from the agent, and approvals are for the exact sell amount.
+ * A quote without a USD valuation is refused, never valued at zero.
  */
 import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
@@ -14,6 +15,7 @@ import { field, quantity, type JsonRpc, type WaitOptions } from '../balances/rpc
 import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
 import { BASE } from '../chains/index.ts'
 import type { AgentSigner } from '../contract/index.ts'
+import { swapCalldataMismatch } from './verify.ts'
 
 /** The LI.FI Diamond: the only contract a swap transaction may call (same address on Base and the other EVM chains). */
 export const LIFI_DIAMOND = '0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE'
@@ -90,16 +92,62 @@ const tokenOf = (symbol: string): SwapToken => {
   return token
 }
 
-/** USD strings from the API ("0.9964" or a longer decimal) cut to the contract's six decimals. */
-const usd = (value: unknown): string => {
-  const text = typeof value === 'string' || typeof value === 'number' ? String(value) : '0'
-  const [whole = '0', fraction = ''] = text.split('.')
-  return /^\d+$/u.test(whole) ? `${whole}${fraction === '' ? '' : `.${fraction.slice(0, 6)}`}` : '0'
+/** USD strings from the API ("0.9964" or a longer decimal) cut to the contract's six decimals; missing is refused. */
+const usd = (value: unknown, what: string): string => {
+  const text = typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+  const [whole = '', fraction = ''] = text.split('.')
+  if (!/^\d+$/u.test(whole) || !/^\d*$/u.test(fraction))
+    throw new SwapError('bad_quote', `The quote has no USD value for ${what}.`)
+  return `${whole}${fraction === '' ? '' : `.${fraction.slice(0, 6)}`}`
 }
 
 const sumUsd = (costs: unknown): bigint => {
   if (!Array.isArray(costs)) return 0n
-  return costs.reduce<bigint>((total, cost: unknown) => total + parseUnits(usd(field(cost, 'amountUSD')), 6), 0n)
+  return costs.reduce<bigint>(
+    (total, cost: unknown) => total + parseUnits(usd(field(cost, 'amountUSD'), 'a fee'), 6),
+    0n,
+  )
+}
+
+const INTEGER = /^(?:0x[0-9a-fA-F]+|\d+)$/u
+const big = (value: string, what: string): bigint => {
+  if (!INTEGER.test(value)) throw new SwapError('bad_quote', `The quote's ${what} is not an integer.`)
+  return BigInt(value)
+}
+
+const same = (a: unknown, b: string): boolean => typeof a === 'string' && a.toLowerCase() === b.toLowerCase()
+
+/** LI.FI's `action` must restate the request: tokens, amount, chain and the agent on both ends. */
+const checkAction = (raw: unknown, input: SwapQuoteInput, sell: SwapToken, buy: SwapToken, sellAmount: bigint) => {
+  const action = field(raw, 'action')
+  const matches =
+    same(field(field(action, 'fromToken'), 'address'), sell.address) &&
+    same(field(field(action, 'toToken'), 'address'), buy.address) &&
+    field(action, 'fromAmount') === sellAmount.toString() &&
+    field(action, 'fromChainId') === BASE.id &&
+    field(action, 'toChainId') === BASE.id &&
+    same(field(action, 'fromAddress'), input.agent) &&
+    same(field(action, 'toAddress'), input.agent)
+  if (!matches) throw new SwapError('bad_quote', 'The quote does not restate the requested swap.')
+}
+
+/** Refuses a frozen swap whose transaction does not do exactly what the quote says. */
+const verifySwap = (swap: FrozenSwap): void => {
+  if (
+    swap.transaction.to.toLowerCase() !== LIFI_DIAMOND.toLowerCase() ||
+    swap.approvalAddress.toLowerCase() !== LIFI_DIAMOND.toLowerCase() ||
+    swap.transaction.chainId !== BASE.id
+  )
+    throw new SwapError('bad_quote', 'The quote calls an unknown contract.')
+  const mismatch = swapCalldataMismatch(toHex(swap.transaction.data), {
+    agent: swap.agent,
+    sellToken: swap.sell.address,
+    buyToken: swap.buy.address,
+    sellAmount: big(swap.sellAmount, 'sell amount'),
+    buyAmountMin: big(swap.buyAmountMin, 'minimum received'),
+    value: big(swap.transaction.value, 'value'),
+  })
+  if (mismatch !== undefined) throw new SwapError('bad_quote', mismatch)
 }
 
 const text = (value: unknown, what: string): string => {
@@ -122,16 +170,20 @@ const freeze = (raw: unknown, input: SwapQuoteInput, sell: SwapToken, buy: SwapT
   const approvalAddress = text(field(estimate, 'approvalAddress'), 'approval address')
   if (approvalAddress.toLowerCase() !== LIFI_DIAMOND.toLowerCase())
     throw new SwapError('bad_quote', 'The quote asks to approve an unknown contract.')
-  const sellUsd = usd(field(estimate, 'fromAmountUSD'))
-  const buyUsd = usd(field(estimate, 'toAmountUSD'))
+  const sellAmount = parseUnits(input.amount, sell.decimals)
+  if (field(estimate, 'fromAmount') !== sellAmount.toString())
+    throw new SwapError('bad_quote', 'The quote sells a different amount than requested.')
+  checkAction(raw, input, sell, buy, sellAmount)
+  const sellUsd = usd(field(estimate, 'fromAmountUSD'), 'the sell amount')
+  const buyUsd = usd(field(estimate, 'toAmountUSD'), 'the buy amount')
   if (parseUnits(buyUsd, 6) * 100n < parseUnits(sellUsd, 6) * 96n)
     throw new SwapError('price_impact', 'The swap would lose more than 4% to price impact.')
   const ttl = input.ttlSeconds ?? 90
-  return {
+  const frozen: FrozenSwap = {
     chain: 'base',
     sell,
     buy,
-    sellAmount: text(field(estimate, 'fromAmount'), 'sell amount'),
+    sellAmount: sellAmount.toString(),
     buyAmount: text(field(estimate, 'toAmount'), 'buy amount'),
     buyAmountMin: text(field(estimate, 'toAmountMin'), 'minimum received'),
     transaction: {
@@ -149,6 +201,8 @@ const freeze = (raw: unknown, input: SwapQuoteInput, sell: SwapToken, buy: SwapT
     quotedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + ttl * 1000).toISOString(),
   }
+  verifySwap(frozen)
+  return frozen
 }
 
 /** Asks LI.FI for a Base swap quote for the agent wallet and freezes it. */
@@ -229,11 +283,9 @@ export const executeSwap = async (input: ExecuteSwapInput): Promise<SwapResult> 
   const { swap } = input
   if ((input.now ?? (() => new Date()))().getTime() > Date.parse(swap.expiresAt))
     throw new SwapError('expired', 'The quote expired; ask for a new one.')
-  if (
-    swap.transaction.to.toLowerCase() !== LIFI_DIAMOND.toLowerCase() ||
-    swap.agent.toLowerCase() !== input.agent.address.toLowerCase()
-  )
+  if (swap.agent.toLowerCase() !== input.agent.address.toLowerCase())
     throw new SwapError('bad_quote', 'The frozen quote does not match this wallet; ask for a new one.')
+  verifySwap(swap)
   const sellAmount = BigInt(swap.sellAmount)
   const held =
     swap.sell.address === NATIVE

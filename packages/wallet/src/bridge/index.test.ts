@@ -24,6 +24,26 @@ const quote = (body?: unknown, overrides: { to?: 'tempo' | 'arbitrum'; recipient
     now: () => NOW,
   })
 
+/** The fixture as if Relay had quoted Arbitrum USDC as the destination. */
+const toArbitrum = {
+  ...quoteFixture,
+  details: {
+    ...quoteFixture.details,
+    currencyOut: {
+      ...quoteFixture.details.currencyOut,
+      currency: { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', chainId: 42161 },
+    },
+  },
+}
+
+/** The fixture with one step's calldata rewritten. */
+const withStepData = (index: number, rewrite: (data: string) => string) => {
+  const steps = structuredClone(quoteFixture.steps)
+  const item = steps[index]?.items[0]
+  if (item) item.data.data = rewrite(item.data.data)
+  return { ...quoteFixture, steps }
+}
+
 const never = async () => {
   throw new Error('no request expected')
 }
@@ -58,7 +78,7 @@ describe('Relay bridge quote', () => {
       now: () => NOW,
       fetchFn: async (_url, init) => {
         body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}')
-        return Response.json(quoteFixture)
+        return Response.json(toArbitrum)
       },
     })
     expect(body).toMatchObject({
@@ -93,6 +113,26 @@ describe('Relay bridge quote', () => {
         now: () => NOW,
       }),
     ).rejects.toMatchObject({ code: 'bad_quote' })
+  })
+
+  test('decodes the steps: the approval and the deposit must be exactly the amount, from the agent, in USDC', async () => {
+    await expect(quote(withStepData(1, (data) => data.replace('1e8480', '1e8481')))).rejects.toThrow(
+      /quoted amount of USDC from the agent/u,
+    )
+    await expect(quote(withStepData(0, (data) => data.replace('1e8480', '0f4240')))).rejects.toThrow(/exact amount/u)
+    const stranger = AGENT.slice(2).toLowerCase()
+    await expect(quote(withStepData(1, (data) => data.replace(stranger, '11'.repeat(20))))).rejects.toThrow(
+      /from the agent/u,
+    )
+    await expect(quote(withStepData(1, (data) => `0xa9059cbb${data.slice(10)}`))).rejects.toThrow(/does not run/u)
+  })
+
+  test('refuses a missing USD valuation and a destination currency that is not the requested one', async () => {
+    const { amountUsd: _dropped, ...currencyIn } = quoteFixture.details.currencyIn
+    await expect(quote({ ...quoteFixture, details: { ...quoteFixture.details, currencyIn } })).rejects.toThrow(
+      /no USD value/u,
+    )
+    await expect(quote(toArbitrum)).rejects.toThrow(/does not restate/u)
   })
 
   test('refuses unsupported routes and tokens before any request', async () => {
@@ -174,6 +214,16 @@ describe('Relay bridge execute', () => {
     expect((await relayDelivery('0x1', { fetchFn: async () => Response.json({ status: 'success' }) })).delivery).toBe(
       'delivered',
     )
+  })
+
+  test('re-checks the frozen steps before signing: a tampered deposit sends nothing', async () => {
+    const bridge = await quote()
+    const steps = bridge.steps.map((step) =>
+      step.id === 'deposit' ? { ...step, data: step.data.replace('1e8480', '989680') } : step,
+    )
+    const h = harness()
+    await expect(run({ ...bridge, steps }, h, [])).rejects.toMatchObject({ code: 'bad_quote' })
+    expect(h.sent).toHaveLength(0)
   })
 
   test('refuses an expired quote without sending', async () => {

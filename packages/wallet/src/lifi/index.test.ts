@@ -7,6 +7,7 @@ import quoteFixture from './fixtures/base-usdc-eth.json' with { type: 'json' }
 import { executeSwap, LIFI_DIAMOND, quoteSwap, SwapError, type FrozenSwap } from './index.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
+const OTHER = '0x2222222222222222222222222222222222222222'
 const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
 const NOW = new Date('2026-10-12T06:00:00Z')
 const erc20 = parseAbi(['function approve(address spender, uint256 amount) returns (bool)'])
@@ -18,6 +19,12 @@ const fetchQuote =
 
 const quote = (body?: unknown) =>
   quoteSwap({ sell: 'USDC', buy: 'ETH', amount: '1', agent: AGENT, fetchFn: fetchQuote(body), now: () => NOW })
+
+const AGENT_WORD = AGENT.slice(2).toLowerCase()
+const withRequest = (patch: Record<string, unknown>) => ({
+  ...quoteFixture,
+  transactionRequest: { ...quoteFixture.transactionRequest, ...patch },
+})
 
 describe('LI.FI quote', () => {
   test('freezes the quote with the exact transaction, minimum received and fees', async () => {
@@ -71,6 +78,37 @@ describe('LI.FI quote', () => {
       transactionRequest: { ...quoteFixture.transactionRequest, from: '0x0000000000000000000000000000000000000002' },
     }
     await expect(quote(stranger)).rejects.toBeInstanceOf(SwapError)
+  })
+})
+
+describe('LI.FI calldata', () => {
+  test('refuses calldata that pays someone else or calls another function', async () => {
+    const elsewhere = quoteFixture.transactionRequest.data.replaceAll(AGENT_WORD, '22'.repeat(20))
+    await expect(quote(withRequest({ data: elsewhere }))).rejects.toThrow(/someone other than the agent/u)
+    const other = `0x4630a0d9${quoteFixture.transactionRequest.data.slice(10)}`
+    await expect(quote(withRequest({ data: other }))).rejects.toThrow(/does not run/u)
+  })
+
+  test('refuses a sell amount, minimum or action that differs from the request', async () => {
+    const more = { ...quoteFixture, estimate: { ...quoteFixture.estimate, fromAmount: '2000000' } }
+    await expect(quote(more)).rejects.toThrow(/different amount/u)
+    const greedy = { ...quoteFixture, estimate: { ...quoteFixture.estimate, toAmountMin: '490354582961072' } }
+    await expect(quote(greedy)).rejects.toThrow(/less than the quoted minimum/u)
+    const elsewhere = { ...quoteFixture, action: { ...quoteFixture.action, toAddress: OTHER } }
+    await expect(quote(elsewhere)).rejects.toThrow(/restate/u)
+    const valued = { ...quoteFixture, estimate: { ...quoteFixture.estimate, fromAmountUSD: undefined } }
+    await expect(quote(valued)).rejects.toThrow(/no USD value/u)
+  })
+
+  test('re-checks the frozen calldata before signing: a tampered swap sends nothing', async () => {
+    const swap = await quote()
+    const tampered = {
+      ...swap,
+      transaction: { ...swap.transaction, data: swap.transaction.data.replaceAll(AGENT_WORD, '22'.repeat(20)) },
+    }
+    const h = harness({ held: 5_000_000n })
+    await expect(run(tampered, h)).rejects.toMatchObject({ code: 'bad_quote' })
+    expect(h.sent).toHaveLength(0)
   })
 })
 

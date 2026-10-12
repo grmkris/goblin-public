@@ -1,6 +1,6 @@
-import { formatUnits } from '@goblin/wallet/amounts'
-import { decodeFrozenSwap, executeSwap, quoteSwap } from '@goblin/wallet/lifi'
-import { decodeFrozenBridge, executeBridge, quoteBridge } from '@goblin/wallet/bridge'
+import { formatUnits, parseUnits } from '@goblin/wallet/amounts'
+import { decodeFrozenSwap, executeSwap, quoteSwap, type FrozenSwap } from '@goblin/wallet/lifi'
+import { decodeFrozenBridge, executeBridge, quoteBridge, type FrozenBridge } from '@goblin/wallet/bridge'
 import { ARBITRUM, BASE, ETHEREUM, TEMPO } from '@goblin/wallet/chains'
 import type { BridgeQuoteInput, Operation, Payment, SwapQuoteInput } from '@goblin/wallet/contract'
 import type { FrozenQuote, PayOutcome } from '../services/rails.ts'
@@ -18,6 +18,47 @@ const agentOf = async (deps: RailsDeps): Promise<string> => {
 /** LI.FI and Relay quote mainnets only; on testnets a swap or bridge would sign mainnet calldata, so it is refused. */
 const requireLive = (deps: RailsDeps): void => {
   if (!deps.live) throw new RailError('Swaps and bridges run on mainnet only; this wallet is on testnets.')
+}
+
+const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
+
+/** The stored quote must be the one the operation's terms describe: token, amount and recipient. */
+const assertSwapTerms = (operation: Operation, swap: FrozenSwap, agent: string): void => {
+  const { terms } = operation
+  if (
+    terms.kind !== 'swap' ||
+    !same(terms.token.address, swap.sell.address) ||
+    parseUnits(terms.amount, swap.sell.decimals).toString() !== swap.sellAmount ||
+    !same(terms.recipient, swap.agent) ||
+    !same(swap.agent, agent)
+  )
+    throw new RailError('The quote does not match the approved swap; ask for a new one.')
+}
+
+/** Reads a stored quote before anything is signed: an unreadable or mismatched one fails, it is never uncertain. */
+const storedQuote = <A>(read: () => A): A | PayOutcome => {
+  try {
+    return read()
+  } catch (error) {
+    // expected: nothing has been signed yet, so any refusal here is a plain failure.
+    const reason = error instanceof RailError ? error.message : 'The stored quote is unreadable; ask for a new one.'
+    return { outcome: 'failed', reason }
+  }
+}
+
+const isOutcome = (value: object): value is PayOutcome => 'outcome' in value
+
+const assertBridgeTerms = (operation: Operation, bridge: FrozenBridge, agent: string): void => {
+  const { terms } = operation
+  if (
+    terms.kind !== 'bridge' ||
+    terms.chain !== bridge.from ||
+    !same(terms.token.address, CHAINS[bridge.from].usdc.address) ||
+    parseUnits(terms.amount, terms.token.decimals).toString() !== bridge.amountIn ||
+    !same(terms.recipient, bridge.recipient) ||
+    !same(bridge.agent, agent)
+  )
+    throw new RailError('The quote does not match the approved bridge; ask for a new one.')
 }
 
 const quoteId = (kind: string): string => `${kind}_${crypto.randomUUID().replaceAll('-', '')}`
@@ -68,9 +109,15 @@ const paymentOf = (rail: Payment['rail'], explorerUrl: string, txHash: string, n
 
 export const swapExecute = async (operation: Operation, payload: unknown, deps: RailsDeps): Promise<PayOutcome> => {
   if (deps.signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
-  try {
+  const { signer } = deps
+  const swap = storedQuote(() => {
     requireLive(deps)
-    const swap = decodeFrozenSwap(payload)
+    const decoded = decodeFrozenSwap(payload)
+    assertSwapTerms(operation, decoded, signer.address)
+    return decoded
+  })
+  if (isOutcome(swap)) return swap
+  try {
     const result = await executeSwap({
       swap,
       agent: deps.signer,
@@ -132,9 +179,15 @@ export const bridgeQuote = async (input: BridgeQuoteInput, deps: RailsDeps): Pro
 
 export const bridgeExecute = async (operation: Operation, payload: unknown, deps: RailsDeps): Promise<PayOutcome> => {
   if (deps.signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
-  try {
+  const { signer } = deps
+  const bridge = storedQuote(() => {
     requireLive(deps)
-    const bridge = decodeFrozenBridge(payload)
+    const decoded = decodeFrozenBridge(payload)
+    assertBridgeTerms(operation, decoded, signer.address)
+    return decoded
+  })
+  if (isOutcome(bridge)) return bridge
+  try {
     const result = await executeBridge({
       bridge,
       agent: deps.signer,
