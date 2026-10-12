@@ -1,14 +1,4 @@
-import {
-  Alert,
-  AlertDescription,
-  Button,
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-  Input,
-  Spinner,
-} from '@goblin/ui'
+import { Button, Spinner } from '@goblin/ui'
 import { DEFAULT_GRANT_DAYS, type Me } from '@goblin/wallet/contract'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
@@ -16,15 +6,14 @@ import { type ReactNode, useState } from 'react'
 import { useConnections, useCreateAgent } from '../api/queries.tsx'
 import { useAuth } from '../app/auth.tsx'
 import { navigate } from '../app/router.tsx'
-import { errorText } from '../ui/async.tsx'
-import { cn, formatUsd } from '../ui/index.ts'
+import { cn } from '../ui/index.ts'
 import { LAYERS } from '../ui/layer.tsx'
 import { Page } from '../ui/page.tsx'
 import { ConnectPanel } from './connect-panel.tsx'
 import { type StepId, setupProgress } from './progress.ts'
+import { ActionError, DEFAULT_PER_HOUR, isPerHour, PerHourField, useAction } from './setup-actions.tsx'
 
 const SKIP_KEY = 'goblin-wallet:connect-skipped'
-const USD = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,6})?$/u
 
 export const readSkipped = (): boolean => {
   try {
@@ -78,33 +67,6 @@ function Step({
   )
 }
 
-function useAction(run: () => Promise<unknown>) {
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string>()
-  const start = async (): Promise<void> => {
-    setPending(true)
-    setError(undefined)
-    try {
-      await run()
-    } catch (caught) {
-      // expected: wallet prompts get refused, networks drop; the sentence says what to do
-      setError(errorText(caught))
-    } finally {
-      setPending(false)
-    }
-  }
-  return { pending, error, start }
-}
-
-function ActionError({ message }: { readonly message: string | undefined }) {
-  if (message === undefined) return null
-  return (
-    <Alert variant="destructive">
-      <AlertDescription>{message} Nothing was spent. You can try again.</AlertDescription>
-    </Alert>
-  )
-}
-
 function CreateStep({ index, state }: { readonly index: number; readonly state: 'done' | 'current' | 'upcoming' }) {
   const create = useCreateAgent()
   const action = useAction(() => create.mutateAsync())
@@ -148,8 +110,8 @@ function UpgradeStep({ index, state }: { readonly index: number; readonly state:
 function AllowanceStep({ index, state }: { readonly index: number; readonly state: 'done' | 'current' | 'upcoming' }) {
   const auth = useAuth()
   const client = useQueryClient()
-  const [perHour, setPerHour] = useState('20')
-  const valid = USD.test(perHour) && Number(perHour) > 0
+  const [perHour, setPerHour] = useState(DEFAULT_PER_HOUR)
+  const valid = isPerHour(perHour)
   const action = useAction(async () => {
     await auth.signAllowance({ chain: 'base', perHour, days: DEFAULT_GRANT_DAYS })
     await client.invalidateQueries({ queryKey: ['me'] })
@@ -165,23 +127,7 @@ function AllowanceStep({ index, state }: { readonly index: number; readonly stat
         You sign an on-chain allowance: up to this much USDC per hour for {DEFAULT_GRANT_DAYS} days.{' '}
         {LAYERS.onchain.promise} You can revoke it at any time.
       </p>
-      <Field data-invalid={!valid && perHour !== '' ? true : undefined}>
-        <FieldLabel htmlFor="per-hour">USDC per hour</FieldLabel>
-        <Input
-          id="per-hour"
-          inputMode="decimal"
-          autoComplete="off"
-          value={perHour}
-          aria-invalid={!valid && perHour !== '' ? true : undefined}
-          onChange={(event) => setPerHour(event.target.value)}
-          className="max-w-40"
-        />
-        {valid ? (
-          <FieldDescription>Your agent can spend at most {formatUsd(perHour)} an hour on Base.</FieldDescription>
-        ) : (
-          <FieldError>Enter an amount like 5 or 0.50.</FieldError>
-        )}
-      </Field>
+      <PerHourField id="per-hour" value={perHour} chainName="Base" onChange={setPerHour} />
       <ActionError message={action.error} />
       <Button
         type="button"
