@@ -201,6 +201,10 @@ function PersonaField({ kit }: { readonly kit: HandKit }) {
   )
 }
 
+/** What a routine handed to nobody does: it tells the owner, or with Tell me off nothing yet, and what would change that. */
+export const nobodyNote = (tellMe: boolean, locked: boolean): string =>
+  tellMe ? 'It only tells you.' : `It does nothing yet. Turn Tell me on${locked ? '' : ', or hand it over'}.`
+
 /**
  * Hand to: nobody, goblin or a Persona; a hand-over says what to do, then with which tools, within which limits. On the
  * free plan a hand-over cannot be picked (one the routine already has stays shown), and Get Pro says why.
@@ -224,7 +228,7 @@ export function HandToFields({ kit }: { readonly kit: HandKit }) {
         </Tabs>
         {locked && <ProNote>Handing it to goblin or a Persona is part of Pro.</ProNote>}
         {hand === 'none' ? (
-          <p className="server-note">It only tells you. Turn Tell me on, or hand it over.</p>
+          <p className="server-note">{nobodyNote(kit.tellMe, locked)}</p>
         ) : (
           <>
             {hand === 'persona' && <PersonaField kit={kit} />}
