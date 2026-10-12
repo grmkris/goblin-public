@@ -52,7 +52,7 @@ function NotConnectedYet() {
   if (first?.profile === undefined) return null
   return (
     <EmptyDescription>
-      Connect {first.profile.title} on Connections, so goblin can search the web and get outside work done.
+      Connect {first.profile.title} on Connections, {first.profile.offer}.
     </EmptyDescription>
   )
 }

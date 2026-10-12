@@ -6,6 +6,7 @@ const profile: ServerProfile = {
   id: 'mercator',
   title: 'Mercator',
   description: 'Search and outside work.',
+  offer: 'so goblin can search the web',
   recommended: { run: ['search_services', 'quote_plan', 'list_jobs'], ask: ['create_job'] },
   status: true,
 }

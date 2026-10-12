@@ -84,6 +84,7 @@ const MERCATOR: Profile = {
   title: 'Mercator',
   description:
     'Search the web and get outside work done: it finds a service, quotes it for free, and runs it as a paid job from your Mercator wallet.',
+  offer: 'so goblin can search the web and get outside work done',
   recommended: {
     run: [
       'get_suggested_queries',
@@ -118,6 +119,7 @@ const CLOUDFLARE: Profile = {
   title: 'Cloudflare',
   description:
     'Publish a page or a small app as a Worker on your Cloudflare account. Every change asks you first; looking up the API does not.',
+  offer: 'so goblin can publish pages and small apps on your Cloudflare account',
   recommended: { run: ['search', 'docs', 'whoami'], ask: ['execute'] },
   status: false,
   scope: ['offline_access', 'user:read', 'account:read', 'workers-scripts.read', 'workers-scripts.write'],

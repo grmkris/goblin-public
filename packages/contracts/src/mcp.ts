@@ -237,6 +237,8 @@ export const ServerProfile = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
   description: Schema.String,
+  /** Why to connect it, as the end of a sentence ("so goblin can …"), for onboarding's offers. */
+  offer: Schema.String,
   /** The tools that run when needed, and those that ask first, once the owner allows the recommended set. */
   recommended: Schema.Struct({ run: Schema.Array(Schema.String), ask: Schema.Array(Schema.String) }),
   spend: Schema.optional(

@@ -57,6 +57,7 @@ const MERCATOR = {
     id: 'mercator',
     title: 'Mercator',
     description: 'Search the web and get outside work done.',
+    offer: 'so goblin can search the web and get outside work done',
     recommended: { run: ['search_services'], ask: ['create_job'] },
     spend: { tool: 'create_job', argument: 'approved_total', currency: 'USD' },
     app: { tool: 'open_mercator' },
