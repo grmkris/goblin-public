@@ -25,7 +25,7 @@ export const BUDGET_BLOCKS: Readonly<Record<Exclude<BudgetVerdict, 'open'>, stri
  */
 export const budgetVerdict: Effect.Effect<BudgetVerdict, never, Budget> = Effect.gen(function* () {
   const budget = yield* Budget
-  // `require` refuses a spent day, and lets a model paid per call through (ADR 0046).
+  // `require` refuses a spent day, and lets a model paid per call through (ADR 0047).
   yield* budget.require(yield* epochSeconds)
   return 'open' as const
 }).pipe(
@@ -54,7 +54,7 @@ export function budgetExtension(local: RunProgram) {
     hooks: [
       hook(GenerationTask, {
         afterResponse: async (message) => {
-          // A call paid from the owner's wallet (ADR 0046) costs no Credits.
+          // A call paid from the owner's wallet (ADR 0047) costs no Credits.
           if (message.provider.startsWith(PAID_PROVIDER_PREFIX)) return
           await local(
             Effect.gen(function* () {

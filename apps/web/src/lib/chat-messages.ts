@@ -111,7 +111,7 @@ export function failureReason(raw: string): TurnFailure {
       text: "This model isn't available right now. Pick another model below and send again.",
       provider: true,
     }
-  // Inference paid per call (ADR 0046): the wallet's refusal, in the words the runtime gave it.
+  // Inference paid per call (ADR 0047): the wallet's refusal, in the words the runtime gave it.
   const payment = /Payment from your Goblin Wallet failed: [^\n]{1,200}/u.exec(raw)?.[0]
   if (payment !== undefined) return { text: payment, provider: true }
   // Pi compacts once on an overflow; this is what is left when even the compacted conversation does not fit.

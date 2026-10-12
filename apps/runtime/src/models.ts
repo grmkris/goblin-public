@@ -56,7 +56,7 @@ export function modelOptions(models: string | undefined, defaultId: string): Mod
 }
 
 /**
- * A route for inference paid per call from the owner's Goblin Wallet over MPP on Tempo (ADR 0046): the option's id, the
+ * A route for inference paid per call from the owner's Goblin Wallet over MPP on Tempo (ADR 0047): the option's id, the
  * Pi provider its calls go through, the model that route serves, and the model that stands in for it where goblin
  * itself pays (routines, housekeeping).
  */

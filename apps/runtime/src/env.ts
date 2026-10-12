@@ -36,7 +36,7 @@ export interface RuntimeEnv {
    */
   readonly FREE_DAILY_CREDITS?: string
   /**
-   * The routes of inference paid per call from the owner's Goblin Wallet a deployment offers (ADR 0046):
+   * The routes of inference paid per call from the owner's Goblin Wallet a deployment offers (ADR 0047):
    * comma-separated `tempo` (Tempo's MPP proxy) and `goblin` (this deployment's own paid endpoint).
    */
   readonly PAID_INFERENCE?: string

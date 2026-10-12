@@ -71,7 +71,7 @@ function tooFull(model: Model<'openai-completions'>, room: number) {
 }
 
 /**
- * Pays one MPP challenge from the owner's Goblin Wallet (ADR 0046): the request it was answered for and the raw
+ * Pays one MPP challenge from the owner's Goblin Wallet (ADR 0047): the request it was answered for and the raw
  * `WWW-Authenticate` value, and back the credential for `Authorization: Payment …`. A refusal throws, with words the
  * owner can act on.
  */
@@ -202,7 +202,7 @@ export function makePiModels(
 
 /**
  * The paid routes this deployment offers (`PAID_INFERENCE`), each a provider whose calls pay their way from the owner's
- * Goblin Wallet (ADR 0046). The request carries no key of goblin's: the credential is the payment.
+ * Goblin Wallet (ADR 0047). The request carries no key of goblin's: the credential is the payment.
  */
 function paidProviders(env: ModelEnvironment, streams: ProviderStreams, pay: PayChallenge, contextWindow?: number) {
   return paidRoutes(env.PAID_INFERENCE).flatMap((route) => {

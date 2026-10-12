@@ -16,7 +16,7 @@ import type { Grant } from './grants.ts'
 export type { McpServerConfig }
 /**
  * Who makes a call: the model, an App, the owner, or goblin's own paid inference paying its model call from the owner's
- * wallet (`inference`, ADR 0046: only a first-class profile's payment tool, never from model text).
+ * wallet (`inference`, ADR 0047: only a first-class profile's payment tool, never from model text).
  */
 export type McpCaller = 'model' | 'app' | 'human' | 'inference'
 /**

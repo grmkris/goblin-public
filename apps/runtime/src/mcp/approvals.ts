@@ -13,7 +13,7 @@ import { sha256Hex } from '../runtime/digest.ts'
 export type ApprovalRow = typeof approvals.$inferSelect
 export type HeldCall = {
   readonly id: string
-  /** Only the model or an App's call is ever held for the owner; paid inference's payments never are (ADR 0046). */
+  /** Only the model or an App's call is ever held for the owner; paid inference's payments never are (ADR 0047). */
   readonly caller: Exclude<McpCaller, 'inference'>
   readonly sessionId?: string
   readonly sourceCallId?: string

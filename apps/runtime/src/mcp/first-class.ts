@@ -15,7 +15,7 @@ type Profile = ServerProfile & {
   /** Scopes asked for at sign-in beside those the resource offers, when its own list is too narrow for the work. */
   readonly scope?: readonly string[]
   /**
-   * The tool that pays one MPP challenge for goblin's paid inference (ADR 0046): reached only by the `inference` caller,
+   * The tool that pays one MPP challenge for goblin's paid inference (ADR 0047): reached only by the `inference` caller,
    * kept from the model by the server's App-only visibility.
    */
   readonly payment?: { readonly tool: string }
@@ -202,7 +202,7 @@ const WALLET: Profile = {
       'wallet_home',
       'swap_quote',
       'bridge_quote',
-      // Paid inference's payments: within the wallet's own limits, and never visible to the model (ADR 0046).
+      // Paid inference's payments: within the wallet's own limits, and never visible to the model (ADR 0047).
       'pay_challenge',
     ],
     ask: ['paid_fetch', 'transfer', 'swap_execute', 'bridge_execute', 'request_policy_change'],

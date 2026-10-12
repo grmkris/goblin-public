@@ -7,7 +7,7 @@ import { BUDGET_BLOCKS, budgetVerdict } from '../src/pi/budget.ts'
 
 /**
  * The hook's verdict when today's budget answers `today`, with `require` refusing a spent day as the budget does, or
- * letting anything through for a model paid per call (`paid`, ADR 0046).
+ * letting anything through for a model paid per call (`paid`, ADR 0047).
  */
 const verdictOf = (today: Effect.Effect<UsageToday, AppError>, paid = false) =>
   budgetVerdict.pipe(

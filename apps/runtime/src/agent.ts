@@ -83,7 +83,7 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     runApplicationMigrations(ctx.storage)
     this.#bridge = makeBridge(() => this.#services(), { instrument })
     const { run, local: routineRun } = this.#bridge
-    // Paid inference pays each model call from the owner's Goblin Wallet (ADR 0046); a refusal ends the call in words.
+    // Paid inference pays each model call from the owner's Goblin Wallet (ADR 0047); a refusal ends the call in words.
     const pay: PayChallenge = (request) =>
       routineRun(payInferenceChallenge(request)).catch((error: unknown) => {
         throw new Error(paymentFailureText(error))

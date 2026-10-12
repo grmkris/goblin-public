@@ -1,4 +1,4 @@
-# 0046: Inference paid per call from the owner's wallet
+# 0047: Inference paid per call from the owner's wallet
 
 It builds on ADR 0026 (Credits), 0043 (first-class servers), 0044 (spending rules) and 0045 (Goblin Wallet).
 

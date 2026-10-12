@@ -27,7 +27,7 @@ const tool = (visibility: readonly string[]): Tool => ({
   _meta: { ui: { visibility } },
 })
 
-describe('inference paid per call from the wallet (ADR 0046)', () => {
+describe('inference paid per call from the wallet (ADR 0047)', () => {
   it('pays a 402 once and sends the same request again with the credential', async () => {
     const { seen, inner } = provider()
     const paid: { readonly url: string; readonly challenge: string }[] = []

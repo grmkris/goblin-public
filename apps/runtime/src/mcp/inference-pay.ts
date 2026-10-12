@@ -1,4 +1,4 @@
-// Paying goblin's paid inference (ADR 0046): one MPP challenge a model call was answered with, paid by the owner's
+// Paying goblin's paid inference (ADR 0047): one MPP challenge a model call was answered with, paid by the owner's
 // Goblin Wallet through its payment tool, as the `inference` caller. Nothing else reaches that tool this way, and the
 // model never sees it.
 import * as Effect from 'effect/Effect'

@@ -34,7 +34,7 @@ const BudgetLive: Layer.Layer<Budget, never, AgentInput | Db | Entitlements> = L
     const plans = yield* Entitlements
     const { env } = yield* AgentInput
     const rates = creditRates(env.MODEL_CREDIT_RATES)
-    // A model paid per call from the owner's wallet (ADR 0046) draws no Credits, so it is never held to them.
+    // A model paid per call from the owner's wallet (ADR 0047) draws no Credits, so it is never held to them.
     const picks = new ModelPicker(new ModelChoiceStore(db), offeredModels(env.MODELS, env.MODEL_ID, env.PAID_INFERENCE))
     const paidPick = () => paidRoute(picks.current()) !== undefined
     const today = Effect.fn('Budget.today')(function* (now: number) {

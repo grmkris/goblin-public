@@ -1206,7 +1206,7 @@ at the output limit" under what it wrote (or, when it wrote nothing but thinking
 and Telegram adds the same line. glm-5.3 on the Token Plan thinks until the limit on hard prompts and ignores a thinking
 budget (probed 2026-10-12), which is why the picker says so.
 
-A stage that sets `GOBLIN_PAID_INFERENCE` also offers models paid per call from the owner's Goblin Wallet (ADR 0046):
+A stage that sets `GOBLIN_PAID_INFERENCE` also offers models paid per call from the owner's Goblin Wallet (ADR 0047):
 `paid:tempo` (Tempo's MPP proxy) and `paid:goblin` (this stage's own paid endpoint), each its own Pi provider
 (`goblin-paid-*`, `pi/model.ts`). A call goes out with no key of goblin's. A 402's MPP challenge is paid by the wallet's
 payment tool through the MCP caller `inference` (`mcp/inference-pay.ts`), which only that tool admits and the model

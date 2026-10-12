@@ -53,7 +53,7 @@ export const toolOffered = (tool: Tool, caller: McpCaller): boolean => {
   if (!Predicate.isObject(ui) || !('visibility' in ui) || !Array.isArray(ui.visibility)) return true
   if (!ui.visibility.every(Predicate.isString)) return true
   if (caller === 'human') return true
-  // Paid inference reaches a payment tool the wallet keeps from the model, as an App would (ADR 0046).
+  // Paid inference reaches a payment tool the wallet keeps from the model, as an App would (ADR 0047).
   return ui.visibility.includes(caller === 'inference' ? 'app' : caller)
 }
 
