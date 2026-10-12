@@ -15,6 +15,7 @@ if (
     'plan:dev',
     'destroy:dev',
     'deploy:prod',
+    'destroy:prod',
     'plan:prod',
     'smoke:prod',
     'drift:dev',
@@ -22,9 +23,10 @@ if (
   ].includes(command)
 )
   throw new Error('unsupported_stage_command')
-// Destroying dev deletes the owner account, the agent's conversations and every stored MCP credential.
-if (command === 'destroy:dev' && !Bun.argv.includes('--confirm-reset'))
-  throw new Error('destroy_dev_requires_--confirm-reset: it erases the owner account, conversations and credentials')
+// Destroying a stage deletes every account, the agents' conversations and every stored MCP credential; prod also needs
+// GOBLIN_CONFIRM_PROD=1, below.
+if (command.startsWith('destroy:') && !Bun.argv.includes('--confirm-reset'))
+  throw new Error('destroy_requires_--confirm-reset: it erases every account, conversation and credential')
 const stage = resolveStage(command === 'dev' ? 'local' : command.endsWith(':prod') ? 'prod' : 'dev')
 if (stage.name === 'prod' && process.env['GOBLIN_CONFIRM_PROD'] !== '1')
   throw new Error('prod_requires_GOBLIN_CONFIRM_PROD=1')
@@ -72,6 +74,7 @@ const args = [
     'deploy:dev': 'deploy',
     'destroy:dev': 'destroy',
     'deploy:prod': 'deploy',
+    'destroy:prod': 'destroy',
     'plan:prod': 'plan',
     'drift:dev': 'drift',
     'drift:prod': 'drift',
@@ -109,7 +112,7 @@ if (!stage.local) {
     if (existsSync(merged)) unlinkSync(merged)
   })
 }
-if (command === 'deploy:dev' || command === 'deploy:prod' || command === 'destroy:dev') args.push('--yes')
+if (['deploy:dev', 'deploy:prod', 'destroy:dev', 'destroy:prod'].includes(command)) args.push('--yes')
 // The agent app toolchain (packages/app/dist) is bundled into the Worker, so it is built first (ADR 0021).
 const toolchain = Bun.spawn(['bun', 'run', 'build'], {
   cwd: resolve(root, 'packages/app'),
