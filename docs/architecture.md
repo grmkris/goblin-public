@@ -623,7 +623,8 @@ its own App, a status tool whose answer goblin decodes with its own schema (`Wal
 claim), and a top-up link of our own that the wallet line offers as Add funds while that status says funding is
 blocked (Mercator's account page; goblin's instructions send the owner there instead of retrying a job). Mercator is the first. goblin's own instructions (`pi/persona.ts`) send fresh web data and outside tasks to
 it (search, describe, quote, job, result), and a model's call to a connection the owner has not signed in to answers
-`{ kind: 'connect-required' }`, which the web shows as a Connect card. Its card puts goblin's words for it in place of the server's, lists it first, shows its
+`{ kind: 'connect-required' }`, which the web shows as a Connect card; it ends the turn, counts in Needs you, and a
+Persona holds on it as on any other (`connect`). Its card puts goblin's words for it in place of the server's, lists it first, shows its
 wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that tool is allowed) and offers
 Allow recommended (`POST /api/mcp/:id/recommended`, `mcp/first-class-owner.ts`) until those grants are in place; a tool
 the server does not list now is skipped. Cloudflare's API is the second, from the shelf, for publishing a page as a

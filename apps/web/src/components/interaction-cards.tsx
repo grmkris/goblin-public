@@ -416,7 +416,7 @@ type Connect = Extract<Interaction, { kind: 'connect' }>
  * A call to a connection the owner has not signed in to (ADR 0043): Connect tells the agent to wait and goes to the
  * server's sign-in; the owner comes back and says to continue. Not now leaves it.
  */
-function ConnectCard({ interaction, onAnswer }: { readonly interaction: Connect; readonly onAnswer: Answer }) {
+export function ConnectCard({ interaction, onAnswer }: { readonly interaction: Connect; readonly onAnswer: Answer }) {
   const { connectionId, name } = interaction
   const connection = useConnectionLabels()(connectionId)
   const { busy, error, replying } = useReplying()

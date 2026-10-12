@@ -79,6 +79,8 @@ const MARKERS: Readonly<Record<string, (details: Fields, result: ToolResult) => 
       : undefined,
   'scope-required': (details, result) =>
     result.isError ? { kind: 'access', ...about(text(details.connectionId) ?? '', 'more access') } : undefined,
+  'connect-required': (details, result) =>
+    result.isError ? { kind: 'connect', ...about(text(details.connectionId) ?? '', 'sign in') } : undefined,
   'not-in-topic': (details, result) => {
     const add = result.isError ? addLabel(details) : undefined
     return add === undefined ? undefined : { kind: 'setup', label: add }
@@ -112,7 +114,7 @@ function askOf(entry: EntryRecord): OpenAsk | undefined {
  * finish, or a sign-in with more access (ADR 0042).
  */
 export type HeldCall = {
-  readonly kind: 'approval' | 'grant' | 'url' | 'access'
+  readonly kind: 'approval' | 'grant' | 'url' | 'access' | 'connect'
   readonly approvalId?: string
   readonly requestId?: string
   readonly scope?: string
@@ -152,6 +154,7 @@ const HOLDS: Readonly<
     return requestId === undefined ? undefined : { kind: 'url', requestId, ...call }
   },
   'scope-required': (details, call) => ({ kind: 'access', scope: (text(details.scope) ?? '').slice(0, 512), ...call }),
+  'connect-required': (_details, call) => ({ kind: 'connect', ...call }),
 }
 
 function holdOf(details: Fields): HeldCall | undefined {
@@ -174,13 +177,13 @@ function personaAsk(entry: EntryRecord): { readonly persona: number; readonly as
   if (answer === undefined) return undefined
   const { hold } = answer
   // Held calls and URL requests are read from their stores; a grant or a sign-in waits in the answer itself.
-  if (hold?.kind !== 'grant' && hold?.kind !== 'access') return { persona: answer.persona }
+  if (hold?.kind !== 'grant' && hold?.kind !== 'access' && hold?.kind !== 'connect') return { persona: answer.persona }
   const since = Math.floor((entry.model?.[0]?.timestamp ?? 0) / 1000)
   const ask: OpenAsk = {
     kind: hold.kind,
     since,
     entry: Number(entry.id),
-    ...about(hold.connectionId, hold.kind === 'grant' ? hold.name : 'more access'),
+    ...about(hold.connectionId, { grant: hold.name, access: 'more access', connect: 'sign in' }[hold.kind]),
     persona: answer.persona,
   }
   return { persona: answer.persona, ask }

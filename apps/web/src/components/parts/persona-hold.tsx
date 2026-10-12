@@ -1,11 +1,11 @@
-// What a Persona's answer waits on (ADRs 0041, 0042): a held call to approve, a tool to allow, a sign-in with more
-// access, or a URL request to finish. Drawn under the Persona's newest answer only, from its `app.persona` entry, never
+// What a Persona's answer waits on (ADRs 0041, 0042, 0043): a held call to approve, a tool to allow, a sign-in with
+// more access, a connection to sign in to, or a URL request to finish. Drawn under the Persona's newest answer only, from its `app.persona` entry, never
 // from a tool result; the owner's reply goes to its fork.
 import type { PersonaHold } from '@goblin/contracts'
 import { useMutation } from '@tanstack/react-query'
 import { replyPersonaMutation } from '../../personas/queries.ts'
 import { ApprovalCard } from '../approval-card.tsx'
-import { AccessCard, GrantCard } from '../interaction-cards.tsx'
+import { AccessCard, ConnectCard, GrantCard } from '../interaction-cards.tsx'
 import { UrlRequestCard } from '../url-request-card.tsx'
 
 /**
@@ -38,6 +38,13 @@ export function PersonaHoldCard({
     return (
       <AccessCard
         interaction={{ kind: 'access', callId: answer, connectionId, scope: hold.scope ?? '' }}
+        onAnswer={onAnswer}
+      />
+    )
+  if (hold.kind === 'connect')
+    return (
+      <ConnectCard
+        interaction={{ kind: 'connect', callId: answer, connectionId, name: hold.name }}
         onAnswer={onAnswer}
       />
     )

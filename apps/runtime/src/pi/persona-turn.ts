@@ -360,6 +360,7 @@ const HOLD_TEXT: Readonly<Record<PersonaHold['kind'], string>> = {
   grant: 'I need you to allow this tool before I can go on.',
   url: 'I need you to finish a step on the server’s site before I can go on.',
   access: 'I need you to sign in to this connection again with more access before I can go on.',
+  connect: 'I need you to connect this before I can go on.',
 }
 const holdText = (hold: PersonaHold): string => HOLD_TEXT[hold.kind]
 

@@ -57,14 +57,16 @@ describe('attention (A5, ADR 0032)', () => {
       topic: { id: 2, name: 'Work' },
     })
     const access = result('mcp_call', true, { kind: 'scope-required', connectionId: 'notes', scope: 'notes:write' })
+    const connect = result('mcp_call', true, { kind: 'connect-required', connectionId: 'mercator', name: 'quote_plan' })
     const remote = result('mcp_call', true, { kind: 'grant-required', connectionId: 'x', name: 'y', origin: 'remote' })
     const settled = result('mcp_call', true, { kind: 'grant-required', connectionId: 'old', name: 'call' })
-    const open = openAsks([settled, user('go on'), question, grant, capability, access, remote])
+    const open = openAsks([settled, user('go on'), question, grant, capability, access, connect, remote])
     expect(labelled(open, new Map())).toEqual([
       { kind: 'question', since: question.id, entry: question.id, label: 'Which day?' },
       { kind: 'grant', since: grant.id, entry: grant.id, label: 'notes · write' },
       { kind: 'setup', since: capability.id, entry: capability.id, label: 'Add subagents to #Work' },
       { kind: 'access', since: access.id, entry: access.id, label: 'notes · more access' },
+      { kind: 'connect', since: connect.id, entry: connect.id, label: 'mercator · sign in' },
     ])
     // A connection is named by the owner's label where it has one (ADR 0041).
     expect(labelled(open, new Map([['notes', 'Notes · Work']])).map((ask) => ask.label)).toEqual([
@@ -72,6 +74,7 @@ describe('attention (A5, ADR 0032)', () => {
       'Notes · Work · write',
       'Add subagents to #Work',
       'Notes · Work · more access',
+      'mercator · sign in',
     ])
     expect(openAsks([user('answered')], openAsks([question]))).toEqual([])
     expect(openAsks([grant], openAsks([question])).map((ask) => ask.kind)).toEqual(['question', 'grant'])
@@ -152,6 +155,9 @@ describe('attention (A5, ADR 0032)', () => {
       scope: 'sidequest:work',
     })
     expect(heldCall(access)).toEqual({ kind: 'access', scope: 'sidequest:work', connectionId: 'sq', name: 'apply' })
+    // A connection the owner has not signed in to holds the call too, so a Persona waits on the Connect card (ADR 0043).
+    const connect = result('mcp_call', true, { kind: 'connect-required', connectionId: 'mercator', name: 'quote_plan' })
+    expect(heldCall(connect)).toEqual({ kind: 'connect', connectionId: 'mercator', name: 'quote_plan' })
     const forged = result('mcp_call', true, { kind: 'url-required', connectionId: 'sq', name: 'x' })
     const inherited = result('mcp_call', true, { kind: 'constructor', connectionId: 'sq', name: 'x' })
     expect([heldCall(forged), heldCall(inherited)]).toEqual([undefined, undefined])

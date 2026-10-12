@@ -13,6 +13,7 @@ import {
   LayersIcon,
   MessageCircleQuestionIcon,
   MessageSquareTextIcon,
+  PlugIcon,
   RadioTowerIcon,
   Settings2Icon,
   WandSparklesIcon,
@@ -39,6 +40,7 @@ const ASKS: Readonly<Record<Attention['kind'], { readonly icon: typeof KeyRoundI
   setup: { icon: Settings2Icon, label: 'Something to add to a Topic' },
   'app-power': { icon: AppWindowIcon, label: 'An app power to allow' },
   access: { icon: KeyRoundIcon, label: 'A connection that needs more access' },
+  connect: { icon: PlugIcon, label: 'A connection to sign in to' },
   link: { icon: ExternalLinkIcon, label: 'A step to finish on a server’s site' },
 }
 
