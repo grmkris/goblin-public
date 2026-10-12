@@ -10,6 +10,7 @@ import {
   AppSnapshot,
   AppView,
   CreateApp,
+  OpenServerApp,
   UpdateApp,
 } from '../apps.ts'
 import { AppId } from '../ids.ts'
@@ -25,6 +26,8 @@ const AppParam = { id: AppId }
  * - `create`: `POST /api/apps`, 201 with the App kept from a tool call in one of the owner's conversations (one from
  *   before Apps were kept, or one the owner closed). The same call keeps the same App. Its server must still render it.
  * - `launch`: `GET /api/apps/:id/launch`, what the browser loads it with. It grants nothing; its calls are checked live.
+ * - `openServer`: `POST /api/apps/servers`, a connection's own App (ADR 0053) in the one thread kept for it, made or
+ *   reopened on the first open. Its tool is not called here: the browser calls it as the owner on each open.
  * - `update`: `PATCH /api/apps/:id` closes the App or opens it again.
  * - `state`, `call`, `diagnostics`: an agent app's view reads its state, calls one of its actions with the frame's
  *   operation id (the state after it, or the app's own error), and reports its failures, kept where the agent sees them.
@@ -34,6 +37,17 @@ export class AppsGroup extends HttpApiGroup.make('apps').add(
     payload: CreateApp,
     success: AppView.pipe(HttpApiSchema.status(201)),
     error: [ApiErrors.notFound, ApiErrors.conflict, ApiErrors.upstream, ApiErrors.upstreamTimeout],
+  }),
+  HttpApiEndpoint.post('openServer', '/apps/servers', {
+    payload: OpenServerApp,
+    success: AppView,
+    error: [
+      ApiErrors.notFound,
+      ApiErrors.conflict,
+      ApiErrors.invalidInput,
+      ApiErrors.upstream,
+      ApiErrors.upstreamTimeout,
+    ],
   }),
   HttpApiEndpoint.get('launch', '/apps/:id/launch', {
     params: AppParam,

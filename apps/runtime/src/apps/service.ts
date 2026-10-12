@@ -40,6 +40,8 @@ export class Apps extends Context.Service<
     readonly placement: (id: string) => Effect.Effect<AppPlacement, AppError>
     /** Keeps the App of call `callId` in `session`; the same call keeps the same App, reopened if it was closed. */
     readonly register: (session: string, callId: string, origin: AppOrigin) => Effect.Effect<AppView, AppError>
+    /** Keeps a server's own App in its thread's `session` (ADR 0053), reopened if it was closed. */
+    readonly registerServer: (session: string, origin: AppOrigin) => Effect.Effect<AppView, AppError>
     /** Closes an App (it goes from every pane and transcript) or opens it again. */
     readonly update: (id: string, closed: boolean) => Effect.Effect<AppView, AppError>
     /** What the browser needs to load an App: an MCP App's call, read from its conversation, or an agent app's view. */

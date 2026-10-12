@@ -4,7 +4,7 @@ import type { EntryRecord } from '@earendil-works/pi-durable'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { type ChatDb, chatOfSession, chatSession, conversationAbove } from '../chats/directory.ts'
-import { type AppError, NotFound, attempt, toAppError } from '../http/errors.ts'
+import { type AppError, InvalidInput, NotFound, attempt, toAppError } from '../http/errors.ts'
 import { BACKGROUND, entryId } from '../pi/context.ts'
 import type { PiSessions } from '../pi/sessions.ts'
 import type { AgentAppInfo } from '../agent-apps/engine.ts'
@@ -63,9 +63,22 @@ export type AgentAppsPort = {
  * the `Apps` service (layers/apps.ts) tells the change bus what each write changed.
  */
 
+/**
+ * The call id of a server's own App (ADR 0053): no tool call in a transcript made it, the owner opened it, and its
+ * thread keeps one. No model provider names a call with a colon, so it never meets a real call's id.
+ */
+const SERVER_APP_CALL = 'goblin:entrypoint'
+
 const sourceOf = (row: Row, agents: AgentAppsPort): AppView['source'] => {
   if (isMcp(row))
-    return { kind: 'mcp', callId: row.callId, connectionId: row.connectionId, tool: row.tool, uri: row.resourceUri }
+    return {
+      kind: 'mcp',
+      callId: row.callId,
+      connectionId: row.connectionId,
+      tool: row.tool,
+      uri: row.resourceUri,
+      ...(row.callId === SERVER_APP_CALL && { entrypoint: true }),
+    }
   const name = row.name ?? ''
   const info = agents.info(name)
   if (info === undefined) throw new NotFound({ what: `agent app ${name}` })
@@ -133,6 +146,35 @@ export function keepApp(db: ChatDb, agents: AgentAppsPort, { session, callId, or
       createdAt: now,
     })
     .onConflictDoUpdate({ target: [appRegistry.sessionId, appRegistry.callId], set: { closedAt: null } })
+    .returning()
+    .all()
+  if (row === undefined) throw new NotFound({ what: 'app' })
+  return viewOf(row, agents)
+}
+
+/**
+ * Keeps a server's own App in its thread's `session` (ADR 0053): the same thread keeps the same App, opened again if it
+ * was closed, with the tool, resource and title the server has now.
+ */
+export function keepServerApp(
+  db: ChatDb,
+  agents: AgentAppsPort,
+  { session, origin }: Omit<KeptApp, 'callId'>,
+  now: number,
+): AppView {
+  const current = { tool: origin.tool, resourceUri: origin.uri, title: origin.title }
+  const [row] = db
+    .insert(appRegistry)
+    .values({
+      source: 'mcp',
+      sessionId: session,
+      chatId: chatOfSession(db, session) ?? session,
+      callId: SERVER_APP_CALL,
+      connectionId: origin.connectionId,
+      ...current,
+      createdAt: now,
+    })
+    .onConflictDoUpdate({ target: [appRegistry.sessionId, appRegistry.callId], set: { ...current, closedAt: null } })
     .returning()
     .all()
   if (row === undefined) throw new NotFound({ what: 'app' })
@@ -258,6 +300,8 @@ export type LaunchSite =
 export function launchSite(db: ChatDb, id: string): LaunchSite {
   const row = rowOf(db, id)
   if (!isMcp(row)) return { kind: 'agent', name: agentAppName(db, id) }
+  // Its tool is called as the owner on each open (the browser does it), never read back from a transcript.
+  if (row.callId === SERVER_APP_CALL) throw new InvalidInput({ reason: "A server's own App opens from its server" })
   return {
     kind: 'mcp',
     connectionId: row.connectionId,

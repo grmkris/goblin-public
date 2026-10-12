@@ -16,6 +16,7 @@ import {
   findCall,
   keepApp,
   keepCallEntry,
+  keepServerApp,
   launchSite,
   removeAgentApp,
   setAppClosed,
@@ -51,6 +52,12 @@ export const appsOver = (
     register: Effect.fn('Apps.register')(function* (session: string, callId: string, origin: AppOrigin) {
       const now = yield* epochSeconds
       const app = yield* attemptSync(() => keepApp(db, agents, { session, callId, origin }, now))
+      yield* changed(app.id)
+      return app
+    }),
+    registerServer: Effect.fn('Apps.registerServer')(function* (session: string, origin: AppOrigin) {
+      const now = yield* epochSeconds
+      const app = yield* attemptSync(() => keepServerApp(db, agents, { session, origin }, now))
       yield* changed(app.id)
       return app
     }),

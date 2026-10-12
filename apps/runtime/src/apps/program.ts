@@ -5,17 +5,18 @@ import type {
   AppDiagnostic,
   CreateApp,
   DeleteAgentApp,
+  OpenServerApp,
   UpdateApp,
 } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import { AppEngine } from '../agent-apps/service.ts'
 import { InvalidInput, NotFound } from '../http/errors.ts'
-import { Conversations } from '../chats/service.ts'
+import { Chats, Conversations } from '../chats/service.ts'
 import { Home } from '../home/service.ts'
 import { settledDetails } from '../mcp/kept-app.ts'
 import { toolAppResource } from '../mcp/remote.ts'
-import { McpConnections } from '../mcp/service.ts'
+import { McpConnections, McpServers } from '../mcp/service.ts'
 import { Apps } from './service.ts'
 
 /**
@@ -33,6 +34,36 @@ export const createOwnerApp = ({ conversation, callId }: CreateApp) =>
     if (uri === undefined) return yield* new NotFound({ what: 'app' })
     const origin = { connectionId: call.connectionId, tool: call.tool, uri, title: tool?.title ?? call.tool }
     return yield* apps.register(session, callId, origin)
+  })
+
+/** The one thread a server's own App lives in: its thread operation from Personal, the same id on every open. */
+const serverThreadOp = (connectionId: string) => `server-app:${connectionId}`
+
+/**
+ * Open a connection's own App (ADR 0053): the one thread kept for it (made on the first open, under Personal, named
+ * after the server, reopened if the owner closed it) and the App kept there. Its tool must still declare that App; the
+ * tool itself is called by the browser, as the owner, on each open.
+ */
+export const openServerApp = ({ connectionId }: OpenServerApp) =>
+  Effect.gen(function* () {
+    const server = (yield* McpServers.use((servers) => servers.list())).find(
+      (each) => each.connectionId === connectionId,
+    )
+    const tool = server?.profile?.app?.tool ?? server?.entrypoint
+    if (server === undefined || tool === undefined) return yield* new NotFound({ what: 'server app' })
+    const title = server.profile?.title ?? server.title ?? server.label
+    if (server.status !== 'connected') return yield* new InvalidInput({ reason: `Sign in to ${title} first` })
+    const snapshot = yield* McpConnections.use((connections) => connections.connect(connectionId))
+    const declared = snapshot.tools.find(({ name }) => name === tool)
+    const uri = declared === undefined ? undefined : toolAppResource(declared)
+    if (uri === undefined) return yield* new NotFound({ what: 'server app' })
+    const conversations = yield* Conversations
+    const { primary } = yield* Chats
+    let thread = yield* conversations.startThread(primary, serverThreadOp(connectionId), 'empty')
+    if (thread.closedAt !== undefined) thread = (yield* conversations.update(thread.id, { closed: false })).view
+    if (thread.title === undefined) thread = (yield* conversations.update(thread.id, { title })).view
+    const session = yield* conversations.require(thread.id)
+    return yield* Apps.use((apps) => apps.registerServer(session, { connectionId, tool, uri, title }))
   })
 
 /** Close an App, or open it again. */

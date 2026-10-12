@@ -2,13 +2,18 @@ import * as Schema from 'effect/Schema'
 import { AgentAppJob } from './agent-apps.ts'
 import { ChatId, NonEmptyString } from './ids.ts'
 
-/** Where a kept MCP App comes from: the tool call it shows, on its server, rendering a `ui://` resource. */
+/**
+ * Where a kept MCP App comes from: the tool call it shows, on its server, rendering a `ui://` resource. `entrypoint`
+ * marks a server's own App (ADR 0053): the owner opened it from the sidebar or the server's card, in a thread of its
+ * own, and its tool is called as the owner on each open rather than read from a transcript.
+ */
 export const McpAppSource = Schema.Struct({
   kind: Schema.Literal('mcp'),
   callId: Schema.String,
   connectionId: Schema.String,
   tool: Schema.String,
   uri: Schema.String,
+  entrypoint: Schema.optional(Schema.Boolean),
 })
 
 /** An agent app (ADR 0021): its name, the release it runs and the revision its state is at. */
@@ -41,6 +46,13 @@ export const CreateApp = Schema.Struct({
   callId: NonEmptyString(200),
 })
 export type CreateApp = typeof CreateApp.Type
+
+/**
+ * Open connection `connectionId`'s own App (its global entrypoint, ADR 0053): the one thread kept for it, made or
+ * reopened, with the App kept there.
+ */
+export const OpenServerApp = Schema.Struct({ connectionId: NonEmptyString(200) })
+export type OpenServerApp = typeof OpenServerApp.Type
 
 /** Close an App (its iframe goes everywhere) or reopen it. */
 export const UpdateApp = Schema.Struct({ closed: Schema.Boolean })

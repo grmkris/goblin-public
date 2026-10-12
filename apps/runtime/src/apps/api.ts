@@ -5,6 +5,7 @@ import {
   callAgentApp,
   createOwnerApp,
   launchOwnerApp,
+  openServerApp,
   reportAgentApp,
   updateOwnerApp,
 } from './program.ts'
@@ -16,6 +17,7 @@ import {
 export const AppsHandlers = HttpApiBuilder.group(OwnerApi, 'apps', (handlers) =>
   handlers
     .handle('create', ({ payload }) => createOwnerApp(payload))
+    .handle('openServer', ({ payload }) => openServerApp(payload))
     .handle('launch', ({ params }) => launchOwnerApp(params.id))
     .handle('update', ({ params, payload }) => updateOwnerApp(params.id, payload))
     .handle('state', ({ params }) => agentAppSnapshot(params.id))

@@ -11,10 +11,10 @@ import { AppEngine } from '../../../src/agent-apps/service.ts'
 import { AppsHandlers } from '../../../src/apps/api.ts'
 import type { AppOrigin } from '../../../src/apps/registry.ts'
 import { Apps } from '../../../src/apps/service.ts'
-import { Conversations } from '../../../src/chats/service.ts'
+import { Chats, Conversations } from '../../../src/chats/service.ts'
 import { Home } from '../../../src/home/service.ts'
 import type { ApprovalRow } from '../../../src/mcp/approvals.ts'
-import { Approvals, McpConnections, Resident, UrlRequests } from '../../../src/mcp/service.ts'
+import { Approvals, McpConnections, McpServers, Resident, UrlRequests } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
 import { callOwner } from '../../owner-client.ts'
 import { currentResident, json, plans, post, serve, served, stub, unrouted } from './fixture.ts'
@@ -57,6 +57,9 @@ function appsServer(
           // The programs under test call only the members `OtherParts` names.
           stub(Conversations, others.conversations),
           stub(McpConnections, others.connections),
+          // Opening a server's own App (ADR 0053) reads these; no test here reaches it.
+          stub(McpServers),
+          stub(Chats),
           stub(Home, others.home),
           stub(Approvals, others.approvals),
           stub(UrlRequests, others.urlRequests),
