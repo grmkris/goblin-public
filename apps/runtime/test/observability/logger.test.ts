@@ -84,6 +84,26 @@ describe('goblin logger', () => {
     }),
   )
 
+  it('keeps the failure summary of a run line whose type is a log field', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      // A ledger line arrives already sanitized: `goblin.error` is the summary, and `error.type` a log field.
+      writeLine('info', { event: 'run', 'error.type': 'provider_error', 'goblin.error': 'Model provider failed.' })
+      writeLine('info', { event: 'run', 'error.type': 'UpstreamMcp:timeout', 'goblin.error': SECRET })
+      expect(log.mock.calls.map(([text]: unknown[]) => JSON.parse(String(text)))).toEqual([
+        { level: 'info', 'goblin.error': 'Model provider failed.', event: 'run', 'error.type': 'provider_error' },
+        {
+          level: 'info',
+          'goblin.error': 'Remote MCP request failed (timeout).',
+          event: 'run',
+          'error.type': 'UpstreamMcp:timeout',
+        },
+      ])
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('writes a line from synchronous code through the global console', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     try {

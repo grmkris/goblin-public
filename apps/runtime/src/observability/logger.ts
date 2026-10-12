@@ -1,4 +1,4 @@
-import type { RunAttributes } from '@goblin/contracts/telemetry'
+import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import * as Clock from 'effect/Clock'
 import * as Console from 'effect/Console'
 import * as Effect from 'effect/Effect'
@@ -112,6 +112,8 @@ function keep(fields: LogFields): Record<string, Value> {
       if (scalar(value)) attributes[key] = value
     } else if (check(value)) {
       kept[key] = value
+      // `goblin.error` is summarised from the type, so the sanitizer needs it too, or every summary is unclassified.
+      if (key === RunAttribute.errorType && Predicate.isString(value)) attributes[key] = value
     }
   }
   const safe: RunAttributes = sanitizeAttributes(attributes)
