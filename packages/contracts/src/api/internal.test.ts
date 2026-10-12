@@ -26,6 +26,7 @@ describe('the owner and internal APIs', () => {
     expect(owner.length).toBeGreaterThan(0)
     expect(internal.map(pathOf).toSorted()).toEqual([
       '/internal/ask',
+      '/internal/billing-notice',
       '/internal/doorbell',
       '/internal/inspect',
       '/internal/mcp-events/:connectionId',
