@@ -162,7 +162,7 @@ function Expired({ view }: { readonly view: OAuthRequestView }) {
     <section className="flex flex-col gap-6">
       <h1 className="text-3xl font-semibold tracking-tight text-balance">This request expired</h1>
       <p className="text-base/relaxed text-muted-foreground text-pretty">
-        Go back to {view.redirectHost} and connect again. Your wallet remembers where you were.
+        Go back to {view.redirectHost} and connect again. What you set up here is kept.
       </p>
       <Button nativeButton={false} size="cta" render={<a href={clientHome(view.redirectHost)} />}>
         Back to {view.redirectHost}
