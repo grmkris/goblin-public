@@ -20,11 +20,12 @@ export const pimlicoUrl = (chainId: number, apiKey: string): string =>
   `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${encodeURIComponent(apiKey)}`
 
 /**
- * A well-formed ECDSA signature for estimation: it recovers to some other address, so the DeleGator's
- * `validateUserOp` reports a failed validation instead of reverting on a malformed signature.
+ * A real 65-byte signature by a throwaway key (0x5a…5a over 0xab…ab) for estimation: it recovers to some other
+ * address, so the DeleGator's `validateUserOp` reports a failed validation instead of reverting, as OpenZeppelin's
+ * ECDSA does on a malformed signature (`ECDSAInvalidSignatureLength`, seen live as `AA23 reverted 0xfce698f7`).
  */
-const DUMMY_SIGNATURE: Hex =
-  '0xfffffffffffffffffffffffffffffff0000000000000000000000000000000007aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1c'
+export const DUMMY_SIGNATURE: Hex =
+  '0xbbab8d71ce002d90139cb92579e2311de0983756e4d23be16652859b201bdecc407ee1174363f8dcfc69492d377c15c81d5c1560faf03ed23b1a24f8f044cf091c'
 
 const ENTRY_POINT = parseAbi(['function getNonce(address sender, uint192 key) view returns (uint256)'])
 

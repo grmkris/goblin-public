@@ -1,9 +1,10 @@
 import { privateKeyToAccount } from 'viem/accounts'
 import { describe, expect, test } from 'vitest'
+import { toHex } from '../balances/hex.ts'
 import { JsonRpcError, type JsonRpc } from '../balances/rpc.ts'
 import { BASE, TEMPO } from '../chains/index.ts'
 import { decodeBatch, delegatorTypedData, type Call } from '../userop/index.ts'
-import { prepareUserOp, submitUserOp, type PrepareInput } from './index.ts'
+import { DUMMY_SIGNATURE, prepareUserOp, submitUserOp, type PrepareInput } from './index.ts'
 
 const account = privateKeyToAccount(`0x${'42'.repeat(32)}`)
 const stranger = privateKeyToAccount(`0x${'43'.repeat(32)}`)
@@ -69,6 +70,14 @@ const input = (bundler: JsonRpc, overrides: Partial<PrepareInput> = {}): Prepare
 const instant = { attempts: 2, sleep: async () => undefined }
 
 describe('preparing a UserOperation', () => {
+  test('estimates with a well-formed 65-byte signature that recovers to some other address', async () => {
+    expect(DUMMY_SIGNATURE).toMatch(/^0x[0-9a-f]{130}$/u)
+    const { recoverAddress } = await import('viem')
+    expect(await recoverAddress({ hash: `0x${'ab'.repeat(32)}`, signature: toHex(DUMMY_SIGNATURE) })).not.toBe(
+      account.address,
+    )
+  })
+
   test("prices the gas in USDC, bounds it and appends the paymaster's approval of exactly that bound", async () => {
     const { rpc, calls } = pimlico()
     const prepared = await prepareUserOp(input(rpc))
