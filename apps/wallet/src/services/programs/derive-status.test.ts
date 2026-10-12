@@ -21,11 +21,13 @@ const limit = (
   period,
   limit: limitUsd,
   ...(remaining === undefined ? {} : { remaining }),
+  ...(layer === 'onchain' ? { chain: 'base' as const } : {}),
   enforcedBy: 'test',
   ...(period === 'hour' ? { periodEndsAt: '2026-10-12T11:00:00.000Z' } : {}),
 })
 const base: StatusInput = {
   balances: [usdc('base', '12.5', 'owner'), usdc('tempo', '2.5', 'agent')],
+  unread: [],
   limits: [
     limit('call', '5'),
     limit('hour', '20', '17.25'),
@@ -59,6 +61,30 @@ describe('deriveStatus', () => {
       funding: 'not_verified',
       paid: 'not_verified',
     })
+  })
+
+  test("counts the owner's funds as spendable only on a chain with an allowance", () => {
+    const ledgerOnly = [limit('call', '5'), limit('hour', '20', '17.25')]
+    const held = [usdc('ethereum', '10', 'owner'), usdc('base', '0.5', 'agent')]
+    expect(deriveStatus({ ...base, balances: held, limits: ledgerOnly }).tokens).toEqual([
+      { symbol: 'USDC', balance: '10.5', remaining: '5', spendable: '0.5' },
+    ])
+    expect(deriveStatus({ ...base, balances: [usdc('ethereum', '10', 'owner')], limits: ledgerOnly })).toMatchObject({
+      funding: 'ready',
+      paid: 'blocked',
+      tokens: [{ spendable: '0' }],
+    })
+  })
+
+  test('the order of the balances does not change the answer', () => {
+    expect(deriveStatus({ ...base, balances: base.balances.toReversed() })).toEqual(deriveStatus(base))
+  })
+
+  test('a chain that could not be read turns a no into not verified, and a yes stands', () => {
+    const empty = { ...base, balances: [usdc('base', '0', 'agent')], unread: ['arbitrum' as const] }
+    expect(deriveStatus(empty)).toMatchObject({ funding: 'not_verified', paid: 'not_verified' })
+    expect(deriveStatus({ ...base, unread: ['arbitrum'] })).toMatchObject({ funding: 'ready', paid: 'ready' })
+    expect(deriveStatus({ ...empty, revoked: true }).paid).toBe('blocked')
   })
 
   test('an empty wallet is blocked for funding', () => {

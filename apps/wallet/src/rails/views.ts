@@ -1,23 +1,28 @@
 import { formatUnits } from '@goblin/wallet/amounts'
 import { getAllowanceState, getBalances, parsePeriodTerms } from '@goblin/wallet/balances'
 import { chainByKey } from '@goblin/wallet/chains'
-import type { ChainBalance, LimitView } from '@goblin/wallet/contract'
+import type { LimitView } from '@goblin/wallet/contract'
+import type { BalanceRead } from '../services/rails.ts'
 import type { RailsDeps, StoredAllowance } from './deps.ts'
 
 const NATIVE = '0x0000000000000000000000000000000000000000'
 
-/** Every token balance the wallet shows: gas and the stablecoin, for the agent and for the owner. */
-export const balances = async (deps: RailsDeps): Promise<ChainBalance[]> => {
+/**
+ * Every token balance the wallet shows: gas and the stablecoin, for the agent and for the owner. A chain whose RPC
+ * failed is listed as unread and has no rows, so it never shows as a zero balance.
+ */
+export const balances = async (deps: RailsDeps): Promise<BalanceRead> => {
   const profile = await deps.profile()
   const agent = deps.signer?.address ?? profile.agentAddress
-  if (agent === undefined) return []
+  if (agent === undefined) return { balances: [], unread: [] }
   const rows = await getBalances({
     live: deps.live,
     agent,
     ...(profile.ownerAddress === undefined ? {} : { owner: profile.ownerAddress }),
     rpcFor: deps.rpcFor,
   })
-  return rows.flatMap((row) => {
+  const read = rows.filter((row) => row.error === undefined)
+  const found = read.flatMap((row) => {
     const holders = [
       { holder: 'agent' as const, account: row.agent },
       ...(row.owner === undefined ? [] : [{ holder: 'owner' as const, account: row.owner }]),
@@ -40,6 +45,7 @@ export const balances = async (deps: RailsDeps): Promise<ChainBalance[]> => {
       ),
     )
   })
+  return { balances: found, unread: rows.flatMap((row) => (row.error === undefined ? [] : [row.chain])) }
 }
 
 const periodOf = (seconds: bigint): LimitView['period'] => {

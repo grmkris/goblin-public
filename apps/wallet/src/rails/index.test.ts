@@ -296,11 +296,27 @@ describe('transfer', () => {
 describe('balances and allowances', () => {
   test('lists gas and USDC for the agent and the owner', async () => {
     const rails = createRails(deps({ rpcFor: () => async () => word(1_000_000n) }))
-    const rows = await rails.balances()
+    const { balances: rows, unread } = await rails.balances()
+    expect(unread).toEqual([])
     expect(
       rows.filter((row) => row.chain === 'base').map((row) => `${row.holder}:${row.symbol}:${row.balance}`),
     ).toEqual(['agent:ETH:0.000000000001', 'agent:USDC:1', 'owner:ETH:0.000000000001', 'owner:USDC:1'])
     expect(rows.find((row) => row.chain === 'tempo')?.symbol).toBe('USDC.e')
+  })
+
+  test('a chain whose RPC fails is unread, with no zero rows of its own', async () => {
+    const rails = createRails(
+      deps({
+        rpcFor: (chain) => async () => {
+          if (chain === 'arbitrum') throw new Error('rate limited')
+          return word(1_000_000n)
+        },
+      }),
+    )
+    const { balances: rows, unread } = await rails.balances()
+    expect(unread).toEqual(['arbitrum'])
+    expect(rows.some((row) => row.chain === 'arbitrum')).toBe(false)
+    expect(rows.some((row) => row.chain === 'base')).toBe(true)
   })
 
   test('reads the remaining on-chain allowance from the enforcer', async () => {

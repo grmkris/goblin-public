@@ -1,9 +1,13 @@
 import { formatUnits, parseUnits, usdToMicros } from '@goblin/wallet/amounts'
-import type { ChainBalance, LimitView, WalletStatus } from '@goblin/wallet/contract'
+import type { ChainBalance, ChainKey, LimitView, WalletStatus } from '@goblin/wallet/contract'
 
-/** What goblin's `WalletStatus` is derived from. `verified` is false when the chains could not be read. */
+/**
+ * What goblin's `WalletStatus` is derived from. `verified` is false when the chains could not be read at all; `unread`
+ * names the chains that could not be read this time (their balances are absent, unknown rather than zero).
+ */
 export interface StatusInput {
   readonly balances: readonly ChainBalance[]
+  readonly unread: readonly ChainKey[]
   readonly limits: readonly LimitView[]
   readonly verified: boolean
   readonly hasAgent: boolean
@@ -24,6 +28,20 @@ const sumBalances = (balances: readonly ChainBalance[]): Map<string, bigint> => 
   return totals
 }
 
+/** The layers that let the agent draw on the owner's account, each on its own chain. */
+const REACHES_OWNER: ReadonlySet<LimitView['layer']> = new Set(['onchain', 'tempo'])
+
+/**
+ * The balances the agent can actually pay from: its own, and the owner's only on a chain where an allowance (or a
+ * Tempo access key) lets it draw on them. The owner's funds elsewhere are held, not spendable.
+ */
+const usable = (balances: readonly ChainBalance[], limits: readonly LimitView[]): readonly ChainBalance[] => {
+  const reachable = new Set(
+    limits.flatMap((limit) => (REACHES_OWNER.has(limit.layer) && limit.chain !== undefined ? [limit.chain] : [])),
+  )
+  return balances.filter((balance) => balance.holder === 'agent' || reachable.has(balance.chain))
+}
+
 /** The smallest "remaining" any layer reports for a rolling or total limit, in wei-scaled dollars; per-call limits cap it too. */
 const tightestRemaining = (limits: readonly LimitView[]): bigint | undefined => {
   const values = limits.flatMap((limit) => {
@@ -38,24 +56,34 @@ const min = (a: bigint, b: bigint): bigint => (a < b ? a : b)
 
 type Readiness = WalletStatus['paid']
 
+/** A chain that could not be read turns a "no" into "not verified": the money may be there. A "yes" stands. */
 function readiness(input: StatusInput, hasFunds: boolean, spendable: boolean): { paid: Readiness; funding: Readiness } {
   const grantLive = Date.parse(input.grantExpiresAt) > input.now && !input.revoked
   if (!input.verified)
     return { paid: input.hasAgent && grantLive ? 'not_verified' : 'blocked', funding: 'not_verified' }
-  const funding = hasFunds ? 'ready' : 'blocked'
-  return { paid: input.hasAgent && grantLive && spendable ? 'ready' : 'blocked', funding }
+  const partial = input.unread.length > 0
+  const funding = hasFunds ? 'ready' : partial ? 'not_verified' : 'blocked'
+  const allowed = input.hasAgent && grantLive
+  return { paid: allowed && spendable ? 'ready' : allowed && partial ? 'not_verified' : 'blocked', funding }
 }
 
-/** goblin's `WalletStatus` (ADR 0043) from the wallet's balances and limits: readiness, what is left and what can be spent. */
+/**
+ * goblin's `WalletStatus` (ADR 0043) from the wallet's balances and limits: readiness, what is held, what is left and what
+ * can be spent (from the funds the agent can reach, under the tightest layer).
+ */
 export function deriveStatus(input: StatusInput): WalletStatus {
   const totals = sumBalances(input.balances)
+  const reachable = sumBalances(usable(input.balances, input.limits))
   const remaining = tightestRemaining(input.limits)
-  const tokens = [...totals].slice(0, 8).map(([symbol, balance]) => ({
-    symbol: short(symbol),
-    balance: short(formatUnits(balance, WEI)),
-    ...(remaining === undefined ? {} : { remaining: short(formatUnits(remaining, WEI)) }),
-    spendable: short(formatUnits(remaining === undefined ? balance : min(balance, remaining), WEI)),
-  }))
+  const tokens = [...totals].slice(0, 8).map(([symbol, balance]) => {
+    const funds = reachable.get(symbol) ?? 0n
+    return {
+      symbol: short(symbol),
+      balance: short(formatUnits(balance, WEI)),
+      ...(remaining === undefined ? {} : { remaining: short(formatUnits(remaining, WEI)) }),
+      spendable: short(formatUnits(remaining === undefined ? funds : min(funds, remaining), WEI)),
+    }
+  })
   const hasFunds = [...totals.values()].some((units) => units > 0n)
   const spendable = tokens.some((token) => parseUnits(token.spendable, WEI) > 0n)
   const hourEnds = input.limits.find((limit) => limit.layer === 'ledger' && limit.period === 'hour')?.periodEndsAt

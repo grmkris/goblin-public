@@ -21,8 +21,15 @@ export function registerBalances(server: McpServer, box: Toolbox): void {
     async () => {
       const result = await box.run(readBalances)
       if (!result.ok) return refusal(result.failure)
-      const lines = result.value.map((b) => `${b.symbol} on ${b.chain}: ${b.balance} (${b.holder})`)
-      return answer(lines.length === 0 ? 'No balances.' : lines.join('\n'), { balances: result.value })
+      const { balances, unread } = result.value
+      const lines = [
+        ...balances.map((b) => `${b.symbol} on ${b.chain}: ${b.balance} (${b.holder})`),
+        ...unread.map((chain) => `${chain}: could not be read just now (unknown, not zero)`),
+      ]
+      return answer(lines.length === 0 ? 'No balances.' : lines.join('\n'), {
+        balances,
+        ...(unread.length === 0 ? {} : { unread }),
+      })
     },
   )
 }

@@ -1,10 +1,10 @@
-import type { ChainBalance, LimitView, WalletStatusResult } from '@goblin/wallet/contract'
+import type { LimitView, WalletStatusResult } from '@goblin/wallet/contract'
 import * as Clock from 'effect/Clock'
 import * as DateTime from 'effect/DateTime'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Ledger } from '../ledger.ts'
-import { Rails } from '../rails.ts'
+import { type BalanceRead, Rails } from '../rails.ts'
 import { deriveStatus } from './derive-status.ts'
 
 const NO_ADDRESS = '0x0000000000000000000000000000000000000000'
@@ -30,9 +30,10 @@ export const readStatus = Effect.gen(function* () {
   const limits = yield* readLimits
   const recent = yield* ledger.use((api) => api.activity(10))
   const read = yield* rails.use((port) => port.balances()).pipe(Effect.option)
-  const balances: ChainBalance[] = Option.getOrElse(read, (): ChainBalance[] => [])
+  const { balances, unread } = Option.getOrElse(read, (): BalanceRead => ({ balances: [], unread: [] }))
   const status = deriveStatus({
     balances,
+    unread,
     limits,
     verified: Option.isSome(read),
     hasAgent: profile.agentAddress !== undefined,
@@ -48,6 +49,7 @@ export const readStatus = Effect.gen(function* () {
     },
     agent: { address: profile.agentAddress ?? NO_ADDRESS },
     balances,
+    ...(unread.length === 0 ? {} : { unread }),
     limits,
     recent,
     checkedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),

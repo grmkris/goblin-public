@@ -23,9 +23,12 @@ const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const rails: RailsPort = {
   ...unconfiguredRails,
   balances: () =>
-    Promise.resolve([
-      { chain: 'base', symbol: 'USDC', token: USDC, decimals: 6, balance: '12.5', holder: 'owner', address: OWNER },
-    ]),
+    Promise.resolve({
+      balances: [
+        { chain: 'base', symbol: 'USDC', token: USDC, decimals: 6, balance: '12.5', holder: 'owner', address: OWNER },
+      ],
+      unread: [],
+    }),
   allowances: () =>
     Promise.resolve([
       {

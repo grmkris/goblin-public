@@ -1,5 +1,6 @@
 import type {
   ChainBalance,
+  ChainKey,
   LimitView,
   Operation,
   Payment,
@@ -33,6 +34,12 @@ export type PayOutcome =
   | { outcome: 'failed'; reason: string }
   | { outcome: 'uncertain'; reason: string; payment?: Payment }
 
+/** Every balance that could be read, and the chains that could not: a chain whose RPC failed is unknown, never zero. */
+export interface BalanceRead {
+  readonly balances: ChainBalance[]
+  readonly unread: ChainKey[]
+}
+
 /** A swap or bridge quote the wallet froze: the owner-visible quote, the terms approval binds to, the rail's payload. */
 export interface FrozenQuote {
   quote: Quote
@@ -54,7 +61,7 @@ export interface RailsPort {
   swapExecute(operation: Operation, payload: unknown): Promise<PayOutcome>
   bridgeQuote(input: BridgeQuoteInput): Promise<FrozenQuote>
   bridgeExecute(operation: Operation, payload: unknown): Promise<PayOutcome>
-  balances(): Promise<ChainBalance[]>
+  balances(): Promise<BalanceRead>
   /** The limits the chain and the signer enforce (layers `onchain`, `tempo`, `signer`), with what is left. */
   allowances(): Promise<LimitView[]>
   /** Relays the owner's signed EIP-7702 authorization. */

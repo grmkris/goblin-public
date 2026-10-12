@@ -33,7 +33,7 @@ const setup = (
   const upgrades: unknown[] = []
   const rails: RailsPort = {
     ...unconfiguredRails,
-    balances: () => Promise.resolve([]),
+    balances: () => Promise.resolve({ balances: [], unread: [] }),
     allowances: () => Promise.resolve([]),
     upgrade: (request) => {
       upgrades.push(request)

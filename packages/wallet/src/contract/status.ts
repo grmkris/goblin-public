@@ -47,6 +47,8 @@ export const WalletStatusResult = Schema.Struct({
   owner: Schema.Struct({ address: Address, upgraded: Schema.Boolean }),
   agent: Schema.Struct({ address: Address }),
   balances: Schema.Array(ChainBalance),
+  /** Chains whose balances could not be read just now: unknown, never zero. Their rows are absent from `balances`. */
+  unread: Schema.optional(Schema.Array(ChainKey)),
   limits: Schema.Array(LimitView),
   /** The latest operations, newest first, for the App's activity list. */
   recent: Schema.optional(Schema.Array(Operation).check(Schema.isMaxLength(10))),
