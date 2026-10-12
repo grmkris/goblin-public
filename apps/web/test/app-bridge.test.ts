@@ -29,9 +29,21 @@ const noAgent: AgentAppCalls = {
     throw new Error('not an agent app')
   },
 }
-async function pair(connectionId: string, calls: Omit<AppCalls, 'agent'>, extra: Partial<FrameEvents> = {}) {
+async function pair(
+  connectionId: string,
+  calls: Omit<AppCalls, 'agent'>,
+  extra: Partial<FrameEvents> = {},
+  shown: { readonly cancelled?: string; readonly observe?: (app: App) => void } = {},
+) {
   const { bridge } = createAppBridge(
-    { kind: 'mcp', connectionId, uri: `ui://${connectionId}/app`, arguments: {}, result: { content: [] } },
+    {
+      kind: 'mcp',
+      connectionId,
+      uri: `ui://${connectionId}/app`,
+      arguments: {},
+      result: { content: [{ type: 'text', text: 'shown' }] },
+      ...(shown.cancelled === undefined ? {} : { cancelled: shown.cancelled }),
+    },
     '',
     { displayMode: 'inline' },
     { ...calls, agent: noAgent },
@@ -39,6 +51,7 @@ async function pair(connectionId: string, calls: Omit<AppCalls, 'agent'>, extra:
   )
   const app = new App({ name: 'Fixture', version: '1' }, {}, { autoResize: false })
   const [host, client] = InMemoryTransport.createLinkedPair()
+  shown.observe?.(app)
   await bridge.connect(host)
   await app.connect(client)
   return {
@@ -50,6 +63,45 @@ async function pair(connectionId: string, calls: Omit<AppCalls, 'agent'>, extra:
     },
   }
 }
+
+describe('an App of a call that did not complete (ui/notifications/tool-cancelled)', () => {
+  const calls: Omit<AppCalls, 'agent'> = {
+    tool: async () => ({ content: [] }),
+    resource: async (_connectionId, params) => ({ contents: [{ uri: params.uri, text: '' }] }),
+  }
+  /** What the App is told once it is initialized: the order of its notifications. */
+  const told = async (cancelled?: string) => {
+    const seen: string[] = []
+    const opened = await pair(
+      'notes',
+      calls,
+      {},
+      {
+        ...(cancelled === undefined ? {} : { cancelled }),
+        observe: (app) => {
+          app.addEventListener('toolinput', () => void seen.push('input'))
+          app.addEventListener('toolresult', (result) => void seen.push(`result:${JSON.stringify(result.content)}`))
+          app.addEventListener('toolcancelled', (params) => void seen.push(`cancelled:${params.reason}`))
+        },
+      },
+    )
+    try {
+      await until(() => seen.length >= 2)
+    } finally {
+      await opened.close()
+    }
+    return seen
+  }
+  it('is given its result when the call completed', async () => {
+    expect(await told()).toEqual(['input', 'result:[{"type":"text","text":"shown"}]'])
+  })
+  it('is told the call was cancelled, and given no result, when it did not complete', async () => {
+    expect(await told('The owner has not allowed this tool.')).toEqual([
+      'input',
+      'cancelled:The owner has not allowed this tool.',
+    ])
+  })
+})
 
 describe('official MCP App bridge stays bound to its originating connection', () => {
   it('reconnects the same originating App after teardown without retaining the old bridge', async () => {

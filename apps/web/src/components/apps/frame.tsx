@@ -47,6 +47,8 @@ export type McpSelection = {
   readonly uri: string
   readonly arguments: Record<string, unknown>
   readonly result: CallToolResult
+  /** Set when the call did not complete (held, refused, not allowed): the App is told it was cancelled, not given a result. */
+  readonly cancelled?: string
 }
 /** An agent app's view: its App id and its launch (the view's code, styles, bundles and first state). */
 export type AgentSelection = { readonly kind: 'agent'; readonly id: string; readonly launch: AgentAppLaunch }

@@ -6,6 +6,7 @@ import type { AppView } from '@goblin/contracts'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import { LIVE_APPS, evictions } from '../../lib/app-residency.ts'
 import { appLaunchQuery } from '../../apps/queries.ts'
+import { cancelledReason } from '../../lib/call-outcome.ts'
 import { record, records } from '../../lib/values.ts'
 import { messageOf } from '../../lib/query/app-error.ts'
 import type { AppSelection } from './frame.tsx'
@@ -27,12 +28,14 @@ function resultOf(details: unknown): CallToolResult {
 async function launch(queryClient: QueryClient, app: AppView): Promise<AppSelection> {
   const loaded = await queryClient.query(appLaunchQuery(app.id))
   if (loaded.kind === 'agent') return { kind: 'agent', id: app.id, launch: loaded }
+  const cancelled = cancelledReason(loaded.result)
   return {
     kind: 'mcp',
     connectionId: loaded.connectionId,
     uri: loaded.uri,
     arguments: loaded.arguments,
     result: resultOf(loaded.result),
+    ...(cancelled === undefined ? {} : { cancelled }),
   }
 }
 

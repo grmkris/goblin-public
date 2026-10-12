@@ -50,7 +50,11 @@ function mcpBridge(bridge: AppBridge, selection: McpSelection, calls: AppCalls, 
   bridge.addEventListener('initialized', () => {
     void bridge
       .sendToolInput({ arguments: selection.arguments })
-      .then(() => bridge.sendToolResult(selection.result))
+      .then(() =>
+        selection.cancelled === undefined
+          ? bridge.sendToolResult(selection.result)
+          : bridge.sendToolCancelled({ reason: selection.cancelled }),
+      )
       .catch(() => events.report('App initialization failed'))
   })
 }
