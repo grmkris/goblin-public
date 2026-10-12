@@ -3,7 +3,7 @@
  * transactions through `TempoAgent`; `mppx` builds the transaction and the Payment credential around that signer.
  * Before anything is signed, every call in the transaction is checked against the approved terms: only USDC.e
  * `transfer`/`transferWithMemo` to the approved recipient, within the caller's cap (`account.ts`). `challenge.ts` reads
- * challenges and receipts.
+ * challenges and receipts, and signs a challenge a caller fetched itself, without fetching.
  */
 import { Mppx, tempo } from 'mppx/client'
 import type { Address, Client, Hex } from 'viem'
