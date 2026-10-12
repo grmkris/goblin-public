@@ -12,6 +12,8 @@ type Profile = ServerProfile & {
   readonly endpoints: readonly string[]
   /** The status tool, and how goblin reads its structured answer; nothing when it does not fit. */
   readonly statusTool?: { readonly name: string; readonly read: (structured: unknown) => WalletStatus | undefined }
+  /** Scopes asked for at sign-in beside those the resource offers, when its own list is too narrow for the work. */
+  readonly scope?: readonly string[]
 }
 
 const Readiness = Schema.Literals(['ready', 'blocked', 'not_verified'])
@@ -105,11 +107,27 @@ const MERCATOR: Profile = {
   topUp: { url: 'https://mercator.sh/account' },
 }
 
-const PROFILES: readonly Profile[] = [MERCATOR]
+/**
+ * Cloudflare's API (ADR 0043): publishing a page as a Worker on the owner's account. Its resource offers only
+ * `user:read account:read`, so goblin also asks for the Workers scripts scopes and nothing wider; `execute` runs
+ * any API call those scopes allow, so it asks first.
+ */
+const CLOUDFLARE: Profile = {
+  id: 'cloudflare',
+  endpoints: ['https://mcp.cloudflare.com/mcp'],
+  title: 'Cloudflare',
+  description:
+    'Publish a page or a small app as a Worker on your Cloudflare account. Every change asks you first; looking up the API does not.',
+  recommended: { run: ['search', 'docs', 'whoami'], ask: ['execute'] },
+  status: false,
+  scope: ['offline_access', 'user:read', 'account:read', 'workers-scripts.read', 'workers-scripts.write'],
+}
+
+const PROFILES: readonly Profile[] = [MERCATOR, CLOUDFLARE]
 
 /** The profile of the server at `endpoint`, when goblin supports it first-class. */
 export const profileOf = (endpoint: string): Profile | undefined =>
   PROFILES.find((profile) => profile.endpoints.includes(endpoint))
 
 /** A profile as the owner's view carries it: everything but how goblin reads the server. */
-export const profileView = ({ endpoints: _, statusTool: __, ...view }: Profile): ServerProfile => view
+export const profileView = ({ endpoints: _, statusTool: __, scope: ___, ...view }: Profile): ServerProfile => view

@@ -90,6 +90,14 @@ const SUGGESTED: readonly Suggested[] = [
     signIn: false,
   },
   {
+    // OAuth with dynamic registration, checked 2026-10-12; goblin's profile adds the Workers scopes (first-class.ts).
+    id: 'cloudflare',
+    title: 'Cloudflare',
+    description: 'Publish a page or a small app as a Worker on your Cloudflare account. Every change asks you first.',
+    endpoint: 'https://mcp.cloudflare.com/mcp',
+    signIn: true,
+  },
+  {
     id: 'cloudflare-docs',
     title: 'Cloudflare Docs',
     description: "Search Cloudflare's developer documentation.",

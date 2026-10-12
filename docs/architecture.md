@@ -626,7 +626,9 @@ it (search, describe, quote, job, result), and a model's call to a connection th
 `{ kind: 'connect-required' }`, which the web shows as a Connect card. Its card puts goblin's words for it in place of the server's, lists it first, shows its
 wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that tool is allowed) and offers
 Allow recommended (`POST /api/mcp/:id/recommended`, `mcp/first-class-owner.ts`) until those grants are in place; a tool
-the server does not list now is skipped. Its own App opens as a page, `/connections/<id>/app` (`server-app.tsx`): its
+the server does not list now is skipped. Cloudflare's API is the second, from the shelf, for publishing a page as a
+Worker: its resource offers only `user:read account:read`, so Connect and step-up add the profile's Workers scripts
+scopes to what the server offers (`signInScope` in `owner-servers.ts`), and its `execute` asks first. Its own App opens as a page, `/connections/<id>/app` (`server-app.tsx`): its
 app tool called as the owner, rendered in the same sandboxed frame as any MCP App and trusted for nothing. Until a
 first-class server is connected, onboarding points to it: Activity's "Get started" row (`connect-offer.tsx`, Connect or
 Not now, the dismissal kept in the browser), the empty chat's line and the Pro welcome. Connections

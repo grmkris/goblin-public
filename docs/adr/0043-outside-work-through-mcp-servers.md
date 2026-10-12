@@ -13,8 +13,10 @@ serves is public.
 **goblin gets outside work from MCP servers, not from tools of its own.**
 - Search and paid outside tasks come from **Mercator** (`https://mercator.sh/mcp/auth`). It finds a service, quotes a
   plan for free and runs it as a paid job from the owner's Tempo wallet, which the owner limits when signing in.
-- Publishing comes from the **Cloudflare API** server, signed in to the owner's own account: the agent publishes a page
-  as a Worker there. The shelf advises Ask first for it.
+- Publishing comes from the **Cloudflare API** server (`https://mcp.cloudflare.com/mcp`), signed in to the owner's own
+  account: the agent publishes a page as a Worker there. It is on the shelf and first-class: its resource offers only
+  `user:read account:read`, so its profile adds the Workers scripts scopes at sign-in and nothing wider, and its
+  `execute` (any API call those scopes allow) asks first.
 - goblin's own instructions route fresh web data and outside tasks to Mercator, and ask the owner to connect it when it
   is not. A server's own `instructions` never reach the model.
 
@@ -29,7 +31,8 @@ supports, matched by endpoint, never by what the server says about itself:
   remaining limit and when the period ends);
 - an optional app tool that opens the server's own MCP App from its card;
 - an optional spending argument for a paid tool (ADR 0044);
-- an optional top-up link, our own, offered while the status says the wallet needs funds.
+- an optional top-up link, our own, offered while the status says the wallet needs funds;
+- optional scopes asked for at sign-in beside the resource's own list, when that list is too narrow for the work.
 
 Mercator is the first. Its top-up is its account page, where its own `fund_wallet` tool sends the owner. The owner's
 Agentic Wallet server joins when it exists and takes the top-up slot when it is connected.

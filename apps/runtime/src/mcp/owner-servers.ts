@@ -44,6 +44,10 @@ export const offeredScope = async (endpoint: string, fetchFn: typeof fetch): Pro
   return scopes.length === 0 ? undefined : scopes.join(' ')
 }
 
+/** What goblin asks for at sign-in: every scope the server offers, and those its first-class profile adds. */
+const signInScope = async (endpoint: string, fetchFn: typeof fetch): Promise<string | undefined> =>
+  computeScopeUnion(await offeredScope(endpoint, fetchFn), profileOf(endpoint)?.scope?.join(' '))
+
 /** What the owner's servers are kept and signed in with. */
 export type OwnerServers = {
   readonly manager: McpManager
@@ -192,7 +196,7 @@ const beginConnect = (owner: OwnerServers, connectionId: string) =>
       clientName(owner, connectionId),
     )
     const result = yield* attempt(async () => {
-      const scope = await offeredScope(server.endpoint, owner.fetch)
+      const scope = await signInScope(server.endpoint, owner.fetch)
       return auth(provider, {
         serverUrl: server.endpoint,
         fetchFn: owner.fetch,
@@ -222,7 +226,7 @@ const beginStepUp = (owner: OwnerServers, connectionId: string, required: string
     )
     const result = yield* attempt(async () => {
       const held = await owner.credentials.tokens(connectionId)
-      const scope = computeScopeUnion(await offeredScope(server.endpoint, owner.fetch), held?.scope, required)
+      const scope = computeScopeUnion(await signInScope(server.endpoint, owner.fetch), held?.scope, required)
       return auth(provider, {
         serverUrl: server.endpoint,
         fetchFn: owner.fetch,

@@ -53,6 +53,13 @@ describe('first-class servers (ADR 0043)', () => {
     expect(Object.keys(view)).not.toContain('endpoints')
   })
 
+  it('knows Cloudflare for publishing: every API call asks first, and how it signs in stays with goblin', () => {
+    const cloudflare = profileOf('https://mcp.cloudflare.com/mcp') ?? expect.fail('no profile')
+    expect(cloudflare.recommended).toEqual({ run: ['search', 'docs', 'whoami'], ask: ['execute'] })
+    expect(cloudflare.scope).toContain('workers-scripts.write')
+    expect(Object.keys(profileView(cloudflare))).not.toContain('scope')
+  })
+
   it("reads Mercator's wallet from its status answer: readiness, balance, what is left, and when the period ends", () => {
     expect(mercatorWallet(status())).toEqual({
       kind: 'wallet',

@@ -80,7 +80,7 @@ export function FirstClassPart({
   readonly profile: ServerProfile
   readonly tools: readonly ToolView[] | undefined
 }) {
-  const status = useQuery(serverStatusQuery(server.connectionId, server.status === 'connected'))
+  const status = useQuery(serverStatusQuery(server.connectionId, server.status === 'connected' && profile.status))
   const allow = useMutation(allowRecommendedMutation)
   const applied = tools !== undefined && recommendedApplied(profile, tools)
   return (

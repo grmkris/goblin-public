@@ -301,4 +301,56 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
       await dispose()
     }
   })
+
+  it("asks a first-class server for its profile's scopes beside the narrower list its resource offers", async () => {
+    const origin = 'https://mcp.cloudflare.com'
+    const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const { pathname } = new URL(new Request(input, init).url)
+      if (pathname.startsWith('/.well-known/oauth-protected-resource'))
+        return Response.json({
+          resource: `${origin}/mcp`,
+          authorization_servers: [origin],
+          scopes_supported: ['user:read', 'account:read'],
+        })
+      if (pathname === '/.well-known/oauth-authorization-server')
+        return Response.json({
+          issuer: origin,
+          authorization_endpoint: `${origin}/authorize`,
+          token_endpoint: `${origin}/token`,
+          registration_endpoint: `${origin}/register`,
+          response_types_supported: ['code'],
+          code_challenge_methods_supported: ['S256'],
+          token_endpoint_auth_methods_supported: ['none'],
+        })
+      if (pathname === '/register') {
+        const metadata: Record<string, unknown> = await new Request(input, init).json()
+        return Response.json({ ...metadata, client_id: 'cf' }, { status: 201 })
+      }
+      return new Response(null, {
+        status: 401,
+        headers: {
+          'www-authenticate': `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+        },
+      })
+    }
+    const { servers, dispose } = hostOf({
+      servers: [{ connectionId: 'cloudflare', endpoint: `${origin}/mcp` }],
+      credentials: new MemoryCredentials(),
+      grants: new MemoryGrants(),
+      fetch,
+    })
+    try {
+      const { authorizationUrl } = await servers.beginConnect('cloudflare')
+      const scope = new URL(authorizationUrl ?? '').searchParams.get('scope')?.split(' ').toSorted()
+      expect(scope).toEqual([
+        'account:read',
+        'offline_access',
+        'user:read',
+        'workers-scripts.read',
+        'workers-scripts.write',
+      ])
+    } finally {
+      await dispose()
+    }
+  })
 })
