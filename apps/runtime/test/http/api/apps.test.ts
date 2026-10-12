@@ -13,6 +13,7 @@ import type { AppOrigin } from '../../../src/apps/registry.ts'
 import { Apps } from '../../../src/apps/service.ts'
 import { Conversations } from '../../../src/chats/service.ts'
 import { Home } from '../../../src/home/service.ts'
+import type { ApprovalRow } from '../../../src/mcp/approvals.ts'
 import { Approvals, McpConnections, Resident, UrlRequests } from '../../../src/mcp/service.ts'
 import type { McpConnectionSnapshot } from '../../../src/mcp/types.ts'
 import { callOwner } from '../../owner-client.ts'
@@ -176,6 +177,9 @@ describe('the apps group served by the agent', () => {
       })
     const answered = { structuredContent: { rows: 3 }, content: [{ type: 'text', text: 'three rows' }] }
     const waiting = { result: () => Effect.succeed(Option.none()) }
+    // SAFETY: the settled App reads only whether a held call still waits (`state`, `resultSealed`) and its call.
+    const pending = { state: 'pending', resultSealed: null, sessionId: '7', sourceCallId: 'call-1' } as ApprovalRow
+    const waitingApproval = { ...waiting, get: () => Effect.succeed(pending) }
     const decided = { result: () => Effect.succeed(Option.some(answered)) }
     const launched = async (details: unknown, others: OtherParts): Promise<Record<string, unknown>> => {
       const { fetch } = appsServer({ apps: launching(details), others })
@@ -189,7 +193,9 @@ describe('the apps group served by the agent', () => {
       ['url-required', 'requestId', 'urlRequests'],
     ] as const) {
       const held = placeholder(kind, key)
-      expect(await launched(held, { [parts]: waiting })).toMatchObject({ result: held })
+      expect(await launched(held, { [parts]: parts === 'approvals' ? waitingApproval : waiting })).toMatchObject({
+        result: held,
+      })
       const real = await launched(held, { [parts]: decided })
       expect(real).toMatchObject({
         kind: 'mcp',
