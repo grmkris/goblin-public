@@ -14,10 +14,10 @@ export interface Owner {
   /** The owner wallet: the embedded EVM wallet at index 0. Undefined until Privy has created it. */
   readonly address: Address | undefined
   /** Opens Privy's sign-in (email code or Google). */
-  login(): void
-  logout(): Promise<void>
+  readonly login: () => void
+  readonly logout: () => Promise<void>
   /** A current Privy access token for `authorization: Bearer …`; null when signed out. */
-  getToken(): Promise<string | null>
+  readonly getToken: () => Promise<string | null>
 }
 
 /**
