@@ -23,15 +23,15 @@
     "test": "vitest run",
     "test:unit": "vitest run"
   },
-  "devDependencies": {
-    "typescript": "7.0.2",
-    "vitest": "5.0.1"
-  },
   "dependencies": {
     "@x402/core": "2.28.0",
     "@x402/evm": "2.28.0",
     "@x402/fetch": "2.28.0",
     "effect": "4.0.1",
     "viem": "2.56.9"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
   }
 }
