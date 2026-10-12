@@ -1,6 +1,9 @@
 import { internalChecks } from './smoke-edge.ts'
 
-/** First production release: public health, admission, page, metadata, internal-route and canonical redirect checks. */
+/**
+ * Production without a signed-in session: public health, admission, page, metadata, internal-route and canonical
+ * redirect checks. Sign-up is invite-only, refused without the code, or open (owner, 2026-10-12: open with a free plan).
+ */
 type Client = {
   readonly origin: string
   send: (path: string, init?: RequestInit & { readonly owner?: boolean }) => Promise<Response>
@@ -14,11 +17,12 @@ export async function publicSmoke(
   steps: Array<{ readonly step: string; readonly status: number }>,
   refusedSignup: () => Promise<void>,
 ): Promise<void> {
-  if (signup !== 'invite' || health['mail'] !== true) throw new Error('prod_admission_policy_mismatch')
+  if ((signup !== 'invite' && signup !== 'open') || health['mail'] !== true)
+    throw new Error('prod_admission_policy_mismatch')
   const probe = await dev.send('/api/agent/usage', { owner: false })
   if (probe.status !== 401) throw new Error('anonymous_auth_probe_not_refused')
   await internalChecks(dev.origin, steps)
-  await refusedSignup()
+  if (signup === 'invite') await refusedSignup()
   const metadata = await dev.json('/.well-known/oauth-protected-resource', { owner: false })
   if (metadata['resource'] !== `${dev.origin}/mcp`) throw new Error('prod_mcp_resource_mismatch')
   // Home opens the last channel (ADR 0036): follow one redirect, only within the origin.
