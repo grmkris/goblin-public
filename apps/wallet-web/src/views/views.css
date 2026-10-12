@@ -1,0 +1,21 @@
+@layer theme, base, components, app, utilities;
+@import '@goblin/ui/styles.css';
+
+/* A frame, not a page: no bounce, no tap flash, the host's background shows through the safe areas. */
+@layer app {
+  html {
+    background: var(--background);
+    -webkit-text-size-adjust: 100%;
+  }
+  /* The host's safe-area insets (set on the root from its context) plus the view's own gutter. */
+  body {
+    padding: calc(var(--inset-top, 0px) + 1rem) calc(var(--inset-right, 0px) + 1rem)
+      calc(var(--inset-bottom, 0px) + 1rem) calc(var(--inset-left, 0px) + 1rem);
+    -webkit-tap-highlight-color: transparent;
+    min-width: 0;
+  }
+  button,
+  [role='button'] {
+    touch-action: manipulation;
+  }
+}
