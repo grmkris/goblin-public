@@ -12,7 +12,7 @@ const STATUS: Record<OperationStatus, { readonly label: string; readonly tone: T
   confirmed: { label: 'Paid', tone: 'success' },
   delivered: { label: 'Delivered', tone: 'success' },
   failed: { label: 'Failed', tone: 'destructive' },
-  uncertain: { label: 'Outcome unknown', tone: 'attention' },
+  uncertain: { label: 'Not confirmed', tone: 'attention' },
   expired: { label: 'Expired', tone: 'quiet' },
   declined: { label: 'Declined', tone: 'quiet' },
   cancelled: { label: 'Cancelled', tone: 'quiet' },
