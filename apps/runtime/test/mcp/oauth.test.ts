@@ -126,6 +126,9 @@ class FixtureAuthorizationServer {
   }
 }
 
+/** The scopes an authorization URL asks for, sorted. */
+const scopeOf = (url: string | undefined) => new URL(url ?? '').searchParams.get('scope')?.split(' ').toSorted()
+
 const setup = () => {
   const authorizationServer = new FixtureAuthorizationServer()
   const credentials = new MemoryCredentials()
@@ -288,7 +291,6 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
   it('signs in with only the access the owner chose, and a step-up adds to what it holds, not all it offers', async () => {
     const { authorizationServer, servers, dispose } = setup()
     authorizationServer.scopes = ['notes', 'notes:write', 'admin', 'offline_access']
-    const scopeOf = (url: string | undefined) => new URL(url ?? '').searchParams.get('scope')?.split(' ').toSorted()
     try {
       expect(await servers.access('fixture')).toEqual({ offered: authorizationServer.scopes, held: null })
       await expect(servers.beginConnect('fixture', ['notes', 'billing'])).rejects.toMatchObject({
@@ -372,8 +374,7 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
     })
     try {
       const { authorizationUrl } = await servers.beginConnect('cloudflare')
-      const scope = new URL(authorizationUrl ?? '').searchParams.get('scope')?.split(' ').toSorted()
-      expect(scope).toEqual([
+      expect(scopeOf(authorizationUrl)).toEqual([
         'account:read',
         'offline_access',
         'user:read',
