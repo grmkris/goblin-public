@@ -1,0 +1,163 @@
+{
+  "version": "1.0",
+  "name": "Goblin Wallet collector v1",
+  "chain_type": "ethereum",
+  "owner_id": "<PRIVY_POLICY_ADMIN_ID>",
+  "rules": [
+    {
+      "name": "Redeem subscription userOp on 8453",
+      "method": "eth_signUserOperation",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field_source": "ethereum_transaction",
+          "field": "chain_id",
+          "operator": "eq",
+          "value": "8453"
+        },
+        {
+          "field_source": "ethereum_transaction",
+          "field": "to",
+          "operator": "eq",
+          "value": "0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3"
+        },
+        {
+          "field_source": "ethereum_transaction",
+          "field": "value",
+          "operator": "lte",
+          "value": "0x0"
+        },
+        {
+          "field_source": "ethereum_calldata",
+          "abi": [
+            {
+              "type": "function",
+              "name": "redeemDelegations",
+              "stateMutability": "nonpayable",
+              "inputs": [
+                {
+                  "name": "_permissionContexts",
+                  "type": "bytes[]"
+                },
+                {
+                  "name": "_modes",
+                  "type": "bytes32[]"
+                },
+                {
+                  "name": "_executionCallDatas",
+                  "type": "bytes[]"
+                }
+              ],
+              "outputs": []
+            }
+          ],
+          "field": "function_name",
+          "operator": "eq",
+          "value": "redeemDelegations"
+        }
+      ]
+    },
+    {
+      "name": "USDC approve paymaster userOp on 8453",
+      "method": "eth_signUserOperation",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field_source": "ethereum_transaction",
+          "field": "chain_id",
+          "operator": "eq",
+          "value": "8453"
+        },
+        {
+          "field_source": "ethereum_transaction",
+          "field": "to",
+          "operator": "eq",
+          "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        },
+        {
+          "field_source": "ethereum_transaction",
+          "field": "value",
+          "operator": "lte",
+          "value": "0x0"
+        },
+        {
+          "field_source": "ethereum_calldata",
+          "abi": [
+            {
+              "type": "function",
+              "name": "approve",
+              "stateMutability": "nonpayable",
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address"
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool"
+                }
+              ]
+            }
+          ],
+          "field": "approve.spender",
+          "operator": "eq",
+          "value": "0x777777777777AeC03fd955926DbF81597e66834C"
+        },
+        {
+          "field_source": "ethereum_calldata",
+          "abi": [
+            {
+              "type": "function",
+              "name": "approve",
+              "stateMutability": "nonpayable",
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address"
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool"
+                }
+              ]
+            }
+          ],
+          "field": "approve.amount",
+          "operator": "lte",
+          "value": "0x186a0"
+        }
+      ]
+    },
+    {
+      "name": "Allow DeleGator upgrade",
+      "method": "eth_sign7702Authorization",
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field_source": "ethereum_7702_authorization",
+          "field": "contract",
+          "operator": "eq",
+          "value": "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B"
+        }
+      ]
+    },
+    {
+      "name": "Deny export",
+      "method": "exportPrivateKey",
+      "action": "DENY",
+      "conditions": []
+    }
+  ]
+}
