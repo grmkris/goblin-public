@@ -18,7 +18,7 @@ export function useConnectionLabels(): (connectionId: string) => string {
 export function useConnectNow() {
   const connecting = useMutation(connectMutation).mutateAsync
   return async (connectionId: string): Promise<void> => {
-    const { authorizationUrl } = await connecting(connectionId)
+    const { authorizationUrl } = await connecting({ connectionId })
     if (authorizationUrl !== undefined) window.location.assign(authorizationUrl)
   }
 }

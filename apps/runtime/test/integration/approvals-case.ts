@@ -64,7 +64,7 @@ export async function approvalsCase(base: string): Promise<void> {
   const owner = await person(base)
   await grantPlan(base, owner)
   const me = signedIn(base, owner)
-  await callOwner(me, (api) => api.mcp.connect({ params: { id: SERVER } }))
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: SERVER }, payload: {} }))
   await grant(me, true)
   await mark(me, true)
   const held = await hold(me)

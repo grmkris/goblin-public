@@ -48,10 +48,20 @@ Holding it only while in use lets the object sleep a minute after the last call.
 
 **A call beyond what the connection's sign-in granted asks the owner to sign in again with more access.**
 - A 403 `insufficient_scope` is its own error. It is not a failure of the server, so the connection stays open.
-- The owner's card opens the server's consent in a new tab and asks for what the server offers, what the connection
-  holds and what the server asked for. The new sign-in is a fresh authorization, never a refresh.
+- The owner's card opens the server's consent in a new tab and asks for what the connection holds, what the server
+  asked for and a refresh token; only when the held scope is not known, for everything the server offers (amended
+  2026-10-12, so access the owner chose to leave out stays out). The new sign-in is a fresh authorization, never a
+  refresh.
 - The connection keeps its tokens until the new ones arrive. A step-up that is abandoned leaves it as it was.
 - The owner presses **Continue** in the chat once signed in.
+
+### Choosing access
+
+**The owner can sign a connection in with less than the server offers** (added 2026-10-12). Choose access, on the
+connection's card, lists the scopes a sign-in can ask for, starting from what the connection holds, else everything
+offered. The sign-in asks for the ones the owner keeps, plus `offline_access` when offered, so the connection can
+still refresh. A scope the server does not offer is refused before anything changes. A tool that needs more later goes
+through step-up, for just that.
 
 ## Rejected
 

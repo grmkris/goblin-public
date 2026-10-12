@@ -119,6 +119,25 @@ export type SpendingChange = typeof SpendingChange.Type
 export const ConnectStart = Schema.Struct({ authorizationUrl: Schema.optional(Schema.String) })
 export type ConnectStart = typeof ConnectStart.Type
 
+/** One OAuth scope token (RFC 6749 §3.3): printable ASCII but space, `"` and `\`. */
+const ScopeToken = Schema.String.check(Schema.isPattern(/^[\x21\x23-\x5B\x5D-\x7E]{1,128}$/u))
+
+/**
+ * `POST /api/mcp/:id/connect`: sign in. `scope`, when the owner chose access, is the scopes to ask for, each one the
+ * server offers (`GET /api/mcp/:id/access`); without it goblin asks for everything offered.
+ */
+export const ConnectRequest = Schema.Struct({
+  scope: Schema.optional(Schema.Array(ScopeToken).check(Schema.isMinLength(1), Schema.isMaxLength(64))),
+})
+export type ConnectRequest = typeof ConnectRequest.Type
+
+/** `GET /api/mcp/:id/access`: the scopes a sign-in can ask for, and those the connection holds now (null: not known). */
+export const ServerAccess = Schema.Struct({
+  offered: Schema.Array(Schema.String),
+  held: Schema.NullOr(Schema.Array(Schema.String)),
+})
+export type ServerAccess = typeof ServerAccess.Type
+
 /** `POST /api/mcp/:id/step-up`: sign a connection in again with this much more access, as scope tokens (ADR 0042). */
 export const StepUp = Schema.Struct({ scope: Schema.String.check(Schema.isMaxLength(512)) })
 export type StepUp = typeof StepUp.Type

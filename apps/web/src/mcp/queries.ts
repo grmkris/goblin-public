@@ -28,6 +28,7 @@ export const mcpKeys = {
   app: (connectionId: string, tool: string) => ['mcp', 'app', connectionId, tool] as const,
   spending: (connectionId: string) => ['mcp', 'spending', connectionId] as const,
   events: (connectionId: string) => ['mcp', 'events', connectionId] as const,
+  access: (connectionId: string) => ['mcp', 'access', connectionId] as const,
 }
 
 /** The owner's servers, with where each stands. */
@@ -112,7 +113,7 @@ export const addAndConnectMutation = mutationOptions({
   ...owner.apiMutation({
     mutationFn: (api, server: AddServer) =>
       Effect.flatMap(api.mcp.addServer({ payload: server }), (added) =>
-        api.mcp.connect({ params: { id: added.connectionId } }),
+        api.mcp.connect({ params: { id: added.connectionId }, payload: {} }),
       ),
   }),
   onSuccess: (started, _server, _result, { client }) =>
@@ -128,14 +129,25 @@ export const renameConnectionMutation = mutationOptions({
   onSuccess: (_server, _change, _result, { client }) => serversChanged(client),
 })
 
+/** A sign-in to start: the connection, and the scopes to ask for when the owner chose access (ADR 0042). */
+export type ConnectRequest = { readonly connectionId: string; readonly scope?: readonly string[] }
+
 /** Starts connecting: an authorization URL to send the owner to, or none when the server is connected at once. */
 export const connectMutation = mutationOptions({
   ...owner.apiMutation({
-    mutationFn: (api, connectionId: string) => api.mcp.connect({ params: { id: connectionId } }),
+    mutationFn: (api, { connectionId, scope }: ConnectRequest) =>
+      api.mcp.connect({ params: { id: connectionId }, payload: scope === undefined ? {} : { scope } }),
   }),
-  onSuccess: (started, _connectionId, _result, { client }) =>
+  onSuccess: (started, _request, _result, { client }) =>
     started.authorizationUrl === undefined ? serversChanged(client) : undefined,
 })
+
+/** What a sign-in to a connection can ask for, and what it holds now (null: not known). */
+export const accessQuery = (connectionId: string) =>
+  owner.apiQuery({
+    queryKey: mcpKeys.access(connectionId),
+    queryFn: (api) => api.mcp.access({ params: { id: connectionId } }),
+  })
 
 /** What a step-up asks for: the connection, and the scope the server said the call needs. */
 export type StepUpRequest = { readonly connectionId: string; readonly scope: string }

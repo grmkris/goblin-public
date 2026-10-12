@@ -9,6 +9,7 @@ import {
   ApprovalView,
   AskFirstChange,
   CatalogResults,
+  ConnectRequest,
   ConnectStart,
   EventStream,
   RenameConnection,
@@ -19,6 +20,7 @@ import {
   RegistryChange,
   RegistryView,
   ResourceRead,
+  ServerAccess,
   ServerSuggestion,
   ServerView,
   SkillsChange,
@@ -157,7 +159,14 @@ export class McpGroup extends HttpApiGroup.make('mcp').add(
   }),
   HttpApiEndpoint.post('connect', '/mcp/:id/connect', {
     params: { id: ConnectionParam },
+    payload: ConnectRequest,
     success: ConnectStart,
+    error: [ApiErrors.notFound, ApiErrors.invalidInput, ...REMOTE],
+  }),
+  /** `GET /api/mcp/:id/access`: what a sign-in to this connection can ask for, and what it holds now (ADR 0042). */
+  HttpApiEndpoint.get('access', '/mcp/:id/access', {
+    params: { id: ConnectionParam },
+    success: ServerAccess,
     error: [ApiErrors.notFound, ...REMOTE],
   }),
   /**

@@ -8,6 +8,7 @@ import type {
   JsonObject,
   RegistryView,
   ResidentStatus,
+  ServerAccess,
   ServerSource,
   ServerSuggestion,
   ServerView,
@@ -99,8 +100,13 @@ export class McpServers extends Context.Service<
     readonly rename: (connectionId: string, label: string) => Effect.Effect<ServerView, AppError>
     /** Removes an added server with its credentials, grants and pending sign-ins. Configured ones stay. */
     readonly remove: (connectionId: string) => Effect.Effect<void, AppError>
-    /** Starts (or silently renews) sign-in: the URL to send the owner's browser to, when one is needed. */
-    readonly beginConnect: (connectionId: string) => Effect.Effect<ConnectStart, AppError>
+    /**
+     * Starts (or silently renews) sign-in: the URL to send the owner's browser to, when one is needed. `scope`, when
+     * the owner chose access, is what to ask for, each one the server offers.
+     */
+    readonly beginConnect: (connectionId: string, scope?: readonly string[]) => Effect.Effect<ConnectStart, AppError>
+    /** What a sign-in can ask the server for, and what the connection holds now (null: not known). */
+    readonly access: (connectionId: string) => Effect.Effect<ServerAccess, AppError>
     /**
      * Starts signing in again with more access (ADR 0042): a fresh authorization for `scope` and what the connection
      * already holds; its tokens stay until the new ones arrive.

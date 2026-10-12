@@ -48,6 +48,26 @@ export const offeredScope = async (endpoint: string, fetchFn: typeof fetch): Pro
 const signInScope = async (endpoint: string, fetchFn: typeof fetch): Promise<string | undefined> =>
   computeScopeUnion(await offeredScope(endpoint, fetchFn), profileOf(endpoint)?.scope?.join(' '))
 
+/** A scope string's tokens, each once. */
+const tokensOf = (scope: string | undefined): string[] => [...new Set((scope ?? '').split(' ').filter((t) => t !== ''))]
+
+/** `offline_access`, when the server offers it: a narrower sign-in still keeps its refresh token. */
+const refreshOf = (offered: string | undefined): string | undefined =>
+  tokensOf(offered).includes('offline_access') ? 'offline_access' : undefined
+
+/**
+ * The scope for a sign-in the owner chose access for: the chosen tokens and `offline_access`, refused unless the
+ * server offers each of them.
+ */
+const chosenScope = (owner: OwnerServers, endpoint: string, chosen: readonly string[]) =>
+  Effect.gen(function* () {
+    const offered = yield* attempt(() => signInScope(endpoint, owner.fetch))
+    const known = new Set(tokensOf(offered))
+    if (chosen.length === 0 || chosen.some((token) => !known.has(token)))
+      return yield* new InvalidInput({ reason: 'scope_not_offered' })
+    return computeScopeUnion(chosen.join(' '), refreshOf(offered))
+  })
+
 /** What the owner's servers are kept and signed in with. */
 export type OwnerServers = {
   readonly manager: McpManager
@@ -182,10 +202,14 @@ const connectsOpenly = (owner: OwnerServers, connectionId: string) =>
 const clientName = (owner: OwnerServers, connectionId: string): string =>
   `goblin · ${owner.labels.of(connectionId) ?? connectionId}`
 
-/** Starts (or silently renews) authorization: the URL to send the owner's browser to, when one is needed. */
-const beginConnect = (owner: OwnerServers, connectionId: string) =>
+/**
+ * Starts (or silently renews) authorization: the URL to send the owner's browser to, when one is needed. With `chosen`,
+ * the sign-in asks for those scopes only (ADR 0042), checked against what the server offers before anything changes.
+ */
+const beginConnect = (owner: OwnerServers, connectionId: string, chosen?: readonly string[]) =>
   Effect.gen(function* () {
     const server = yield* owner.manager.server(connectionId)
+    const narrowed = chosen === undefined ? undefined : yield* chosenScope(owner, server.endpoint, chosen)
     yield* owner.manager.close(connectionId)
     if (yield* connectsOpenly(owner, connectionId)) return {}
     const provider = new StoredOAuthProvider(
@@ -196,7 +220,7 @@ const beginConnect = (owner: OwnerServers, connectionId: string) =>
       clientName(owner, connectionId),
     )
     const result = yield* attempt(async () => {
-      const scope = await signInScope(server.endpoint, owner.fetch)
+      const scope = narrowed ?? (await signInScope(server.endpoint, owner.fetch))
       return auth(provider, {
         serverUrl: server.endpoint,
         fetchFn: owner.fetch,
@@ -210,8 +234,8 @@ const beginConnect = (owner: OwnerServers, connectionId: string) =>
 
 /**
  * Starts signing a connection in again with more access (ADR 0042), after a call answered 403 `insufficient_scope`:
- * a fresh authorization, never a refresh, for what the server offers, what the connection holds and what the server
- * asked for. The connection and its tokens stay as they are until the new ones arrive, so an abandoned step-up leaves
+ * a fresh authorization, never a refresh, for what the connection holds and what the server asked for (and a refresh
+ * token), so access the owner chose to leave out stays out; when the held scope is not known, for everything offered. The connection and its tokens stay as they are until the new ones arrive, so an abandoned step-up leaves
  * it working as before.
  */
 const beginStepUp = (owner: OwnerServers, connectionId: string, required: string) =>
@@ -226,7 +250,11 @@ const beginStepUp = (owner: OwnerServers, connectionId: string, required: string
     )
     const result = yield* attempt(async () => {
       const held = await owner.credentials.tokens(connectionId)
-      const scope = computeScopeUnion(await signInScope(server.endpoint, owner.fetch), held?.scope, required)
+      const offered = await signInScope(server.endpoint, owner.fetch)
+      const scope =
+        held?.scope === undefined
+          ? computeScopeUnion(offered, required)
+          : computeScopeUnion(held.scope, required, refreshOf(offered))
       return auth(provider, {
         serverUrl: server.endpoint,
         fetchFn: owner.fetch,
@@ -310,8 +338,14 @@ const connecting = (owner: OwnerServers) => ({
   remove: Effect.fn('McpServers.remove')(function* (connectionId: string) {
     yield* removeServer(owner, connectionId)
   }),
-  beginConnect: Effect.fn('McpServers.beginConnect')(function* (connectionId: string) {
-    return yield* beginConnect(owner, connectionId)
+  beginConnect: Effect.fn('McpServers.beginConnect')(function* (connectionId: string, scope?: readonly string[]) {
+    return yield* beginConnect(owner, connectionId, scope)
+  }),
+  access: Effect.fn('McpServers.access')(function* (connectionId: string) {
+    const server = yield* owner.manager.server(connectionId)
+    const offered = yield* attempt(() => signInScope(server.endpoint, owner.fetch))
+    const held = yield* attempt(() => owner.credentials.tokens(connectionId))
+    return { offered: tokensOf(offered), held: held?.scope === undefined ? null : tokensOf(held.scope) }
   }),
   beginStepUp: Effect.fn('McpServers.beginStepUp')(function* (connectionId: string, scope: string) {
     return yield* beginStepUp(owner, connectionId, scope)

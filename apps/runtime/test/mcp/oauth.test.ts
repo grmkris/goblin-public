@@ -32,13 +32,20 @@ class FixtureAuthorizationServer {
   refreshing: (() => void) | undefined
   /** The client names goblin registered under, in order. */
   readonly registered: unknown[] = []
-  readonly #codes = new Map<string, string>()
+  /** The scopes the authorization server offers (only there, as MyTab publishes them). */
+  scopes = ['notes', 'offline_access']
+  /** The scope the last tokens were issued for, which every token answer reports. */
+  #scope: string | undefined
+  readonly #codes = new Map<string, { readonly challenge: string; readonly scope: string | undefined }>()
   #serial = 0
 
   approve(authorizationUrl: string): { state: string; code: string } {
     const url = new URL(authorizationUrl)
     const code = `code-${++this.#serial}`
-    this.#codes.set(code, url.searchParams.get('code_challenge') ?? '')
+    this.#codes.set(code, {
+      challenge: url.searchParams.get('code_challenge') ?? '',
+      scope: url.searchParams.get('scope') ?? undefined,
+    })
     return { state: url.searchParams.get('state') ?? '', code }
   }
 
@@ -50,19 +57,21 @@ class FixtureAuthorizationServer {
       refresh_token: this.refresh,
       token_type: 'Bearer',
       expires_in: 3600,
+      ...(this.#scope === undefined ? {} : { scope: this.#scope }),
     })
   }
 
   async #token(request: Request): Promise<Response> {
     const form = new URLSearchParams(await request.text())
     if (form.get('grant_type') === 'authorization_code') {
-      const challenge = this.#codes.get(form.get('code') ?? '')
+      const issued = this.#codes.get(form.get('code') ?? '')
       this.#codes.delete(form.get('code') ?? '')
       const verifier = createHash('sha256')
         .update(form.get('code_verifier') ?? '')
         .digest('base64url')
-      if (challenge === undefined || challenge !== verifier)
+      if (issued === undefined || issued.challenge !== verifier)
         return Response.json({ error: 'invalid_grant' }, { status: 400 })
+      this.#scope = issued.scope
       return this.#issue()
     }
     if (form.get('grant_type') === 'refresh_token') {
@@ -97,7 +106,7 @@ class FixtureAuthorizationServer {
         code_challenge_methods_supported: ['S256'],
         token_endpoint_auth_methods_supported: ['none'],
         // Scopes only on the authorization server, as MyTab publishes them: Connect must still request them.
-        scopes_supported: ['notes', 'offline_access'],
+        scopes_supported: this.scopes,
       })
     if (pathname === '/register') {
       const metadata: Record<string, unknown> = await request.json()
@@ -271,6 +280,28 @@ describe('outbound OAuth connect and refresh (unit, fixture authorization server
       await servers.finishConnect(approval.state, approval.code, undefined)
       expect((await credentials.tokens('fixture'))?.access_token).not.toBe(before)
       expect((await connections.callTool('fixture', 'read', {})).content).toEqual([{ type: 'text', text: 'ok' }])
+    } finally {
+      await dispose()
+    }
+  })
+
+  it('signs in with only the access the owner chose, and a step-up adds to what it holds, not all it offers', async () => {
+    const { authorizationServer, servers, dispose } = setup()
+    authorizationServer.scopes = ['notes', 'notes:write', 'admin', 'offline_access']
+    const scopeOf = (url: string | undefined) => new URL(url ?? '').searchParams.get('scope')?.split(' ').toSorted()
+    try {
+      expect(await servers.access('fixture')).toEqual({ offered: authorizationServer.scopes, held: null })
+      await expect(servers.beginConnect('fixture', ['notes', 'billing'])).rejects.toMatchObject({
+        _tag: 'InvalidInput',
+        reason: 'scope_not_offered',
+      })
+      const { authorizationUrl } = await servers.beginConnect('fixture', ['notes'])
+      expect(scopeOf(authorizationUrl)).toEqual(['notes', 'offline_access'])
+      const approval = authorizationServer.approve(authorizationUrl ?? '')
+      await servers.finishConnect(approval.state, approval.code, undefined)
+      expect((await servers.access('fixture')).held).toEqual(['notes', 'offline_access'])
+      const stepUp = await servers.beginStepUp('fixture', 'notes:write')
+      expect(scopeOf(stepUp.authorizationUrl)).toEqual(['notes', 'notes:write', 'offline_access'])
     } finally {
       await dispose()
     }

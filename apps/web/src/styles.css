@@ -1150,6 +1150,15 @@
   .server-part > .server-note {
     margin-top: 0.5rem;
   }
+  /* Choose access (components/connection-forms.tsx, ADR 0042): one switch per scope, close together. */
+  .scope-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .scope-name {
+    overflow-wrap: anywhere;
+  }
   /*
    * A paid job on its approval card (components/paid-job.tsx, ADR 0044): the amount first and largest, the services it
    * runs, the wallet; then "Approve, and up to $X without asking" with its amount in place.

@@ -19,7 +19,7 @@ import { ConnectionEvents } from './connection-events.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
-import { AnotherConnection, RenameConnection } from './connection-forms.tsx'
+import { AnotherConnection, ChooseAccess, RenameConnection } from './connection-forms.tsx'
 import { type Action, type Edit, RemoveConfirm, ServerMenu } from './server-menu.tsx'
 import { FirstClassPart } from './first-class.tsx'
 import { ToolGrants } from './tool-grants.tsx'
@@ -147,12 +147,15 @@ function useServerActions(server: ServerView, onMessage: (message: string) => vo
           : undefined
   function act(action: Action): void {
     if (action === 'connect')
-      connect.mutate(server.connectionId, {
-        onSuccess: ({ authorizationUrl }) => {
-          if (authorizationUrl !== undefined) window.location.assign(authorizationUrl)
+      connect.mutate(
+        { connectionId: server.connectionId },
+        {
+          onSuccess: ({ authorizationUrl }) => {
+            if (authorizationUrl !== undefined) window.location.assign(authorizationUrl)
+          },
+          onError: failed(`connect ${title}`),
         },
-        onError: failed(`connect ${title}`),
-      })
+      )
     else if (action === 'disconnect') disconnect.mutate(server.connectionId, { onError: failed(`disconnect ${title}`) })
     else refresh.mutate(server.connectionId, { onError: failed(`look for new tools on ${title}`) })
   }
@@ -189,6 +192,7 @@ function CardForms({
         )}
         {removing && <RemoveConfirm server={server} onCancel={onClose} onMessage={onMessage} />}
         {editing === 'rename' && <RenameConnection server={server} onDone={onClose} onMessage={onMessage} />}
+        {editing === 'access' && <ChooseAccess server={server} onCancel={onClose} onMessage={onMessage} />}
         {editing === 'another' && (
           <AnotherConnection
             server={server}

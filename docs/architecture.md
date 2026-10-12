@@ -742,7 +742,10 @@ anchor or Turn map entry. A routine run or a Persona fork, which take plain text
 `ScopeRequired { connectionId, scope }` (the challenge's scope tokens, validated and capped), not `UpstreamMcp`: the
 connection stays open. The model's `mcp_call` ends the turn with `{ kind: 'scope-required', connectionId, name, scope }`,
 and the owner's card starts `POST /api/mcp/:id/step-up`: a fresh authorization (`forceReauthorization`) for the union of
-what the server offers, what the connection holds and what it asked for, opened from a real link in a new tab. The
+what the connection holds, what it asked for and `offline_access` (everything offered when the held scope is not
+known), opened from a real link in a new tab. Choose access, in the card's menu, reads `GET /api/mcp/:id/access`
+(what a sign-in can ask for, and what the connection holds) and signs in with the owner's pick
+(`POST /api/mcp/:id/connect { scope }`, each one offered, plus `offline_access`). The
 connection keeps its tokens until the new ones arrive; an abandoned step-up leaves it as it was. The owner presses
 Continue in the chat once signed in.
 

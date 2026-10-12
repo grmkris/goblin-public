@@ -10,15 +10,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@goblin/ui'
-import { CopyPlusIcon, EllipsisIcon, PencilIcon, RefreshCwIcon, Trash2Icon, UnplugIcon } from 'lucide-react'
+import {
+  CopyPlusIcon,
+  EllipsisIcon,
+  KeyRoundIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+  UnplugIcon,
+} from 'lucide-react'
 import { removeServerMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { connectionName } from '../lib/labels.ts'
 
 export type Action = 'connect' | 'disconnect' | 'refresh'
 
-/** What the card opens inline from the menu: a new name, or another connection to the same server. */
-export type Edit = 'rename' | 'another'
+/** What the card opens inline from the menu: a new name, another connection to the same server, or its access. */
+export type Edit = 'rename' | 'another' | 'access'
 
 /** The less frequent actions, kept behind one button so the card's face stays calm. */
 export function ServerMenu({
@@ -51,6 +59,10 @@ export function ServerMenu({
         <DropdownMenuItem onClick={() => onEdit('another')}>
           <CopyPlusIcon aria-hidden />
           Add another connection…
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onEdit('access')}>
+          <KeyRoundIcon aria-hidden />
+          Choose access…
         </DropdownMenuItem>
         {connected && (
           <>

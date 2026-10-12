@@ -106,7 +106,10 @@ const answerUrlRequest = endpoint('answerUrlRequest')(({ params, payload }) =>
 const tools = endpoint('tools')(({ params, query }) =>
   McpServers.use((offered) => offered.tools(params.id, query.refresh !== undefined)),
 )
-const connect = endpoint('connect')(({ params }) => McpServers.use((offered) => offered.beginConnect(params.id)))
+const connect = endpoint('connect')(({ params, payload }) =>
+  McpServers.use((offered) => offered.beginConnect(params.id, payload.scope)),
+)
+const access = endpoint('access')(({ params }) => McpServers.use((offered) => offered.access(params.id)))
 const stepUp = endpoint('stepUp')(({ params, payload }) =>
   McpServers.use((offered) => offered.beginStepUp(params.id, challengeScope(payload.scope))).pipe(
     withFlow({ flow: 'step_up', via: 'app', actor: 'owner' }),
@@ -171,6 +174,7 @@ export const McpHandlers = HttpApiBuilder.group(OwnerApi, 'mcp', (handlers) =>
       answerUrlRequest,
       tools,
       connect,
+      access,
       stepUp,
       allowRecommended,
       serverStatus,

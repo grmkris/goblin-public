@@ -365,7 +365,7 @@ export async function moveApprovalCase(url: string): Promise<void> {
   const owner = await owned(url)
   const server = 'apps-fixture'
   const me = signedIn(url, owner)
-  await callOwner(me, (api) => api.mcp.connect({ params: { id: server } }))
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: server }, payload: {} }))
   await callOwner(me, (api) =>
     api.mcp.setToolGrant({ payload: { connectionId: server, name: 'board', allowed: true } }),
   )

@@ -68,7 +68,7 @@ export async function appsCase(base: string): Promise<void> {
   const owner = await person(base)
   await grantPlan(base, owner)
   const me = signedIn(base, owner)
-  await callOwner(me, (api) => api.mcp.connect({ params: { id: 'apps-fixture' } }))
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: 'apps-fixture' }, payload: {} }))
   await grant(me, true)
   const { app, thread } = await keptApp(base, owner)
   const launch = await callOwner(me, (api) => api.apps.launch({ params: { id: app.id } }))

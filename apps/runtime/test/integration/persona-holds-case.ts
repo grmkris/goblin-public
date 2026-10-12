@@ -155,7 +155,7 @@ export async function personaHoldsCase(url: string): Promise<void> {
   const owner = await person(url)
   await grantPlan(url, owner)
   const me = signedIn(url, owner)
-  await callOwner(me, (api) => api.mcp.connect({ params: { id: SERVER } }))
+  await callOwner(me, (api) => api.mcp.connect({ params: { id: SERVER }, payload: {} }))
   await callOwner(me, (api) => api.mcp.setToolGrant({ payload: { connectionId: SERVER, name: TOOL, allowed: true } }))
   await callOwner(me, (api) => api.mcp.setAskFirst({ payload: { connectionId: SERVER, name: TOOL, enabled: true } }))
   const make = (definition: PersonaDefinition) =>
