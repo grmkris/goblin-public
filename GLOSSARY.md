@@ -132,9 +132,9 @@ A routine post the owner asked to be told about: listed in Activity's Notificati
 until read.
 
 **Telegram channel**:
-The one MCP connection that carries Telegram for the agent (ADRs 0009, 0011): the owner's messages arrive in Main
-authored "Telegram", woken by a signed MCP Event or, from a server without Events, a **doorbell**; answers go back
-with `send_message`.
+The one MCP connection that carries Telegram for the agent (ADRs 0009, 0011): mygram's, directly or through mysi. The
+owner's messages arrive in Main authored "Telegram", woken by a signed MCP Event or, from a server without Events, a
+**doorbell**; answers go back through mygram's send tool.
 
 **Conversation activity**:
 What a chat is doing now: `working`, or `waiting` on its subagents.
@@ -172,6 +172,21 @@ The owner's account on a server, with a label they give it (e.g. "Sidequest · H
 or added by URL, suggestion or registry. One server may have several. Each has its own sign-in, grants, ask-first
 settings, skills switch and Events subscriptions (ADR 0041).
 _Avoid_: server (for the account), integration, account
+
+**mysi**:
+The owner's own my* apps (notes, browsers, Telegram, email, skills, terminals) behind one sign-in and one connection
+(ADR 0052). A product of its own, which the owner gets themselves; not part of goblin Pro.
+_Avoid_: myapps (the code base behind it)
+
+**Service**:
+One app behind a gateway connection such as mysi. Its tools and Events carry its name in front (`mygram_inbox_read`,
+`mygram.message.received`).
+_Avoid_: server (the gateway is the server)
+
+**Shelf**:
+The servers goblin suggests on Connections and Start, in groups, each in goblin's own words; one tap adds and
+connects. A server on it that needs no sign-in offers something Mercator does not already sell (ADR 0052).
+_Avoid_: catalog (that is the registry search), marketplace
 
 **First-class server**:
 A server goblin knows by its own profile, matched by endpoint: our description, a recommended set of grants, a

@@ -14,7 +14,7 @@ flowchart LR
   Worker -->|owner and internal APIs over fetch, one RPC| Agent[PersonalAgent DO]
   Agent --> Pi[(Pi tables)]
   Agent --> App[(app_* tables\nDrizzle)]
-  Agent --> MCP[MyPlan, MyBrowser\nOAuth, refreshed in the DO]
+  Agent --> MCP[MCP servers: mysi, Mercator, the shelf\nOAuth, refreshed in the DO]
   Agent --> Model[Model gateway]
 ```
 
@@ -573,7 +573,11 @@ and names it is not offered come back as `unknown`; the persona tells it to ask 
 call. Asked with `events: true`, for a connection whose server offers Events, it adds the first 64 event streams with
 their argument schemas (`events`, from `Events.catalog`, also untrusted), so the model can propose a routine on one;
 unasked, `sendsEvents` says there are some. A catalog the plan, the connection's sign-in or the server does not let it
-read leaves `events` out and the tools listed. Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
+read leaves `events` out and the tools listed. A connection with more than forty tools whose names fall into services
+(the prefix before the first `_`; one mysi connection lists about 130 as `<service>_<tool>`, ADR 0052) answers an
+unfiltered listing with its `services` instead: each prefix, its tool count and its first few names, and goblin's own
+`next` line telling the model to call again with `service` (one service's tools) or `query` (every word in a tool's
+name or description). Both filters also narrow any listing, and naming tools in `tools` lists them in full as before. Refusals, held calls and the `skills` section name a connection the same way, `"<label>" (<connectionId>)`
 (`named` in `mcp/labels.ts`); labels never enter telemetry. `mcp_call` takes its `arguments` as an object or the JSON string of one, and returns the server's result as
 Pi's MCP tools shape it (content blocks, `details.structuredContent`, `_meta` and the origin).
 Remote result details and signed routine event metadata share `mcp/redaction.ts`: it scrubs exact credential-shaped
@@ -715,8 +719,15 @@ different App; a newer result of the same call reaches the live App through the 
 has not allowed gets the same Allow card as in a conversation. Until a
 first-class server is connected, onboarding points to it: Activity's "Get started" row (`connect-offer.tsx`, Connect or
 Not now, the dismissal kept in the browser), the empty chat's line and the Pro welcome. Connections
-also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
-comments recording their connection checks. One tap adds and connects. It also searches MCP registries that speak
+also offers a shelf of suggested servers (`mcp/suggested.ts`, ADR 0052), with source comments recording their
+connection checks, each in a group (`ServerSuggestion.group`) that the picker's Suggested tab and Start's services step
+show under its name (`server-add.tsx`): the owner's own apps through one mysi connection
+(`https://mysi.lol/mcp?codemode=off`, `dev.mysi.lol` on local and dev; the query keeps every app's tools listed as
+`<service>_<tool>` under the same OAuth resource), goblin's services (Goblin Wallet, Cloudflare), then servers that
+need no sign-in by what they are for: travel, knowledge, crypto data, views in the chat and code. A server that needs
+no sign-in is shelved only for what Mercator does not already sell (web search and scraping are Mercator's). A
+suggestion is marked added when a connection has its endpoint's origin and path, whatever its query. One tap adds and
+connects. It also searches MCP registries that speak
 the generic registry API (`mcp/registry.ts`, `GET /api/mcp/catalog?q=`): the Official MCP Registry and GitHub's, built
 in, then up to eight the owner adds (`app_mcp_registries`). A registry is
 added only once it answers `/v0.1/servers`, and removing it keeps the servers added from it. Search reads one page of
@@ -1397,8 +1408,12 @@ goblin is an MCP server at `/mcp`, the one protected resource of Better Auth's `
 
 The owner selects one Telegram connection with its **Telegram** switch (ADR 0011). If its authenticated discovery
 advertises Events (top-level `capabilities.events` or the `io.modelcontextprotocol/events` extension, ADR 0041), the
-action grants `inbox`, `send_message` and the exact Events selectors `message.received` and `question.answered` with
-`{}` arguments. Both finite webhook subscriptions must confirm before
+action grants mygram's inbox and send tools and the exact Events selectors `message.received` and `question.answered`
+with `{}` arguments. Each name is the connection's own spelling (ADR 0052), decided in one place
+(`packages/contracts/src/service-names.ts`): mygram's (`inbox_read`, `message_send`, `message.received`) on a direct
+connection, mysi's (`mygram_inbox_read`, `mygram_message_send`, `mygram.message.received`) through mysi, read from the
+tools it lists and the Events its `events/list` offers. Consumers stay keyed by mygram's own event name, and every
+later call (the pull, replies, notice copies, an app's `notify`) asks the live connection's tool list for the name. Both finite webhook subscriptions must confirm before
 `app_telegram_channel` copies the checkpoint and fences old doorbell cursor writes. The channel pulls immediately;
 a failure before that fence leaves the old channel checkpoint intact. A server without Events retains the legacy
 `subscribe`/`unsubscribe` doorbell transport. Connections shows the active transport.
@@ -1423,11 +1438,11 @@ the consumer schedules the channel's pull alarm at once (`channelPull`), as a do
 one at a time. Telegram admission and answer readback use its operation ledger binding. `ask_user` ends its turn; the
 answer arrives as the owner's next inbox message. The existing id mapping is preserved: `tg:123` becomes
 `telegram-tg-123`, and reply operations keep their sanitization/truncation. Main's replies and subagent reports go back
-with `send_message`, escaped and chunked, using `app_channel_replies`. Submission acceptance is distinct from external
+with the send tool, escaped and chunked, using `app_channel_replies`. Submission acceptance is distinct from external
 Telegram completion. Disabling cleans up Events while authority is available, then tombstones locally; finite remote
 leases expire if authorized cleanup cannot run.
 
-The dispatcher also binds MySkills `skills.updated` and `skills.list_changed`. Turning a server's skills on subscribes
+The dispatcher also binds myskills' `skills.updated` and `skills.list_changed`. Turning a server's skills on subscribes
 to them only where its Events offer them to this connection; a server without them, or one that refuses its Events
 (Sidequest's setup-only connection), still turns on, and its listing refreshes on its `ttlMs`. Their payload is
 untrusted metadata; the handler persists a dirty catalog generation and invalidates the cache before acknowledgement.
