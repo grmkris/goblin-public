@@ -25,6 +25,13 @@ const KNOWN: Readonly<Record<string, Known>> = {
   'qwen3.8-max': { label: 'Qwen 3.8 Max', route: 'Alibaba Cloud', note: 'Larger, sees images', images: true },
   'glm-5.3': { label: 'GLM 5.3', route: 'Alibaba Cloud', note: 'Text only', images: false },
   'deepseek-v4-pro': { label: 'DeepSeek V4 Pro', route: 'Alibaba Cloud', note: 'Larger, text only', images: false },
+  // Probed 2026-10-12 on the Token Plan: calls tools.
+  'deepseek-v4.1-flash': {
+    label: 'DeepSeek V4.1 Flash',
+    route: 'Alibaba Cloud',
+    note: 'Fast, text only',
+    images: false,
+  },
 }
 
 /** Never empty: the default model is always offered, first. */
