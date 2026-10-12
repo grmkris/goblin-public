@@ -21,8 +21,9 @@ export interface Owner {
 }
 
 /**
- * The owner wallet among the user's accounts: Privy's embedded EVM wallet at index 0. The agent wallet the owner owns
- * is listed too, at a higher index, and is never the owner wallet.
+ * The owner wallet among the user's accounts: Privy's embedded EVM wallet at index 0, as the Worker picks it
+ * (`identity.ts`). The agent wallet the owner owns is listed too, at a higher index or as another connector, and is
+ * never the owner wallet; nor is an imported key.
  */
 export const ownerAddress = (user: User | null): Address | undefined => {
   const wallet = user?.linkedAccounts.find(
@@ -30,6 +31,8 @@ export const ownerAddress = (user: User | null): Address | undefined => {
       account.type === 'wallet' &&
       account.walletClientType === 'privy' &&
       account.chainType === 'ethereum' &&
+      (account.connectorType === undefined || account.connectorType === 'embedded') &&
+      !account.imported &&
       (account.walletIndex === 0 || account.walletIndex === null || account.walletIndex === undefined),
   )
   return wallet?.type === 'wallet' ? wallet.address : undefined
