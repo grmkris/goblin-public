@@ -30,7 +30,9 @@ const Handlers = Layer.mergeAll(
     handlers
       .handle('state', () => Effect.succeed(STATE))
       .handle('checkout', () => Effect.fail(new BillingRefused({ code: refuse, ref: 'ray-1' })))
-      .handle('portal', () => Effect.fail(new BillingRefused({ code: refuse }))),
+      .handle('portal', () => Effect.fail(new BillingRefused({ code: refuse })))
+      .handle('walletStart', () => Effect.succeed({ signUrl: 'https://wallet.test/subscribe/x' }))
+      .handle('walletConfirm', () => Effect.fail(new BillingRefused({ code: 'payment_short' }))),
   ),
   HttpApiBuilder.group(AccountApi, 'clients', (handlers) =>
     handlers

@@ -64,6 +64,13 @@ export const BILLING_KINDS: ErrorKindTable<BillingRefused['code']> = {
   checkout_limit: 'rate_limited',
   account_missing: 'not_found',
   no_customer: 'not_found',
+  card_disabled: 'not_found',
+  wallet_unavailable: 'unavailable',
+  subscription_unknown: 'not_found',
+  subscription_unsigned: 'conflict',
+  subscription_ended: 'conflict',
+  payment_short: 'plan_limit',
+  payment_failed: 'unavailable',
 }
 const KIND_OF_CODE: ReadonlyMap<string, ErrorKind> = new Map([
   ...Object.entries(ERROR_KINDS),

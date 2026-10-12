@@ -1,9 +1,18 @@
 /** Adapted from myapps@8a69ec64: D1 customer, subscriptions, checkout quota and leased durable webhook inbox. */
-import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import * as Effect from 'effect/Effect'
 import { Internal } from '../http/errors.ts'
-import { authUsers, billingAccounts, billingInbox, checkouts, subscriptions, type Subscription } from './schema.ts'
+import {
+  authUsers,
+  billingAccounts,
+  billingInbox,
+  checkouts,
+  subscriptions,
+  type Subscription,
+  type WalletSubscription,
+  walletSubscriptions,
+} from './schema.ts'
 import type { DodoMode, VerifiedEvent } from './dodo.ts'
 
 const operation = <A>(read: () => PromiseLike<A>) =>
@@ -179,9 +188,59 @@ const inboxProgress = (db: Database) => ({
     }),
 })
 
+/** The accounts' Goblin Wallet subscriptions (ADR 0054): one row each, written only by billing's own programs. */
+const walletStore = (db: Database) => ({
+  walletSubscription: (userId: string) =>
+    operation(() => db.select().from(walletSubscriptions).where(eq(walletSubscriptions.userId, userId)).get()),
+  /** The account's subscription as it now stands; a new one replaces the one before it. */
+  writeWalletSubscription: (row: WalletSubscription) =>
+    operation(() =>
+      db
+        .insert(walletSubscriptions)
+        .values(row)
+        .onConflictDoUpdate({
+          target: walletSubscriptions.userId,
+          set: {
+            subscriptionId: row.subscriptionId,
+            status: row.status,
+            amountUsd: row.amountUsd,
+            periodDays: row.periodDays,
+            startsAt: row.startsAt,
+            period: row.period,
+            paidThrough: row.paidThrough,
+            nextAttemptAt: row.nextAttemptAt,
+            graceUntil: row.graceUntil,
+            remindedPeriod: row.remindedPeriod,
+            lastOperation: row.lastOperation,
+            lastTx: row.lastTx,
+            lastFailure: row.lastFailure,
+            updatedAt: row.updatedAt,
+          },
+        })
+        .run(),
+    ),
+  /** Subscriptions with a payment to take or retry, or a reminder to send, by `now`; the oldest first. */
+  dueWalletSubscriptions: (now: number) =>
+    operation(() =>
+      db
+        .select()
+        .from(walletSubscriptions)
+        .where(
+          and(
+            inArray(walletSubscriptions.status, ['pending', 'active', 'grace']),
+            lte(walletSubscriptions.nextAttemptAt, now),
+          ),
+        )
+        .orderBy(walletSubscriptions.nextAttemptAt)
+        .limit(100)
+        .all(),
+    ),
+})
+
 export const makeBillingStore = (database: D1Database) => {
   const db = drizzle(database)
   return {
+    ...walletStore(db),
     ...accountStore(db),
     ...subscriptionStore(db),
     ...checkoutStore(db),

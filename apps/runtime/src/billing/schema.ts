@@ -43,6 +43,29 @@ export const checkouts = sqliteTable('app_billing_checkouts', {
   userId: text('user_id').notNull(),
   createdAt: integer('created_at').notNull(),
 })
+/**
+ * goblin Pro paid as a signed USDC subscription (ADR 0054): the account's subscription in the Goblin Wallet and its
+ * renewals. `period` is the last period paid (0 before the first), `paid_through` its end; a failed collection sets
+ * `grace_until` and the cron tries again each day until then. Times are epoch milliseconds.
+ */
+export const walletSubscriptions = sqliteTable('app_billing_wallet_subscriptions', {
+  userId: text('user_id').primaryKey().notNull(),
+  subscriptionId: text('subscription_id').notNull(),
+  status: text('status', { enum: ['pending', 'active', 'grace', 'cancelled', 'lapsed'] }).notNull(),
+  amountUsd: text('amount_usd').notNull(),
+  periodDays: integer('period_days').notNull(),
+  startsAt: integer('starts_at').notNull(),
+  period: integer('period').notNull(),
+  paidThrough: integer('paid_through'),
+  nextAttemptAt: integer('next_attempt_at'),
+  graceUntil: integer('grace_until'),
+  remindedPeriod: integer('reminded_period').notNull(),
+  lastOperation: text('last_operation'),
+  lastTx: text('last_tx'),
+  lastFailure: text('last_failure'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
 /** Read-only projection of Better Auth's contact fields. */
 export const authUsers = sqliteTable('user', {
   id: text('id').primaryKey(),
@@ -51,3 +74,4 @@ export const authUsers = sqliteTable('user', {
 })
 export type BillingAccount = typeof billingAccounts.$inferSelect
 export type Subscription = typeof subscriptions.$inferSelect
+export type WalletSubscription = typeof walletSubscriptions.$inferSelect

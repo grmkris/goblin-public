@@ -71,4 +71,10 @@ export interface RuntimeEnv {
   readonly DODO_PAYMENTS_WEBHOOK_KEY?: string
   readonly DODO_PAYMENTS_ENVIRONMENT?: 'test_mode' | 'live_mode'
   readonly DODO_PRODUCT_ID?: string
+  /** `on` turns the card checkout (Dodo, ADR 0015) back on; unset or anything else, it is off (ADR 0054). */
+  readonly CARD_CHECKOUT?: string
+  /** The Goblin Wallet's origin, where the owner signs goblin Pro once (ADR 0054). */
+  readonly WALLET_ORIGIN?: string
+  /** Secret: goblin's merchant key at that wallet, the bearer of its `/api/merchant/*`. */
+  readonly WALLET_MERCHANT_KEY?: string
 }

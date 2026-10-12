@@ -24,6 +24,13 @@ const modelEnv = {
   MPP_SECRET: Config.Redacted('GOBLIN_MPP_SECRET').pipe(Config.withDefault(Redacted.make(''))),
 }
 
+/** goblin Pro paid as a USDC subscription in the Goblin Wallet (ADR 0054); the card checkout stays off unless `on`. */
+const billingEnv = {
+  CARD_CHECKOUT: Config.String('GOBLIN_CARD_CHECKOUT').pipe(Config.withDefault('off')),
+  WALLET_ORIGIN: Config.String('GOBLIN_WALLET_ORIGIN').pipe(Config.withDefault('')),
+  WALLET_MERCHANT_KEY: Config.Redacted('GOBLIN_WALLET_MERCHANT_KEY').pipe(Config.withDefault(Redacted.make(''))),
+}
+
 /** What the Website build reads: a change to any of them builds again. */
 const BUILD_INPUTS = [
   'src/**',
@@ -115,6 +122,7 @@ export default Alchemy.Stack(
           Config.withDefault(Redacted.make('')),
         ),
         DODO_PRODUCT_ID: Config.Redacted('DODO_PRODUCT_ID').pipe(Config.withDefault(Redacted.make(''))),
+        ...billingEnv,
         STAGE: runtimeStage(stage.name),
         // The release SHA stage.ts sets: as a prop it changes every release, which forces the rebuild that bakes it
         // into the client bundle (the build's input hash covers files only). Unset (the local stack), crash reports

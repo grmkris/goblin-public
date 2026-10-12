@@ -1,10 +1,35 @@
 /** Billing commands for the account API (`http/api/account.ts`), apart from agent admission; no entitlement here. */
 import { Clock, Effect } from 'effect'
 import type { RuntimeEnv } from '../env.ts'
+import { internalCall } from '../inbound/client.ts'
+import { reportAndRecover } from '../observability/report.ts'
 import { configuredDodo } from './dodo.ts'
 import type { BillingDeps } from './events.ts'
 import { planOf } from './reconcile.ts'
+import type { WalletBillingDeps } from './renewals.ts'
 import { makeBillingStore } from './store.ts'
+import { configuredMerchant, type WalletMerchantApi } from './wallet.ts'
+
+/**
+ * goblin Pro paid from the Goblin Wallet on this deployment (ADR 0054): the store, the wallet as a merchant, and the
+ * owner's agent for notices; none when the wallet's origin or the merchant key is not set.
+ */
+export const walletBillingDeps = (
+  env: RuntimeEnv,
+): { readonly deps: WalletBillingDeps; readonly merchant: WalletMerchantApi } | undefined => {
+  const merchant = configuredMerchant(env)
+  if (merchant === undefined) return undefined
+  const deps: WalletBillingDeps = {
+    store: makeBillingStore(env.AUTH_DB),
+    appUrl: env.APP_URL,
+    notify: (userId, notice) =>
+      internalCall(env.AGENTS.getByName(userId), (api) => api.inbound.billingNotice({ payload: notice })).pipe(
+        Effect.asVoid,
+        reportAndRecover('billing.notify', undefined),
+      ),
+  }
+  return { deps, merchant }
+}
 
 export const billingDeps = (env: RuntimeEnv): BillingDeps | undefined => {
   const dodo = configuredDodo(env)

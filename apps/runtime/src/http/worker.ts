@@ -14,9 +14,9 @@ import { eventsHookTokenValid } from '../mcp/events/route-token.ts'
 import { EVENT_BODY_BYTES } from '../mcp/events/webhook.ts'
 import { hookTokenValid } from '../channel/doorbell.ts'
 import { canonicalRedirect } from './canonical.ts'
-import { billingDeps } from '../billing/routes.ts'
+import { billingDeps, walletBillingDeps } from '../billing/routes.ts'
 import { billingWebhook } from '../billing/webhook.ts'
-import { runBillingCron } from '../billing/cron.ts'
+import { runBillingCron, runWalletCron } from '../billing/cron.ts'
 import { billingMode, accountPlan } from '../billing/gates.ts'
 import { paidCompletion } from './paid-inference.ts'
 
@@ -117,6 +117,7 @@ async function workerRoute(
 export const worker = {
   async scheduled(_event: ScheduledController, env: RuntimeEnv): Promise<void> {
     await runAtEdge(runBillingCron(billingDeps(env)))
+    await runAtEdge(runWalletCron(walletBillingDeps(env)))
   },
   async fetch(request: Request, env: RuntimeEnv, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
     const redirect = canonicalRedirect(request, env.APP_URL)
@@ -132,6 +133,7 @@ export const worker = {
         billing: {
           mode: env.DODO_PAYMENTS_ENVIRONMENT ?? billingMode(env),
           configured: billingDeps(env) !== undefined,
+          wallet: walletBillingDeps(env) !== undefined,
         },
       })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))

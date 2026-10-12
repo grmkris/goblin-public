@@ -1,5 +1,5 @@
 import { AccountApi, type AppError, BillingRefused, withRef } from '@goblin/contracts/api'
-import type { BillingState, ClientErrorReport, InboundClient } from '@goblin/contracts'
+import type { BillingState, ClientErrorReport, InboundClient, WalletPlan, WalletReceipt } from '@goblin/contracts'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
@@ -11,8 +11,11 @@ import { listInboundClients, revokeInboundClient } from '../../auth/clients.ts'
 import { billingMode } from '../../billing/gates.ts'
 import { freeCredits } from '../../billing/plans.ts'
 import { planOf } from '../../billing/reconcile.ts'
-import { billingDeps, startCheckout } from '../../billing/routes.ts'
+import { confirmWalletSubscription, startWalletSubscription } from '../../billing/renewals.ts'
+import { billingDeps, startCheckout, walletBillingDeps } from '../../billing/routes.ts'
+import type { WalletSubscription } from '../../billing/schema.ts'
 import { makeBillingStore } from '../../billing/store.ts'
+import { cardCheckoutOn, WalletMerchant } from '../../billing/wallet.ts'
 import type { RuntimeEnv } from '../../env.ts'
 import { logEvent } from '../../observability/logger.ts'
 import { expectedFailure, reportAndRecover } from '../../observability/report.ts'
@@ -29,6 +32,16 @@ export interface AccountRecords {
     userId: string,
   ) => Effect.Effect<{ readonly checkoutUrl: string; readonly sessionId: string }, BillingRefused | AppError>
   readonly portal: (userId: string) => Effect.Effect<{ readonly url: string }, BillingRefused | AppError>
+  /** Asks the Goblin Wallet for Pro as a subscription the owner signs once (ADR 0054); where to sign it. */
+  readonly walletStart: (
+    userId: string,
+    back: string | undefined,
+  ) => Effect.Effect<{ readonly signUrl: string }, BillingRefused | AppError>
+  /** The owner came back from signing: takes the first payment, once, and answers its receipt. */
+  readonly walletConfirm: (
+    userId: string,
+    subscriptionId: string,
+  ) => Effect.Effect<WalletReceipt, BillingRefused | AppError>
   /**
    * A browser crash's `client_error` flow point (ADR 0037), under the hash of `userId`'s agent when the report came
    * with a session; nothing without the `FLOWS` binding.
@@ -61,17 +74,68 @@ export const crashPoint = (
   return agent === undefined ? { ...point, indexes: [] } : point
 }
 
+/** Refusals that are a service not answering, reported as such; every other one is an answer the reporter skips. */
+const LOWERED: ReadonlySet<BillingRefused['code']> = new Set([
+  'billing_unavailable',
+  'wallet_unavailable',
+  'payment_failed',
+])
+
 /** A refusal that is an answer, not a fault: the reporter skips it. */
 const refused = (code: BillingRefused['code']) =>
-  Effect.fail(expectedFailure(new BillingRefused({ code }), code === 'billing_unavailable' ? 'lower' : 'skip'))
+  Effect.fail(expectedFailure(new BillingRefused({ code }), LOWERED.has(code) ? 'lower' : 'skip'))
+
+/** The wallet subscription as Settings shows it, with where to manage it. */
+const walletPlanOf = (row: WalletSubscription, walletOrigin: string): WalletPlan => ({
+  status: row.status,
+  amountUsd: row.amountUsd,
+  periodDays: row.periodDays,
+  paidThrough: row.paidThrough,
+  nextPaymentAt: row.nextAttemptAt,
+  graceUntil: row.graceUntil,
+  manageUrl: `${walletOrigin}/limits`,
+})
+
+type WalletBilling = NonNullable<ReturnType<typeof walletBillingDeps>>
+
+/** Paying from the Goblin Wallet (ADR 0054): start and confirm, a wallet that does not answer refused as such. */
+const walletRecords = (
+  wallet: WalletBilling | undefined,
+  stage: string,
+): Pick<AccountRecords, 'walletStart' | 'walletConfirm'> => {
+  return {
+    walletStart: (userId, back) =>
+      wallet === undefined
+        ? refused('wallet_unavailable')
+        : startWalletSubscription(wallet.deps, userId, { back, stage }).pipe(
+            Effect.provideService(WalletMerchant, wallet.merchant),
+            Effect.catchTag('WalletMerchantError', () => refused('wallet_unavailable')),
+            Effect.mapError((error) => (error instanceof BillingRefused ? error : toAppError(error))),
+            Effect.flatMap((result) => ('error' in result ? refused(result.error) : Effect.succeed(result))),
+          ),
+    walletConfirm: (userId, subscriptionId) =>
+      wallet === undefined
+        ? refused('wallet_unavailable')
+        : confirmWalletSubscription(wallet.deps, userId, subscriptionId).pipe(
+            Effect.provideService(WalletMerchant, wallet.merchant),
+            Effect.catchTag('WalletMerchantError', () => refused('wallet_unavailable')),
+            Effect.mapError((error) => (error instanceof BillingRefused ? error : toAppError(error))),
+            Effect.flatMap((result) => ('error' in result ? refused(result.error) : Effect.succeed(result.receipt))),
+          ),
+  }
+}
 
 /** The records as the deployment keeps them: the auth D1 and, when it is configured, the payment provider. */
 export const accountRecords = (env: RuntimeEnv): AccountRecords => {
   const store = makeBillingStore(env.AUTH_DB)
-  const deps = billingDeps(env)
+  // The card checkout is off unless the deployment turns it on (ADR 0054); its code stays for when it comes back.
+  const card = cardCheckoutOn(env)
+  const deps = card ? billingDeps(env) : undefined
+  const wallet = walletBillingDeps(env)
   const stage = env.STAGE ?? 'test'
   const flows = env.FLOWS
   return {
+    ...walletRecords(wallet, stage),
     crash: (report, userId) =>
       flows === undefined
         ? Effect.void
@@ -86,33 +150,43 @@ export const accountRecords = (env: RuntimeEnv): AccountRecords => {
     revokeClient: (userId, clientId) => attempt(() => revokeInboundClient(env, userId, clientId)),
     billingState: (userId) =>
       Effect.map(
-        planOf(store, userId, stage, billingMode(env), { free: freeCredits(env.FREE_DAILY_CREDITS) }),
-        (plan) => ({
+        Effect.all([
+          planOf(store, userId, stage, billingMode(env), { free: freeCredits(env.FREE_DAILY_CREDITS) }),
+          store.walletSubscription(userId),
+        ]),
+        ([plan, row]): BillingState => ({
           ...plan,
           mode: deps?.dodo.mode ?? null,
           plan: plan.active ? (plan.source === 'free' ? ('free' as const) : ('pro' as const)) : null,
           priceCents: 1000,
+          walletPay: wallet !== undefined,
+          cardCheckout: card,
+          ...(row === undefined || wallet === undefined ? {} : { wallet: walletPlanOf(row, wallet.merchant.origin) }),
         }),
       ),
     checkout: (userId) =>
-      deps === undefined
-        ? refused('billing_unavailable')
-        : startCheckout(deps, userId, env.APP_URL, stage).pipe(
-            Effect.mapError(toAppError),
-            Effect.flatMap((result) =>
-              'error' in result
-                ? refused(result.error)
-                : Effect.succeed({ checkoutUrl: result.checkoutUrl, sessionId: result.sessionId }),
+      !card
+        ? refused('card_disabled')
+        : deps === undefined
+          ? refused('billing_unavailable')
+          : startCheckout(deps, userId, env.APP_URL, stage).pipe(
+              Effect.mapError(toAppError),
+              Effect.flatMap((result) =>
+                'error' in result
+                  ? refused(result.error)
+                  : Effect.succeed({ checkoutUrl: result.checkoutUrl, sessionId: result.sessionId }),
+              ),
             ),
-          ),
     portal: (userId) =>
-      deps === undefined
-        ? refused('billing_unavailable')
-        : Effect.gen(function* () {
-            const account = yield* store.account(userId)
-            if (account?.customerId == null) return yield* refused('no_customer')
-            return { url: yield* Effect.mapError(deps.dodo.portalUrl(account.customerId), toAppError) }
-          }),
+      !card
+        ? refused('card_disabled')
+        : deps === undefined
+          ? refused('billing_unavailable')
+          : Effect.gen(function* () {
+              const account = yield* store.account(userId)
+              if (account?.customerId == null) return yield* refused('no_customer')
+              return { url: yield* Effect.mapError(deps.dodo.portalUrl(account.customerId), toAppError) }
+            }),
   }
 }
 
@@ -173,7 +247,13 @@ const BillingHandlers = HttpApiBuilder.group(AccountApi, 'billing', (handlers) =
   handlers
     .handle('state', () => quoted(Effect.flatMap(signedIn, ({ records, user }) => records.billingState(user))))
     .handle('checkout', () => quoted(Effect.flatMap(signedIn, ({ records, user }) => records.checkout(user))))
-    .handle('portal', () => quoted(Effect.flatMap(signedIn, ({ records, user }) => records.portal(user)))),
+    .handle('portal', () => quoted(Effect.flatMap(signedIn, ({ records, user }) => records.portal(user))))
+    .handle('walletStart', ({ payload }) =>
+      quoted(Effect.flatMap(signedIn, ({ records, user }) => records.walletStart(user, payload.return))),
+    )
+    .handle('walletConfirm', ({ payload }) =>
+      quoted(Effect.flatMap(signedIn, ({ records, user }) => records.walletConfirm(user, payload.subscription))),
+    ),
 )
 
 const ClientsHandlers = HttpApiBuilder.group(AccountApi, 'clients', (handlers) =>

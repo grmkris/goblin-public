@@ -34,6 +34,8 @@ const accountRecords = (crash: AccountRecords['crash'] = () => Effect.void) => {
     billingState: () => Effect.succeed(STATE),
     checkout: () => Effect.fail(new BillingRefused({ code: 'already_subscribed' })),
     portal: () => Effect.succeed({ url: 'https://portal.test/x' }),
+    walletStart: () => Effect.succeed({ signUrl: 'https://wallet.test/subscribe/x' }),
+    walletConfirm: () => Effect.fail(new BillingRefused({ code: 'subscription_unsigned' })),
     crash: (report, userId) => {
       crashes.push(Option.getOrUndefined(userId))
       return crash(report, userId)

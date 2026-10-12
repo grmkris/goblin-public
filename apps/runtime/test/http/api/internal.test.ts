@@ -5,7 +5,7 @@ import * as Layer from 'effect/Layer'
 import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { describe, expect, it } from 'vitest'
-import { ChatOperations, Chats } from '../../../src/chats/service.ts'
+import { ChatOperations, Chats, Conversations } from '../../../src/chats/service.ts'
 import { Channel } from '../../../src/channel/service.ts'
 import { routeNames } from '../../../src/http/api/context.ts'
 import { InternalGateLive } from '../../../src/http/api/middleware.ts'
@@ -13,8 +13,10 @@ import { AgentHttp } from '../../../src/http/api/server.ts'
 import { InboundHandlers } from '../../../src/inbound/api.ts'
 import { Inspection } from '../../../src/inspect/service.ts'
 import { Events, Resident } from '../../../src/mcp/service.ts'
+import { Notices } from '../../../src/notices/service.ts'
 import { ResidentHandlers } from '../../../src/mcp/resident-api.ts'
 import { PiSessions } from '../../../src/pi/sessions.ts'
+import { Changes } from '../../../src/runtime/changes.ts'
 import { AgentInput } from '../../../src/runtime/input.ts'
 import { currentResident, get, plans, post, serve, served, stub, unrouted } from './fixture.ts'
 
@@ -43,7 +45,8 @@ const recording = () => {
       .handle('recent', () => mark('recent', []))
       .handle('doorbell', () => mark('doorbell', undefined))
       .handle('mcpEvents', () => mark('mcpEvents', { status: 204 as const }))
-      .handle('inspect', () => mark('inspect', { conversations: [] })),
+      .handle('inspect', () => mark('inspect', { conversations: [] }))
+      .handle('billingNotice', () => mark('billingNotice', undefined)),
   )
   return { ran, handlers }
 }
@@ -131,6 +134,9 @@ describe('the inbound handlers', () => {
             stub(PiSessions),
             stub(Channel),
             stub(AgentInput),
+            stub(Conversations),
+            stub(Notices),
+            stub(Changes),
             Layer.succeed(Resident, currentResident().service),
           ),
         ),

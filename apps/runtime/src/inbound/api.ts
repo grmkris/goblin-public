@@ -1,5 +1,6 @@
 import { InternalApi } from '@goblin/contracts/internal'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
+import { postBillingNotice } from '../billing/notice.ts'
 import { acceptDoorbell } from '../channel/program.ts'
 import { Inspection } from '../inspect/service.ts'
 import { Events } from '../mcp/service.ts'
@@ -27,5 +28,6 @@ export const InboundHandlers = HttpApiBuilder.group(InternalApi, 'inbound', (han
         }),
       ),
     )
-    .handle('inspect', ({ payload }) => Inspection.use((inspection) => inspection.run(payload.query))),
+    .handle('inspect', ({ payload }) => Inspection.use((inspection) => inspection.run(payload.query)))
+    .handle('billingNotice', ({ payload }) => postBillingNotice(payload)),
 )

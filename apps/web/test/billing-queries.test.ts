@@ -35,7 +35,9 @@ const fakeAccount = () => {
           ? Effect.succeed({ checkoutUrl: 'https://pay.test/checkout/1', sessionId: 'cs_1' })
           : Effect.fail(new BillingRefused({ code: 'billing_unavailable', ref: '8f1e2d3c4b5a6978' })),
       )
-      .handle('portal', () => Effect.fail(new BillingRefused({ code: 'no_customer' }))),
+      .handle('portal', () => Effect.fail(new BillingRefused({ code: 'no_customer' })))
+      .handle('walletStart', () => Effect.succeed({ signUrl: 'https://wallet.test/subscribe/sub_1' }))
+      .handle('walletConfirm', () => Effect.fail(new BillingRefused({ code: 'subscription_unsigned' }))),
   )
   const Clients = HttpApiBuilder.group(AccountApi, 'clients', (handlers) =>
     handlers.handleAll({ ...unusedHandlers(AccountApi.groups.clients) }),
