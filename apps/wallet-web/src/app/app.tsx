@@ -1,9 +1,10 @@
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@goblin/ui'
 import { useConnections, useMe } from '../api/queries.tsx'
 import { ActivityPage } from '../pages/activity.tsx'
 import { ApprovePage } from '../pages/approve.tsx'
 import { ConsentPage } from '../pages/consent.tsx'
+import { ConnectionsPage } from '../pages/connections.tsx'
 import { HomePage } from '../pages/home.tsx'
+import { LimitsPage } from '../pages/limits.tsx'
 import { OnboardingPage, readSkipped } from '../pages/onboarding.tsx'
 import { setupProgress } from '../pages/progress.ts'
 import { SignInPage } from '../pages/sign-in.tsx'
@@ -12,22 +13,11 @@ import { useAuth } from './auth.tsx'
 import { useLocation } from './router.tsx'
 import { Shell } from './shell.tsx'
 
-function Soon({ name }: { readonly name: string }) {
-  return (
-    <Empty>
-      <EmptyHeader>
-        <EmptyTitle>{name}</EmptyTitle>
-        <EmptyDescription>This page is being built.</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  )
-}
-
 function Routes() {
   const { pathname } = useLocation()
   if (pathname === '/activity') return <ActivityPage />
-  if (pathname === '/limits') return <Soon name="Limits" />
-  if (pathname === '/connections') return <Soon name="Connections" />
+  if (pathname === '/limits') return <LimitsPage />
+  if (pathname === '/connections') return <ConnectionsPage />
   return <HomePage />
 }
 
