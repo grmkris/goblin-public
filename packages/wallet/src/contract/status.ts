@@ -1,6 +1,7 @@
 import * as Schema from 'effect/Schema'
 import { Address, ChainKey, Instant, Text, TokenAmount } from './ids.ts'
 import { LimitView } from './limits.ts'
+import { Operation } from './operations.ts'
 
 const Readiness = Schema.Literals(['ready', 'blocked', 'not_verified'])
 const Short = Schema.String.check(Schema.isMaxLength(64))
@@ -47,6 +48,8 @@ export const WalletStatusResult = Schema.Struct({
   agent: Schema.Struct({ address: Address }),
   balances: Schema.Array(ChainBalance),
   limits: Schema.Array(LimitView),
+  /** The latest operations, newest first, for the App's activity list. */
+  recent: Schema.optional(Schema.Array(Operation).check(Schema.isMaxLength(10))),
   checkedAt: Instant,
 })
 export type WalletStatusResult = typeof WalletStatusResult.Type

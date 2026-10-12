@@ -1,5 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { Address, ChainKey, OperationId, Text, TokenAmount, UsdAmount } from './ids.ts'
+import { LimitView } from './limits.ts'
 import { Operation } from './operations.ts'
 
 /**
@@ -79,6 +80,10 @@ export type Quote = typeof Quote.Type
 /** What every spending tool returns: the operation, and for paid_fetch the bounded response of the paid request. */
 export const SpendResult = Schema.Struct({
   operation: Operation,
+  /** When the operation is quoted or awaits approval: the absolute https URL of its Approve page. */
+  approveUrl: Schema.optional(Text(2048)),
+  /** The limits left after this operation, with their layers. */
+  limits: Schema.optional(Schema.Array(LimitView)),
   response: Schema.optional(
     Schema.Struct({ status: Schema.Int, contentType: Text(120), body: Schema.Unknown, truncated: Schema.Boolean }),
   ),
