@@ -82,7 +82,8 @@ export function FinishSetupRow() {
 /** Settings' way back to first-run Start: how much is left, and the step to pick up from. */
 export function SetupSettingsCard() {
   const view = useQuery(onboardingQuery).data
-  const left = view?.steps.filter((step) => !step.done) ?? []
+  // A finished Start has nothing left, whatever optional step was passed by; an open one counts tasks only.
+  const left = view === undefined || view.status === 'done' ? [] : leftOf(view)
   return (
     <Card>
       <CardHeader>
