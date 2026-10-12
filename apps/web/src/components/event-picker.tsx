@@ -16,7 +16,6 @@ import {
   FieldLabel,
   NativeSelect,
   NativeSelectOption,
-  Switch,
   Textarea,
 } from '@goblin/ui'
 import { ChevronRightIcon, PlugIcon } from 'lucide-react'
@@ -38,6 +37,7 @@ import { messageOf } from '../lib/query/app-error.ts'
 import { usePersonas, useTopics } from '../lib/workspace/hooks.ts'
 import { routineSettingsQuery, setUpEventsMutation } from '../routines/queries.ts'
 import { ProNote, hasHandOver } from './pro-note.tsx'
+import { SwitchRow } from './routine-hand.tsx'
 import { SchemaForm } from './schema-form.tsx'
 
 type Choices = ReadonlyMap<string, EventChoice>
@@ -186,35 +186,6 @@ function TelegramRow({ stream }: { readonly stream: EventStream }) {
         <span className="event-pick-title">{eventTitle(stream)}</span>
         <span className="event-pick-about">Already arrives through Telegram.</span>
       </span>
-    </li>
-  )
-}
-
-/** One switch row of Advanced: its words, and the switch they name. */
-function SwitchRow({
-  id,
-  name,
-  about,
-  checked,
-  disabled,
-  onChange,
-}: {
-  readonly id: string
-  readonly name: string
-  readonly about: string
-  readonly checked: boolean
-  readonly disabled: boolean
-  readonly onChange: (on: boolean) => void
-}) {
-  return (
-    <li className="setting-row">
-      <span className="grant-text">
-        <span id={id} className="grant-name">
-          {name}
-        </span>
-        <span className="grant-about">{about}</span>
-      </span>
-      <Switch checked={checked} disabled={disabled} aria-labelledby={id} onCheckedChange={onChange} />
     </li>
   )
 }

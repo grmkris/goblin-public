@@ -66,8 +66,8 @@ export function WhereField({ kit }: { readonly kit: HandKit }) {
   )
 }
 
-/** One switch row: its words, and the switch they name. */
-function SwitchRow({
+/** One switch row: its words, and the switch they name (also the event picker's Advanced). */
+export function SwitchRow({
   id,
   name,
   about,
