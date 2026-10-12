@@ -12,7 +12,7 @@ import {
   relayDelivery,
   type FrozenBridge,
 } from './index.ts'
-import { BASE } from '../chains/index.ts'
+import { ARBITRUM, BASE, TEMPO } from '../chains/index.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
 const NOW = new Date('2026-10-12T06:00:00Z')
@@ -358,6 +358,31 @@ describe('deposit addresses', () => {
       destinationCurrency: BASE.usdc.address,
       amount: '4000000000000000',
       useDepositAddress: true,
+    })
+  })
+
+  test('quotes USDC.e on Tempo for the agent from any origin, refunding to the agent', async () => {
+    const sent: unknown[] = []
+    const deposit = await quoteDepositAddress({
+      from: 'arbitrum',
+      asset: 'USDC',
+      amount: '2',
+      receive: 'USDC.e',
+      recipient: AGENT,
+      fetchFn: async (_url, init) => {
+        sent.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'))
+        return Response.json({ ...relayQuote, details: { currencyOut: { amount: '1966555' }, timeEstimate: 1 } })
+      },
+    })
+    expect(deposit).toMatchObject({ expectedOut: '1.966555', timeEstimateSeconds: 1 })
+    expect(sent[0]).toMatchObject({
+      recipient: AGENT,
+      refundTo: AGENT,
+      originChainId: 42161,
+      destinationChainId: TEMPO.id,
+      originCurrency: ARBITRUM.usdc.address,
+      destinationCurrency: TEMPO.usdc.address,
+      amount: '2000000',
     })
   })
 

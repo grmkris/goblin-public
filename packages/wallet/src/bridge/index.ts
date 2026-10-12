@@ -422,13 +422,16 @@ const NATIVE = '0x0000000000000000000000000000000000000000'
 const DEPOSIT_ORIGINS = { base: BASE, arbitrum: ARBITRUM, ethereum: ETHEREUM } as const
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/u
 
+type DepositReceive = 'ETH' | 'USDC' | 'USDC.e'
+
 export interface DepositQuoteInput {
   readonly from: keyof typeof DEPOSIT_ORIGINS
   readonly asset: 'ETH' | 'USDC'
   /** Decimal amount of `asset` the sender will send. */
   readonly amount: string
-  readonly receive: 'ETH' | 'USDC'
-  /** The owner's own address: it receives on Base and any refund. */
+  /** `USDC.e` lands on Tempo (what the agent pays MPP services and paid inference with); the others on Base. */
+  readonly receive: DepositReceive
+  /** Who receives, and any refund on the origin chain: the owner on Base, the agent on Tempo. */
   readonly recipient: string
   readonly fetchFn?: typeof fetch | undefined
 }
@@ -436,17 +439,24 @@ export interface DepositQuoteInput {
 export interface DepositQuote {
   readonly requestId: string
   readonly depositAddress: string
-  /** Decimal amount received on Base. */
+  /** Decimal amount of `receive` that arrives. */
   readonly expectedOut: string
   readonly feesUsd: string
   readonly timeEstimateSeconds: number
 }
 
-const decimalsOf = (asset: 'ETH' | 'USDC'): number => (asset === 'ETH' ? 18 : 6)
+const decimalsOf = (asset: DepositReceive): number => (asset === 'ETH' ? 18 : 6)
+
+/** Where a deposit lands and in which token: USDC.e on Tempo, or ETH or USDC on Base. */
+const destinationOf = (receive: DepositReceive): { chain: Chain; currency: string } => {
+  if (receive === 'USDC.e') return { chain: TEMPO, currency: TEMPO.usdc.address }
+  return { chain: BASE, currency: receive === 'ETH' ? NATIVE : BASE.usdc.address }
+}
 
 /**
  * A one-off Relay deposit address (`useDepositAddress`, keyless for EVM origins): whatever arrives there in `asset` on
- * `from` is delivered to `recipient` on Base as `receive`. Nothing is signed; the sender just transfers to the address.
+ * `from` is delivered to `recipient` as `receive`, on Tempo for USDC.e and on Base otherwise. Nothing is signed; the
+ * sender just transfers to the address.
  */
 export const quoteDepositAddress = async (input: DepositQuoteInput): Promise<DepositQuote> => {
   if (input.from === 'base' && input.asset === input.receive)
@@ -455,6 +465,7 @@ export const quoteDepositAddress = async (input: DepositQuoteInput): Promise<Dep
       `Send ${input.asset} on Base straight to your address; no deposit address is needed.`,
     )
   const origin = DEPOSIT_ORIGINS[input.from]
+  const destination = destinationOf(input.receive)
   const amount = parseUnits(input.amount, decimalsOf(input.asset))
   if (amount <= 0n) throw new BridgeError('unsupported', 'A deposit must be a positive amount.')
   const response = await (input.fetchFn ?? fetch)(`${API}/quote`, {
@@ -465,9 +476,9 @@ export const quoteDepositAddress = async (input: DepositQuoteInput): Promise<Dep
       recipient: input.recipient,
       refundTo: input.recipient,
       originChainId: origin.id,
-      destinationChainId: BASE.id,
+      destinationChainId: destination.chain.id,
       originCurrency: input.asset === 'ETH' ? NATIVE : origin.usdc.address,
-      destinationCurrency: input.receive === 'ETH' ? NATIVE : BASE.usdc.address,
+      destinationCurrency: destination.currency,
       amount: amount.toString(),
       tradeType: 'EXACT_INPUT',
       useDepositAddress: true,

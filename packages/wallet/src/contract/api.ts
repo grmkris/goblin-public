@@ -73,15 +73,16 @@ export const PolicyChangeDecision = Schema.Struct({ decision: Schema.Literals(['
 export type PolicyChangeDecision = typeof PolicyChangeDecision.Type
 
 /**
- * `POST /api/deposits`: a one-off Relay deposit address. Whatever is sent there from `from`, in `asset`, arrives in the
- * owner's account on Base as `receive`, usually within seconds. The address serves this quote only.
+ * `POST /api/deposits` and the `add_funds` tool: a one-off Relay deposit address. Whatever is sent there from `from`, in
+ * `asset`, arrives as `receive`, usually within seconds: `USDC.e` in the agent's wallet on Tempo (what it pays MPP
+ * services and paid inference with), `ETH` or `USDC` in the owner's account on Base. The address serves this quote only.
  */
 export const DepositRequest = Schema.Struct({
   from: Schema.Literals(['base', 'arbitrum', 'ethereum']),
   asset: Schema.Literals(['ETH', 'USDC']),
   /** Decimal amount of `asset` the sender will send. */
   amount: TokenAmount,
-  receive: Schema.Literals(['ETH', 'USDC']),
+  receive: Schema.Literals(['ETH', 'USDC', 'USDC.e']),
 })
 export type DepositRequest = typeof DepositRequest.Type
 
@@ -92,10 +93,10 @@ export const DepositAddress = Schema.Struct({
   asset: DepositRequest.fields.asset,
   amount: TokenAmount,
   receive: DepositRequest.fields.receive,
-  /** Decimal amount the owner receives on Base. */
+  /** Decimal amount of `receive` that arrives. */
   expectedOut: TokenAmount,
   feesUsd: UsdAmount,
-  /** Where it lands: the owner's own address on Base. */
+  /** Where it lands: the agent's address on Tempo for USDC.e, the owner's own address on Base otherwise. */
   recipient: Address,
   timeEstimateSeconds: Schema.Int,
 })

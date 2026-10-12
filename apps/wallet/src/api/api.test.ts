@@ -95,7 +95,7 @@ const relay: typeof fetch = async (input) => {
 }
 
 describe('deposit addresses', () => {
-  test('quotes a one-off address to the owner on Base and follows it by address; testnets refuse', async () => {
+  test('quotes a one-off address to the owner on Base or the agent on Tempo, follows it by address; testnets refuse', async () => {
     const { call } = setup('confirmed', { fetchFn: relay, live: true })
     const quote = await call('POST', '/api/deposits', { from: 'base', asset: 'ETH', amount: '0.004', receive: 'USDC' })
     expect(quote.status).toBe(200)
@@ -111,6 +111,16 @@ describe('deposit addresses', () => {
       depositAddress: '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f',
       status: 'success',
       txHashes: ['0xab'],
+    })
+    const toTempo = { from: 'arbitrum', asset: 'USDC', amount: '2', receive: 'USDC.e' }
+    expect(await (await call('POST', '/api/deposits', toTempo)).json()).toMatchObject({
+      error: { message: 'The owner has not created the agent wallet yet.' },
+    })
+    await call('POST', '/api/onboarding/agent')
+    expect(await (await call('POST', '/api/deposits', toTempo)).json()).toMatchObject({
+      recipient: AGENT,
+      receive: 'USDC.e',
+      from: 'arbitrum',
     })
     expect((await call('GET', '/api/deposits/not-an-address')).status).toBe(400)
     const same = await call('POST', '/api/deposits', { from: 'base', asset: 'USDC', amount: '5', receive: 'USDC' })
