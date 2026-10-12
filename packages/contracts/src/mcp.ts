@@ -302,6 +302,23 @@ export const UrlRequestView = Schema.Struct({
 })
 export type UrlRequestView = typeof UrlRequestView.Type
 
+/**
+ * How a call held for the owner ended, as goblin sends it back to the conversation that held it (ADR 0028, ADR 0042):
+ * an ask-first approval or a URL request, the call and its state, and the server's result as untrusted data. The web
+ * shows it as one quiet row, never as the owner's message.
+ */
+export const McpOutcome = Schema.Struct({
+  continuation: Schema.Struct({
+    kind: Schema.Literals(['approval', 'url']),
+    connectionId: Schema.String,
+    name: Schema.String,
+    state: Schema.Literals(['completed', 'declined', 'refused', 'expired', 'failed', 'uncertain']),
+  }),
+  origin: Schema.Struct({ connectionId: Schema.String, trust: Schema.Literal('untrusted') }),
+  result: Schema.optional(Schema.Unknown),
+})
+export type McpOutcome = typeof McpOutcome.Type
+
 /** The owner's answer to a URL request: Done (`accept`, the server's step is finished) or Cancel (`decline`). */
 export const UrlRequestAnswer = Schema.Struct({ action: Schema.Literals(['accept', 'decline']) })
 export type UrlRequestAnswer = typeof UrlRequestAnswer.Type

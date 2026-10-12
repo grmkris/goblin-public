@@ -38,6 +38,7 @@ import {
   TopicSeedPart,
 } from './drawn-parts.tsx'
 import { McpToolPart } from './mcp-tool-part.tsx'
+import { OutcomeRow } from './outcome-row.tsx'
 import { AssistantText, UserText } from './text-part.tsx'
 import { SubagentBlock } from './subagent-block.tsx'
 import { GenericToolPart } from './tool-part.tsx'
@@ -240,6 +241,7 @@ export const PartView = memo(
 function PartRow({ part, canSwitchModel }: { readonly part: Part; readonly canSwitchModel: boolean }) {
   switch (part.kind) {
     case 'user':
+      if (part.outcome !== undefined) return <OutcomeRow outcome={part.outcome} />
       return (
         <UserText
           text={part.text}

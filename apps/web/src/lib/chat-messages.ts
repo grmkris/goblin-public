@@ -9,6 +9,7 @@ import type {
   PersonaAskData,
   ThreadHeadData,
   TopicSeedData,
+  McpOutcome,
 } from '@goblin/contracts'
 import { type SharedContext, sharedContext } from './app-context.ts'
 import { identifier, isNumber, isString, record, records, text } from './values.ts'
@@ -39,6 +40,8 @@ export type ChatMessage =
       readonly selections?: readonly ComposerOption[]
       /** Who wrote it, when not the owner in this browser: Telegram, an MCP client, a subagent. */
       readonly author?: string
+      /** How a held call ended, when this is its outcome (from its connection). */
+      readonly outcome?: McpOutcome
       /** The thread a note shared into main came from. */
       readonly thread?: string
       /** The Personas the owner asked instead of Goblin (`app.persona_ask`), and in what order. */
@@ -199,6 +202,7 @@ export function entryMessage(message: Record<string, unknown>, id: string, threa
     const attachments = shared.attachments === undefined ? {} : { attachments: shared.attachments }
     const selections = shared.selections === undefined ? {} : { selections: shared.selections }
     const author = shared.author === undefined ? {} : { author: shared.author }
+    const outcome = shared.outcome === undefined ? {} : { outcome: shared.outcome }
     const from = thread === undefined ? {} : { thread }
     return [
       {
@@ -209,6 +213,7 @@ export function entryMessage(message: Record<string, unknown>, id: string, threa
         ...attachments,
         ...selections,
         ...author,
+        ...outcome,
         ...from,
         ...stamped(message),
       },

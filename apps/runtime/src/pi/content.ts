@@ -1,5 +1,5 @@
 import type { TextContent } from '@earendil-works/pi-ai'
-import { type Attachment, type TopicSeedData, authorTag } from '@goblin/contracts'
+import { type Attachment, type McpOutcome, type TopicSeedData, authorTag } from '@goblin/contracts'
 import type { ResolvedSelections } from '../composer.ts'
 
 /** What an open App shared, with where it comes from: an MCP App's server, or the agent app it is. */
@@ -53,6 +53,15 @@ export function authoredContent(author: string, text: string): TextContent[] {
     { type: 'text', text: authorTag(author) },
     { type: 'text', text },
   ]
+}
+
+/**
+ * How a held call ended, as the conversation that held it receives it: from its connection (`author`), goblin's words
+ * for the model, then the outcome block with the server's result as untrusted data. The web shows the block as one
+ * quiet row.
+ */
+export function outcomeContent(author: string, text: string, outcome: McpOutcome): TextContent[] {
+  return [...authoredContent(author, text), { type: 'text', text: JSON.stringify(outcome) }]
 }
 
 /** A name or quote put inside `[… "…"]`: quotes, brackets and line breaks out, runs of space as one. */

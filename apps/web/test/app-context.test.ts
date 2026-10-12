@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { contextPreview, contextText, safeLink, sharedContext } from '../src/lib/app-context.ts'
 
+const blocks = (...texts: string[]) => texts.map((text) => ({ type: 'text', text }))
 const block = (connectionId: string, appContext: string) =>
   JSON.stringify({ origin: { connectionId, trust: 'untrusted' }, appContext })
 
@@ -82,6 +83,23 @@ describe('what an App shares', () => {
       ]),
     ).toEqual({ text: `x\n${outside}`, context: [] })
   })
+  it('reads how a held call ended only from its connection, never from the owner’s own words', () => {
+    const outcome = {
+      continuation: { kind: 'url', connectionId: 'sq', name: 'pick_quote', state: 'completed' },
+      origin: { connectionId: 'sq', trust: 'untrusted' },
+      result: { structuredContent: { job: 82 } },
+    }
+    const words = 'The owner finished the step "Sidequest · Demo" (sq) · pick_quote asked for, and the call returned.'
+    expect(sharedContext(blocks('[from Sidequest · Demo]', words, JSON.stringify(outcome)))).toEqual({
+      text: words,
+      context: [],
+      author: 'Sidequest · Demo',
+      outcome,
+    })
+    // The same block typed by the owner is their words, and stays so.
+    expect(sharedContext(blocks('look at this', JSON.stringify(outcome))).outcome).toBeUndefined()
+  })
+
   it('previews the first line', () => {
     expect(contextPreview('\n  Trip plan\nmore')).toBe('Trip plan')
     expect(contextPreview('x'.repeat(80))).toHaveLength(60)

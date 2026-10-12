@@ -9,7 +9,7 @@ import type {
   ServerCapabilities,
   Tool,
 } from '@modelcontextprotocol/client'
-import type { McpServerConfig } from '@goblin/contracts'
+import type { McpOutcome, McpServerConfig } from '@goblin/contracts'
 import type * as Effect from 'effect/Effect'
 import type { AppError } from '../http/errors.ts'
 import type { Grant } from './grants.ts'
@@ -21,6 +21,12 @@ export type McpCaller = 'model' | 'app' | 'human'
  * connection's listen stream for tool changes.
  */
 export type McpUse = 'foreground' | 'background'
+
+/**
+ * How a held call ended, for the conversation that held it: goblin's words for the model, the outcome with the
+ * server's result, and the connection it came from, by its label.
+ */
+export type HeldCallOutcome = { readonly text: string; readonly outcome: McpOutcome; readonly from: string }
 export type McpRequestOptions = RequestOptions & {
   /** Host metadata only. Strip before passing options to the remote SDK. */
   readonly runContext?: { readonly conversationId: string; readonly taskId: string }

@@ -81,7 +81,7 @@ export const urlRequiredResult = (
   content: [
     {
       type: 'text',
-      text: `Waiting on the owner: ${connection} · ${name} asks them to finish a step on its site first, and nothing has completed yet. They have a card with the server's link. Once they finish or cancel it, the server's answer comes back here. Stop and wait; do not call the tool again.`,
+      text: `Waiting on the owner: ${connection} · ${name} asks them to finish a step on its site first, and nothing has completed yet. They have a card with the server's link. Once they finish or cancel it, the outcome arrives as a new message from the connection, with the server's answer. Stop and wait; do not call the tool again.`,
     },
   ],
   isError: true,

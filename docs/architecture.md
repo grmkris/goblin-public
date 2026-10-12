@@ -692,7 +692,15 @@ with the answer under the server's key and its request state, under the authorit
 waiting makes the request pending again; its answer is kept, the connection's tools are listed again, and the outcome
 goes back to the turn that asked (routine run, Persona or chat) under one operation id. A retry that may have reached
 the server and did not complete is `uncertain`, and a start recovers an interrupted one as such. A Cancel stands
-whether or not the server heard it.
+whether or not the server heard it. The answer goes to the tool as listed when the server asked, even after the server
+dropped it (the request keeps its input schema).
+
+**Outcomes.** A decided approval and a settled URL request go back to their chat as an outcome, never as the owner's
+message (`sendOutcome`, receipt kind `mcp_outcome`, ADR 0042): authored by the connection (its label), goblin's words
+for the model, then an `McpOutcome` block (`{ continuation: { kind, connectionId, name, state }, origin, result }`, the
+result as untrusted data). It starts the turn and settles the asks before it, but no routine question takes it as an
+answer. The web shows it as one quiet row (`parts/outcome-row.tsx`) that opens to the server's answer; it is no scroll
+anchor or Turn map entry. A routine run or a Persona fork, which take plain text, gets the words and the block as JSON.
 
 **Step-up.** The transport throws on HTTP 403 `insufficient_scope` (`onInsufficientScope: 'throw'`), which is
 `ScopeRequired { connectionId, scope }` (the challenge's scope tokens, validated and capped), not `UpstreamMcp`: the

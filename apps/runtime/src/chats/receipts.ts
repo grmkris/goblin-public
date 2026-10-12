@@ -24,6 +24,7 @@ export const OPERATION_KINDS = [
   'stop',
   'routine_input',
   'subagent_report',
+  'mcp_outcome',
 ] as const
 
 /** What an operation in a chat is: one of `OPERATION_KINDS`, or `write:<entry kind>` for a passive write. */

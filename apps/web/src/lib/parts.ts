@@ -1,6 +1,7 @@
 import {
   type Attachment,
   type ComposerOption,
+  type McpOutcome,
   type NoticeData,
   type PersonaAnswerData,
   type PersonaTag,
@@ -74,6 +75,8 @@ export type Part =
       readonly attachments?: readonly Attachment[]
       readonly selections?: readonly ComposerOption[]
       readonly author?: string
+      /** How a held call ended, when this is its outcome: one quiet row, not a message (`outcome-row.tsx`). */
+      readonly outcome?: McpOutcome
       /** The thread a note shared into main came from. */
       readonly thread?: string
       /** When it was written (epoch ms), where Pi knows. */
@@ -199,6 +202,7 @@ const sameUser = (a: UserPart, b: UserPart) =>
   a.attachments === b.attachments &&
   a.selections === b.selections &&
   a.author === b.author &&
+  a.outcome === b.outcome &&
   a.thread === b.thread &&
   a.at === b.at
 

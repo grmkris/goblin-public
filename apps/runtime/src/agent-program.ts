@@ -22,7 +22,8 @@ import { RoutineControl, RoutineRuns } from './routines/service.ts'
 import { AgentInput } from './runtime/input.ts'
 import { conversationId } from './pi/context.ts'
 import { PiSessions, fromPi } from './pi/sessions.ts'
-import { type SharedContext, ownerContent } from './pi/content.ts'
+import type { HeldCallOutcome } from './mcp/types.ts'
+import { type SharedContext, outcomeContent, ownerContent } from './pi/content.ts'
 import { askPersonas } from './personas/ask.ts'
 
 /** The registration gate for every owner conversation request. */
@@ -216,6 +217,22 @@ export const submitOwner = (input: OwnerSubmit) =>
       content,
       answer: routineAnswer(input.operationId, input.text),
       ...(relay === undefined ? {} : { relay }),
+    })
+  })
+
+/**
+ * How a held call the owner decided ended, into the chat that held it: the turn goes on from it, but it is not the
+ * owner's message (no routine question takes it as an answer) and the web shows it as one quiet row.
+ */
+export const sendOutcome = (chat: string, outcome: HeldCallOutcome, operationId: string) =>
+  Effect.gen(function* () {
+    yield* requireBudget
+    return yield* (yield* ChatOperations).send<Conversations | RoutineControl | PiSessions | AgentInput>({
+      chat,
+      operationId,
+      receipt: { kind: 'mcp_outcome', origin: 'owner' },
+      flow: { flow: 'send', via: 'app', actor: 'owner' },
+      content: outcomeContent(outcome.from, outcome.text, outcome.outcome),
     })
   })
 

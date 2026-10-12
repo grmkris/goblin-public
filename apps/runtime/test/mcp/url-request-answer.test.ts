@@ -1,3 +1,4 @@
+import type { McpOutcome } from '@goblin/contracts'
 import type { FlowEvent } from '@goblin/contracts/telemetry'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -28,8 +29,14 @@ afterEach(() => {
   for (const close of cleanups.splice(0)) close()
 })
 
-/** What the turn that asked was told, by operation id. */
-type Told = { readonly session: string; readonly text: string; readonly operationId: string }
+/** What the turn that asked was told, by operation id: goblin's words, the outcome block, and whom it is from. */
+type Told = {
+  readonly session: string
+  readonly text: string
+  readonly outcome: McpOutcome
+  readonly from: string
+  readonly operationId: string
+}
 
 /**
  * The URL request flow over the Sidequest-like server (ADR 0042): a real MCP host and URL request store, chat 41's
@@ -80,7 +87,8 @@ const fixture = async () => {
       answerUrlRequest({
         id,
         action,
-        continue: (session, text, operationId) => Effect.sync(() => told.push({ session, text, operationId })),
+        continue: (session, { text, outcome, from }, operationId) =>
+          Effect.sync(() => told.push({ session, text, outcome, from, operationId })),
       }),
     )
   const input = { connectionId: 'sq', name: 'create_agent', arguments: { name: 'Worker' } }
@@ -134,8 +142,13 @@ describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
     const [first] = told
     expect(first?.session).toBe('41')
     expect(first?.text).toContain('The owner finished the step "Sidequest · Worker" (sq) · create_agent asked for')
-    expect(first?.text).toContain('"agent":"ag_1"')
-    expect(first?.text).not.toContain('one-time')
+    expect(first?.from).toBe('Sidequest · Worker')
+    expect(first?.outcome).toMatchObject({
+      continuation: { kind: 'url', connectionId: 'sq', name: 'create_agent', state: 'completed' },
+      origin: { connectionId: 'sq', trust: 'untrusted' },
+      result: { structuredContent: { agent: 'ag_1' } },
+    })
+    expect(JSON.stringify(first)).not.toContain('one-time')
   })
 
   it('sends the answer even after the server stopped listing the tool, as finishing its step can make it', async () => {
@@ -144,7 +157,7 @@ describe('the owner finishes or cancels a URL request (unit, ADR 0042)', () => {
     server.state.unlisted = true
     expect(await answer(ID, 'accept')).toMatchObject({ state: 'completed' })
     expect(server.seen.at(-1)).toMatchObject({ answer: { action: 'accept' }, state: 'op_1' })
-    expect(told[0]?.text).toContain('"agent":"ag_1"')
+    expect(told[0]?.outcome.result).toMatchObject({ structuredContent: { agent: 'ag_1' } })
   })
 
   it('ends a retry the server answered but goblin could not read as uncertain, and one it refused as failed', async () => {
