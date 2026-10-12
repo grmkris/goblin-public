@@ -13,7 +13,7 @@ export interface SubscriptionSigning {
   readonly state: FlowState
   /**
    * Signs a merchant's subscription request (ADR 0054): `POST …/prepare`, rebuilds the delegation from the terms the
-   * page showed (the owner's address, the collector, the amount, the period, the number of periods) and compares hashes,
+   * page showed (the owner's address, the collector, the billing, the amount, the period, the months) and compares hashes,
    * asks the owner to sign the rebuilt one on Privy's screen, then `POST …/confirm`. Resolves with the subscription.
    */
   readonly sign: (view: SubscriptionView) => Promise<SubscriptionView>
@@ -45,7 +45,12 @@ export function useSubscriptionSigning(): SubscriptionSigning {
             chain,
             owner: getAddress(address),
             collector: getAddress(view.collector),
-            terms: { amountUsd: view.amountUsd, periodDays: view.periodDays, months: view.months },
+            terms: {
+              billing: view.billing,
+              amountUsd: view.amountUsd,
+              periodDays: view.periodDays,
+              months: view.months,
+            },
           },
           Date.now(),
         )

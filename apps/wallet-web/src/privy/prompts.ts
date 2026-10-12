@@ -1,6 +1,7 @@
 import type { TypedDataJson } from '@goblin/wallet/contract'
 import type { ReviewedAllowance, ReviewedSubscription } from '@goblin/wallet/delegation'
 import type { SignTypedDataParams } from '@privy-io/react-auth'
+import { offerLine } from '../pages/subscription-model.ts'
 
 /** What Privy's screen says for one signature: what it allows, for whom and its limit, never the raw typed data. */
 export interface WalletPrompt {
@@ -27,19 +28,26 @@ const atMostUsd = (units: bigint): string => {
   return `$${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')}`
 }
 
-/** A merchant's subscription (ADR 0054): so much every so many days, only to its collector, until the last period. */
+/**
+ * A merchant's subscription (ADR 0054): so much a period, only to its collector, until the last period. A day pass's
+ * period is a UTC day, and the merchant takes it only on days the owner uses it.
+ */
 export const subscriptionPrompt = (
   chainName: string,
   merchant: string,
   description: ReviewedSubscription['description'],
-): WalletPrompt => ({
-  title: `Subscribe to ${merchant} Pro: $${description.amountUsd} every ${description.periodDays} days`,
-  description:
-    `${merchant} may take up to ${description.amountUsd} ${description.token} every ${description.periodDays} days ` +
-    `from this wallet on ${chainName}, only to its own address, until ${day(description.expiresAt)}. The chain ` +
-    'enforces every term, and you can cancel any time.',
-  buttonText: 'Sign',
-})
+): WalletPrompt => {
+  const period = description.billing === 'day' ? 'a day' : `every ${description.periodDays} days`
+  return {
+    title: offerLine({ merchant, ...description }),
+    description:
+      `${merchant} may take up to ${description.amountUsd} ${description.token} ${period} from this wallet on ` +
+      `${chainName}, only to its own address, until ${day(description.expiresAt)}` +
+      `${description.billing === 'day' ? ', and only on days you use it' : ''}. The chain enforces every term, and you ` +
+      'can cancel any time.',
+    buttonText: 'Sign',
+  }
+}
 
 /** The owner's cancellation: one operation from their account, its gas paid in USDC from it. */
 export const cancelPrompt = (merchant: string, maxFee: bigint): WalletPrompt => ({

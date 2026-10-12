@@ -1,5 +1,6 @@
-// The owner's subscriptions on Home and Limits (ADR 0054): each one's cap, where it stands, and Cancel, which turns it
-// off on-chain with the owner's own signature. Pro, or whatever the merchant sold, runs to the end of the paid period.
+// The owner's subscriptions on Home and Limits (ADR 0054): each one's billing (a day pass, or every so many days),
+// where it stands, and Cancel, which turns it off on-chain with the owner's own signature. Pro, or whatever the
+// merchant sold, runs to the end of the paid period.
 import { Button, GoblinMark } from '@goblin/ui'
 import type { SubscriptionView } from '@goblin/wallet/contract'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -9,13 +10,7 @@ import { useAuth } from '../app/auth.tsx'
 import { errorText } from '../ui/async.tsx'
 import { ConfirmSheet } from '../ui/index.ts'
 import { RowList, Section } from '../ui/page.tsx'
-import { capLine, planName, shownSubscriptions, standingOf } from './subscription-model.ts'
-
-const day = (iso: string): string => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
-
-/** What cancelling leaves: Pro until the paid period ends, and nothing taken after it. */
-const cancelText = (view: SubscriptionView): string =>
-  `${view.paidThrough === undefined ? 'Nothing more is taken.' : `${planName(view)} runs to ${day(view.paidThrough)}, the end of the period you paid for.`} You sign one operation from your account; its gas, a few cents, is paid in USDC.`
+import { billingLine, cancelText, planName, shownSubscriptions, standingOf } from './subscription-model.ts'
 
 function SubscriptionRow({ view }: { readonly view: SubscriptionView }) {
   const auth = useAuth()
@@ -41,7 +36,7 @@ function SubscriptionRow({ view }: { readonly view: SubscriptionView }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-sm font-medium">{planName(view)}</span>
-        <span className="text-xs text-muted-foreground tabular-nums">{capLine(view)}</span>
+        <span className="text-xs text-muted-foreground tabular-nums text-pretty">{billingLine(view)}</span>
       </span>
       <span className="flex shrink-0 flex-col items-end gap-1">
         <span className="text-xs text-muted-foreground tabular-nums">{standingOf(view)}</span>

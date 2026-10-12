@@ -13,7 +13,15 @@ import { AddressChip } from '../ui/index.ts'
 import { formatUsdCompact } from '../ui/format.ts'
 import { usdOf } from '../views/money.ts'
 import { FocusPage } from './focus.tsx'
-import { declinedUrl, merchantSite, planName, priceOf, shortfallOf, termsOf } from './subscription-model.ts'
+import {
+  billingTail,
+  declinedUrl,
+  firstPaymentNote,
+  merchantSite,
+  planName,
+  shortfallOf,
+  termsOf,
+} from './subscription-model.ts'
 
 /** The ask's figure: the dollars large, the cents beside them smaller, in tabular figures. */
 function Price({ amountUsd }: { readonly amountUsd: string }) {
@@ -107,14 +115,12 @@ function Readiness({ view }: { readonly view: SubscriptionView }) {
     )
   const short = shortfallOf(view, status.data)
   if (short === undefined || short === 0n) return null
+  const note = firstPaymentNote(view, formatUsdCompact(usdOf(short)))
   return (
     <Alert>
-      <AlertTitle>Add {formatUsdCompact(usdOf(short))} for the first payment</AlertTitle>
+      <AlertTitle>{note.title}</AlertTitle>
       <AlertDescription>
-        <p>
-          {view.merchant} takes the first {priceOf(view.amountUsd)} right after you sign, from your USDC on Base. You
-          can sign now and add it after.
-        </p>
+        <p>{note.text}</p>
         <Button
           size="sm"
           variant="outline"
@@ -145,8 +151,8 @@ function Ask({ view }: { readonly view: SubscriptionView }) {
         <h1 className="text-sm text-muted-foreground">{view.merchant} asks for a subscription</h1>
         <p className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <Price amountUsd={view.amountUsd} />
-          <span className="text-lg font-medium tracking-tight text-muted-foreground">
-            every {String(view.periodDays)} days
+          <span className="text-lg font-medium tracking-tight text-muted-foreground text-balance">
+            {billingTail(view)}
           </span>
         </p>
         <p className="flex items-center gap-2.5 text-sm">
