@@ -27,11 +27,11 @@ operation reconciliation require fresh owner connections and separate deployed a
 
 ## Goblin Wallet
 
-- **Reconciling unknown operations.** A payment whose credential left without a receipt stays `unknown` and keeps its
-  reservation, as it must; there is no way yet to close one. The live pass left one: `wallet-beat3-exa-0001` holds
-  $0.007 after Exa answered 402 to a credential signed against a balance the facilitator had not seen. The fix is an
-  owner action that marks the operation failed and releases the hold once the credential's `validBefore` has passed
-  with no matching transfer on-chain; for a transaction, once its nonce is spent by another hash.
+- **Reconciling unknown operations.** `operation_check` (Check status in the App and on the owner's site) now closes an
+  unknown operation from the evidence it kept: a transaction mined or reverted, or an x402 authorization used, or
+  unused past its `validBefore`. Two gaps remain. An operation recorded before that evidence was kept has nothing to
+  check: the live pass's `wallet-beat3-exa-0001` still holds $0.007 and needs an owner action that marks it failed. A
+  transaction that is never mined stays unknown until its nonce is shown spent by another hash.
 - **Fees in the ledger.** The per-chain fee ceilings bound each signature, but the dollar windows count principal only.
 - **Agent gas from the owner.** MetaMask's `NativeTokenPeriodTransferEnforcer` (v1.3.0, the same address on every
   chain) would let the agent redeem a capped ETH allowance for its own gas, so the owner pays every fee.
