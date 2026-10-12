@@ -22,6 +22,7 @@ import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker } from './model-picker.tsx'
 import { SetupButton } from './topic-setup.tsx'
 import { FinishSetupRow, FundGoblinCard } from './start/setup-cards.tsx'
+import { PLAN_REFUSAL, PlanNeededCard, usePlanNeeded } from './plan-needed.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
 
@@ -199,6 +200,18 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
 }
 
 /**
+ * What stands before goblin can answer, in the dock: no plan at all (ADR 0054), the way to pick one or to fund a day pass
+ * that could not pay; else Start's card when the day has no Credits and no wallet pays instead (ADR 0047, 0048); else
+ * the quiet way back to a skipped Start.
+ */
+function DockSetup({ usage, planNeeded }: { readonly usage: UsageToday | undefined; readonly planNeeded: boolean }) {
+  const pay = useQuery(payQuery).data
+  if (planNeeded) return <PlanNeededCard />
+  const cannotAnswer = usage?.limit === 0 && (pay === undefined || !walletPaysWhenSpent(pay))
+  return cannotAnswer ? <FundGoblinCard /> : <FinishSetupRow />
+}
+
+/**
  * Under a conversation's transcript, floating over its bottom edge: what waits on the owner, then the composer with
  * what the agent is doing, the model, what it may use here and the day's usage. A closed conversation offers Reopen
  * instead of a composer.
@@ -238,15 +251,16 @@ export function ConversationDock({
   const { projection, notice, send, stop, removeQueued, report } = conversation
   const sendOwn = withSharedContext(useSharedContext(id), send, onStartThread)
   const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
-  // No Credits today and no wallet to pay instead (ADR 0047, 0048): goblin cannot answer until setup is done.
-  const pay = useQuery(payQuery).data
-  const cannotAnswer = usage?.limit === 0 && (pay === undefined || !walletPaysWhenSpent(pay))
+  const planNeeded = usePlanNeeded()
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
       <DockCards
-        // Start's own card says what the free plan waits for; its refusal would only repeat it.
-        notices={[notice, projection?.queueNotice ?? '', ...notices].filter((text) => !text.startsWith(WALLET_NEEDED))}
-        setup={closed === undefined && (cannotAnswer ? <FundGoblinCard /> : <FinishSetupRow />)}
+        // Start's own card says what the free plan waits for, and the plan card why goblin does not answer; their
+        // refusals would only repeat them.
+        notices={[notice, projection?.queueNotice ?? '', ...notices].filter(
+          (text) => !text.startsWith(WALLET_NEEDED) && !(planNeeded && text.startsWith(PLAN_REFUSAL)),
+        )}
+        setup={closed === undefined && <DockSetup usage={usage} planNeeded={planNeeded} />}
         open={closed === undefined}
         waiting={waiting}
         id={id}
