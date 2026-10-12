@@ -13,6 +13,8 @@ export interface WalletEnv {
   readonly PRIVY_APP_SECRET: string
   readonly PRIVY_AUTHORIZATION_KEY: string
   readonly RELAY_PRIVATE_KEY: string
+  /** Pimlico's bundler and ERC-20 paymaster: every EVM send is a UserOperation whose gas is paid in USDC. */
+  readonly PIMLICO_API_KEY: string
   /** JSON object of chain id to RPC URL; empty means the public RPCs in `@goblin/wallet/chains`. */
   readonly RPC_URLS: string
   /** "1" lets the wallet spend mainnet money; anything else is testnets only. */

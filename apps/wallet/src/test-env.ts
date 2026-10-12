@@ -25,6 +25,7 @@ export const testEnv = (extra: Partial<WalletEnv> = {}): WalletEnv => ({
   PRIVY_APP_SECRET: '',
   PRIVY_AUTHORIZATION_KEY: '',
   RELAY_PRIVATE_KEY: '',
+  PIMLICO_API_KEY: '',
   RPC_URLS: '',
   WALLET_LIVE: '0',
   ...extra,

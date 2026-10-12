@@ -1,3 +1,7 @@
+import { httpJsonRpc } from '@goblin/wallet/balances'
+import { pimlicoUrl } from '@goblin/wallet/bundler'
+import { chainByKey } from '@goblin/wallet/chains'
+import type { ChainKey } from '@goblin/wallet/contract'
 import { relayAccountFromKey } from '@goblin/wallet/relay'
 import { agentSigner } from '@goblin/wallet/signer'
 import { authorizationSigner, createAgentWallet, PrivyClient } from '@goblin/wallet/privy'
@@ -36,6 +40,12 @@ const relayFor = (env: WalletEnv) => {
   return relayClient(relayStubs(env, address))
 }
 
+/** Pimlico's bundler per chain, or undefined where no key is configured (then no UserOperation is sent). */
+const bundlersFor = (env: WalletEnv, live: boolean) =>
+  env.PIMLICO_API_KEY === ''
+    ? undefined
+    : (chain: ChainKey) => httpJsonRpc(pimlicoUrl(chainByKey(chain, live).id, env.PIMLICO_API_KEY))
+
 /**
  * The deployed wiring: Privy for the agent wallet and its signer, the owner's on-chain allowance (prepared, confirmed and
  * stored in the ledger), and the payment rails, which top the agent up from that allowance and report what it has left.
@@ -65,6 +75,7 @@ export const productionWiring: Wiring = {
     const live = env.WALLET_LIVE === '1'
     const rpcFor = rpcFromEnv(env.RPC_URLS, live)
     const relay = relayFor(env)
+    const bundlerFor = bundlersFor(env, live)
     return createRails({
       live,
       signer,
@@ -72,6 +83,7 @@ export const productionWiring: Wiring = {
       rpcFor,
       ...allowanceRails(env, owner.userId, rpcFor),
       ...(relay === undefined ? {} : { relay }),
+      ...(bundlerFor === undefined ? {} : { bundlerFor }),
     })
   },
 }

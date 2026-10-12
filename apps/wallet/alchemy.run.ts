@@ -37,6 +37,7 @@ export default Alchemy.Stack(
         PRIVY_APP_SECRET: Config.Redacted('PRIVY_APP_SECRET'),
         PRIVY_AUTHORIZATION_KEY: Config.Redacted('PRIVY_AUTHORIZATION_KEY'),
         RELAY_PRIVATE_KEY: Config.Redacted('RELAY_PRIVATE_KEY'),
+        PIMLICO_API_KEY: Config.Redacted('PIMLICO_API_KEY'),
         RPC_URLS: Config.String('WALLET_RPC_URLS').pipe(Config.withDefault('')),
         WALLET_LIVE: Config.String('WALLET_LIVE').pipe(Config.withDefault('0')),
       },

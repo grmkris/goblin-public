@@ -55,7 +55,7 @@ if (!stage.local) {
 
 const childEnv: Record<string, string | undefined> = { ...process.env }
 for (const key of Object.keys(childEnv)) {
-  if (/^(CLOUDFLARE_|GOBLIN_|PRIVY_|RELAY_|TREASURY_|WALLET_|ALCHEMY_STAGE)/u.test(key)) delete childEnv[key]
+  if (/^(CLOUDFLARE_|GOBLIN_|PRIVY_|PIMLICO_|RELAY_|TREASURY_|WALLET_|ALCHEMY_STAGE)/u.test(key)) delete childEnv[key]
 }
 childEnv['GOBLIN_STAGE'] = stage.name
 childEnv['GOBLIN_RELEASE_ROOT'] = releaseRoot

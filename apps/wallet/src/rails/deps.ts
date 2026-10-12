@@ -35,6 +35,8 @@ export interface RailsDeps {
   /** Sends the owner's EIP-7702 upgrade; absent where no relay key is configured. */
   readonly relay?: { upgrade(request: RelayUpgrade): Promise<RelayResult> }
   readonly rpcFor: (chain: ChainKey) => JsonRpc
+  /** Pimlico's bundler per chain (ERC-4337, gas paid in USDC); absent where no key is configured. */
+  readonly bundlerFor?: (chain: ChainKey) => JsonRpc
   readonly fetchFn?: typeof fetch
   readonly now?: () => Date
   /** Receipt polling; tests make it instant. */
