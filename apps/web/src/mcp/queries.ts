@@ -108,7 +108,8 @@ export const addServerMutation = mutationOptions({
 /**
  * Adds a server and starts connecting it, in one call from wherever the owner said yes (a suggestion, a registry entry,
  * a card in the conversation): the authorization URL to send the owner to, or none when it is connected at once. A
- * page that leaves for the authorization reads the list when it comes back.
+ * page that leaves for the authorization reads the list when it comes back. A connect that fails may still have added
+ * the server, so the list is read again then too, and its card offers Connect.
  */
 export const addAndConnectMutation = mutationOptions({
   ...owner.apiMutation({
@@ -119,6 +120,7 @@ export const addAndConnectMutation = mutationOptions({
   }),
   onSuccess: (started, _server, _result, { client }) =>
     started.authorizationUrl === undefined ? serversChanged(client) : undefined,
+  onError: (_error, _server, _result, { client }) => serversChanged(client),
 })
 
 /** Names a connection anew (ADR 0041); a label another connection holds is refused (409). */

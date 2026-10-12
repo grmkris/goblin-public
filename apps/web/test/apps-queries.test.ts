@@ -1,4 +1,4 @@
-import { AppsGroup, McpGroup, NotFound, OwnerApi, OwnerAdmission, ownerApiOf } from '@goblin/contracts/api'
+import { AppsGroup, McpGroup, NotFound, OwnerApi, OwnerAdmission, UpstreamMcp, ownerApiOf } from '@goblin/contracts/api'
 import type { AppLaunch } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -15,7 +15,7 @@ import {
   appToolCallMutation,
   perform,
 } from '../src/apps/queries.ts'
-import { grantsQuery, toolGrantMutation } from '../src/mcp/queries.ts'
+import { addAndConnectMutation, grantsQuery, mcpKeys, toolGrantMutation } from '../src/mcp/queries.ts'
 import { unusedHandlers } from './query/unused-handlers.ts'
 
 const LAUNCH: AppLaunch = {
@@ -55,6 +55,16 @@ const fakeApps = () => {
     handlers.handleAll({
       ...unusedHandlers(OwnerApi.groups.mcp),
       grants: () => Effect.succeed([]),
+      addServer: ({ payload }) =>
+        Effect.succeed({
+          connectionId: 'kiwi-1',
+          label: 'Kiwi.com',
+          endpoint: payload.endpoint,
+          status: 'disconnected' as const,
+          live: false,
+          source: 'added' as const,
+        }),
+      connect: ({ params }) => Effect.fail(new UpstreamMcp({ connectionId: params.id, reason: 'timeout' })),
       setToolGrant: ({ payload }) =>
         Effect.succeed([{ connectionId: payload.connectionId, capability: 'tool' as const, name: payload.name }]),
       callTool: ({ headers, payload }) => {
@@ -132,6 +142,15 @@ describe("an App's frame calls", () => {
     const grants = await perform(client, toolGrantMutation, { connectionId: 'myplan', name: 'read', allowed: true })
     expect(grants).toEqual([{ connectionId: 'myplan', capability: 'tool', name: 'read' }])
     expect(client.getQueryData(grantsQuery.queryKey)).toEqual(grants)
+  })
+
+  it('read the server list again when a server is added but its connect fails, so its card shows', async () => {
+    const client = testQueryClient()
+    client.setQueryData(mcpKeys.servers, [])
+    await expect(perform(client, addAndConnectMutation, { endpoint: 'https://mcp.kiwi.com' })).rejects.toBeInstanceOf(
+      UpstreamMcp,
+    )
+    expect(client.getQueryState(mcpKeys.servers)?.isInvalidated).toBe(true)
   })
 
   it('fail with the typed refusal the owner sees', async () => {
