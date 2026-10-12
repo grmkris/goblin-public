@@ -11,9 +11,9 @@ import {
 import { userOpReceipt } from '@goblin/wallet/bundler'
 import { chainByKey } from '@goblin/wallet/chains'
 import type { AgentSigner, Collection, CollectReason, CollectRequest } from '@goblin/wallet/contract'
-import { allowanceRedeemCalldata, periodAt, type SignedSubscription } from '@goblin/wallet/delegation'
+import { allowanceRedeemCalldata, periodAt, periodCount, type SignedSubscription } from '@goblin/wallet/delegation'
 import type { SubscriptionApi } from '../oauth/durable.ts'
-import { type CollectionStart, type SubscriptionRow, statusAt } from './store.ts'
+import { type PaidCollection, type SubscriptionRow, statusAt } from './store.ts'
 
 /** What a collection needs besides the store: Base's node, Pimlico, the collector's signer and the clock. */
 export interface CollectDeps {
@@ -36,7 +36,10 @@ const signedOf = (row: SubscriptionRow): SignedSubscription | undefined => {
   return JSON.parse(row.signedJson) as SignedSubscription
 }
 
-/** Why period `period` of `row` cannot be collected now, or nothing when it can. */
+/**
+ * Why period `period` of `row` cannot be collected now, or nothing when it can. Only a period that has not started is
+ * `not_due`: a day pass's period is due all through its UTC day.
+ */
 const refusalOf = (row: SubscriptionRow, period: number, nowMs: number): CollectReason | undefined => {
   const status = statusAt(row, Math.floor(nowMs / 1000))
   if (status === 'revoked' || status === 'expired') return status
@@ -44,7 +47,7 @@ const refusalOf = (row: SubscriptionRow, period: number, nowMs: number): Collect
   const current = periodAt(iso(row.startsAt), row, nowMs)
   if (period > current) return 'not_due'
   // A period that has ended can no longer be collected: the enforcer counts only the current one.
-  if (period < current || period > row.months) return 'expired'
+  if (period < current || period > periodCount(row)) return 'expired'
   return undefined
 }
 
@@ -160,7 +163,7 @@ const recorded = (
 }
 
 /** A paid period's recorded payment, as the merchant reads it. */
-const paidAnswer = (start: Extract<CollectionStart, { kind: 'paid' }>): Collection => ({
+const paidAnswer = (start: PaidCollection): Collection => ({
   status: 'paid',
   ...(start.userOpHash === null ? {} : { userOpHash: start.userOpHash }),
   ...(start.txHash === null ? {} : { txHash: start.txHash }),
@@ -193,11 +196,24 @@ const attempt = async (
   return recorded(store, row, period, await send(row, signed, deps, key, submitted), deps.now())
 }
 
+/** A submitted attempt settled from its receipt and recorded; still `pending` while the bundler has none. */
+const settle = async (
+  store: SubscriptionApi,
+  deps: CollectDeps & { readonly bundler: JsonRpc },
+  row: SubscriptionRow,
+  period: number,
+  userOpHash: string,
+): Promise<Collection> => {
+  const outcome = await checked(deps.bundler, userOpHash)
+  return outcome.status === 'pending' ? outcome : recorded(store, row, period, outcome, deps.now())
+}
+
 /**
  * Collects period `request.period` of a subscription (ADR 0054): at most once per period, whatever the operation id. A
- * paid period answers its payment; a submitted one its receipt; otherwise the chain is read first (revoked, already
- * paid, the owner short: nothing is signed then), and the collector redeems the period's amount in one UserOperation
- * whose gas it pays in USDC from its own float. The chain caps the redemption at one amount a period, whatever this does.
+ * paid period answers its payment whenever it is asked, even once it ended or the subscription was revoked; a
+ * submitted one its receipt; otherwise the chain is read first (revoked, already paid, the owner short: nothing is
+ * signed then), and the collector redeems the period's amount in one UserOperation whose gas it pays in USDC from its
+ * own float. The chain caps the redemption at one amount a period, whatever this does.
  */
 export async function collect(
   store: SubscriptionApi,
@@ -206,10 +222,16 @@ export async function collect(
   request: CollectRequest,
 ): Promise<Collection> {
   const nowMs = deps.now()
+  const known = await store.knownCollection(row.id, request.period, Math.floor(nowMs / 1000))
+  if (known?.kind === 'paid') return paidAnswer(known)
   const refusal = refusalOf(row, request.period, nowMs)
-  const signed = signedOf(row)
-  if (refusal !== undefined) return failed(refusal)
   const { collector, bundler } = deps
+  if (refusal !== undefined)
+    // An attempt submitted before the period ended may still land: its receipt decides, not the clock.
+    return known === undefined || bundler === undefined
+      ? failed(refusal)
+      : settle(store, { ...deps, bundler }, row, request.period, known.userOpHash)
+  const signed = signedOf(row)
   if (signed === undefined || collector === undefined || bundler === undefined) return failed('chain')
   const start = await store.beginCollection({
     subscriptionId: row.id,
@@ -224,6 +246,5 @@ export async function collect(
       period: request.period,
       attemptNumber: start.attempt,
     })
-  const outcome = await checked(bundler, start.userOpHash)
-  return outcome.status === 'pending' ? outcome : recorded(store, row, request.period, outcome, deps.now())
+  return settle(store, { ...deps, bundler }, row, request.period, start.userOpHash)
 }

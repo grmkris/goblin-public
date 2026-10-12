@@ -1,4 +1,4 @@
-import type { SubscriptionStatus } from '@goblin/wallet/contract'
+import type { MerchantBilling, SubscriptionStatus } from '@goblin/wallet/contract'
 import type { Sql } from '../ledger/sql.ts'
 
 /**
@@ -12,7 +12,7 @@ import type { Sql } from '../ledger/sql.ts'
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS merchant_subscriptions (
     id TEXT PRIMARY KEY, merchant TEXT NOT NULL, reference TEXT NOT NULL, plan TEXT NOT NULL,
-    amount_usd TEXT NOT NULL, period_days INTEGER NOT NULL, months INTEGER NOT NULL, return_url TEXT NOT NULL,
+    billing TEXT NOT NULL DEFAULT 'month', amount_usd TEXT NOT NULL, period_days INTEGER NOT NULL, months INTEGER NOT NULL, return_url TEXT NOT NULL,
     collector TEXT NOT NULL, chain TEXT NOT NULL, status TEXT NOT NULL, owner TEXT, owner_address TEXT,
     prepared_json TEXT, signed_json TEXT, delegation_hash TEXT, starts_at INTEGER, expires_at INTEGER,
     request_expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, signed_at INTEGER, revoked_at INTEGER,
@@ -23,6 +23,19 @@ const SCHEMA = [
     reason TEXT, user_op_hash TEXT, tx_hash TEXT, attempts INTEGER NOT NULL, lease_until INTEGER,
     paid_at INTEGER, updated_at INTEGER NOT NULL, PRIMARY KEY (subscription_id, period))`,
 ]
+
+/**
+ * `billing` came after the first deployment: a table created before it gets the column once, and its subscriptions,
+ * all 30-day ones, are billed by the month.
+ */
+function addBilling(sql: Sql): void {
+  try {
+    sql.all('SELECT billing FROM merchant_subscriptions LIMIT 0')
+  } catch {
+    // expected: "no such column" on a table created before `billing`; the column is added here, once
+    sql.run("ALTER TABLE merchant_subscriptions ADD COLUMN billing TEXT NOT NULL DEFAULT 'month'")
+  }
+}
 
 /** How long a request can be signed before the merchant asks again. */
 export const REQUEST_TTL_S = 3600
@@ -37,6 +50,7 @@ export interface SubscriptionRow {
   readonly merchant: string
   readonly reference: string
   readonly plan: 'pro'
+  readonly billing: MerchantBilling
   readonly amountUsd: string
   readonly periodDays: number
   readonly months: number
@@ -64,6 +78,7 @@ interface Row {
   merchant: string
   reference: string
   plan: string
+  billing: string
   amount_usd: string
   period_days: number
   months: number
@@ -95,6 +110,7 @@ const rowOf = (row: Row): SubscriptionRow => ({
   merchant: row.merchant,
   reference: row.reference,
   plan: 'pro',
+  billing: row.billing === 'day' ? 'day' : 'month',
   amountUsd: row.amount_usd,
   periodDays: row.period_days,
   months: row.months,
@@ -130,6 +146,7 @@ export interface NewSubscription {
   readonly id: string
   readonly merchant: string
   readonly reference: string
+  readonly billing: MerchantBilling
   readonly amountUsd: string
   readonly periodDays: number
   readonly months: number
@@ -149,13 +166,26 @@ export interface Activation {
   readonly now: number
 }
 
+/** A period's payment as recorded: paid, with its transaction, user operation and when. */
+export interface PaidCollection {
+  readonly kind: 'paid'
+  readonly txHash: string | null
+  readonly userOpHash: string | null
+  readonly at: number
+}
+
+/** An earlier attempt was submitted and its outcome is not known yet: ask the bundler about `userOpHash`. */
+export interface SubmittedCollection {
+  readonly kind: 'check'
+  readonly userOpHash: string
+}
+
 /** What a collection attempt may do for its period. */
 export type CollectionStart =
-  | { readonly kind: 'paid'; readonly txHash: string | null; readonly userOpHash: string | null; readonly at: number }
+  | PaidCollection
   /** Another attempt holds the period right now. */
   | { readonly kind: 'busy' }
-  /** An earlier attempt was submitted and its outcome is not known yet: ask the bundler about `userOpHash`. */
-  | { readonly kind: 'check'; readonly userOpHash: string }
+  | SubmittedCollection
   /** Go ahead: this attempt holds the period for a while; `attempt` numbers its signer key. */
   | { readonly kind: 'go'; readonly attempt: number }
 
@@ -175,15 +205,17 @@ export class SubscriptionStore {
   constructor(sql: Sql) {
     this.#sql = sql
     for (const statement of SCHEMA) sql.run(statement)
+    addBilling(sql)
   }
 
   createSubscription(input: NewSubscription): void {
     this.#sql.run(
-      `INSERT INTO merchant_subscriptions (id,merchant,reference,plan,amount_usd,period_days,months,return_url,
-        collector,chain,status,request_expires_at,created_at) VALUES (?,?,?,'pro',?,?,?,?,?,'base','pending',?,?)`,
+      `INSERT INTO merchant_subscriptions (id,merchant,reference,plan,billing,amount_usd,period_days,months,return_url,
+        collector,chain,status,request_expires_at,created_at) VALUES (?,?,?,'pro',?,?,?,?,?,?,'base','pending',?,?)`,
       input.id,
       input.merchant,
       input.reference,
+      input.billing,
       input.amountUsd,
       input.periodDays,
       input.months,
@@ -291,6 +323,35 @@ export class SubscriptionStore {
   }
 
   /**
+   * What is known of period `period`'s collection without claiming it: its payment once paid, whenever it is asked
+   * (a paid period stays paid after it ends or the subscription is revoked); an attempt submitted lately whose outcome
+   * the bundler has not told yet; otherwise nothing.
+   */
+  knownCollection(
+    subscriptionId: string,
+    period: number,
+    now: number,
+  ): PaidCollection | SubmittedCollection | undefined {
+    const row = this.#sql.all<{
+      status: string
+      user_op_hash: string | null
+      tx_hash: string | null
+      paid_at: number | null
+      updated_at: number
+    }>(
+      `SELECT status,user_op_hash,tx_hash,paid_at,updated_at FROM merchant_collections
+        WHERE subscription_id=? AND period=?`,
+      subscriptionId,
+      period,
+    )[0]
+    if (row?.status === 'paid')
+      return { kind: 'paid', txHash: row.tx_hash, userOpHash: row.user_op_hash, at: row.paid_at ?? row.updated_at }
+    if (row?.status === 'pending' && row.user_op_hash !== null && now - row.updated_at < PENDING_STALE_S)
+      return { kind: 'check', userOpHash: row.user_op_hash }
+    return undefined
+  }
+
+  /**
    * Claims period `period` for one collection attempt. A paid period answers its payment; one another attempt holds is
    * busy; one submitted recently is checked against the bundler; anything else (new, failed, or submitted long ago
    * without a receipt) is this attempt's for `COLLECT_LEASE_S`.
@@ -302,25 +363,14 @@ export class SubscriptionStore {
     now: number
   }): CollectionStart {
     return this.#sql.atomic(() => {
-      const row = this.#sql.all<{
-        status: string
-        attempts: number
-        lease_until: number | null
-        user_op_hash: string | null
-        tx_hash: string | null
-        paid_at: number | null
-        updated_at: number
-      }>(
-        `SELECT status,attempts,lease_until,user_op_hash,tx_hash,paid_at,updated_at FROM merchant_collections
-          WHERE subscription_id=? AND period=?`,
+      const known = this.knownCollection(input.subscriptionId, input.period, input.now)
+      if (known !== undefined) return known
+      const row = this.#sql.all<{ status: string; attempts: number; lease_until: number | null }>(
+        'SELECT status,attempts,lease_until FROM merchant_collections WHERE subscription_id=? AND period=?',
         input.subscriptionId,
         input.period,
       )[0]
-      if (row?.status === 'paid')
-        return { kind: 'paid', txHash: row.tx_hash, userOpHash: row.user_op_hash, at: row.paid_at ?? row.updated_at }
       if (row?.status === 'sending' && (row.lease_until ?? 0) > input.now) return { kind: 'busy' }
-      if (row?.status === 'pending' && row.user_op_hash !== null && input.now - row.updated_at < PENDING_STALE_S)
-        return { kind: 'check', userOpHash: row.user_op_hash }
       const attempt = (row?.attempts ?? 0) + 1
       this.#sql.run(
         `INSERT INTO merchant_collections (subscription_id,period,operation_id,status,attempts,lease_until,updated_at)

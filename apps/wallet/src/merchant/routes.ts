@@ -8,7 +8,6 @@ import {
 import { formatUnits, parseUnits } from '@goblin/wallet/amounts'
 import { erc20Balance, type JsonRpc } from '@goblin/wallet/balances'
 import { chainByKey } from '@goblin/wallet/chains'
-import { MAX_PERIODS } from '@goblin/wallet/delegation'
 import { readBody } from '../api/call.ts'
 import type { WalletEnv } from '../env.ts'
 import { apiError, json } from '../http.ts'
@@ -39,6 +38,7 @@ export const merchantView = (row: SubscriptionRow, now: number): MerchantSubscri
   reference: row.reference,
   status: statusAt(row, now),
   chain: 'base',
+  billing: row.billing,
   amountUsd: row.amountUsd,
   periodDays: row.periodDays,
   collector: row.collector,
@@ -77,7 +77,8 @@ async function create(request: Request, env: WalletEnv, config: MerchantConfig, 
     return apiError('return_not_allowed', 'The return address is not on one of your allowed origins.', 400)
   if (config.collector === undefined)
     return apiError('collector_missing', 'This wallet has no collector to pay into yet.', 503, 'Try again later.')
-  if (body.value.months > MAX_PERIODS) return apiError('invalid_request', 'Too many periods.', 400)
+  if (body.value.billing === 'day' && body.value.periodDays !== 1)
+    return apiError('invalid_request', 'A day pass has one-day periods.', 400)
   const id = newId()
   const now = Math.floor((deps.now?.() ?? Date.now()) / 1000)
   target.searchParams.set('subscription', id)
@@ -85,6 +86,7 @@ async function create(request: Request, env: WalletEnv, config: MerchantConfig, 
     id,
     merchant: GOBLIN_MERCHANT,
     reference: body.value.reference,
+    billing: body.value.billing,
     amountUsd: body.value.amountUsd,
     periodDays: body.value.periodDays,
     months: body.value.months,

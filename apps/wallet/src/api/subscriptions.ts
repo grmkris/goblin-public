@@ -49,6 +49,7 @@ export const viewOf = (row: SubscriptionRow, now: number): SubscriptionView => {
     merchant: row.merchant === GOBLIN_MERCHANT ? 'goblin' : row.merchant,
     merchantHost: new URL(row.returnUrl).host,
     plan: row.plan,
+    billing: row.billing,
     amountUsd: row.amountUsd,
     periodDays: row.periodDays,
     months: row.months,
@@ -94,7 +95,12 @@ export async function subscriptionList(call: ApiCall): Promise<Response> {
   return json((await call.subscriptions.ownerSubscriptions(call.owner.userId)).map((row) => viewOf(row, now)))
 }
 
-const terms = (row: SubscriptionRow) => ({ amountUsd: row.amountUsd, periodDays: row.periodDays, months: row.months })
+const terms = (row: SubscriptionRow) => ({
+  billing: row.billing,
+  amountUsd: row.amountUsd,
+  periodDays: row.periodDays,
+  months: row.months,
+})
 
 /**
  * `POST /api/subscriptions/:id/prepare`: the exact delegation for the owner to sign, kept on the request. The owner's

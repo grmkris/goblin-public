@@ -34,6 +34,7 @@ export const SUBSCRIPTION_METHODS = [
   'ownerSubscriptions',
   'putRevoke',
   'markRevoked',
+  'knownCollection',
   'beginCollection',
   'finishCollection',
 ] as const satisfies readonly (keyof SubscriptionStore)[]
