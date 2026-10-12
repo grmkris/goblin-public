@@ -1,8 +1,9 @@
-import type { ModelChoice, ModelOption } from '@goblin/contracts'
+import { type ModelChoice, type ModelOption, PayRoute } from '@goblin/contracts'
 import { eq } from 'drizzle-orm'
 import type { DrizzleSqliteDODatabase } from 'drizzle-orm/durable-sqlite'
 import * as Context from 'effect/Context'
 import type * as Effect from 'effect/Effect'
+import * as Schema from 'effect/Schema'
 import { type AppError, InvalidInput } from './http/errors.ts'
 import { appModelChoice } from './storage/schema.ts'
 
@@ -56,64 +57,32 @@ export function modelOptions(models: string | undefined, defaultId: string): Mod
 }
 
 /**
- * A route for inference paid per call from the owner's Goblin Wallet over MPP on Tempo (ADR 0047): the option's id, the
- * Pi provider its calls go through, the model that route serves, and the model that stands in for it where goblin
- * itself pays (routines, housekeeping).
+ * A route for model calls paid per call from the owner's Goblin Wallet over MPP on Tempo (ADR 0047): its name, the Pi
+ * provider its calls go through, the model it answers with in place of the one asked for (none: the same model), and
+ * how the owner knows it. The owner's pay mode (`pay-mode.ts`) says when a call takes it.
  */
 export type PaidRoute = {
-  readonly id: string
+  readonly name: PayRoute
   readonly provider: string
-  readonly model: string
-  readonly credits: string
-  readonly route: string
+  readonly model?: string
+  readonly label: string
 }
 
-const PAID: Readonly<Record<string, Omit<PaidRoute, 'id'>>> = {
-  // Tempo's MPP proxy to OpenRouter: priced up front per call from max_tokens and the prompt, in USDC.e on Tempo.
-  'paid:tempo': {
-    provider: 'goblin-paid-tempo',
-    model: 'deepseek/deepseek-v4.1-flash',
-    credits: 'deepseek-v4.1-flash',
-    route: 'Tempo',
-  },
-  // goblin's own endpoint (`/v1/chat/completions`) behind the same MPP charge, paying the deployment's recipient.
-  'paid:goblin': {
-    provider: 'goblin-paid-goblin',
-    model: 'deepseek-v4.1-flash',
-    credits: 'deepseek-v4.1-flash',
-    route: 'goblin',
-  },
+const PAID: Readonly<Record<PayRoute, Omit<PaidRoute, 'name'>>> = {
+  // goblin's own endpoint (`/v1/chat/completions`) behind an MPP charge: every offered model, paying the deployment's
+  // recipient (http/paid-inference.ts).
+  goblin: { provider: 'goblin-paid-goblin', label: 'goblin' },
+  // Tempo's MPP proxy to OpenRouter: DeepSeek V4.1 Flash, priced up front per call from max_tokens and the prompt.
+  tempo: { provider: 'goblin-paid-tempo', model: 'deepseek/deepseek-v4.1-flash', label: 'Tempo' },
 }
 
-/** The paid route an option id names, if it is one. */
-export const paidRoute = (id: string): PaidRoute | undefined => {
-  const route = PAID[id]
-  return route === undefined ? undefined : { id, ...route }
-}
+const isPayRoute = Schema.is(PayRoute)
 
-/** The paid routes `PAID_INFERENCE` (comma-separated: `tempo`, `goblin`) offers. */
+/** The paid routes `PAID_INFERENCE` (comma-separated: `goblin`, `tempo`) sells, in its order. */
 export const paidRoutes = (value: string | undefined): readonly PaidRoute[] =>
-  [...new Set((value ?? '').split(',').map((name) => name.trim()))].flatMap((name) => {
-    const route = paidRoute(`paid:${name}`)
-    return route === undefined ? [] : [route]
-  })
-
-/** The model goblin pays for in place of `id`: a paid option's own model on goblin's provider, else `id` itself. */
-export const creditsModel = (id: string): string => paidRoute(id)?.credits ?? id
-
-/** What the owner can pick: the deployment's models, then its paid-per-call routes. */
-export function offeredModels(models: string | undefined, defaultId: string, paid: string | undefined): ModelOptions {
-  const [first, ...rest] = modelOptions(models, defaultId)
-  const routes = paidRoutes(paid).map((route): ModelOption => ({
-    id: route.id,
-    label: `DeepSeek V4.1 Flash · pay per call (${route.route})`,
-    route: route.route,
-    note: 'Paid per call from your Goblin Wallet',
-    images: false,
-    contextWindow: CONTEXT_WINDOW,
-  }))
-  return [first, ...rest, ...routes]
-}
+  [...new Set((value ?? '').split(',').map((name) => name.trim()))].flatMap((name) =>
+    isPayRoute(name) ? [{ name, ...PAID[name] }] : [],
+  )
 
 /** The model that names threads and writes main's memory: `GOBLIN_MEMORY_MODEL` when offered, else the default. */
 export function memoryModelId(memoryModel: string | undefined, options: ModelOptions): string {

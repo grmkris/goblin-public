@@ -132,7 +132,7 @@ const services = (calls: Calls) => {
     }),
   )
   const plans = Layer.mergeAll(
-    Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void })),
+    Layer.succeed(Budget, fake<Budget['Service']>({ require: () => Effect.void, admit: () => Effect.void })),
     Layer.succeed(Models, fake<Models['Service']>({ current: Effect.succeed('model-a') })),
     FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
   )

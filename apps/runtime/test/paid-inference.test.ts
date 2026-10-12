@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import type { AssistantMessage, Model, ProviderStreams, SimpleStreamOptions } from '@earendil-works/pi-ai'
+import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
+import type { PayRoute } from '@goblin/contracts'
 import type { Tool } from '@modelcontextprotocol/client'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { Budget } from '../src/budget.ts'
 import {
   challengeId,
   payInferenceChallenge,
@@ -11,8 +15,11 @@ import {
 import { McpConnections, McpServers } from '../src/mcp/service.ts'
 import { stub } from './http/api/fixture.ts'
 import { toolOffered } from '../src/mcp/remote.ts'
-import { creditsModel, offeredModels, paidRoutes } from '../src/models.ts'
-import { headersOf, modelRef, payingFetch } from '../src/pi/model.ts'
+import { modelOptions, paidRoutes } from '../src/models.ts'
+import { budgetExtension } from '../src/pi/budget.ts'
+import { CONVERSATION_CALL, headersOf, makePiModels, modelRef, payingFetch } from '../src/pi/model.ts'
+import type { RunProgram } from '../src/runtime/bridge.ts'
+import { fake } from './fake.ts'
 
 const CHALLENGE = 'Payment id="ch_1", realm="openrouter.mpp.tempo.xyz", method="tempo", intent="charge", request="e30"'
 
@@ -128,16 +135,13 @@ describe('inference paid per call from the wallet (ADR 0047)', () => {
     })
   })
 
-  it('offers the paid routes after the deployment models, and maps each to its provider and the model goblin pays for', () => {
-    expect(paidRoutes('tempo, goblin, nope').map((route) => route.id)).toEqual(['paid:tempo', 'paid:goblin'])
-    expect(offeredModels('qwen3.8-flash', 'deepseek-v4.1-flash', 'tempo').map((option) => option.id)).toEqual([
+  it('sells the routes the stage names, and keeps them out of the model picker: the pick stays a model', () => {
+    expect(paidRoutes('tempo, goblin, nope').map((route) => route.name)).toEqual(['tempo', 'goblin'])
+    expect(modelOptions('qwen3.8-flash', 'deepseek-v4.1-flash').map((option) => option.id)).toEqual([
       'deepseek-v4.1-flash',
       'qwen3.8-flash',
-      'paid:tempo',
     ])
-    expect(modelRef('paid:tempo')).toEqual({ provider: 'goblin-paid-tempo', id: 'deepseek/deepseek-v4.1-flash' })
     expect(modelRef('qwen3.8-flash')).toEqual({ provider: 'goblin-litellm', id: 'qwen3.8-flash' })
-    expect([creditsModel('paid:tempo'), creditsModel('glm-5.3')]).toEqual(['deepseek-v4.1-flash', 'glm-5.3'])
   })
 
   it("keeps a request's headers in every shape a client passes them, for the paid retry", () => {
@@ -189,5 +193,160 @@ describe('inference paid per call from the wallet (ADR 0047)', () => {
     expect(toolOffered(tool(['app']), 'inference')).toBe(true)
     expect(toolOffered(tool(['app']), 'model')).toBe(false)
     expect(toolOffered(tool(['model']), 'inference')).toBe(false)
+  })
+})
+
+/** A model call as the scripted provider saw it. */
+type Sent = {
+  readonly provider: string
+  readonly model: string
+  readonly baseUrl: string
+  readonly apiKey: string | undefined
+  readonly maxRetries: number | undefined
+  readonly paying: boolean
+}
+
+/** A provider that records each call and answers it at once, as the provider it was sent to. */
+const scripted = () => {
+  const sent: Sent[] = []
+  const answer = (model: Model<string>, _context: unknown, options?: SimpleStreamOptions) => {
+    sent.push({
+      provider: model.provider,
+      model: model.id,
+      baseUrl: model.baseUrl,
+      apiKey: options?.apiKey,
+      maxRetries: options?.maxRetries,
+      paying: options?.fetch !== undefined,
+    })
+    const events = createAssistantMessageEventStream()
+    const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+    const message: AssistantMessage = {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'ok' }],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: { ...zero, totalTokens: 0, cost: { ...zero, total: 0 } },
+      stopReason: 'stop',
+      timestamp: 1,
+    }
+    events.push({ type: 'done', reason: 'stop', message })
+    events.end(message)
+    return events
+  }
+  const streams: ProviderStreams = { stream: answer, streamSimple: answer }
+  return { sent, streams }
+}
+
+/** goblin's models with the owner's pay mode in front, the route answered by `route` (counted). */
+const routed = (route: () => PayRoute | undefined) => {
+  const { sent, streams } = scripted()
+  let asked = 0
+  const env = {
+    MODEL_ID: 'deepseek-v4.1-flash',
+    MODELS: 'qwen3.8-flash',
+    MODEL_BASE_URL: 'https://litellm.invalid/v1',
+    MODEL_KEY: 'goblin-litellm-key',
+    PAID_INFERENCE: 'goblin,tempo',
+    APP_URL: 'https://goblin.invalid',
+  }
+  const { models } = makePiModels(env, streams, undefined, undefined, {
+    pay: never,
+    route: async () => {
+      asked += 1
+      return route()
+    },
+  })
+  const call = async (id: string, conversation = true) => {
+    const model = models.getModel('goblin-litellm', id)
+    if (model === undefined) throw new Error(`no model ${id}`)
+    const context = { messages: [{ role: 'user' as const, content: 'hi', timestamp: 1 }] }
+    return models.completeSimple(model, context, conversation ? { metadata: { ...CONVERSATION_CALL } } : {})
+  }
+  return { sent, call, asked: () => asked }
+}
+
+describe('a conversation call follows the owner pay mode (ADR 0047)', () => {
+  it("goes to LiteLLM on goblin's key while Credits pay", async () => {
+    const { sent, call } = routed(() => undefined)
+    await call('qwen3.8-flash')
+    expect(sent).toEqual([
+      {
+        provider: 'goblin-litellm',
+        model: 'qwen3.8-flash',
+        baseUrl: 'https://litellm.invalid/v1',
+        apiKey: 'goblin-litellm-key',
+        maxRetries: undefined,
+        paying: false,
+      },
+    ])
+  })
+
+  it("goes to goblin's own paid endpoint with the same model id, paying its way, never with goblin's key", async () => {
+    const { sent, call } = routed(() => 'goblin')
+    const answer = await call('qwen3.8-flash')
+    expect(sent).toEqual([
+      {
+        provider: 'goblin-paid-goblin',
+        model: 'qwen3.8-flash',
+        baseUrl: 'https://goblin.invalid/v1',
+        apiKey: 'mpp',
+        maxRetries: 0,
+        paying: true,
+      },
+    ])
+    // The answer names the paid provider, which is how the budget knows not to count it in Credits.
+    expect(answer.provider).toBe('goblin-paid-goblin')
+  })
+
+  it("goes to Tempo's proxy on its own DeepSeek, whatever model is picked", async () => {
+    const { sent, call } = routed(() => 'tempo')
+    await call('qwen3.8-flash')
+    expect(sent.map((each) => ({ provider: each.provider, model: each.model, baseUrl: each.baseUrl }))).toEqual([
+      {
+        provider: 'goblin-paid-tempo',
+        model: 'deepseek/deepseek-v4.1-flash',
+        baseUrl: 'https://openrouter.mpp.tempo.xyz/v1',
+      },
+    ])
+  })
+
+  it('asks before every call, so a turn whose Credits run out midway goes on paid', async () => {
+    let spent = false
+    const { sent, call, asked } = routed(() => (spent ? 'goblin' : undefined))
+    await call('deepseek-v4.1-flash')
+    spent = true
+    await call('deepseek-v4.1-flash')
+    expect(asked()).toBe(2)
+    expect(sent.map((each) => each.provider)).toEqual(['goblin-litellm', 'goblin-paid-goblin'])
+  })
+
+  it("keeps goblin's housekeeping (no conversation mark) on Credits without asking the pay mode", async () => {
+    const { sent, call, asked } = routed(() => 'goblin')
+    await call('deepseek-v4.1-flash', false)
+    expect(asked()).toBe(0)
+    expect(sent.map((each) => each.provider)).toEqual(['goblin-litellm'])
+  })
+})
+
+describe('a paid answer costs no Credits (ADR 0047)', () => {
+  it('records a LiteLLM answer in the day, and nothing for one paid from the wallet', async () => {
+    const recorded: (string | undefined)[] = []
+    const layer = Layer.succeed(
+      Budget,
+      fake<typeof Budget.Service>({ record: (_use, _now, model) => Effect.sync(() => void recorded.push(model)) }),
+    )
+    // SAFETY: the budget hook's programs read only the budget.
+    const run = ((program: Effect.Effect<unknown>) =>
+      Effect.runPromise(program.pipe(Effect.provide(layer)))) as RunProgram
+    const [generation] = budgetExtension(run).hooks ?? []
+    // SAFETY: the extension's first hook is GenerationTask's; `afterResponse` reads the answer only.
+    const handlers = generation?.handlers as { readonly afterResponse: (message: unknown) => Promise<void> }
+    const { afterResponse } = handlers
+    const usage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }
+    await afterResponse({ provider: 'goblin-litellm', model: 'qwen3.8-flash', usage })
+    await afterResponse({ provider: 'goblin-paid-goblin', model: 'qwen3.8-flash', usage })
+    await afterResponse({ provider: 'goblin-paid-tempo', model: 'deepseek/deepseek-v4.1-flash', usage })
+    expect(recorded).toEqual(['qwen3.8-flash'])
   })
 })

@@ -48,3 +48,26 @@ export const ModelChoice = Schema.Struct({
   options: Schema.Array(ModelOption),
 })
 export type ModelChoice = typeof ModelChoice.Type
+
+/**
+ * How goblin pays for its model calls (ADR 0047): the day's Credits first and then the owner's Goblin Wallet (the
+ * default), the Credits only (calls stop at the day's limit), or the wallet for every call.
+ */
+export const PayMode = Schema.Literals(['credits-then-wallet', 'credits', 'wallet'])
+export type PayMode = typeof PayMode.Type
+
+/** Where a call paid from the wallet goes: goblin's own endpoint (the same model) or Tempo's MPP proxy. */
+export const PayRoute = Schema.Literals(['goblin', 'tempo'])
+export type PayRoute = typeof PayRoute.Type
+
+/**
+ * The owner's pay mode and route, the routes this stage sells (none: every call is on Credits, and `mode` reads
+ * `credits`), and whether the owner's Goblin Wallet can pay now: connected, with its payment tool allowed to run.
+ */
+export const PayChoice = Schema.Struct({
+  mode: PayMode,
+  route: PayRoute,
+  routes: Schema.Array(PayRoute),
+  walletReady: Schema.Boolean,
+})
+export type PayChoice = typeof PayChoice.Type

@@ -158,7 +158,7 @@ const sendWith =
   ({ admit, budget, models, pi, applied }: Sending) =>
   <R = never>(input: Submit<R>): Effect.Effect<PiReceipt, AppError, R> =>
     Effect.gen(function* () {
-      yield* budget.require(yield* epochSeconds)
+      yield* budget.admit(yield* epochSeconds)
       const { operationId, content, answer, relay } = input
       return yield* admit(input, ({ session }) =>
         Effect.gen(function* () {

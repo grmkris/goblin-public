@@ -2,13 +2,14 @@ import { type ReactNode, type RefObject, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { AppContext, ComposerSelection, UsageToday } from '@goblin/contracts'
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
-import { RotateCcwIcon } from 'lucide-react'
-import { modelQuery, usageQuery } from '../agent/queries.ts'
+import { RotateCcwIcon, WalletIcon } from 'lucide-react'
+import { modelQuery, payQuery, usageQuery } from '../agent/queries.ts'
 import { useStoredStates } from '../approvals/hooks.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
 import { WALLET_NEEDED } from '../lib/query/app-error.ts'
 import { openInteractions, stillOpen, waitingOnOwner } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
+import { payingPerCall, walletPaysWhenSpent } from '../lib/pay.ts'
 import { presenceOf } from '../lib/presence.ts'
 import { budgetFraction, contextTokens } from '../lib/usage.ts'
 import { useNavigation } from '../lib/navigation.ts'
@@ -105,6 +106,7 @@ function ComposerContext({
   readonly onError: (message: string) => void
 }) {
   const choice = useQuery(modelQuery).data
+  const pay = useQuery(payQuery).data
   return (
     <>
       <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
@@ -112,6 +114,12 @@ function ComposerContext({
         <span className="truncate">{presence.label}</span>
       </span>
       <ModelPicker onError={onError} />
+      {payingPerCall(pay, usage) && (
+        <span className="pay-chip">
+          <WalletIcon aria-hidden />
+          Paying per call
+        </span>
+      )}
       <SetupButton chat={id} />
       <UsageIndicator
         usage={usage}
@@ -168,6 +176,7 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
   const { projection, status } = conversation
   const running = projection?.running ?? false
   const usage = useQuery(usageQuery).data
+  const pay = useQuery(payQuery).data
   const asked = useMemo(() => openInteractions(parts), [parts])
   // A stored ask (a held call, a URL request) stays until its store says it ended; only a pending one waits on you.
   const states = useStoredStates(asked)
@@ -180,7 +189,8 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
     parts,
     named,
     waiting: waitingOnOwner(waiting, states),
-    exhausted: usage !== undefined && budgetFraction(usage) >= 1,
+    // A spent day stops goblin only while the owner's wallet does not pay its calls (ADR 0047).
+    exhausted: usage !== undefined && budgetFraction(usage) >= 1 && !(pay !== undefined && walletPaysWhenSpent(pay)),
     walletNeeded: usage?.limit === 0,
   })
   return { running, usage, waiting, context, presence }

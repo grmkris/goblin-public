@@ -106,12 +106,25 @@ export class Budget extends Context.Service<
     readonly today: (now: number) => Effect.Effect<UsageToday, AppError>
     /** One model response's tokens, priced at `model`'s rate. */
     readonly record: (use: TokenUse, now: number, model?: string) => Effect.Effect<void>
-    /** `BudgetExhausted` once today's spend has reached the allowance. */
+    /**
+     * `BudgetExhausted` once today's spend has reached the allowance: work goblin pays for (routines, housekeeping)
+     * runs only while Credits are left.
+     */
     readonly require: (now: number) => Effect.Effect<void, AppError>
+    /**
+     * Whether the owner's turn may start: while Credits are left, and after that while the owner's pay mode lets their
+     * Goblin Wallet pay (ADR 0047); in `wallet` mode, always. Else `BudgetExhausted`.
+     */
+    readonly admit: (now: number) => Effect.Effect<void, AppError>
   }
 >()('goblin/budget/Budget') {}
 
 /** `BudgetExhausted` once the agent has spent today's model budget. */
 export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.flatMap(epochSeconds, (now) =>
   Budget.use((budget) => budget.require(now)),
+)
+
+/** `BudgetExhausted` when the owner's turn may not start: Credits spent, and the wallet does not pay (ADR 0047). */
+export const admitTurn: Effect.Effect<void, AppError, Budget> = Effect.flatMap(epochSeconds, (now) =>
+  Budget.use((budget) => budget.admit(now)),
 )

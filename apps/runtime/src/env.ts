@@ -38,11 +38,12 @@ export interface RuntimeEnv {
   /** The dollars a connected Goblin Wallet must hold for the free plan's Credits (ADR 0047); unset or 0, none. */
   readonly FREE_WALLET_USD?: string
   /**
-   * The routes of inference paid per call from the owner's Goblin Wallet a deployment offers (ADR 0047):
-   * comma-separated `tempo` (Tempo's MPP proxy) and `goblin` (this deployment's own paid endpoint).
+   * The routes of inference paid per call from the owner's Goblin Wallet a deployment sells (ADR 0047), which the
+   * owner's pay mode chooses between: comma-separated `goblin` (this deployment's own paid endpoint, every offered
+   * model) and `tempo` (Tempo's MPP proxy).
    */
   readonly PAID_INFERENCE?: string
-  /** Who goblin's own paid endpoint is paid to (`paid:goblin`, ADR 0047): a Tempo address. */
+  /** Who goblin's own paid endpoint is paid to (the `goblin` route, ADR 0047): a Tempo address. */
   readonly MPP_RECIPIENT?: string
   /** The secret goblin's paid endpoint signs its MPP challenges with: at least 32 characters. */
   readonly MPP_SECRET?: string

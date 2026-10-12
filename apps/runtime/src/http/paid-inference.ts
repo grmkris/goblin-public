@@ -54,7 +54,7 @@ const refuse = (status: number, message: string) => Response.json({ error: { mes
 export async function paidCompletion(request: Request, env: RuntimeEnv): Promise<Response | undefined> {
   const recipient = env.MPP_RECIPIENT
   const secret = env.MPP_SECRET ?? ''
-  const offered = paidRoutes(env.PAID_INFERENCE).some((route) => route.id === 'paid:goblin')
+  const offered = paidRoutes(env.PAID_INFERENCE).some((route) => route.name === 'goblin')
   if (!offered || !isAddress(recipient) || secret.length < 32) return undefined
   if (request.method !== 'POST') return refuse(405, 'POST a chat completion.')
   const body: unknown = await request

@@ -6,27 +6,27 @@ import { type AppError, BudgetExhausted, Internal, SubscriptionRequired } from '
 import { BUDGET_BLOCKS, budgetVerdict } from '../src/pi/budget.ts'
 
 /**
- * The hook's verdict when today's budget answers `today`, with `require` refusing a spent day as the budget does, or
- * letting anything through for a model paid per call (`paid`, ADR 0047).
+ * The hook's verdict when today's budget answers `today`, with `admit` refusing a spent day as the budget does, or
+ * letting the turn go on when the owner's wallet pays (`paid`, ADR 0047).
  */
-const verdictOf = (today: Effect.Effect<UsageToday, AppError>, paid = false) =>
-  budgetVerdict.pipe(
+const verdictOf = (today: Effect.Effect<UsageToday, AppError>, paid = false) => {
+  const spent = Effect.flatMap(today, (current) =>
+    current.used >= current.limit
+      ? Effect.fail(new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt }))
+      : Effect.void,
+  )
+  return budgetVerdict.pipe(
     Effect.provideService(
       Budget,
       Budget.of({
         today: () => today,
         record: () => Effect.void,
-        require: () =>
-          paid
-            ? Effect.void
-            : Effect.flatMap(today, (current) =>
-                current.used >= current.limit
-                  ? Effect.fail(new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt }))
-                  : Effect.void,
-              ),
+        require: () => spent,
+        admit: () => (paid ? Effect.void : spent),
       }),
     ),
   )
+}
 
 const day = (used: number, limit: number): UsageToday => ({ used, limit, resetsAt: 86_400 })
 
@@ -36,7 +36,7 @@ describe('the budget hook before a tool (R1)', () => {
       expect(yield* verdictOf(Effect.succeed(day(1, 2)))).toBe('open')
       expect(yield* verdictOf(Effect.succeed(day(2, 2)))).toBe('exhausted')
       expect(yield* verdictOf(Effect.fail(new BudgetExhausted({ limit: 2, resetsAt: 86_400 })))).toBe('exhausted')
-      // A model paid per call from the owner's wallet is not held to the day's Credits.
+      // A turn the owner's wallet pays for is not held to the day's Credits.
       expect(yield* verdictOf(Effect.succeed(day(2, 2)), true)).toBe('open')
     }),
   )

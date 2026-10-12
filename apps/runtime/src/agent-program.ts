@@ -10,7 +10,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Apps } from './apps/service.ts'
-import { requireBudget } from './budget.ts'
+import { admitTurn } from './budget.ts'
 import type { SessionId } from './chats/directory.ts'
 import { epochSeconds } from './clock.ts'
 import { ChatOperations, Conversations } from './chats/service.ts'
@@ -192,7 +192,7 @@ export const submitOwner = (input: OwnerSubmit) =>
     } = input.context
     const personaIds = tagged.flatMap((selection) => (selection.kind === 'persona' ? [selection.personaId] : []))
     const picks = tagged.filter((selection) => selection.kind !== 'persona')
-    yield* requireBudget
+    yield* admitTurn
     const conversations = yield* Conversations
     const session = yield* conversations.requireOpen(input.thread)
     if (input.text.trim() === '' && !picks.some((selection) => selection.kind === 'skill'))
@@ -254,7 +254,7 @@ export const sendOutcome = (chat: string, outcome: HeldCallOutcome, operationId:
     const earlier = Option.getOrUndefined(yield* operations.receipt(chat, operationId))
     if (earlier?.kind === `write:${KEPT_OUTCOME}`) return 'kept' as const
     const turn = Effect.andThen(
-      requireBudget,
+      admitTurn,
       operations.send<Conversations | RoutineControl | PiSessions | AgentInput>({
         chat,
         operationId,

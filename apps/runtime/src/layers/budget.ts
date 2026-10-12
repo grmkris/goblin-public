@@ -3,15 +3,18 @@ import * as Duration from 'effect/Duration'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Layer from 'effect/Layer'
+import * as Option from 'effect/Option'
 import { Entitlements } from '../billing/gates.ts'
 import { Budget, recordUse, usageLedger, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
 import { BudgetExhausted, attemptSync } from '../http/errors.ts'
-import { ModelChoiceStore, ModelPicker, Models, offeredModels, paidRoute } from '../models.ts'
+import { ModelChoiceStore, ModelPicker, Models, modelOptions, paidRoutes } from '../models.ts'
+import { Pay, PayModeStore, choosePay, payChoiceOf, walletPaysWhenSpent } from '../pay-mode.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
+import { profileOf } from '../mcp/first-class.ts'
 import { serverStatus } from '../mcp/first-class-owner.ts'
-import { McpConnections, McpServers } from '../mcp/service.ts'
+import { McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
 
 /** The dollars a wallet must hold for the free plan's Credits (`FREE_WALLET_USD`); 0 asks for none. */
 export const freeWalletUsd = (value: string | undefined): number => {
@@ -69,6 +72,47 @@ const sync = <Args extends readonly unknown[], A>(name: string, method: Method<A
   })
 
 /**
+ * Whether the owner's Goblin Wallet can pay a model call now: connected, with its payment tool (its profile's
+ * `payment`) allowed to run without asking. Read from the agent's own stores, never the wallet.
+ */
+const walletReady = Effect.gen(function* () {
+  const servers = yield* McpServers.use((owner) => owner.list())
+  const grants = yield* McpGrants
+  for (const server of servers) {
+    const tool = profileOf(server.endpoint)?.payment?.tool
+    if (server.status !== 'connected' || tool === undefined) continue
+    const policy = yield* grants.policy(server.connectionId, tool)
+    if (Option.isSome(policy) && !policy.value.askFirst) return true
+  }
+  return false
+})
+
+/** How goblin pays for the owner's model calls (ADR 0047), over the agent's SQLite and the MCP host's grants. */
+const PayLive: Layer.Layer<Pay, never, AgentInput | Db | McpServers | McpGrants> = Layer.effect(
+  Pay,
+  Effect.gen(function* () {
+    const { env } = yield* AgentInput
+    const store = new PayModeStore(yield* Db)
+    const routes = paidRoutes(env.PAID_INFERENCE).map((route) => route.name)
+    const ready = walletReady.pipe(
+      Effect.provideService(McpServers, yield* McpServers),
+      Effect.provideService(McpGrants, yield* McpGrants),
+    )
+    const choice = Effect.gen(function* () {
+      const stored = yield* Effect.sync(() => store.get())
+      return payChoiceOf(stored, routes, yield* ready)
+    }).pipe(Effect.withSpan('Pay.choice'))
+    return Pay.of({
+      choice,
+      choose: Effect.fn('Pay.choose')(function* (setting, now) {
+        yield* attemptSync(() => choosePay(store, routes, setting, now))
+        return yield* choice
+      }),
+    })
+  }),
+)
+
+/**
  * The daily model budget in Credits (ADR 0026) over the agent's usage ledger. The allowance is the plan's, read from
  * the plan the agent keeps (`Entitlements`), so a tool call no longer reads auth D1 each time.
  */
@@ -78,11 +122,9 @@ const BudgetLive = Layer.effect(
     const db = yield* Db
     const ledger = usageLedger(db)
     const plans = yield* Entitlements
+    const pay = yield* Pay
     const { env } = yield* AgentInput
     const rates = creditRates(env.MODEL_CREDIT_RATES)
-    // A model paid per call from the owner's wallet (ADR 0047) draws no Credits, so it is never held to them.
-    const picks = new ModelPicker(new ModelChoiceStore(db), offeredModels(env.MODELS, env.MODEL_ID, env.PAID_INFERENCE))
-    const paidPick = () => paidRoute(picks.current()) !== undefined
     // The free plan's Credits ask for a funded Goblin Wallet where the stage says so (ADR 0047): a funded answer is
     // kept ten minutes, an unfunded one a minute, so a top-up counts soon.
     const needs = freeWalletUsd(env.FREE_WALLET_USD)
@@ -100,16 +142,25 @@ const BudgetLive = Layer.effect(
       const milli = yield* attemptSync(() => ledger.milliCredits(day))
       return { used: milli / 1000, limit: unfunded ? 0 : plan.dailyCredits, resetsAt }
     })
+    const require = Effect.fn('Budget.require')(function* (now: number) {
+      const current = yield* today(now)
+      if (current.used >= current.limit)
+        return yield* new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt })
+    })
     return Budget.of({
       today,
       record: Effect.fn('Budget.record')(function* (use, now, model?: string) {
         yield* Effect.sync(() => recordUse(ledger, rates, use, now, model))
       }),
-      require: Effect.fn('Budget.require')(function* (now) {
-        if (yield* Effect.sync(paidPick)) return
-        const current = yield* today(now)
-        if (current.used >= current.limit)
-          return yield* new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt })
+      require,
+      admit: Effect.fn('Budget.admit')(function* (now) {
+        // Past the Credits a turn goes on while the owner's pay mode lets their wallet pay its calls (ADR 0047): always
+        // in `wallet` mode, whose calls never draw on the Credits. The pay mode is read only once they are spent.
+        return yield* require(now).pipe(
+          Effect.catchTag('BudgetExhausted', (spent) =>
+            Effect.flatMap(pay.choice, (choice) => (walletPaysWhenSpent(choice) ? Effect.void : Effect.fail(spent))),
+          ),
+        )
       }),
     })
   }),
@@ -120,10 +171,7 @@ const ModelsLive: Layer.Layer<Models, never, AgentInput | Db> = Layer.effect(
   Models,
   Effect.gen(function* () {
     const { env } = yield* AgentInput
-    const models = new ModelPicker(
-      new ModelChoiceStore(yield* Db),
-      offeredModels(env.MODELS, env.MODEL_ID, env.PAID_INFERENCE),
-    )
+    const models = new ModelPicker(new ModelChoiceStore(yield* Db), modelOptions(env.MODELS, env.MODEL_ID))
     return Models.of({
       current: sync('Models.current', models.current.bind(models))(),
       choice: sync('Models.choice', models.choice.bind(models))(),
@@ -133,12 +181,13 @@ const ModelsLive: Layer.Layer<Models, never, AgentInput | Db> = Layer.effect(
 )
 
 /**
- * The daily model budget, over the plan the core layer keeps, and the model picker, over the agent's SQLite (they keep
- * no state of their own). A send's admission reads them, so `layers/index.ts` builds them before the conversation layer;
- * the free plan's wallet check reads the MCP host, built at the start's step 2.
+ * The daily model budget, over the plan the core layer keeps, how goblin pays for its calls, and the model picker, over
+ * the agent's SQLite (they keep no state of their own). A send's admission reads them, so `layers/index.ts` builds them
+ * before the conversation layer; the free plan's wallet check and the pay mode read the MCP host, built at the start's
+ * step 2.
  */
 export const ModelBudgetLive: Layer.Layer<
-  Budget | Models,
+  Budget | Pay | Models,
   never,
-  AgentInput | Db | Entitlements | McpServers | McpConnections
-> = Layer.mergeAll(BudgetLive, ModelsLive)
+  AgentInput | Db | Entitlements | McpServers | McpConnections | McpGrants
+> = Layer.mergeAll(BudgetLive.pipe(Layer.provideMerge(PayLive)), ModelsLive)

@@ -6,11 +6,12 @@ import { Budget } from '../budget.ts'
 import { disableTelegram, enableTelegram } from '../channel/program.ts'
 import { Channel } from '../channel/service.ts'
 import { Models } from '../models.ts'
+import { Pay } from '../pay-mode.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { epochSeconds } from '../clock.ts'
 
 /**
- * The `agent` group: today's usage, the model and the Telegram channel. Each handler runs its program; owner
+ * The `agent` group: today's usage, the model, how goblin pays for it, and the Telegram channel. Each handler runs its program; owner
  * admission has already admitted the request.
  */
 export const AgentHandlers = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) =>
@@ -18,6 +19,10 @@ export const AgentHandlers = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) 
     .handle('usage', () => Effect.flatMap(epochSeconds, (now) => Budget.use((budget) => budget.today(now))))
     .handle('model', () => Models.use((models) => models.choice))
     .handle('chooseModel', ({ payload }) => chooseOwnerModel(payload.model))
+    .handle('pay', () => Pay.use((pay) => pay.choice))
+    .handle('choosePay', ({ payload }) =>
+      Effect.flatMap(epochSeconds, (now) => Pay.use((pay) => pay.choose(payload, now))),
+    )
     .handle('channel', () => Channel.use((channel) => channel.status))
     .handle('enableChannel', ({ payload }) =>
       AgentInput.use(({ env, userId, schedulePull }) =>

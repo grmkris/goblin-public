@@ -7,7 +7,7 @@ import { type OwnerSubmit, submitOwner } from '../agent-program.ts'
 import { InvalidInput } from '../http/errors.ts'
 import { threadHeadContent } from '../pi/content.ts'
 import { BACKGROUND } from '../pi/context.ts'
-import { requireBudget } from '../budget.ts'
+import { admitTurn } from '../budget.ts'
 import { ChatOperations, Conversations, type PassiveWrite, type ThreadAnchor } from './service.ts'
 
 /** The most of the owner's words a thread head shows (`ThreadHeadData.text`). */
@@ -59,7 +59,7 @@ export const startThread = (
   input: Omit<OwnerSubmit, 'thread' | 'parentOp'> & { readonly parent: string; readonly anchor: ThreadAnchor },
 ) =>
   Effect.gen(function* () {
-    yield* requireBudget
+    yield* admitTurn
     const skill = (input.context.selections ?? []).some((selection) => selection.kind === 'skill')
     if (input.text.trim() === '' && !skill) return yield* new InvalidInput({ reason: 'empty_message' })
     const conversations = yield* Conversations

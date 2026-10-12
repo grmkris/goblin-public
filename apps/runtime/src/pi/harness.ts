@@ -5,7 +5,7 @@ import type { PiRunRecorder } from '../telemetry/pi.ts'
 import { writeLine } from '../observability/logger.ts'
 import { framesOf, safeErrorType } from '../observability/report.ts'
 import { askUserExtension } from './ask-user.ts'
-import { MAX_OUTPUT_TOKENS, type makePiModels } from './model.ts'
+import { CONVERSATION_CALL, MAX_OUTPUT_TOKENS, type makePiModels } from './model.ts'
 import { personaExtension } from './persona.ts'
 
 export type PiModels = ReturnType<typeof makePiModels>
@@ -55,6 +55,8 @@ export function makePiHarness(
     // pi-ai clamps each request's output limit to what the context leaves, less 4,096. Compacting once the context
     // leaves less than a full answer keeps every answer's limit at MAX_OUTPUT_TOKENS.
     compaction: { reserveTokens: MAX_OUTPUT_TOKENS + 4096 },
+    // Marks every conversation call as the owner's, so it follows their pay mode (ADR 0047, `pi/model.ts`).
+    stream: { metadata: { ...CONVERSATION_CALL } },
   }
   return new PiHarness({
     harness: async ({ storage, context }) => {

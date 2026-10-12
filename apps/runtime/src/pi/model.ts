@@ -1,11 +1,18 @@
-import { createModels, createProvider } from '@earendil-works/pi-ai/models'
+import { type Models, createModels, createProvider } from '@earendil-works/pi-ai/models'
+import { lazyStream } from '@earendil-works/pi-ai/api/lazy'
 import { stream, streamSimple } from '@earendil-works/pi-ai/api/openai-completions'
 import { clampMaxTokensToContext } from '@earendil-works/pi-ai/api/simple-options'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
-import type { AssistantMessage, FetchFunction, Model, ProviderStreams } from '@earendil-works/pi-ai'
-import type { ModelOption } from '@goblin/contracts'
+import type {
+  AssistantMessage,
+  FetchFunction,
+  Model,
+  ProviderStreams,
+  SimpleStreamOptions,
+} from '@earendil-works/pi-ai'
+import type { ModelOption, PayRoute } from '@goblin/contracts'
 import type { RuntimeEnv } from '../env.ts'
-import { modelOptions, paidRoute, paidRoutes } from '../models.ts'
+import { type ModelOptions, type PaidRoute, modelOptions, paidRoutes } from '../models.ts'
 
 type ModelEnvironment = Pick<RuntimeEnv, 'MODEL_ID' | 'MODEL_BASE_URL' | 'MODEL_KEY'> &
   Partial<Pick<RuntimeEnv, 'MODELS' | 'PAID_INFERENCE' | 'APP_URL'>>
@@ -145,22 +152,71 @@ export const payingFetch = (pay: PayChallenge, inner: FetchFunction = fetch): Fe
   return paying as FetchFunction
 }
 
-/** The provider and model Pi runs for the owner's pick: a paid route's own, else goblin's LiteLLM. */
-export const modelRef = (id: string): { readonly provider: string; readonly id: string } => {
-  const route = paidRoute(id)
-  return route === undefined ? { provider: MODEL_PROVIDER, id } : { provider: route.provider, id: route.model }
-}
+/** The provider and model Pi runs for a model id: goblin's LiteLLM. Whether a call is paid is the pay mode's. */
+export const modelRef = (id: string): { readonly provider: string; readonly id: string } => ({
+  provider: MODEL_PROVIDER,
+  id,
+})
 
 /** Every paid route's Pi provider starts with this (`models.ts` `PAID`). */
 export const PAID_PROVIDER_PREFIX = 'goblin-paid-'
 
 /** Where each paid route's calls go: Tempo's MPP proxy, or this deployment's own paid endpoint. */
-const paidBase = (route: string, appUrl: string | undefined): string | undefined =>
-  route === 'paid:tempo'
+const paidBase = (route: PayRoute, appUrl: string | undefined): string | undefined =>
+  route === 'tempo'
     ? 'https://openrouter.mpp.tempo.xyz/v1'
     : appUrl === undefined
       ? undefined
       : new URL('/v1', appUrl).href
+
+/**
+ * Which paid route a conversation's model call goes out on now, or none for goblin's Credits (`pay-mode.ts`
+ * `payingRoute`). It is asked before every call.
+ */
+export type PayingRoute = () => Promise<PayRoute | undefined>
+
+/** How the owner's Goblin Wallet pays for model calls (ADR 0047): each challenge, and which route a call takes. */
+export type WalletPay = { readonly pay: PayChallenge; readonly route: PayingRoute }
+
+/**
+ * The stream metadata Pi's conversations send with every model call (the harness's settings, `pi/harness.ts`). A call
+ * that carries it is the owner's and follows their pay mode; one without it is goblin's housekeeping (thread titles,
+ * memory, the skill learner) and always runs on Credits. openai-completions sends no metadata to the provider.
+ */
+export const CONVERSATION_CALL = { goblin: 'conversation' }
+
+const conversationCall = (options: SimpleStreamOptions | undefined): boolean =>
+  options?.metadata?.['goblin'] === CONVERSATION_CALL.goblin
+
+/**
+ * goblin's provider with the owner's pay mode in front: a conversation's call goes out on the paid route `route` names
+ * at the moment it is made, so a turn whose Credits run out midway goes on paid, through that route's own provider in
+ * `models`, which pays its way with the same model id (Tempo's route answers with its own model). Anything else, and a
+ * call the route decision cannot answer, goes to LiteLLM on Credits.
+ */
+function payModeStreams(streams: ProviderStreams, models: Models, routes: readonly PaidRoute[], route: PayingRoute) {
+  const paidModel = (name: PayRoute | undefined, model: Model<'openai-completions'>) => {
+    const paid = routes.find((each) => each.name === name)
+    return paid === undefined ? undefined : models.getModel(paid.provider, paid.model ?? model.id)
+  }
+  const routed: ProviderStreams = {
+    ...streams,
+    streamSimple: (model, context, options) => {
+      if (!conversationCall(options)) return streams.streamSimple(model, context, options)
+      return lazyStream(model, async () => {
+        // expected: a route that cannot be decided keeps the call on Credits; `payingRoute` reports its own failures.
+        const name = await route().catch(() => undefined)
+        // SAFETY: goblin's provider serves only openai-completions models (makePiModel).
+        const target = paidModel(name, model as Model<'openai-completions'>)
+        if (target === undefined) return streams.streamSimple(model, context, options)
+        // goblin's LiteLLM key never goes to a paid route: the paid provider's own auth answers instead.
+        const { apiKey: _litellmKey, ...paidOptions } = options ?? {}
+        return models.streamSimple(target, context, paidOptions)
+      })
+    },
+  }
+  return routed
+}
 
 /** How every model's requests reach LiteLLM: its OpenAI-compatible chat completions API, never with a starved answer. */
 export const LITELLM_STREAMS: ProviderStreams = {
@@ -176,19 +232,22 @@ export const LITELLM_STREAMS: ProviderStreams = {
 
 /**
  * Every offered model (`models.ts`), the default first; `model` is the default for new sessions. `streams` carries
- * the requests; only a test passes anything but LiteLLM's.
+ * the requests; only a test passes anything but LiteLLM's. With `wallet`, the stage's paid routes are offered too and
+ * each conversation call follows the owner's pay mode (ADR 0047).
  */
 export function makePiModels(
   env: ModelEnvironment,
   streams: ProviderStreams = LITELLM_STREAMS,
   contextWindow?: number,
   authorizeRoutine?: (runId: string) => Promise<void>,
-  pay?: PayChallenge,
+  wallet?: WalletPay,
 ) {
   const options = modelOptions(env.MODELS, env.MODEL_ID)
   const [first, ...rest] = options
   const model = makePiModel(first, env.MODEL_BASE_URL, contextWindow)
   const others = rest.map((option) => makePiModel(option, env.MODEL_BASE_URL, contextWindow))
+  const models = createModels()
+  const routes = paidRoutes(env.PAID_INFERENCE)
   const provider = createProvider({
     id: MODEL_PROVIDER,
     name: 'goblin LiteLLM',
@@ -200,11 +259,13 @@ export function makePiModels(
         resolve: async () => ({ auth: { apiKey: env.MODEL_KEY } }),
       },
     },
-    api: streams,
+    // A stage that sells no paid route pays every call with Credits, without asking.
+    api: wallet === undefined || routes.length === 0 ? streams : payModeStreams(streams, models, routes, wallet.route),
   })
-  const models = createModels()
   models.setProvider(provider)
-  if (pay !== undefined) for (const paid of paidProviders(env, streams, pay, contextWindow)) models.setProvider(paid)
+  if (wallet !== undefined)
+    for (const paid of paidProviders(env, { routes, options, contextWindow }, streams, wallet.pay))
+      models.setProvider(paid)
   if (authorizeRoutine !== undefined) {
     const original = models.getModel.bind(models)
     models.getModel = (providerId, id) => {
@@ -236,36 +297,43 @@ export function makePiModels(
 }
 
 /**
- * The paid routes this deployment offers (`PAID_INFERENCE`), each a provider whose calls pay their way from the owner's
- * Goblin Wallet (ADR 0047). The request carries no key of goblin's: the credential is the payment.
+ * The paid routes this deployment sells (`PAID_INFERENCE`), each a provider whose calls pay their way from the owner's
+ * Goblin Wallet (ADR 0047): goblin's own route serves every offered model under its own id, Tempo's its one model. The
+ * request carries no key of goblin's: the credential is the payment.
  */
-function paidProviders(env: ModelEnvironment, streams: ProviderStreams, pay: PayChallenge, contextWindow?: number) {
-  return paidRoutes(env.PAID_INFERENCE).flatMap((route) => {
-    const baseUrl = paidBase(route.id, env.APP_URL)
+function paidProviders(
+  env: ModelEnvironment,
+  served: {
+    readonly routes: readonly PaidRoute[]
+    readonly options: ModelOptions
+    readonly contextWindow: number | undefined
+  },
+  streams: ProviderStreams,
+  pay: PayChallenge,
+) {
+  const { routes, options, contextWindow } = served
+  return routes.flatMap((route) => {
+    const baseUrl = paidBase(route.name, env.APP_URL)
     if (baseUrl === undefined) return []
-    const option = {
-      id: route.model,
-      label: route.model,
-      route: route.route,
-      note: '',
-      images: false,
-      contextWindow: contextWindow ?? 131_072,
-    }
+    const sold =
+      route.model === undefined
+        ? options
+        : [{ id: route.model, label: route.model, route: route.label, note: '', images: false, contextWindow: 131_072 }]
     return [
       createProvider({
         id: route.provider,
-        name: `goblin paid per call (${route.route})`,
+        name: `goblin paid per call (${route.label})`,
         baseUrl,
-        models: [makePiModel(option, baseUrl, contextWindow, route.provider)],
+        models: sold.map((option) => makePiModel(option, baseUrl, contextWindow, route.provider)),
         auth: { apiKey: { name: 'paid per call', resolve: async () => ({ auth: { apiKey: 'mpp' } }) } },
         api: {
-          stream: (model, context, options) => streams.stream(model, context, options),
-          streamSimple: (model, context, options) =>
+          stream: (model, context, streamOptions) => streams.stream(model, context, streamOptions),
+          streamSimple: (model, context, streamOptions) =>
             // No client retries: each send is a new charge, and a provider's failure after payment is not paid again.
             streams.streamSimple(model, context, {
-              ...options,
+              ...streamOptions,
               maxRetries: 0,
-              fetch: payingFetch(pay, options?.fetch),
+              fetch: payingFetch(pay, streamOptions?.fetch),
             }),
         },
       }),

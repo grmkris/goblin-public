@@ -25,8 +25,8 @@ export const BUDGET_BLOCKS: Readonly<Record<Exclude<BudgetVerdict, 'open'>, stri
  */
 export const budgetVerdict: Effect.Effect<BudgetVerdict, never, Budget> = Effect.gen(function* () {
   const budget = yield* Budget
-  // `require` refuses a spent day, and lets a model paid per call through (ADR 0047).
-  yield* budget.require(yield* epochSeconds)
+  // `admit` refuses a spent day unless the owner's pay mode lets their wallet pay the calls (ADR 0047).
+  yield* budget.admit(yield* epochSeconds)
   return 'open' as const
 }).pipe(
   Effect.catchTags({

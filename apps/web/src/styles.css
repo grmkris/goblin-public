@@ -1407,6 +1407,34 @@
   .server-part > .setting-row + .setting-row {
     border-top: 1px solid var(--hairline);
   }
+  /* How goblin pays (Settings): native radios, each row its own hit area; the routes sit under the ways. */
+  .pay-choices {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .pay-choices > .pay-choice + .pay-choice {
+    border-top: 1px solid var(--hairline);
+  }
+  .pay-routes {
+    padding-inline-start: 1.75rem;
+  }
+  .pay-choice {
+    align-items: flex-start;
+    min-height: 2.75rem;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .pay-choice > input {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    margin: 0.125rem 0 0;
+    accent-color: var(--moss);
+  }
   .grant-row,
   .setting-row,
   .pick-row {
@@ -1992,6 +2020,21 @@
       opacity: 0;
       translate: 0 6px;
     }
+  }
+  /* Beside the model while goblin's calls are paid from the owner's Goblin Wallet (ADR 0047). */
+  .pay-chip {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 1.75rem;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+  .pay-chip > svg {
+    width: 0.875rem;
+    height: 0.875rem;
   }
   /* Today's usage beside the model: the ring, and in a wide chat its figures; a tap or hover opens them in words. */
   .usage-indicator {

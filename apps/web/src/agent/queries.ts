@@ -1,15 +1,16 @@
 import { mutationOptions } from '@tanstack/react-query'
-import type { ChatId } from '@goblin/contracts'
+import type { ChatId, PayMode, PayRoute } from '@goblin/contracts'
 import { owner } from '../lib/api.ts'
 import { mcpKeys } from '../mcp/queries.ts'
 
 /**
- * The agent itself, on the owner API: today's usage, its model, its Telegram channel, resident authority and memory.
- * Keys are `['agent', kind, input]`; each change settles once what it changed is fresh.
+ * The agent itself, on the owner API: today's usage, its model and how it pays for it, its Telegram channel, resident
+ * authority and memory. Keys are `['agent', kind, input]`; each change settles once what it changed is fresh.
  */
 const agentKeys = {
   usage: ['agent', 'usage'] as const,
   model: ['agent', 'model'] as const,
+  pay: ['agent', 'pay'] as const,
   channel: ['agent', 'channel'] as const,
   resident: ['agent', 'resident'] as const,
   memory: (chat: ChatId | undefined) => ['agent', 'memory', chat ?? null] as const,
@@ -36,6 +37,30 @@ export const chooseModelMutation = mutationOptions({
     if (result?.previous !== undefined) client.setQueryData(modelQuery.queryKey, result.previous)
   },
   onSuccess: (choice, _model, _result, { client }) => client.setQueryData(modelQuery.queryKey, choice),
+})
+
+/**
+ * How goblin pays for its model calls (ADR 0047): the owner's pay mode and route, the routes the stage sells, and
+ * whether their Goblin Wallet can pay now.
+ */
+export const payQuery = owner.apiQuery({ queryKey: agentKeys.pay, queryFn: (api) => api.agent.pay() })
+
+/** Chooses the pay mode and route: shown at once, put back if the agent refuses it, then the agent's answer. */
+export const choosePayMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, pick: { readonly mode: PayMode; readonly route: PayRoute }) =>
+      api.agent.choosePay({ payload: pick }),
+  }),
+  onMutate: async (pick: { readonly mode: PayMode; readonly route: PayRoute }, { client }) => {
+    await client.cancelQueries({ queryKey: agentKeys.pay })
+    const previous = client.getQueryData(payQuery.queryKey)
+    if (previous !== undefined) client.setQueryData(payQuery.queryKey, { ...previous, ...pick })
+    return { previous }
+  },
+  onError: (_error, _pick, result, { client }) => {
+    if (result?.previous !== undefined) client.setQueryData(payQuery.queryKey, result.previous)
+  },
+  onSuccess: (choice, _pick, _result, { client }) => client.setQueryData(payQuery.queryKey, choice),
 })
 
 /** The connection carrying Telegram (ADR 0009), or null when it is off. */

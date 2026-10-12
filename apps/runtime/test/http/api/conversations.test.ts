@@ -186,7 +186,7 @@ const services = (calls: Calls, personas: readonly PersonaView[]) =>
     // No message here carries files or App context, so neither is read.
     stub(Files),
     stub(Apps),
-    stub(Budget, { require: () => Effect.void }),
+    stub(Budget, { require: () => Effect.void, admit: () => Effect.void }),
     stub(Models, { current: Effect.succeed('fixture-model') }),
     stub(RoutineRuns, { session: () => Effect.undefined }),
     stub(RoutineControl, { answer: () => Effect.succeed(false) }),

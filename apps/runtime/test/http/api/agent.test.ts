@@ -37,7 +37,7 @@ const fixture = () => {
       telegramChannel({ db: sqlite, cipher: unread, telemetry: undefined, wake: () => undefined }),
     ),
     // The channel's tools: the server offers none, so turning the channel on is refused before anything is granted.
-    stub(McpServers, { tools: () => Effect.succeed([]) }),
+    stub(McpServers, { tools: () => Effect.succeed([]), list: () => Effect.succeed([]) }),
     stub(McpConnections, { snapshot: () => Effect.succeedNone }),
     stub(McpGrants),
     stub(Events, { activeConsumer: () => Effect.succeedNone }),
@@ -53,7 +53,13 @@ const fixture = () => {
       Object.assign(Object.create(null), {
         applied,
         entitlements,
-        env: { APP_URL: 'https://goblin.test', CREDENTIAL_KEY: 'unused', MODELS: 'model-b', MODEL_ID: 'model-a' },
+        env: {
+          APP_URL: 'https://goblin.test',
+          CREDENTIAL_KEY: 'unused',
+          MODELS: 'model-b',
+          MODEL_ID: 'model-a',
+          PAID_INFERENCE: 'goblin',
+        },
         userId: 'owner',
         schedulePull: async () => undefined,
       }),
@@ -89,6 +95,26 @@ describe('the agent group served by the agent', () => {
     expect(await refused.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'model' } })
     const empty = await fetch(json('PUT', '/api/agent/model', { model: '' }))
     expect(empty.status).toBe(400)
+  })
+
+  it('reads how goblin pays, stores a mode and a route it sells, and refuses one it does not sell', async () => {
+    const { fetch } = fixture()
+    expect(await callOwner({ fetch }, (api) => api.agent.pay())).toEqual({
+      mode: 'credits-then-wallet',
+      route: 'goblin',
+      routes: ['goblin'],
+      walletReady: false,
+    })
+    const chosen = await callOwner({ fetch }, (api) =>
+      api.agent.choosePay({ payload: { mode: 'credits', route: 'goblin' } }),
+    )
+    expect(chosen).toMatchObject({ mode: 'credits', route: 'goblin' })
+    const refused = await fetch(json('PUT', '/api/agent/pay', { mode: 'wallet', route: 'tempo' }))
+    expect(refused.status).toBe(400)
+    expect(await refused.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'pay_route' } })
+    const unknown = await fetch(json('PUT', '/api/agent/pay', { mode: 'paid', route: 'goblin' }))
+    expect(unknown.status).toBe(400)
+    expect(await callOwner({ fetch }, (api) => api.agent.pay())).toMatchObject({ mode: 'credits' })
   })
 
   it('answers the channel as null while off, refuses a connection without its tools, and turns it off', async () => {

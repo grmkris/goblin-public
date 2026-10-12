@@ -1258,20 +1258,30 @@ at the output limit" under what it wrote (or, when it wrote nothing but thinking
 and Telegram adds the same line. glm-5.3 on the Token Plan thinks until the limit on hard prompts and ignores a thinking
 budget (probed 2026-10-12), which is why the picker says so.
 
-A stage that sets `GOBLIN_PAID_INFERENCE` also offers models paid per call from the owner's Goblin Wallet (ADR 0047):
-`paid:tempo` (Tempo's MPP proxy) and `paid:goblin` (this stage's own paid endpoint), each its own Pi provider
-(`goblin-paid-*`, `pi/model.ts`). A call goes out with no key of goblin's. A 402's MPP challenge is paid by the wallet's
-payment tool through the MCP caller `inference` (`mcp/inference-pay.ts`), which only that tool admits and the model
-never sees, and the request is sent once more with the credential. The wallet holds the payment as unknown until
-goblin reports the answer's `Payment-Receipt` under the same operation (`inference:<challenge id>`), which it does
-while the answer streams. A refusal, or a spend the wallet holds for approval over a limit, comes back as the
-provider's 402 in the wallet's words, and paid streams make no client retries. A paid pick costs no Credits:
-`Budget.require` lets it through and its responses are not recorded. Routines and housekeeping run on goblin's own model instead (`creditsModel`).
+A stage that sets `GOBLIN_PAID_INFERENCE` sells model calls paid per call from the owner's Goblin Wallet (ADR 0047), on
+two routes: `goblin` (this stage's own paid endpoint, the same model) and `tempo` (Tempo's MPP proxy, its DeepSeek), each
+its own Pi provider (`goblin-paid-*`, `pi/model.ts`). The model pick stays a model; when a call is paid is the owner's
+pay mode (`pay-mode.ts`, one row in `app_pay_mode`, `GET`/`PUT /api/agent/pay`): `credits-then-wallet` (the default),
+`credits` or `wallet`, with a route (`goblin` by default). Pi's conversations mark their calls through the harness's
+stream metadata (`CONVERSATION_CALL`), and `goblin-litellm`'s stream asks `payingRoute` before each marked call: every
+call in `wallet` mode, and in `credits-then-wallet` once the day's Credits are spent while the wallet can pay, goes to
+the paid route's provider with the same model id, never with goblin's LiteLLM key. Asked per call, a turn whose Credits
+run out midway goes on paid. Unmarked calls (housekeeping) and routines' own providers stay on Credits. The wallet can
+pay when it is connected and its payment tool (`pay_challenge`) is allowed to run without asking. Admission follows the
+mode: `Budget.admit` (an owner's turn, a Persona's, the tool hook) lets a turn through past the Credits in `wallet` mode,
+or in `credits-then-wallet` while the wallet can pay; `Budget.require` (routines, housekeeping) keeps to the Credits. A
+paid call goes out with no key of goblin's. A 402's MPP challenge is paid by the wallet's payment tool through the MCP
+caller `inference` (`mcp/inference-pay.ts`), which only that tool admits and the model never sees, and the request is
+sent once more with the credential. The wallet holds the payment as unknown until goblin reports the answer's
+`Payment-Receipt` under the same operation (`inference:<challenge id>`), which it does while the answer streams. A
+refusal, or a spend the wallet holds for approval over a limit, comes back as the provider's 402 in the wallet's words,
+and paid streams make no client retries. A paid answer names its paid provider, so it is not recorded in Credits.
 goblin's own paid endpoint, `POST /v1/chat/completions` (`http/paid-inference.ts`), sells the stage's models behind an
 `mppx` `tempo` charge in USDC.e to `GOBLIN_MPP_RECIPIENT`, priced up front as Tempo's proxy prices (0.6 of a unit per
 output token it may write, 0.1 per input token, at least $0.00075). It forwards a paid call to LiteLLM with the stage's
-key and returns the payment's receipt. Settings' "How goblin pays for its model" card (`inference-card.tsx`) picks between
-the plan's Credits and each paid route, and Activity's Get started offers it until a paid route is picked or put off.
+key and returns the payment's receipt. Settings' "How goblin pays for its model" card (`inference-card.tsx`) chooses the
+pay mode and, where the stage sells both, the route; the composer says "Paying per call" while calls are paid, and
+Activity's Get started offers the wallet while a mode would use it and it cannot pay yet.
 Where the stage sets `GOBLIN_FREE_WALLET_USD`, the free plan's Credits apply only while a connected Goblin Wallet holds
 that many dollars of stablecoins: the total its status adds up on every chain (`stablecoinUsd`), else its status
 line's USDC and USDC.e (the server's claim, read as the owner, `layers/budget.ts`):

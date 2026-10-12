@@ -5,6 +5,7 @@ import {
   ConversationView,
   CreateConversation,
   FilePath,
+  PayChoice,
   PersonaName,
   SendMessage,
   StartThread,
@@ -110,5 +111,21 @@ describe('client error reports', () => {
     expect(valid({ ...report, frames: Array.from({ length: 13 }, () => 'index.js:1:2') })).toBe(false)
     const long = `https://goblin.surf/${'a'.repeat(270)}.js:1:2`
     expect(valid({ ...report, frames: Array.from({ length: 12 }, () => long) })).toBe(false)
+  })
+})
+
+describe('how goblin pays for its model', () => {
+  const decode = Schema.decodeUnknownSync(PayChoice)
+
+  it('decodes a pay mode, its route and the routes the stage sells', () => {
+    const choice = { mode: 'credits-then-wallet', route: 'goblin', routes: ['goblin', 'tempo'], walletReady: false }
+    expect(decode(choice)).toEqual(choice)
+    expect(decode({ mode: 'credits', route: 'goblin', routes: [], walletReady: true }).routes).toEqual([])
+  })
+
+  it('refuses a mode or a route it does not know', () => {
+    expect(() => decode({ mode: 'paid', route: 'goblin', routes: [], walletReady: false })).toThrow()
+    expect(() => decode({ mode: 'wallet', route: 'openrouter', routes: ['goblin'], walletReady: false })).toThrow()
+    expect(() => decode({ mode: 'wallet', route: 'goblin', routes: ['paid:goblin'], walletReady: false })).toThrow()
   })
 })

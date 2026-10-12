@@ -1,6 +1,7 @@
 # 0047: Inference paid per call from the owner's wallet
 
-It builds on ADR 0026 (Credits), 0043 (first-class servers), 0044 (spending rules) and 0045 (Goblin Wallet).
+It builds on ADR 0026 (Credits), 0043 (first-class servers), 0044 (spending rules) and 0045 (Goblin Wallet). Amended the
+same day: a pay mode replaces paid model picks, and the default is Credits first, then the wallet (below).
 
 ## Context
 
@@ -13,14 +14,26 @@ which bill per token as an answer streams. Neither the wallet nor the proxy supp
 
 ## Decision
 
-**A model call can pay its own way.** The owner picks a paid route in the model picker:
-- `paid:tempo`: Tempo's proxy;
-- `paid:goblin`: goblin's own endpoint behind the same MPP charge.
+**A model call can pay its own way.** The deployment sells paid routes through `PAID_INFERENCE`:
+- `goblin`: goblin's own endpoint behind an MPP charge, serving the model the owner picked under its own id;
+- `tempo`: Tempo's proxy, serving its DeepSeek whatever model is picked.
 
-The deployment offers these through `PAID_INFERENCE`. A paid call works like this:
+A paid call works like this:
 1. It goes out with no key of goblin's.
 2. A 402's challenge is paid by the owner's Goblin Wallet.
 3. The same request is sent once more with `Authorization: Payment <credential>`.
+
+**The owner's pay mode says when a call is paid** (amended 2026-10-12). The model pick stays a model. The pay mode is
+one of:
+- `credits-then-wallet` (the default): the day's Credits pay first; once they are spent, each call is paid from the
+  wallet while it can pay (connected, its payment tool allowed to run without asking);
+- `credits`: calls stop at the day's limit;
+- `wallet`: every call is paid from the wallet.
+
+It comes with a route, `goblin` by default. The decision is made before each model call, so a turn whose Credits run
+out midway goes on paid. A turn is admitted past the Credits in `wallet` mode, and in `credits-then-wallet` while the
+wallet can pay. An account that had picked `paid:goblin` or `paid:tempo` as its model got the `wallet` mode on that
+route, and its model pick went back to the stage's default (migration `20261031000300_pay_mode`).
 
 **Billing is per call, priced up front, for now.** Each call pays one charge sized from its tokens. True per-token
 billing waits for MPP sessions in the wallet and on goblin's side.
@@ -31,11 +44,12 @@ billing waits for MPP sessions in the wallet and on goblin's side.
 - That caller reaches only that tool. The model never sees it: the server keeps it App-only, and goblin treats
   `inference` as an App for visibility.
 - Grants and ask-first still apply.
-- Picking a paid route is the owner's standing consent. The wallet's own limits, and goblin's $0.05 per call, are
-  the caps.
+- Choosing a pay mode that uses the wallet is the owner's standing consent. The wallet's own limits, and goblin's $0.05
+  per call, are the caps.
 
-**A paid call costs no Credits.** The budget lets a paid pick through, and its responses are not recorded against the
-day. Routines and housekeeping stay on goblin's own models: a paid pick stands in as the model goblin pays for.
+**A paid call costs no Credits.** Its responses are not recorded against the day. Only the owner's conversations
+(main, threads, Personas, subagents) follow the pay mode; routines and housekeeping stay on Credits, and are refused
+once the day's Credits are spent.
 
 ## Consequences
 
@@ -49,11 +63,14 @@ day. Routines and housekeeping stay on goblin's own models: a paid pick stands i
 - **Charges are up front.** At goblin's 32,768-token output cap, a call through the proxy costs about $0.02, whatever
   the answer uses.
 - **The free plan's Credits ask for a funded wallet.** Where the stage sets `GOBLIN_FREE_WALLET_USD` (5 on dev and
-  prod), a free account's 50 Credits a day apply only while its Goblin Wallet holds that much in stablecoins, by the
-  total its status adds up over every chain.
+  prod), a free account's Credits apply only while its Goblin Wallet holds that much in stablecoins, by the total its
+  status adds up over every chain. With Credits first, then the wallet, an unfunded account's turns are paid per call
+  while its wallet can pay.
 
 ## Rejected
 
+- **Paid routes as model picks** (the first version). The owner had to choose between a model and a way to pay, and a
+  day whose Credits ran out stopped goblin even with a wallet ready to pay.
 - **The wallet fetching the model call (`paid_fetch`).** It doesn't stream, its body is capped, and it is limited to
   allow-listed services.
 - **A generic signing tool in the wallet.** ADR 0045 rejects one. `pay_challenge` pays only allow-listed origins and

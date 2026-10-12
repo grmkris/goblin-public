@@ -1,11 +1,11 @@
-import type { ModelChoice, RoutineSettings, RoutineView } from '@goblin/contracts'
+import type { ModelChoice, PayChoice, RoutineSettings, RoutineView } from '@goblin/contracts'
 import { AgentGroup, InvalidInput, OwnerApi, OwnerAdmission, RoutinesGroup, ownerApiOf } from '@goblin/contracts/api'
 import { MutationObserver, QueryObserver } from '@tanstack/react-query'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { chooseModelMutation, modelQuery } from '../src/agent/queries.ts'
+import { chooseModelMutation, choosePayMutation, modelQuery, payQuery } from '../src/agent/queries.ts'
 import { owner } from '../src/lib/api.ts'
 import { fakeHttpApi, testQueryClient } from '../src/lib/query/testing.ts'
 import { changeRoutineMutation, routinesQuery } from '../src/routines/queries.ts'
@@ -20,6 +20,7 @@ const CHOICE: ModelChoice = {
     { id: 'deep', label: 'Deep', ...OPTION },
   ],
 }
+const PAY: PayChoice = { mode: 'credits-then-wallet', route: 'goblin', routes: ['goblin'], walletReady: false }
 const SETTINGS: RoutineSettings = { timezone: 'UTC', maxActive: 20, maxRunning: 2 }
 const ROUTINE: RoutineView = {
   id: 'rt_daily',
@@ -52,7 +53,7 @@ const ROUTINE: RoutineView = {
 /** The real agent and routines groups served in memory, over one model choice and one routine. */
 const fakeOwner = () => {
   const operations: string[] = []
-  const state = { choice: CHOICE, routine: ROUTINE, operations }
+  const state = { choice: CHOICE, pay: PAY, routine: ROUTINE, operations }
   const Agent = HttpApiBuilder.group(OwnerApi, 'agent', (handlers) =>
     handlers.handleAll({
       ...unusedHandlers(OwnerApi.groups.agent),
@@ -62,6 +63,12 @@ const fakeOwner = () => {
           return Effect.fail(new InvalidInput({ reason: 'model_not_offered' }))
         state.choice = { ...state.choice, current: payload.model }
         return Effect.succeed(state.choice)
+      },
+      pay: () => Effect.succeed(state.pay),
+      choosePay: ({ payload }) => {
+        if (!state.pay.routes.includes(payload.route)) return Effect.fail(new InvalidInput({ reason: 'pay_route' }))
+        state.pay = { ...state.pay, ...payload }
+        return Effect.succeed(state.pay)
       },
     }),
   )
@@ -90,6 +97,7 @@ const fakeOwner = () => {
     state,
     reset: () => {
       state.choice = CHOICE
+      state.pay = PAY
       state.routine = ROUTINE
       state.operations = []
       server.calls.length = 0
@@ -124,6 +132,24 @@ describe('the model pick', () => {
     const pick = new MutationObserver(client, chooseModelMutation)
     await expect(pick.mutate('retired')).rejects.toBeInstanceOf(InvalidInput)
     expect(client.getQueryData(modelQuery.queryKey)?.current).toBe('fast')
+  })
+})
+
+describe('how goblin pays for its model', () => {
+  it("keeps the agent's answer in the cache", async () => {
+    const client = testQueryClient()
+    await client.query(payQuery)
+    const choose = new MutationObserver(client, choosePayMutation)
+    await choose.mutate({ mode: 'wallet', route: 'goblin' })
+    expect(client.getQueryData(payQuery.queryKey)).toEqual({ ...PAY, mode: 'wallet' })
+  })
+
+  it('puts the previous choice back when the agent refuses a route the stage does not sell', async () => {
+    const client = testQueryClient()
+    await client.query(payQuery)
+    const choose = new MutationObserver(client, choosePayMutation)
+    await expect(choose.mutate({ mode: 'wallet', route: 'tempo' })).rejects.toBeInstanceOf(InvalidInput)
+    expect(client.getQueryData(payQuery.queryKey)).toEqual(PAY)
   })
 })
 

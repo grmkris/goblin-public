@@ -20,6 +20,7 @@ import { serversExtension } from './pi/servers.ts'
 import { type PiModels, makePiHarness } from './pi/harness.ts'
 import { type AgentTelemetry, agentTelemetry } from './telemetry/agent.ts'
 import { LITELLM_STREAMS, type PayChallenge, makePiModels } from './pi/model.ts'
+import { payingRoute } from './pay-mode.ts'
 import { payInferenceChallenge, paymentFailureText, settleInferencePayment } from './mcp/inference-pay.ts'
 import { personaExtension } from './pi/persona.ts'
 import { type SubagentKit, subagentsExtension } from './pi/subagents.ts'
@@ -84,7 +85,8 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     runApplicationMigrations(ctx.storage)
     this.#bridge = makeBridge(() => this.#services(), { instrument })
     const { run, local: routineRun } = this.#bridge
-    // Paid inference pays each model call from the owner's Goblin Wallet (ADR 0047); a refusal ends the call in words.
+    // The owner's pay mode routes each conversation call (ADR 0047); a paid one pays from their Goblin Wallet, and a
+    // refusal ends the call in words.
     const pay: PayChallenge = (request) =>
       routineRun(payInferenceChallenge(request)).then(
         ({ credential, payment }) => ({
@@ -95,7 +97,10 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
           throw new Error(paymentFailureText(error))
         },
       )
-    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)), pay)
+    this.#pi = makePiModels(env, this.modelStreams(), undefined, (id) => routineRun(requireRoutine(id)), {
+      pay,
+      route: () => routineRun(payingRoute),
+    })
     const residentTools = residentMcpExtension(run)
     const tools = [residentTools, budgetExtension(routineRun)]
     this.#thread = threadExtension(run)

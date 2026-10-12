@@ -46,6 +46,7 @@ function critic(mode: Mode = 'ok') {
     budget: Budget.of({
       today: () => Effect.die('the critic never reads the day'),
       require: () => (mode === 'budget' ? Effect.fail(new BudgetExhausted({ limit: 0, resetsAt: 0 })) : Effect.void),
+      admit: () => Effect.die('the critic never admits a turn'),
       record: (use, _now, model) =>
         Effect.sync(() => {
           models.add(model)

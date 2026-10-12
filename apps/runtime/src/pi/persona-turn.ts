@@ -25,7 +25,7 @@ import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { heldCall } from '../attention.ts'
-import { requireBudget } from '../budget.ts'
+import { admitTurn } from '../budget.ts'
 import { Conversations } from '../chats/service.ts'
 import { requireResident } from '../mcp/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
@@ -247,10 +247,13 @@ const registerFork = (input: Input, fork: ConversationId) =>
     yield* (yield* Invocations).running(input.operationId, input.persona.id)
   })
 
-/** What the fork may do before the model is asked: the owner's authority is current and the day's budget is not spent. */
+/**
+ * What the fork may do before the model is asked: the owner's authority is current, and the day's budget is not spent
+ * or the owner's pay mode lets their wallet pay (ADR 0047).
+ */
 const mayAnswer = Effect.gen(function* () {
   yield* requireResident
-  yield* requireBudget
+  yield* admitTurn
 })
 
 type Phase<P extends State['phase']> = PhaseHandler<Input, Extract<State, { phase: P }>, State, null, object>
