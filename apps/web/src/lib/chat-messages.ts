@@ -92,17 +92,37 @@ export type ChatMessage =
 /**
  * Why a turn has no answer, or no whole one. `provider`: the model's provider refused or is down, so another model may
  * answer. `stopped`: the owner stopped it, which is a choice rather than a failure. `cutOff`: the answer reached the
- * output limit, so what came before it stands and the agent can continue.
+ * output limit, so what came before it stands and the agent can continue. `walletFunds`: the owner's Goblin Wallet
+ * refused to pay the call for want of funds (ADR 0047), so adding funds lets goblin answer.
  */
 export type TurnFailure = {
   readonly text: string
   readonly provider: boolean
   readonly stopped?: true
   readonly cutOff?: true
+  readonly walletFunds?: true
 }
+
+/**
+ * A model call the owner's Goblin Wallet did not pay (ADR 0047), in the runtime's words: `Payment from your Goblin
+ * Wallet failed (<code>): <why>.`. The code is read and left out of the text.
+ */
+const PAYMENT = /Payment from your Goblin Wallet failed(?: \(([a-z_]{1,40})\))?: ([^\n]{1,400})/u
+
+/** Whether a turn failed because the owner's Goblin Wallet needs funds to pay for goblin's model calls. */
+export const needsWalletFunds = (failure: TurnFailure | undefined): boolean => failure?.walletFunds === true
 
 /** The provider's raw error, in a sentence the owner can act on; the first line of anything unrecognised. */
 export function failureReason(raw: string): TurnFailure {
+  // First: the wallet's own words may mention a rate or an outage, which are not the model provider's. Its words say
+  // what to do; another model is paid the same way, so none is offered.
+  const payment = PAYMENT.exec(raw)
+  if (payment !== null)
+    return {
+      text: `Payment from your Goblin Wallet failed: ${payment[2] ?? ''}`,
+      provider: false,
+      ...(payment[1] === 'insufficient_funds' ? { walletFunds: true as const } : {}),
+    }
   if (/\b429\b|quota|rate.?limit|too many requests/iu.test(raw))
     return { text: 'The model provider refused the request: quota exceeded or rate-limited.', provider: true }
   if (/\b(?:500|502|503|504)\b|overloaded|high demand|unavailable/iu.test(raw))
@@ -113,9 +133,6 @@ export function failureReason(raw: string): TurnFailure {
       text: "This model isn't available right now. Pick another model below and send again.",
       provider: true,
     }
-  // Inference paid per call (ADR 0047): the wallet's refusal, in the words the runtime gave it.
-  const payment = /Payment from your Goblin Wallet failed: [^\n]{1,200}/u.exec(raw)?.[0]
-  if (payment !== undefined) return { text: payment, provider: true }
   // Pi compacts once on an overflow; this is what is left when even the compacted conversation does not fit.
   if (/exceeds the context window|maximum context length|context[_ ]length[_ ]exceeded/iu.test(raw))
     return {

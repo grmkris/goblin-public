@@ -10,6 +10,7 @@ import {
   challengeId,
   payInferenceChallenge,
   paymentFailureText,
+  refusalOf,
   settleInferencePayment,
 } from '../src/mcp/inference-pay.ts'
 import { McpConnections, McpServers } from '../src/mcp/service.ts'
@@ -45,8 +46,8 @@ const withoutReceipt = async (input: Parameters<typeof fetch>[0], init?: Request
     ? Response.json({ ok: true })
     : new Response(null, { status: 402, headers: { 'www-authenticate': CHALLENGE } })
 
-/** The owner's Goblin Wallet, connected, whose payment tool answers `answer` and records every call. */
-const wallet = (answer: Record<string, unknown>) => {
+/** The owner's Goblin Wallet, connected, whose payment tool answers `answer` (a refusal with `isError`). */
+const wallet = (answer: Record<string, unknown>, isError = false) => {
   const calls: { readonly tool: string; readonly args: Record<string, unknown>; readonly caller: unknown }[] = []
   const layer = Layer.mergeAll(
     stub(McpServers, {
@@ -65,7 +66,7 @@ const wallet = (answer: Record<string, unknown>) => {
     stub(McpConnections, {
       callTool: (_connectionId, tool, args, options) => {
         calls.push({ tool, args, caller: options?.caller })
-        return Effect.succeed({ content: [], structuredContent: answer })
+        return Effect.succeed({ content: [], structuredContent: answer, ...(isError ? { isError } : {}) })
       },
     }),
   )
@@ -78,6 +79,10 @@ const tool = (visibility: readonly string[]): Tool => ({
   inputSchema: { type: 'object' },
   _meta: { ui: { visibility } },
 })
+
+/** The owner's words for a refusal the wallet answered with `code` and `message`. */
+const text = (code: string, message?: string) =>
+  paymentFailureText({ code, ...(message === undefined ? {} : { message }) })
 
 /** A request's headers as `headersOf` keeps them, in order. */
 const names = (value: unknown) => [...headersOf(value).entries()]
@@ -131,7 +136,10 @@ describe('inference paid per call from the wallet (ADR 0047)', () => {
     const answer = await refused('https://example.test/')
     expect(answer.status).toBe(402)
     expect(await answer.json()).toEqual({
-      error: { message: 'Payment from your Goblin Wallet failed: connect your Goblin Wallet on Connections first.' },
+      error: {
+        message:
+          'Payment from your Goblin Wallet failed (no_paying_wallet): connect your Goblin Wallet on Connections first.',
+      },
     })
   })
 
@@ -159,6 +167,7 @@ describe('inference paid per call from the wallet (ADR 0047)', () => {
       challenge: CHALLENGE,
     }
     const paid = await Effect.runPromise(payInferenceChallenge(request).pipe(Effect.provide(layer)))
+    if (!paid.paid) throw new Error('the wallet refused')
     expect(paid.credential).toBe('cred-9')
     await Effect.runPromise(settleInferencePayment(paid.payment, 'rcpt-9').pipe(Effect.provide(layer)))
     expect(calls).toEqual([
@@ -180,8 +189,79 @@ describe('inference paid per call from the wallet (ADR 0047)', () => {
     }
     const refused = await Effect.runPromise(Effect.flip(payInferenceChallenge(request)).pipe(Effect.provide(layer)))
     expect(paymentFailureText(refused)).toBe(
-      'Payment from your Goblin Wallet failed: the call is over a limit you set in the wallet.',
+      'Payment from your Goblin Wallet failed (over_limit): the call is over a limit you set in the wallet.',
     )
+  })
+
+  it("keeps the wallet's refusal code, and words it for the owner: an empty wallet names the address to fund", async () => {
+    const funds =
+      'The agent wallet holds 0 USDC.e on Tempo; this payment needs 0.021439. Send USDC.e on Tempo to 0x76C7aB0000000000000000000000000000001234, or add funds from any chain (add_funds).'
+    const { layer } = wallet(
+      { error: { code: 'insufficient_funds', message: funds, recovery: 'Nothing was signed. Fund the agent wallet.' } },
+      true,
+    )
+    const request = { url: 'https://goblin.surf/v1/chat/completions', method: 'POST', challenge: CHALLENGE }
+    const outcome = await Effect.runPromise(payInferenceChallenge(request).pipe(Effect.provide(layer)))
+    expect(outcome).toEqual({ paid: false, refusal: { code: 'insufficient_funds', message: funds } })
+    if (outcome.paid) throw new Error('the wallet paid')
+    expect(paymentFailureText(outcome.refusal)).toBe(
+      `Payment from your Goblin Wallet failed (insufficient_funds): your Goblin Wallet needs USDC.e on Tempo: ${funds.slice(0, -1)}.`,
+    )
+  })
+
+  it("words each refusal: the rail's own line, the scope, goblin's cap, a host's grant, and anything else as the wallet put it", () => {
+    expect(text('rail_refused', 'Tempo refused the transfer.')).toBe(
+      'Payment from your Goblin Wallet failed (rail_refused): Tempo refused the transfer.',
+    )
+    expect(text('payment_failed', 'The charge was not settled.')).toBe(
+      'Payment from your Goblin Wallet failed (payment_failed): The charge was not settled.',
+    )
+    expect(text('insufficient_scope', 'This connection may read the wallet but not spend from it.')).toBe(
+      'Payment from your Goblin Wallet failed (insufficient_scope): sign in to it again on Connections and allow it to spend.',
+    )
+    expect(text('above_max_usd', 'The charge is 0.09.')).toBe(
+      "Payment from your Goblin Wallet failed (above_max_usd): the call costs more than goblin's $0.05 per-call cap.",
+    )
+    expect(text('challenge_expired')).toBe(
+      'Payment from your Goblin Wallet failed (challenge_expired): the wallet did not pay.',
+    )
+    expect(paymentFailureText({ _tag: 'GrantDenied', connectionId: 'w1', name: 'pay_challenge' })).toBe(
+      "Payment from your Goblin Wallet failed (grant_denied): allow its payment tool (Allow recommended on the wallet's card).",
+    )
+    expect(paymentFailureText(new Error('boom'))).toBe(
+      'Payment from your Goblin Wallet failed: the wallet did not pay.',
+    )
+  })
+
+  it('keeps a bounded code and one line of at most 200 characters from whatever the wallet answers', () => {
+    expect(refusalOf({ error: { code: 'Not A Code!', message: 'line one\n  line two' } })).toEqual({
+      code: 'refused',
+      message: 'line one line two',
+    })
+    const long = refusalOf({ error: { code: 'rail_refused', message: 'x'.repeat(500) } })
+    expect(long.message).toHaveLength(200)
+    expect(refusalOf(undefined)).toEqual({ code: 'refused' })
+  })
+
+  it('ends a call whose paid request the service still answers 402 with words, and pays it only once', async () => {
+    let payments = 0
+    const settled: string[] = []
+    const stubborn = payingFetch(
+      async () => {
+        payments += 1
+        return { credential: 'cred-4', settle: async (receipt) => void settled.push(receipt) }
+      },
+      async () => new Response('{"error":"no"}', { status: 402, headers: { 'www-authenticate': CHALLENGE } }),
+    )
+    const answer = await stubborn('https://example.test/')
+    expect(answer.status).toBe(402)
+    expect(await answer.json()).toEqual({
+      error: {
+        message:
+          'Payment from your Goblin Wallet failed (refused_after_payment): the model service refused the payment your wallet made, so the call was not answered. It is not paid again.',
+      },
+    })
+    expect([payments, settled]).toEqual([1, []])
   })
 
   it('reads the challenge id the wallet keys a payment by', () => {

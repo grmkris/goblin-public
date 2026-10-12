@@ -115,10 +115,24 @@ export const headersOf = (value: unknown): Headers => {
   return headers
 }
 
+/** How a refused payment's model error starts. The web and the run ledger read the refusal code in its brackets. */
+export const PAYMENT_FAILED = 'Payment from your Goblin Wallet failed'
+
+/**
+ * The model error a refused payment ends the call with, for the owner: `Payment from your Goblin Wallet failed
+ * (<code>): <why>.`. The code is a bounded token the run ledger may keep; the words never leave the owner's chat.
+ */
+export const paymentFailed = (code: string | undefined, why: string): string =>
+  `${PAYMENT_FAILED}${code === undefined ? '' : ` (${code})`}: ${why.replace(/\.$/u, '')}.`
+
+/** A refusal as the provider's own 402 would come: the client neither retries it nor reports a connection error. */
+const refused = (message: string) => Response.json({ error: { message } }, { status: 402 })
+
 /**
  * A fetch that pays its way: a 402 with a payment challenge is paid through `pay` and the request sent once more with
  * the credential; anything else is answered as it came. The body is kept for the second send. The paid answer's
- * receipt is reported while it streams.
+ * receipt is reported while it streams. A service that answers the paid request with another 402 refused the payment
+ * made: the call ends there, in words, and is never paid again.
  */
 export const payingFetch = (pay: PayChallenge, inner: FetchFunction = fetch): FetchFunction => {
   const paying = async (input: Parameters<FetchFunction>[0], init?: Parameters<FetchFunction>[1]) => {
@@ -131,14 +145,22 @@ export const payingFetch = (pay: PayChallenge, inner: FetchFunction = fetch): Fe
     // swaps its words for a connection error.
     const paid = await pay({ url, method, challenge }).catch((error: unknown) => {
       // expected: the refusal is not dropped; it becomes the provider's 402, carrying the wallet's words.
-      const message = error instanceof Error ? error.message : 'Payment from your Goblin Wallet failed.'
-      return Response.json({ error: { message } }, { status: 402 })
+      return refused(error instanceof Error ? error.message : paymentFailed(undefined, 'the wallet did not pay'))
     })
     if (paid instanceof Response) return paid
     const headers = headersOf(init?.headers)
     headers.set('authorization', `Payment ${paid.credential}`)
     // The model clients send a string body, so the same init goes out again with the credential.
     const answered = await inner(input, { ...init, headers })
+    if (answered.status === 402) {
+      await answered.body?.cancel()
+      return refused(
+        paymentFailed(
+          'refused_after_payment',
+          'the model service refused the payment your wallet made, so the call was not answered. It is not paid again',
+        ),
+      )
+    }
     const receipt = answered.headers.get('payment-receipt')
     // Not awaited: the answer streams while the wallet checks the receipt on chain.
     if (receipt !== null)

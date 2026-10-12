@@ -90,6 +90,7 @@ describe('goblin logger', () => {
       // A ledger line arrives already sanitized: `goblin.error` is the summary, and `error.type` a log field.
       writeLine('info', { event: 'run', 'error.type': 'provider_error', 'goblin.error': 'Model provider failed.' })
       writeLine('info', { event: 'run', 'error.type': 'UpstreamMcp:timeout', 'goblin.error': SECRET })
+      writeLine('info', { event: 'run', 'error.type': 'payment_refused:insufficient_funds', 'goblin.error': SECRET })
       expect(log.mock.calls.map(([text]: unknown[]) => JSON.parse(String(text)))).toEqual([
         { level: 'info', 'goblin.error': 'Model provider failed.', event: 'run', 'error.type': 'provider_error' },
         {
@@ -97,6 +98,12 @@ describe('goblin logger', () => {
           'goblin.error': 'Remote MCP request failed (timeout).',
           event: 'run',
           'error.type': 'UpstreamMcp:timeout',
+        },
+        {
+          level: 'info',
+          'goblin.error': 'Payment from the Goblin Wallet refused (insufficient_funds).',
+          event: 'run',
+          'error.type': 'payment_refused:insufficient_funds',
         },
       ])
     } finally {

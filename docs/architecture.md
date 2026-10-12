@@ -1274,8 +1274,11 @@ paid call goes out with no key of goblin's. A 402's MPP challenge is paid by the
 caller `inference` (`mcp/inference-pay.ts`), which only that tool admits and the model never sees, and the request is
 sent once more with the credential. The wallet holds the payment as unknown until goblin reports the answer's
 `Payment-Receipt` under the same operation (`inference:<challenge id>`), which it does while the answer streams. A
-refusal, or a spend the wallet holds for approval over a limit, comes back as the provider's 402 in the wallet's words,
-and paid streams make no client retries. A paid answer names its paid provider, so it is not recorded in Credits.
+refusal, or a spend the wallet holds for approval over a limit, comes back as the provider's 402 in the wallet's words
+with its refusal code (`Payment from your Goblin Wallet failed (<code>): …`, `pi/model.ts` `paymentFailed`); the run
+ledger keeps only `payment_refused:<code>` (`telemetry/safety.ts`), and the chat marks an empty wallet
+(`walletFunds`, `lib/chat-messages.ts`). A second 402 after a payment ends the call as `refused_after_payment`, and
+paid streams make no client retries. A paid answer names its paid provider, so it is not recorded in Credits.
 goblin's own paid endpoint, `POST /v1/chat/completions` (`http/paid-inference.ts`), sells the stage's models behind an
 `mppx` `tempo` charge in USDC.e to `GOBLIN_MPP_RECIPIENT`, priced up front as Tempo's proxy prices (0.6 of a unit per
 output token it may write, 0.1 per input token, at least $0.00075). It forwards a paid call to LiteLLM with the stage's

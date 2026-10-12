@@ -42,7 +42,8 @@ type Check = (value: unknown) => value is Value
 
 const TOKEN = /^[\w.:/$@{}-]+$/u
 const CLASS_NAME = /^[A-Za-z][A-Za-z0-9_]{0,39}$/u
-const ERROR_TYPE = /^[A-Za-z][A-Za-z0-9_]{0,39}(?::[a-z-]{1,40})?$/u
+/** A failure's type, with a reason after the colon: `UpstreamMcp:timeout`, `payment_refused:insufficient_funds`. */
+const ERROR_TYPE = /^[A-Za-z][A-Za-z0-9_]{0,39}(?::[a-z_-]{1,40})?$/u
 /** A stack location (`at f (file.js:1:2)` or `file.js:1:2`): one line ending in line and column. */
 /** A stack frame the logger keeps: a location ending `:line:col`, bounded. */
 export const FRAME = /^[^\n\r]{0,280}:\d{1,7}:\d{1,7}\)?$/u

@@ -1,5 +1,6 @@
 import { authorTag } from '@goblin/contracts'
 import { describe, expect, it } from 'vitest'
+import { failureReason, needsWalletFunds } from '../src/lib/chat-messages.ts'
 import { UnreadableFrame, projectBatch, projectSnapshot } from '../src/lib/projection.ts'
 
 /** The one assistant message of a snapshot holding just it. */
@@ -217,14 +218,34 @@ describe('Pi committed state projected for the chat', () => {
     expect(
       assistant({
         stopReason: 'error',
-        errorMessage: '402 Payment from your Goblin Wallet failed: connect your Goblin Wallet on Connections first.',
+        errorMessage:
+          '402 Payment from your Goblin Wallet failed (no_paying_wallet): connect your Goblin Wallet on Connections first.',
       }),
-    ).toMatchObject({
+    ).toEqual(
+      expect.objectContaining({
+        failure: {
+          text: 'Payment from your Goblin Wallet failed: connect your Goblin Wallet on Connections first.',
+          provider: false,
+        },
+      }),
+    )
+    // An empty wallet is told apart, so the chat can offer to fund it; its words may name a rate, which is not a quota.
+    const unfunded = assistant({
+      stopReason: 'error',
+      errorMessage:
+        '402 Payment from your Goblin Wallet failed (insufficient_funds): your Goblin Wallet needs USDC.e on Tempo: The agent wallet holds 0 USDC.e on Tempo; this payment needs 0.021439 at the 429 rate.',
+    })
+    expect(unfunded).toMatchObject({
       failure: {
-        text: 'Payment from your Goblin Wallet failed: connect your Goblin Wallet on Connections first.',
-        provider: true,
+        text: 'Payment from your Goblin Wallet failed: your Goblin Wallet needs USDC.e on Tempo: The agent wallet holds 0 USDC.e on Tempo; this payment needs 0.021439 at the 429 rate.',
+        provider: false,
+        walletFunds: true,
       },
     })
+    expect(needsWalletFunds(unfunded?.role === 'assistant' ? unfunded.failure : undefined)).toBe(true)
+    expect(
+      needsWalletFunds(failureReason('Payment from your Goblin Wallet failed (rail_refused): Tempo said no.')),
+    ).toBe(false)
     expect(
       assistant({ stopReason: 'error', errorMessage: 'The conversation exceeds the context window: 900 tokens left' }),
     ).toMatchObject({ failure: { text: expect.stringContaining('too long for the model'), provider: false } })

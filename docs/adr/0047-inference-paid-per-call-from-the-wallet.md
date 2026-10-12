@@ -53,8 +53,12 @@ once the day's Credits are spent.
 
 ## Consequences
 
-- **A refused payment becomes the provider's 402**, carrying the wallet's words ("Payment from your Goblin Wallet
-  failed: …"). The model client neither retries it nor reports it as a connection error.
+- **A refused payment becomes the provider's 402**, carrying the wallet's refusal code and words ("Payment from your
+  Goblin Wallet failed (insufficient_funds): your Goblin Wallet needs USDC.e on Tempo: …"). The model client neither
+  retries it nor reports it as a connection error. The words reach only the owner's chat; the run ledger keeps the
+  code alone (`payment_refused:<code>`), and the chat tells an empty wallet apart so it can offer to fund it. A service
+  that answers the paid request with another 402 ends the call the same way (`refused_after_payment`), never paying
+  again.
 - **Paid streams make no client retries.** Each send is a new charge.
 - **The wallet settles on the receipt.** It holds a paid call as unknown until goblin reports the answer's
   `Payment-Receipt` under the same operation id, which goblin does while the answer streams; the wallet checks it on

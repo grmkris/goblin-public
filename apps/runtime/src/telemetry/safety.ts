@@ -42,6 +42,7 @@ const FAILURES: Readonly<Record<string, string>> = {
   not_in_topic: 'Not in the Topic setup.',
   interrupted: 'Execution interrupted.',
   aborted: 'Execution cancelled.',
+  payment_refused: 'Payment from the Goblin Wallet refused.',
 }
 const UPSTREAM = new Set([
   'unauthorized',
@@ -53,25 +54,76 @@ const UPSTREAM = new Set([
   'content-limit',
 ])
 
+/**
+ * Why the owner's Goblin Wallet did not pay a model call (ADR 0047), as `payment_refused:<code>`. Its own refusal codes
+ * first, then goblin's (`mcp/inference-pay.ts`); another code is `payment_refused` alone. The words never come here.
+ */
+const PAYMENT = new Set([
+  'insufficient_funds',
+  'insufficient_scope',
+  'above_max_usd',
+  'above_service_cap',
+  'rail_refused',
+  'rail_unavailable',
+  'payment_failed',
+  'challenge_expired',
+  'bad_challenge',
+  'unknown_payee',
+  'unexpected_recipient',
+  'in_flight',
+  'outcome_unknown',
+  'operation_id_reused',
+  'no_credential',
+  'no_paying_wallet',
+  'challenge_unreadable',
+  'over_limit',
+  'grant_denied',
+  'ask_first',
+  'wallet_signed_out',
+  'wallet_unreachable',
+  'refused_after_payment',
+])
+
+/** Payment refusals that wait on the owner (funds, a limit, a grant, a sign-in) rather than on goblin or the rail. */
+const OWNER_PAYMENT = new Set([
+  'insufficient_funds',
+  'insufficient_scope',
+  'above_max_usd',
+  'above_service_cap',
+  'no_paying_wallet',
+  'over_limit',
+  'grant_denied',
+  'ask_first',
+  'wallet_signed_out',
+])
+
+/** A wallet refusal's code as its telemetry code: `payment_refused:<code>` when known, else `payment_refused`. */
+export const paymentRefusedCode = (code: string | undefined): string =>
+  code !== undefined && PAYMENT.has(code) ? `payment_refused:${code}` : 'payment_refused'
+
 /** A stored failure code: a known one stays, anything else is `error`. `outcomeOf` (attributes.ts) classifies a failure. */
 export const safeFailureCode = (code: unknown): string => {
   if (typeof code !== 'string') return 'error'
   if (Object.hasOwn(FAILURES, code)) return code
   const [tag, reason] = code.split(':')
-  return tag === 'UpstreamMcp' && reason !== undefined && UPSTREAM.has(reason) && code === `${tag}:${reason}`
-    ? code
-    : 'error'
+  if (reason === undefined || code !== `${tag}:${reason}`) return 'error'
+  if (tag === 'UpstreamMcp' && UPSTREAM.has(reason)) return code
+  return tag === 'payment_refused' && PAYMENT.has(reason) ? code : 'error'
 }
 
 export const failureSummary = (code: unknown): string => {
   const safe = safeFailureCode(code)
   if (safe.startsWith('UpstreamMcp:')) return `Remote MCP request failed (${safe.slice('UpstreamMcp:'.length)}).`
+  if (safe.startsWith('payment_refused:'))
+    return `Payment from the Goblin Wallet refused (${safe.slice('payment_refused:'.length)}).`
   return FAILURES[safe] ?? 'Unclassified failure.'
 }
 
 /** Expected owner decisions stay visible as blocked work, without becoming infrastructure warnings. */
-export const expectedFailure = (code: unknown): boolean =>
-  [
+export const expectedFailure = (code: unknown): boolean => {
+  const safe = safeFailureCode(code)
+  if (safe.startsWith('payment_refused:')) return OWNER_PAYMENT.has(safe.slice('payment_refused:'.length))
+  return [
     'NeedsAuthorization',
     'ScopeRequired',
     'GrantDenied',
@@ -80,7 +132,8 @@ export const expectedFailure = (code: unknown): boolean =>
     'SubscriptionRequired',
     'capability_off',
     'not_in_topic',
-  ].includes(safeFailureCode(code))
+  ].includes(safe)
+}
 
 const ATTRIBUTES = new Set<string>(Object.values(RunAttribute))
 const REASONS = new Set([

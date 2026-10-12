@@ -89,10 +89,11 @@ export class PersonalAgent extends Agent<RuntimeEnv> implements AgentRpcMethods 
     // refusal ends the call in words.
     const pay: PayChallenge = (request) =>
       routineRun(payInferenceChallenge(request)).then(
-        ({ credential, payment }) => ({
-          credential,
-          settle: (receipt: string) => routineRun(settleInferencePayment(payment, receipt)),
-        }),
+        (outcome) => {
+          if (!outcome.paid) throw new Error(paymentFailureText(outcome.refusal))
+          const { credential, payment } = outcome
+          return { credential, settle: (receipt: string) => routineRun(settleInferencePayment(payment, receipt)) }
+        },
         (error: unknown) => {
           throw new Error(paymentFailureText(error))
         },

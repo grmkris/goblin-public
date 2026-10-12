@@ -2,8 +2,8 @@ import { RunAttribute, type RunEvent } from '@goblin/contracts/telemetry'
 import { describe, expect, it } from 'vitest'
 import { needsAttention } from '../src/telemetry/attention.ts'
 import { coverageGaps } from '../src/inspect/coverage.ts'
-import { outcomeOf } from '../src/telemetry/attributes.ts'
-import { safeFailureCode, sanitizeAttributes } from '../src/telemetry/safety.ts'
+import { answerAttributes, outcomeOf } from '../src/telemetry/attributes.ts'
+import { expectedFailure, safeFailureCode, sanitizeAttributes } from '../src/telemetry/safety.ts'
 
 const event = (overrides: Partial<RunEvent> = {}): RunEvent => ({
   id: 'failed',
@@ -33,6 +33,41 @@ describe('safe telemetry and attention', () => {
       [RunAttribute.errorType]: 'provider_error',
       [RunAttribute.error]: 'Model provider failed.',
     })
+  })
+
+  it("classifies a payment the owner's wallet refused by its code, never its words (ADR 0047)", () => {
+    const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+    const failed = (errorMessage: string) =>
+      sanitizeAttributes(
+        answerAttributes({
+          provider: 'goblin-paid-goblin',
+          model: 'm',
+          stopReason: 'error',
+          errorMessage,
+          usage: zero,
+        }),
+      )
+    const funds = failed(
+      '402 Payment from your Goblin Wallet failed (insufficient_funds): your Goblin Wallet needs USDC.e on Tempo: Send USDC.e to 0x76C7.',
+    )
+    expect(funds).toMatchObject({
+      [RunAttribute.errorType]: 'payment_refused:insufficient_funds',
+      [RunAttribute.error]: 'Payment from the Goblin Wallet refused (insufficient_funds).',
+    })
+    expect(JSON.stringify(funds)).not.toContain('0x76C7')
+    expect(failed('Payment from your Goblin Wallet failed (some_new_code): words.')).toMatchObject({
+      [RunAttribute.errorType]: 'payment_refused',
+      [RunAttribute.error]: 'Payment from the Goblin Wallet refused.',
+    })
+    expect(failed('Payment from your Goblin Wallet failed: the wallet did not pay.')[RunAttribute.errorType]).toBe(
+      'payment_refused',
+    )
+    expect(failed('503 Service Unavailable')[RunAttribute.errorType]).toBe('provider_error')
+    expect(safeFailureCode('payment_refused:PRIVATE_APP_SOURCE')).toBe('error')
+    // Funds, limits, grants and sign-ins wait on the owner; a rail that refused does not.
+    expect(expectedFailure('payment_refused:insufficient_funds')).toBe(true)
+    expect(expectedFailure('payment_refused:rail_refused')).toBe(false)
+    expect(expectedFailure('payment_refused')).toBe(false)
   })
 
   it('hides only confirmed model retries and known authority waits', () => {

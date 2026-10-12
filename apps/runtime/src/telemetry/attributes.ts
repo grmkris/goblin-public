@@ -1,7 +1,7 @@
 import { RunAttribute, type RunAttributes } from '@goblin/contracts/telemetry'
 import { Predicate } from 'effect'
 import { safeErrorType } from '../observability/report.ts'
-import { failureSummary, safeFailureCode } from './safety.ts'
+import { failureSummary, paymentRefusedCode, safeFailureCode } from './safety.ts'
 
 /** The parts of a model response telemetry reads; pi-ai's `AssistantMessage` has them. */
 export type Answer = {
@@ -21,8 +21,19 @@ export type Answer = {
   }
 }
 
+/**
+ * How a failed call was classified: a payment the owner's Goblin Wallet refused (ADR 0047) by the code goblin's own
+ * words carry (`pi/model.ts` `paymentFailed`), else the provider's failure. Only the bounded code is read, never the
+ * words.
+ */
+const answerFailure = (errorMessage: string | undefined): string => {
+  const payment = /Payment from your Goblin Wallet failed(?: \(([a-z_]{1,40})\))?:/u.exec(errorMessage ?? '')
+  return payment === null ? 'provider_error' : paymentRefusedCode(payment[1])
+}
+
 /** What a response tells about its model call: model, finish reason, tokens, error. Never its content. */
 export function answerAttributes(message: Answer): RunAttributes {
+  const failure = answerFailure(message.errorMessage)
   const { usage } = message
   return {
     [RunAttribute.provider]: message.provider,
@@ -37,7 +48,7 @@ export function answerAttributes(message: Answer): RunAttributes {
     ...(usage.reasoning === undefined ? {} : { [RunAttribute.reasoningTokens]: usage.reasoning }),
     ...(message.errorMessage === undefined && message.stopReason !== 'error'
       ? {}
-      : { [RunAttribute.errorType]: 'provider_error', [RunAttribute.error]: 'provider_error' }),
+      : { [RunAttribute.errorType]: failure, [RunAttribute.error]: failure }),
     ...(message.stopReason === 'length' ? { [RunAttribute.cutoff]: true } : {}),
     ...(message.emptyAnswer === true ? { [RunAttribute.emptyAnswer]: true } : {}),
   }
