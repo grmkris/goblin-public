@@ -94,6 +94,7 @@ Proven on mainnet on 12 October 2026, from goblin dev:
   and paid Mercator 1.5 USDC.e
   ([`0xf144e54d…2add`](https://explore.tempo.xyz/tx/0xf144e54d48fd28c1208acbb647275dbbf7fc5f335794d2e37ef79d08fcde2add)).
 
+![The wallet's App inside goblin, opened from Services](docs/images/wallet/wallet-app-in-goblin.png)
 ![goblin paying for a web search through the wallet](docs/images/wallet/paid-search-in-goblin.png)
 ![The wallet's Approve page for a first payment to a new address](docs/images/wallet/approve-page.png)
 
