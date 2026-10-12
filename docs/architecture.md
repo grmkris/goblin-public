@@ -621,21 +621,29 @@ standard "who am I", so goblin cannot show which account a sign-in reached. An a
 (`mcp/endpoint.ts`), and its server card's title, description and icon are the server's own claims, for the owner's
 eyes only. Configured connections win on ID and cannot be removed. Removing an added connection forgets its row,
 label, endpoint binding, credentials, pending sign-ins and grants in one transaction. A server goblin supports **first-class** (ADR 0043) has goblin's own profile, matched by exact endpoint
-(`mcp/first-class.ts`, `ServerView.profile`): our title and words, the grants Allow recommended applies (free tools run
+(`mcp/first-class.ts`, `ServerView.profile`): our title and words, the grants Review recommended access applies (free tools run
 when needed, paid ones ask first), a paid tool with the argument that holds its amount (ADR 0044), the tool that opens
 its own App, a status tool whose answer goblin decodes with its own schema (`WalletStatus`, bounded, the server's
 claim), and a top-up link of our own that the wallet line offers as Add funds while that status says funding is
 blocked (Mercator's account page; goblin's instructions send the owner there instead of retrying a job). Mercator is the first. goblin's own instructions (`pi/persona.ts`) send fresh web data and outside tasks to
 it (search, describe, quote, job, result), and a model's call to a connection the owner has not signed in to answers
 `{ kind: 'connect-required' }`, which the web shows as a Connect card; it ends the turn, counts in Needs you, and a
-Persona holds on it as on any other (`connect`). Its card puts goblin's words for it in place of the server's, lists it first, shows its
-wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that tool is allowed) and offers
-Allow recommended (`POST /api/mcp/:id/recommended`, `mcp/first-class-owner.ts`) until those grants are in place; a tool
-the server does not list now is skipped. Cloudflare's API is the second, from the shelf, for publishing a page as a
+Persona holds on it as on any other (`connect`). Its card is listed first. Every connected card is a summary (`server-card.tsx`): a
+first-class one shows its wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that
+tool is allowed) and, until those grants are in place, Review recommended access, which lists exactly the tools that
+would run without asking and those that would ask first before one Allow (`POST /api/mcp/:id/recommended`,
+`mcp/first-class-owner.ts`); a tool the server does not list now is skipped. Manage access opens the rest: goblin's
+words in place of the server's, the paid tool's rule, events, settings and tools, the ones outside an App grouped by
+the server's own read-only claim, each row opening to its raw name, hints and whole description. A `#connection-<id>`
+link opens its card. Cloudflare's API is the second, from the shelf, for publishing a page as a
 Worker: its resource offers only `user:read account:read`, so Connect and step-up add the profile's Workers scripts
-scopes to what the server offers (`signInScope` in `owner-servers.ts`), and its `execute` asks first. Its own App opens as a page, `/connections/<id>/app` (`server-app.tsx`): its
-app tool called as the owner, rendered in the same sandboxed frame as any MCP App and trusted for nothing; it fills the
-pane under the page bar and is told that room as a page (`McpAppPage` in `apps/frame.tsx`). Until a
+scopes to what the server offers (`signInScope` in `owner-servers.ts`), and its `execute` asks first. Its own App opens as a page from Open in its card's head, whatever the
+owner has allowed, `/connections/<id>/app` (`server-app.tsx`): its app tool called as the owner, rendered in the same
+sandboxed frame as any MCP App and trusted for nothing; it fills the pane under the page bar and is told that room,
+and its bottom and side safe-area insets, as a page (`McpAppPage` in `apps/frame.tsx`). A frame reloads only for a
+different App; a newer result of the same call reaches the live App through the bridge (`deliver` in
+`lib/app-bridge.ts`), so coming back to the page never loads it twice. On its page, an App that calls a tool the owner
+has not allowed gets the same Allow card as in a conversation. Until a
 first-class server is connected, onboarding points to it: Activity's "Get started" row (`connect-offer.tsx`, Connect or
 Not now, the dismissal kept in the browser), the empty chat's line and the Pro welcome. Connections
 also offers a shelf of suggested servers (`mcp/suggested.ts`), with source
@@ -1783,9 +1791,17 @@ credential, never fetching. The operation stays uncertain, its amount held, unti
 `wallet_status` counts as spendable only the funds the agent can reach: its own wallet's, and the owner's on a chain an
 allowance (or Tempo access key) covers, under the tightest layer. A chain whose RPC fails is listed in `unread` with no
 rows, never as a zero balance, and turns a "no" into "not verified". The dashboard App and the owner's Home share one
-overview of that answer (`apps/wallet-web/src/views/money.ts`, `ui/overview.tsx`): what the agent can spend and where,
-operations that need the owner (each row opens to payment, delivery and evidence), limits grouped by the layer that
-enforces them, and balances as a chain-by-token table.
+overview of that answer (`apps/wallet-web/src/views/overview-model.ts`, `views/overview.tsx`): what needs the owner
+(an approval to review, an unknown outcome to check), what the agent can spend on which network and what holds it back,
+recent work (each row opens to payment, delivery and evidence), the limits on that network, and balances by network.
+Limits lists every limit one line each (`LimitLine`) with each layer's promise said once. The status also names the
+owner's `site`, so the App opens Approve and the site through its host.
+
+An operation whose outcome is unknown keeps its evidence: the transaction it sent, or an x402 payment's EIP-3009
+authorization (signer, nonce, `validBefore`), as a payment without `settledAt`. `operation_check` (recommended to run
+when needed) and the owner's `POST /api/operations/:id/check` read it once (`rails/check.ts`: the receipt, or USDC's
+`authorizationState`) and settle it, fail it and release its hold, or leave it; a check never pays, and the receipt tool
+answers only for a settled payment.
 
 ## Release and public source
 
