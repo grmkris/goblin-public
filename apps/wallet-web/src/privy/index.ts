@@ -1,53 +1,12 @@
 /**
  * Owner sign-in and owner signing in the browser, through Privy (email or Google, an EVM embedded wallet created at
- * login). These are the signatures the pages build against; lane S fills in the implementations. Every hook acts for
+ * login). Sign-in and the owner are live; the signing flows below are still stubs. Every hook acts for
  * the signed-in owner only, and none of them ever sees a server key.
  */
-import type { Address, ApprovalView, ChainKey, Me, Operation, UsdAmount } from '@goblin/wallet/contract'
-import type { ReactNode } from 'react'
+import type { ApprovalView, ChainKey, Me, Operation, UsdAmount } from '@goblin/wallet/contract'
 
-export interface PrivyRootProps {
-  readonly children: ReactNode
-}
-
-/**
- * Mounts Privy with the app id from `GET /api/config` (never a build variable). Children render at once;
- * `useOwner().ready` stays false until Privy has loaded.
- */
-export function PrivyRoot(props: PrivyRootProps): ReactNode {
-  return props.children
-}
-
-/** The signed-in owner as the pages see them. */
-export interface Owner {
-  /** Privy has loaded and knows whether someone is signed in. */
-  readonly ready: boolean
-  readonly authenticated: boolean
-  /** Privy's user id (`did:privy:…`). */
-  readonly userId: string | undefined
-  /** The sign-in email (or the Google account's), for display. */
-  readonly email: string | undefined
-  /** The owner wallet: the embedded EVM wallet at index 0. Undefined until Privy has created it. */
-  readonly address: Address | undefined
-  /** Opens Privy's sign-in (email code or Google). */
-  login(): void
-  logout(): Promise<void>
-  /** A current Privy access token for `authorization: Bearer …`; null when signed out. */
-  getToken(): Promise<string | null>
-}
-
-export function useOwner(): Owner {
-  return {
-    ready: false,
-    authenticated: false,
-    userId: undefined,
-    email: undefined,
-    address: undefined,
-    login: () => undefined,
-    logout: () => Promise.resolve(),
-    getToken: () => Promise.resolve(null),
-  }
-}
+export { PrivyRoot } from './root.tsx'
+export { ownerAddress, useOwner, type Owner } from './owner.ts'
 
 /** The step a signing flow is on, for a progress line. */
 export type FlowStep = 'preparing' | 'checking' | 'signing' | 'submitting' | 'confirming'
