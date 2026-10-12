@@ -11,7 +11,7 @@ import { mcpHost } from '../src/mcp/host.ts'
 import { type SetupScope, type Exclusion, scopeOf, topicScope } from '../src/setup/scope.ts'
 import { Setups } from '../src/setup/service.ts'
 import { residentMcpExtension } from '../src/pi/resident-mcp.ts'
-import { Events, Resident, UrlRequests } from '../src/mcp/service.ts'
+import { Events, Resident, Spending, UrlRequests } from '../src/mcp/service.ts'
 import { CredentialCipher } from '../src/mcp/cipher.ts'
 import { McpUrlRequestStore } from '../src/mcp/url-requests.ts'
 import { Chats, Conversations } from '../src/chats/service.ts'
@@ -141,6 +141,8 @@ const layer = host.pipe(
       stub(Chats, { chatOf: () => Effect.succeed(Option.none()) }),
       stub(Conversations),
       stub(UrlRequests, { hold: (request) => Effect.promise(() => urlRequests.hold(request, 1000)) }),
+      // No paid tool here has a spending rule.
+      stub(Spending, { rule: () => Effect.succeed(undefined) }),
       Layer.succeed(AgentInput, instance),
       sqliteDb(chatDatabase().db),
     ),
