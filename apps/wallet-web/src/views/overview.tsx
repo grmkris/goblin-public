@@ -98,7 +98,7 @@ export function AttentionList({
             </span>
             {item.kind === 'uncertain' && (
               <span className="text-xs/relaxed text-muted-foreground text-pretty">
-                Kept reserved and not retried. Check before paying again.
+                Held, and never paid again on its own. Check its status to settle or release it.
               </span>
             )}
           </span>

@@ -1,13 +1,19 @@
 import { Button } from '@goblin/ui'
-import type { Operation } from '@goblin/wallet/contract'
-import { useActivity } from '../api/queries.tsx'
+import type { Operation, OperationCheck } from '@goblin/wallet/contract'
+import { useActivity, useCheckOperation } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
 import { ReceiptRow } from '../ui/index.ts'
 import { Async } from '../ui/async.tsx'
 import { EmptyState, Page, RowList } from '../ui/page.tsx'
 
-function Row({ operation }: { readonly operation: Operation }) {
-  if (operation.status !== 'awaiting_approval') return <ReceiptRow operation={operation} />
+function Row({
+  operation,
+  onCheck,
+}: {
+  readonly operation: Operation
+  readonly onCheck: (operation: Operation) => Promise<OperationCheck>
+}) {
+  if (operation.status !== 'awaiting_approval') return <ReceiptRow operation={operation} onCheck={onCheck} />
   return (
     <ReceiptRow
       operation={operation}
@@ -22,6 +28,7 @@ function Row({ operation }: { readonly operation: Operation }) {
 
 export function ActivityPage() {
   const activity = useActivity()
+  const check = useCheckOperation()
   return (
     <Page
       title="Activity"
@@ -34,7 +41,7 @@ export function ActivityPage() {
           ) : (
             <RowList>
               {rows.map((operation) => (
-                <Row key={operation.id} operation={operation} />
+                <Row key={operation.id} operation={operation} onCheck={(each) => check.mutateAsync(each.id)} />
               ))}
             </RowList>
           )

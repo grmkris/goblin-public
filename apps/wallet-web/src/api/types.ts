@@ -8,6 +8,7 @@ import type {
   LimitView,
   Me,
   Operation,
+  OperationCheck,
   PolicyChange,
   Recipient,
   ServiceRule,
@@ -35,6 +36,8 @@ export interface WalletApi {
   readonly activity: () => Promise<readonly Operation[]>
   readonly approval: (operationId: string) => Promise<ApprovalView>
   readonly decide: (operationId: string, decision: ApprovalDecision) => Promise<ApprovalView>
+  /** Asks the chain how an operation whose outcome is unknown ended; never pays. */
+  readonly checkOperation: (operationId: string) => Promise<OperationCheck>
   readonly services: () => Promise<readonly ServiceRule[]>
   readonly addressBook: () => Promise<readonly Recipient[]>
   readonly connections: () => Promise<readonly Connection[]>

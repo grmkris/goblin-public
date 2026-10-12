@@ -138,7 +138,14 @@ function writes(
   world: World,
 ): Pick<
   WalletApi,
-  'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll' | 'decidePolicyChange'
+  | 'createAgent'
+  | 'setLimits'
+  | 'decide'
+  | 'checkOperation'
+  | 'disconnect'
+  | 'oauthDecide'
+  | 'revokeAll'
+  | 'decidePolicyChange'
 > {
   return {
     createAgent: () => {
@@ -152,6 +159,18 @@ function writes(
     decide: (_id, decision) => {
       world.approval = { ...world.approval, status: decision.decision === 'approve' ? 'approved' : 'declined' }
       return delay(world.approval)
+    },
+    // The demo chain has not seen the transaction yet: the check reads, finds nothing and changes nothing.
+    checkOperation: (operationId) => {
+      const operation = OPERATIONS.find((each) => each.id === operationId) ?? OPERATIONS[0]!
+      return delay({
+        operation,
+        found: 'unknown' as const,
+        note:
+          operation.payment?.authorization === undefined
+            ? 'The transaction is not on chain yet. Check again in a few minutes.'
+            : 'The authorization is unused but could still settle for another 4 min. Check again after that.',
+      })
     },
     disconnect: (id) => {
       world.connections = world.connections.filter((connection) => connection.id !== id)

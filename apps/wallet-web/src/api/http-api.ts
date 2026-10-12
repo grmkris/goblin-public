@@ -103,11 +103,20 @@ const writes = (
   call: Call,
 ): Pick<
   WalletApi,
-  'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll' | 'decidePolicyChange' | 'deposit'
+  | 'createAgent'
+  | 'setLimits'
+  | 'decide'
+  | 'checkOperation'
+  | 'disconnect'
+  | 'oauthDecide'
+  | 'revokeAll'
+  | 'decidePolicyChange'
+  | 'deposit'
 > => ({
   createAgent: () => call(OwnerRoutes.createAgent),
   setLimits: (limits) => call(OwnerRoutes.setLimits, { body: limits }),
   decide: (operationId, decision) => call(OwnerRoutes.decide, { params: { operationId }, body: decision }),
+  checkOperation: (operationId) => call(OwnerRoutes.checkOperation, { params: { operationId } }),
   disconnect: (id) => call(OwnerRoutes.disconnect, { params: { id } }),
   oauthDecide: (id, decision) => call(OwnerRoutes.oauthDecide, { params: { id }, body: { decision } }),
   decidePolicyChange: (id, decision) => call(OwnerRoutes.decidePolicyChange, { params: { id }, body: { decision } }),

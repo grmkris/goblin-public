@@ -32,9 +32,10 @@ const byAuthorization = async (
   const now = (deps.now ?? (() => new Date()))().getTime()
   if (now > deadline)
     return { found: 'not_paid', reason: 'The payment authorization expired unused; nothing was paid.' }
+  const minutes = Math.max(1, Math.ceil((deadline - now) / 60_000))
   return {
     found: 'unknown',
-    reason: `The authorization is unused but could still settle until ${new Date(deadline).toISOString()}.`,
+    reason: `The authorization is unused but could still settle for another ${minutes} min. Check again after that.`,
   }
 }
 

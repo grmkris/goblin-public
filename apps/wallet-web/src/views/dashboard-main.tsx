@@ -1,7 +1,7 @@
-import { TOOLS } from '@goblin/wallet/contract'
+import { type Operation, type OperationCheck, TOOLS } from '@goblin/wallet/contract'
 import { useState } from 'react'
 import { Dashboard } from './dashboard.tsx'
-import { recentOf, statusOf } from './decode.ts'
+import { checkOf, recentOf, refusalOf, statusOf } from './decode.ts'
 import { ViewFrame, ViewStatus } from './frame.tsx'
 import { mount } from './mount.tsx'
 import { useWalletApp } from './use-wallet-app.ts'
@@ -31,6 +31,18 @@ function DashboardView() {
     }
   }
 
+  /** Asks the wallet to check an uncertain operation against the chain, then reads the status again. Never pays. */
+  async function check(operation: Operation): Promise<OperationCheck> {
+    if (app === null) throw new Error('The wallet is not connected to its host yet.')
+    const answer = await app.callServerTool({ name: TOOLS.operationCheck, arguments: { operation_id: operation.id } })
+    const found = checkOf(answer)
+    if (answer.isError === true || found === undefined)
+      throw new Error(refusalOf(answer) ?? 'The wallet did not answer the check.')
+    // The status follows what the check settled or released; its own failure shows beside Refresh.
+    await refresh()
+    return found
+  }
+
   async function toggleFullscreen() {
     if (app === null) return
     await app.requestDisplayMode({ mode: context?.displayMode === 'fullscreen' ? 'inline' : 'fullscreen' })
@@ -47,6 +59,7 @@ function DashboardView() {
           refreshing={refreshing}
           refreshError={refreshError}
           refusedLink={refusedLink}
+          onCheck={check}
           fullscreen={context?.displayMode === 'fullscreen'}
           onRefresh={() => void refresh()}
           onToggleFullscreen={

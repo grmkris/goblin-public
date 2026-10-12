@@ -1,10 +1,11 @@
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger } from '@goblin/ui'
-import type { Operation } from '@goblin/wallet/contract'
+import type { Operation, OperationCheck } from '@goblin/wallet/contract'
 import { ChevronDown } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { amountMeaning, deliveryStep, paymentStep, type Step } from '../views/receipt-model.ts'
 import { Amount } from './amount.tsx'
 import { ChainBadge } from './chain-badge.tsx'
+import { CheckStatus } from './check-status.tsx'
 import { cn } from './cn.ts'
 import { timeAgo } from './format.ts'
 import { KIND, OperationDetails, RAIL, STEP_DOT } from './operation-details.tsx'
@@ -27,11 +28,14 @@ function StepState({ title, step }: { readonly title: string; readonly step: Ste
 export function ReceiptRow({
   operation,
   action,
+  onCheck,
   className,
 }: {
   readonly operation: Operation
   /** What the owner can do about it, e.g. review an approval. */
   readonly action?: ReactNode
+  /** How this surface asks the chain about an uncertain operation; without it, there is no Check status. */
+  readonly onCheck?: ((operation: Operation) => Promise<OperationCheck>) | undefined
   readonly className?: string
 }) {
   const { terms } = operation
@@ -67,6 +71,9 @@ export function ReceiptRow({
         )}
         <div className="flex flex-wrap items-center gap-2">
           {action}
+          {operation.status === 'uncertain' && onCheck !== undefined && (
+            <CheckStatus operation={operation} onCheck={onCheck} />
+          )}
           <CollapsibleTrigger
             render={<Button type="button" variant="ghost" size="sm" className="group/details -ms-2.5" />}
           >

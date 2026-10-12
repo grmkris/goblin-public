@@ -213,6 +213,7 @@ describe('attention and boundaries', () => {
     const items = attentionOf(OPERATIONS.toReversed())
     expect(items.map((item) => [item.kind, item.operation.id])).toEqual([
       ['approval', 'op_pending_01'],
+      ['uncertain', 'op_send_0003'],
       ['uncertain', 'op_search_0040'],
     ])
     expect(attentionOf(OPERATIONS.filter((operation: Operation) => operation.status === 'delivered'))).toEqual([])

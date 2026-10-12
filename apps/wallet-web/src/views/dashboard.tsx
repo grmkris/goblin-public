@@ -1,9 +1,10 @@
 // The dashboard App: what the agent can spend now and what holds it back, what needs the owner, then the overview,
 // activity and limits as tabs. Pure of the host: it renders what it is given and calls back for the two things only
 // the host can do. Owner actions (funding, allowances, approvals) live in the wallet site, so here they are named.
-import type { Operation, WalletStatusResult } from '@goblin/wallet/contract'
+import type { Operation, OperationCheck, WalletStatusResult } from '@goblin/wallet/contract'
 import { Button, buttonVariants, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '@goblin/ui'
 import { ExternalLink, Maximize2, Minimize2, RefreshCw } from 'lucide-react'
+import { CheckStatus } from '../ui/check-status.tsx'
 import { LimitMeter, ReceiptRow, timeAgo } from '../ui/index.ts'
 import { EmptyState, RowList, Section } from '../ui/page.tsx'
 import { NEXT_LABEL } from './overview-copy.ts'
@@ -88,16 +89,22 @@ function Header({
   )
 }
 
-/** A waiting spend's way forward: its Approve page on the wallet site, opened through the host like every link. */
-const approvalFor = (site: string | undefined) => (item: Attention) =>
-  item.kind !== 'approval' ? undefined : site === undefined ? (
-    <span className="text-xs text-muted-foreground">Approve it in your wallet</span>
-  ) : (
-    <a href={`${site}/approve/${encodeURIComponent(item.operation.id)}`} className={buttonVariants({ size: 'sm' })}>
-      Review and approve
-      <ExternalLink aria-hidden data-icon="inline-end" />
-    </a>
-  )
+/**
+ * What an item that needs the owner offers: Check status for an unknown outcome (it never pays), or a waiting spend's
+ * Approve page on the wallet site, opened through the host like every link.
+ */
+const attentionFor =
+  (site: string | undefined, onCheck: (operation: Operation) => Promise<OperationCheck>) => (item: Attention) =>
+    item.kind === 'uncertain' ? (
+      <CheckStatus operation={item.operation} onCheck={onCheck} />
+    ) : site === undefined ? (
+      <span className="text-xs text-muted-foreground">Approve it in your wallet</span>
+    ) : (
+      <a href={`${site}/approve/${encodeURIComponent(item.operation.id)}`} className={buttonVariants({ size: 'sm' })}>
+        Review and approve
+        <ExternalLink aria-hidden data-icon="inline-end" />
+      </a>
+    )
 
 /** A link the host would not open, named so the owner can open it themselves. */
 function RefusedLink({ link }: { readonly link: string | undefined }) {
@@ -140,6 +147,7 @@ export function Dashboard({
   refreshing,
   refreshError,
   refusedLink,
+  onCheck,
   fullscreen,
   onRefresh,
   onToggleFullscreen,
@@ -150,6 +158,7 @@ export function Dashboard({
   readonly refreshError: string | undefined
   /** The last link the host would not open, named so the owner can open it themselves. */
   readonly refusedLink: string | undefined
+  readonly onCheck: (operation: Operation) => Promise<OperationCheck>
   readonly fullscreen: boolean
   readonly onRefresh: () => void
   /** Absent when the host offers no full screen. */
@@ -170,7 +179,7 @@ export function Dashboard({
         onToggleFullscreen={onToggleFullscreen}
       />
       <RefusedLink link={refusedLink} />
-      <AttentionList items={attentionOf(recent)} actionFor={approvalFor(status.site)} />
+      <AttentionList items={attentionOf(recent)} actionFor={attentionFor(status.site, onCheck)} />
       <SpendingSummary
         spending={spending}
         action={step === undefined ? undefined : <NextStep action={step} onRefresh={onRefresh} />}
@@ -202,7 +211,7 @@ export function Dashboard({
           ) : (
             <RowList>
               {recent.map((operation) => (
-                <ReceiptRow key={operation.id} operation={operation} />
+                <ReceiptRow key={operation.id} operation={operation} onCheck={onCheck} />
               ))}
             </RowList>
           )}

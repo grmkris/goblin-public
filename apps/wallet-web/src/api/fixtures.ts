@@ -76,8 +76,24 @@ export const OPERATIONS: readonly Operation[] = [
   }),
   op('op_search_0040', 21, {
     status: 'uncertain',
-    reason: 'The payment was sent but the network did not confirm. Not retried; check the transaction.',
-    payment: { rail: 'x402', txHash: tx('e3') },
+    reason: 'The service answered HTTP 402 without a payment receipt; the payment may have gone through.',
+    payment: {
+      rail: 'x402',
+      authorization: { from: AGENT, nonce: tx('e3'), validBefore: String(Math.floor(now / 1000) + 240) },
+    },
+  }),
+  op('op_send_0003', 300, {
+    status: 'uncertain',
+    terms: {
+      kind: 'transfer',
+      rail: 'transfer',
+      subject: 'Send 0.01 USDC on Base',
+      amount: '0.01',
+      amountUsd: '0.01',
+      recipient: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
+    },
+    reason: 'The transfer was sent but has not confirmed yet.',
+    payment: { rail: 'transfer', txHash: tx('7a'), explorerUrl: `https://basescan.org/tx/${tx('7a')}` },
   }),
   op('op_search_0039', 37, {
     status: 'failed',

@@ -1,11 +1,12 @@
 // Home: the same overview as the dashboard App, with the owner's actions beside it: approve what waits, fund the
 // account, set an allowance on another network.
 import { Button } from '@goblin/ui'
-import type { ChainSetup, Operation, WalletStatusResult } from '@goblin/wallet/contract'
+import type { ChainSetup, Operation, OperationCheck, WalletStatusResult } from '@goblin/wallet/contract'
 import type { UseQueryResult } from '@tanstack/react-query'
-import { useActivity, useConnections, useMe, useStatus } from '../api/queries.tsx'
+import { useActivity, useCheckOperation, useConnections, useMe, useStatus } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
 import { Async } from '../ui/async.tsx'
+import { CheckStatus } from '../ui/check-status.tsx'
 import { EmptyState, Page, Section } from '../ui/page.tsx'
 import { NEXT_LABEL } from '../views/overview-copy.ts'
 import {
@@ -60,17 +61,15 @@ function NextStep({ action, onRefresh }: { readonly action: NextAction; readonly
   )
 }
 
-function attentionAction(item: Attention) {
-  return item.kind === 'approval' ? (
+/** Approve what waits; check an unknown outcome against the chain (it never pays). */
+const attentionAction = (onCheck: (operation: Operation) => Promise<OperationCheck>) => (item: Attention) =>
+  item.kind === 'approval' ? (
     <Button size="sm" nativeButton={false} render={<Link to={`/approve/${item.operation.id}`} />}>
       Review
     </Button>
   ) : (
-    <Link to="/activity" className={QUIET_LINK}>
-      Check in Activity
-    </Link>
+    <CheckStatus operation={item.operation} onCheck={onCheck} />
   )
-}
 
 /** Connecting never gated setup, so Home says when no agent is connected yet and where to do it. */
 function ConnectNudge() {
@@ -140,9 +139,15 @@ export function HomePage() {
   const status = useStatus()
   const activity = useActivity()
   const me = useMe()
+  const check = useCheckOperation()
   return (
     <Page title="Home" description="What your agent can spend, what needs you, and what it did.">
-      {activity.data !== undefined && <AttentionList items={attentionOf(activity.data)} actionFor={attentionAction} />}
+      {activity.data !== undefined && (
+        <AttentionList
+          items={attentionOf(activity.data)}
+          actionFor={attentionAction((operation) => check.mutateAsync(operation.id))}
+        />
+      )}
       <ConnectNudge />
       <Async query={status} rows={3}>
         {(data) =>

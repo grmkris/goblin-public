@@ -44,7 +44,7 @@ export function paymentStep(operation: Operation): Step {
   const { status } = operation
   const detail =
     status === 'uncertain'
-      ? 'Kept reserved and not retried on its own. Check before paying again.'
+      ? 'Held, and never paid again on its own. Check its status to settle or release it.'
       : status === 'failed'
         ? operation.reason
         : undefined

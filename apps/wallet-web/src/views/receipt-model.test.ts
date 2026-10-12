@@ -36,7 +36,7 @@ describe('receipt model', () => {
   it('never calls an uncertain payment paid or failed', () => {
     const step = paymentStep(operation({ status: 'uncertain' }))
     expect(step.label).toBe('Not confirmed')
-    expect(step.detail).toBe('Kept reserved and not retried on its own. Check before paying again.')
+    expect(step.detail).toBe('Held, and never paid again on its own. Check its status to settle or release it.')
     expect(deliveryStep(operation({ status: 'uncertain' }))?.label).toBe('Unknown')
   })
 

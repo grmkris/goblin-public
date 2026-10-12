@@ -86,6 +86,21 @@ export function useDecide(operationId: string) {
     },
   })
 }
+/** Checks an uncertain operation against the chain; activity and status follow whatever it settled or released. */
+export function useCheckOperation() {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (operationId: string) => api.checkOperation(operationId),
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['activity'] }),
+        client.invalidateQueries({ queryKey: ['status'] }),
+        client.invalidateQueries({ queryKey: ['limits'] }),
+      ])
+    },
+  })
+}
 export function useDecidePolicyChange(id: string) {
   const api = useApi()
   const client = useQueryClient()
