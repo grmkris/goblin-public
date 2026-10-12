@@ -90,5 +90,6 @@ export const NEXT_LABEL: Record<NextAction, string | undefined> = {
 /** A limit's amount as the boundary list shows it: the cap of a payment, what is left of a period. */
 export function limitValue(limit: LimitView): string {
   if (limit.period === 'call' || limit.remaining === undefined) return `up to ${formatUsd(limit.limit)}`
-  return `${formatUsd(limit.remaining)} left of ${formatUsd(limit.limit)}`
+  // What is left reads at a glance (cut down to the cent, never up); the cap stays exact.
+  return `${formatUsdCompact(limit.remaining)} left of ${formatUsd(limit.limit)}`
 }

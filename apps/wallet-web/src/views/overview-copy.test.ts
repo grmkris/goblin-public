@@ -46,5 +46,6 @@ describe('overview sentences', () => {
   it('shows a per-payment cap as a cap and a period as what is left', () => {
     expect(limitValue({ ...hour, period: 'call', limit: '0.05' })).toBe('up to $0.05')
     expect(limitValue(hour)).toBe('$4.50 left of $20.00')
+    expect(limitValue({ ...hour, limit: '50', remaining: '37.348708' })).toBe('$37.34 left of $50.00')
   })
 })

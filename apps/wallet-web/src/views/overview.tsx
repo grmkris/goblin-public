@@ -148,7 +148,7 @@ export function LimitLine({
   return (
     <div className="flex items-start justify-between gap-3 py-3">
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-sm font-medium">{PERIOD_LABEL[limit.period]}</span>
+        <span className="text-sm font-medium whitespace-nowrap">{PERIOD_LABEL[limit.period]}</span>
         <span className="text-xs text-muted-foreground">
           {LAYERS[limit.layer].name}
           {showChain && limit.chain !== undefined && `, ${CHAIN_LABEL[limit.chain]}`}

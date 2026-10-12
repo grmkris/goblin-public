@@ -62,8 +62,11 @@ function DashboardView() {
           onCheck={check}
           fullscreen={context?.displayMode === 'fullscreen'}
           onRefresh={() => void refresh()}
+          // Only a host that offers both places can move the view; on a host's own page it already fills the pane.
           onToggleFullscreen={
-            context?.availableDisplayModes?.includes('fullscreen') === true ? () => void toggleFullscreen() : undefined
+            (['inline', 'fullscreen'] as const).every((mode) => context?.availableDisplayModes?.includes(mode))
+              ? () => void toggleFullscreen()
+              : undefined
           }
         />
       )}
