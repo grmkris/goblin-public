@@ -1,6 +1,6 @@
 // Tool results arrive from a server we trust but over a channel we do not own: decode, never cast.
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import { Operation, SpendResult, WalletStatusResult } from '@goblin/wallet/contract'
+import { LimitView, Operation, SpendResult, WalletStatusResult } from '@goblin/wallet/contract'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
@@ -34,4 +34,18 @@ export function recentOf(result: CallToolResult | undefined): readonly (typeof O
   const payload = payloadOf(result)
   if (typeof payload !== 'object' || payload === null || !('recent' in payload)) return []
   return Option.getOrElse(decodeRecent(payload.recent), () => [])
+}
+
+const decodeLimits = Schema.decodeUnknownOption(Schema.Array(LimitView))
+
+/** What a spend result may carry beside the operation: where the owner approves it, and the limits as they now stand. */
+export function receiptExtrasOf(result: CallToolResult | undefined): {
+  readonly approveUrl: string | undefined
+  readonly limits: readonly (typeof LimitView.Type)[]
+} {
+  const payload = payloadOf(result)
+  if (typeof payload !== 'object' || payload === null) return { approveUrl: undefined, limits: [] }
+  const url = 'approveUrl' in payload && typeof payload.approveUrl === 'string' ? payload.approveUrl : undefined
+  const limits = 'limits' in payload ? Option.getOrElse(decodeLimits(payload.limits), () => []) : []
+  return { approveUrl: url?.startsWith('https://') === true ? url : undefined, limits }
 }
