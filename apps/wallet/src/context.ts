@@ -52,6 +52,8 @@ const unavailable = (): Promise<never> =>
 export const unconfiguredRails: RailsPort = {
   quotePaidFetch: unavailable,
   payPaidFetch: unavailable,
+  payChallenge: unavailable,
+  confirmChallenge: unavailable,
   quoteTransfer: unavailable,
   transfer: unavailable,
   swapQuote: unavailable,

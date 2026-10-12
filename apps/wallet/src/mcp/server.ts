@@ -8,6 +8,7 @@ import { registerOperation } from './tools/operation.ts'
 import { registerBridgeExecute } from './tools/bridge-execute.ts'
 import { registerBridgeQuote } from './tools/bridge-quote.ts'
 import { registerPaidFetch } from './tools/paid-fetch.ts'
+import { registerPayChallenge } from './tools/pay-challenge.ts'
 import { registerPolicyChange } from './tools/policy-change.ts'
 import { registerSwapExecute } from './tools/swap-execute.ts'
 import { registerSwapQuote } from './tools/swap-quote.ts'
@@ -30,6 +31,7 @@ export function walletServer(box: Toolbox): McpServer {
   registerOperation(server, box)
   registerReceipt(server, box)
   registerPaidFetch(server, box)
+  registerPayChallenge(server, box)
   registerTransfer(server, box)
   registerSwapQuote(server, box)
   registerSwapExecute(server, box)

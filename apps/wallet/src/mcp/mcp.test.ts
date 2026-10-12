@@ -186,6 +186,9 @@ describe('the paid tools over MCP', () => {
         recipient: '0x3333333333333333333333333333333333333333',
         expiresAt: new Date(Date.now() + 600_000).toISOString(),
       }),
+    payChallenge: (_operation, _challenge, challengeId) =>
+      Promise.resolve({ outcome: 'uncertain', reason: 'handed over', credential: `token-${challengeId}` }),
+    confirmChallenge: () => Promise.resolve({ kind: 'paid', payment: { rail: 'mpp', txHash: `0x${'ab'.repeat(32)}` } }),
   }
   const paying = createMcpEndpoint({ authenticate, wiring: { ...wiring, rails: () => quoting } })
   const callPaying = (name: string, args: Record<string, unknown>) =>
@@ -235,6 +238,36 @@ describe('the paid tools over MCP', () => {
     })
   })
 
+  test('pay_challenge hands back the credential, and a reported receipt settles the operation', async () => {
+    const request = Buffer.from(
+      JSON.stringify({
+        amount: '750',
+        currency: '0x20c000000000000000000000b9537d11c60e8b50',
+        methodDetails: { chainId: 4217, feePayer: true },
+        recipient: '0xca4e835F803cB0b7C428222B3A3B98518d4779Fe',
+      }),
+    ).toString('base64url')
+    const expires = new Date(Date.now() + 240_000).toISOString()
+    const wwwAuthenticate = `Payment id="mcp-c1", realm="openrouter.mpp.tempo.xyz", method="tempo", intent="charge", request="${request}", expires="${expires}"`
+    const paid = await callPaying('pay_challenge', {
+      url: 'https://openrouter.mpp.tempo.xyz/v1/chat/completions',
+      method: 'POST',
+      challenge: wwwAuthenticate,
+      max_usd: '0.02',
+      operation_id: 'op-mcp-challenge-1',
+    })
+    expect(paid.structuredContent).toMatchObject({ credential: 'token-mcp-c1', operation: { status: 'uncertain' } })
+    expect(paid.content?.[0]?.text).not.toContain('token-mcp-c1')
+    const reported = await callPaying('pay_challenge', { operation_id: 'op-mcp-challenge-1', receipt: 'receipt' })
+    expect(reported.structuredContent).toMatchObject({ found: 'paid', operation: { status: 'delivered' } })
+    const both = await callPaying('pay_challenge', {
+      operation_id: 'op-mcp-challenge-1',
+      receipt: 'r',
+      challenge: wwwAuthenticate,
+    })
+    expect(both).toMatchObject({ isError: true, structuredContent: { error: { code: 'bad_request' } } })
+  })
+
   test('request_policy_change only records the ask', async () => {
     const result = await callPaying('request_policy_change', { change: 'raise hourly to $30', reason: 'big batch' })
     expect(result.structuredContent).toMatchObject({ request: { status: 'pending', client: 'Test client' } })
@@ -274,6 +307,11 @@ describe('the App tools and views', () => {
       'openai/ui': { entrypoints: [{ type: 'global' }] },
     })
     expect((await call('wallet_home')).structuredContent).toMatchObject({ status: { kind: 'wallet' } })
+  })
+
+  test("pay_challenge is hidden from the model: an app-only tool with no view, for goblin's runtime", async () => {
+    const tool = (await listTools()).find((candidate) => candidate.name === 'pay_challenge')
+    expect(tool?._meta).toEqual({ ui: { visibility: ['app'] } })
   })
 
   test('the spending tools attach the receipt view', async () => {

@@ -47,6 +47,13 @@ import {
   type ReserveOutcome,
 } from './reserve.ts'
 import { preparedAllowance, putPreparedAllowance, putSignedAllowance, signedAllowances } from './allowances.ts'
+import {
+  type ChallengeCredential,
+  challengeCredential,
+  claimChallenge,
+  type ClaimResult,
+  handOver,
+} from './credentials.ts'
 import { type Profile, readProfile, updateProfile } from './profile.ts'
 import { getQuote, putQuote, type StoredQuote } from './quotes.ts'
 import { migrate } from './schema.ts'
@@ -137,6 +144,20 @@ export class LedgerStore {
   /** The outcome is unknown: the reservation stays and nothing retries it. */
   uncertain(id: string, reason: string, payment?: Payment): MoveResult {
     return move(this.#ctx, id, 'uncertain', { reason, ...(payment === undefined ? {} : { payment }) })
+  }
+
+  /** `pay_challenge`: binds an MPP challenge to one operation before anything is reserved. */
+  claimChallenge(id: string, challengeId: string): ClaimResult {
+    return claimChallenge(this.#ctx, id, challengeId)
+  }
+
+  /** `pay_challenge`: the signed credential left for the caller; the outcome is unknown and the hold stays. */
+  handOver(id: string, reason: string, credential: string): MoveResult {
+    return handOver(this.#ctx, id, reason, credential)
+  }
+
+  challengeCredential(id: string): ChallengeCredential | undefined {
+    return challengeCredential(this.#ctx, id)
   }
 
   recipients(): Recipient[] {

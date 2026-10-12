@@ -52,3 +52,37 @@ export const DEFAULT_SERVICES: readonly ServiceRule[] = [
     description: 'Clean text of pages. Body: {"urls": string[], "text"?: true}.',
   },
 ]
+
+/**
+ * A service `pay_challenge` may pay over MPP: an exact https origin and the one recipient its challenges may name. An
+ * allow-listed payee never needs the owner's first-use approval; the wallet limits still apply to every call.
+ */
+export interface MppPayee {
+  readonly origin: string
+  readonly recipient: string
+  readonly title: string
+}
+
+/** goblin's inference treasury: what goblin's own inference endpoint charges into. */
+const GOBLIN_INFERENCE_TREASURY = '0x6649868b1B87711e405aa6690E3f0245d9510631'
+
+/**
+ * The built-in MPP payees. OpenRouter's recipient was read from a live 402 of `POST /v1/chat/completions` on 12 Oct
+ * (every entry, USDC.e and pathUSD charges and the session, names it).
+ */
+export const MPP_PAYEES: readonly MppPayee[] = [
+  {
+    origin: 'https://openrouter.mpp.tempo.xyz',
+    recipient: '0xca4e835F803cB0b7C428222B3A3B98518d4779Fe',
+    title: 'OpenRouter over MPP',
+  },
+  { origin: 'https://goblin.surf', recipient: GOBLIN_INFERENCE_TREASURY, title: "goblin's inference" },
+  { origin: 'https://dev.goblin.surf', recipient: GOBLIN_INFERENCE_TREASURY, title: "goblin's inference (dev)" },
+]
+
+/** The payee an https URL's exact origin names, or undefined when it is not on the list. */
+export const payeeOf = (url: string): MppPayee | undefined => {
+  if (!URL.canParse(url)) return undefined
+  const { origin, protocol } = new URL(url)
+  return protocol === 'https:' ? MPP_PAYEES.find((payee) => payee.origin === origin) : undefined
+}

@@ -65,21 +65,27 @@ export function spendReply(outcome: SpendOutcome, limits: readonly LimitView[], 
   return answer(text, structured)
 }
 
+/** The refusal of a spending call on a connection that may only read, or undefined when it may spend. */
+export const spendScopeRefusal = (box: Toolbox) =>
+  box.scopes.includes('wallet:spend')
+    ? undefined
+    : refusal(
+        failure(
+          'insufficient_scope',
+          'This connection may read the wallet but not spend from it.',
+          403,
+          'Ask the owner to reconnect this client with spending allowed.',
+        ),
+      )
+
 /** Runs a spend program and turns its outcome, or its refusal, into the tool's result. */
 export async function handleSpend(
   box: Toolbox,
   ctx: ServerContext,
   program: Effect.Effect<SpendOutcome, WalletFailure, WalletServices>,
 ) {
-  if (!box.scopes.includes('wallet:spend'))
-    return refusal(
-      failure(
-        'insufficient_scope',
-        'This connection may read the wallet but not spend from it.',
-        403,
-        'Ask the owner to reconnect this client with spending allowed.',
-      ),
-    )
+  const refused = spendScopeRefusal(box)
+  if (refused !== undefined) return refused
   const result = await box.run(
     Effect.gen(function* () {
       const outcome = yield* program

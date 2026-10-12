@@ -12,6 +12,7 @@ import type {
   TransferInput,
   UpgradeRequest,
 } from '@goblin/wallet/contract'
+import type { ReceiptFinding } from '@goblin/wallet/tempo'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
@@ -32,7 +33,13 @@ export interface PaidResponse {
 export type PayOutcome =
   | { outcome: 'settled'; payment: Payment; delivery?: { status: string; detail?: string }; response?: PaidResponse }
   | { outcome: 'failed'; reason: string }
-  | { outcome: 'uncertain'; reason: string; payment?: Payment }
+  | {
+      outcome: 'uncertain'
+      reason: string
+      payment?: Payment
+      /** A Payment credential the wallet signed and handed back for the caller to send (`pay_challenge`). */
+      credential?: string
+    }
 
 /** Every balance that could be read, and the chains that could not: a chain whose RPC failed is unknown, never zero. */
 export interface BalanceRead {
@@ -61,6 +68,10 @@ export interface RailsPort {
   swapExecute(operation: Operation, payload: unknown): Promise<PayOutcome>
   bridgeQuote(input: BridgeQuoteInput): Promise<FrozenQuote>
   bridgeExecute(operation: Operation, payload: unknown): Promise<PayOutcome>
+  /** Signs a reserved `pay_challenge` operation's frozen MPP challenge for the caller to send; nothing is fetched. */
+  payChallenge(operation: Operation, challenge: string, challengeId: string): Promise<PayOutcome>
+  /** Checks a Payment-Receipt the caller reports for a `pay_challenge` operation against the chain. */
+  confirmChallenge(operation: Operation, challengeId: string, receipt: string): Promise<ReceiptFinding>
   balances(): Promise<BalanceRead>
   /** The limits the chain and the signer enforce (layers `onchain`, `tempo`, `signer`), with what is left. */
   allowances(): Promise<LimitView[]>

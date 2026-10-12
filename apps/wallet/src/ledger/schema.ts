@@ -27,6 +27,10 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS quotes (
     id TEXT PRIMARY KEY, body_json TEXT NOT NULL, expires_at_ms INTEGER NOT NULL, created_at_ms INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  // pay_challenge: the MPP challenge an operation claimed (each challenge pays one operation) and, once signed, the
+  // credential handed to the caller, so a retry returns the same credential and never signs again.
+  `CREATE TABLE IF NOT EXISTS challenge_credentials (
+    operation_id TEXT PRIMARY KEY, challenge_id TEXT NOT NULL UNIQUE, credential TEXT, created_at_ms INTEGER NOT NULL)`,
 ]
 
 export function migrate(sql: Sql): void {

@@ -12,6 +12,8 @@ import { ledgerClient, WalletLedger } from '../ledger/durable.ts'
 const rails: RailsPort = {
   quotePaidFetch: () => Promise.reject(new Error('unused')),
   payPaidFetch: () => Promise.reject(new Error('unused')),
+  payChallenge: () => Promise.reject(new Error('unused')),
+  confirmChallenge: () => Promise.reject(new Error('unused')),
   quoteTransfer: () => Promise.reject(new Error('unused')),
   transfer: () => Promise.reject(new Error('unused')),
   swapQuote: () => Promise.reject(new Error('unused')),

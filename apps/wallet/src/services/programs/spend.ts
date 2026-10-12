@@ -139,7 +139,9 @@ const record = (id: string, outcome: PayOutcome) => {
       }),
     )
   if (outcome.outcome === 'failed') return ledgerCall((api) => api.fail(id, outcome.reason))
-  const { payment } = outcome
+  const { payment, credential } = outcome
+  // A credential handed to the caller is kept with the operation in the same move, so a retry returns it.
+  if (credential !== undefined) return ledgerCall((api) => api.handOver(id, outcome.reason, credential))
   return ledgerCall((api) =>
     payment === undefined ? api.uncertain(id, outcome.reason) : api.uncertain(id, outcome.reason, payment),
   )

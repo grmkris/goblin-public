@@ -56,6 +56,34 @@ export const ExecuteQuoteInput = Schema.Struct({
 })
 export type ExecuteQuoteInput = typeof ExecuteQuoteInput.Type
 
+/**
+ * `pay_challenge`, which only goblin's runtime calls (the tool is hidden from the model). To pay: the request's `url`
+ * and `method`, `challenge` (the service's raw `WWW-Authenticate` value), `max_usd` and `operation_id`; the wallet signs
+ * the Tempo USDC.e charge and answers `{ credential }`, which the caller sends as `Authorization: Payment <credential>`.
+ * To report the outcome: the same `operation_id` and `receipt` (the service's `Payment-Receipt` value) alone.
+ */
+export const PayChallengeInput = Schema.Struct({
+  operation_id: OperationId,
+  url: Schema.optional(Text(2048)),
+  method: Schema.optional(Schema.Literals(['GET', 'POST'])),
+  challenge: Schema.optional(Text(8192)),
+  max_usd: Schema.optional(UsdAmount),
+  receipt: Schema.optional(Text(4096)),
+})
+export type PayChallengeInput = typeof PayChallengeInput.Type
+
+/**
+ * What `pay_challenge` answers: the operation, and when paying, the credential (the token after `Payment `, valid for
+ * about 25 seconds after it was signed). A receipt report says whether the chain showed the payment (`paid`) or not
+ * yet (`unknown`, the operation stays uncertain).
+ */
+export const PayChallengeResult = Schema.Struct({
+  operation: Operation,
+  credential: Schema.optional(Text(8192)),
+  found: Schema.optional(Schema.Literals(['paid', 'unknown'])),
+})
+export type PayChallengeResult = typeof PayChallengeResult.Type
+
 export const OperationInput = Schema.Struct({ operation_id: OperationId })
 export type OperationInput = typeof OperationInput.Type
 
@@ -99,6 +127,7 @@ export const TOOLS = {
   allowances: 'allowances',
   services: 'services',
   paidFetch: 'paid_fetch',
+  payChallenge: 'pay_challenge',
   transfer: 'transfer',
   swapQuote: 'swap_quote',
   swapExecute: 'swap_execute',

@@ -1770,6 +1770,13 @@ agent signer (whose Privy policy refuses what it does not allow), pays, and reco
 account (EIP-7702 upgraded to MetaMask's DeleGator) grants the agent signer an `ERC20PeriodTransfer` allowance, so the
 chain itself caps what the agent can draw per period.
 
+A caller that makes the paid request itself uses `pay_challenge`, an App-only tool hidden from the model that goblin's
+runtime calls for MPP inference. It hands over the service's 402 `WWW-Authenticate` value for an allow-listed payee
+(`MPP_PAYEES`: an exact origin and its one recipient, no first-use approval); the wallet reserves the Tempo USDC.e
+charge like any spend, signs it in Tempo's sponsored form (the service's fee payer pays the fee) and returns the
+credential, never fetching. The operation stays uncertain, its amount held, until the caller reports the service's
+`Payment-Receipt`, which settles it only when Tempo shows the agent's transfer under that challenge's memo.
+
 ## Release and public source
 
 Private `dev` is the daily source branch, and `prod` records the deliberately promoted SHA. A successful dev push Check triggers exact-tip deployment and authenticated acceptance. Promote verifies the stored dev SHA and live Worker version, advances prod without rewriting history, and deploys/verifies that commit under the existing stage lock and Alchemy state. Promote deploys core Goblin and the separate Wallet production Worker from that same snapshot. Wallet keeps its own stage file, Alchemy state and wallet deploy lock; health, production OAuth issuer and anonymous MCP refusal establish its public smoke receipt. Publication checks both Workers' receipts against their current versions.
