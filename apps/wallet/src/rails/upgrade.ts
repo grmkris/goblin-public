@@ -1,5 +1,5 @@
 import { termsHash, type Operation, type Terms, type UpgradeRequest } from '@goblin/wallet/contract'
-import { RelayError } from '@goblin/wallet/relay'
+import { delegationOf, RelayError } from '@goblin/wallet/relay'
 import { RailError, type RailsDeps } from './deps.ts'
 
 const NATIVE = '0x0000000000000000000000000000000000000000'
@@ -27,6 +27,17 @@ export const upgrade = async (request: UpgradeRequest, deps: RailsDeps): Promise
   const key = `upgrade:${request.chain}:${owner.toLowerCase()}:${request.authorization.nonce}`
   const terms = termsOf(request, owner, now)
   const base = { id: key, terms, termsHash: await termsHash(terms), limitsVersion: 0, createdAt: now.toISOString() }
+  // Already delegated to the contract the owner signed for (a re-run of onboarding): confirm without paying gas again.
+  const current = await delegationOf(
+    deps.rpcFor(request.chain),
+    // SAFETY: the ledger's profile schema checked the owner address's `0x` pattern.
+    owner as `0x${string}`,
+  ).catch(() => {
+    // expected: an unreadable code only means we cannot skip the relay; sending the upgrade is still correct.
+    return null
+  })
+  if (current !== null && current.toLowerCase() === request.authorization.address.toLowerCase())
+    return { ...base, status: 'confirmed', updatedAt: now.toISOString(), payment: { rail: 'relay' } }
   try {
     const sent = await relay.upgrade({ key, chain: request.chain, owner, authorization: request.authorization })
     const status = sent.status === 'success' ? 'confirmed' : sent.status === 'pending' ? 'submitted' : 'failed'

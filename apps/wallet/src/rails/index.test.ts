@@ -1,7 +1,7 @@
 import { toHex, type JsonRpc } from '@goblin/wallet/balances'
 import type { AgentSigner, Operation, ServiceRule, Terms } from '@goblin/wallet/contract'
 import { DEFAULT_SERVICES, termsHash } from '@goblin/wallet/contract'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { createRails, type RailsDeps } from './index.ts'
 
 const AGENT = '0x03582783c8e71b0c2D3b607E0FBdec7402f76F77'
@@ -230,6 +230,8 @@ describe('balances and allowances', () => {
   })
 })
 
+const delegated = () => async () => '0xef010063c0c19a282a1b52b07dd5a65b58948a07dae32b'
+
 describe('upgrade', () => {
   const request = {
     chain: 'base',
@@ -254,6 +256,13 @@ describe('upgrade', () => {
       payment: { txHash: `0x${'cd'.repeat(32)}` },
     })
     expect(operationResult.termsHash).toBe(await termsHash(operationResult.terms))
+  })
+
+  test('an owner already delegated to the DeleGator is confirmed without relaying again', async () => {
+    const relay = { upgrade: vi.fn() }
+    const operationResult = await createRails(deps({ relay, rpcFor: delegated })).upgrade(request)
+    expect(operationResult.status).toBe('confirmed')
+    expect(relay.upgrade).not.toHaveBeenCalled()
   })
 
   test('a relay failure is a failed operation; no relay is an error', async () => {
