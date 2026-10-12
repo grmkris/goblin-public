@@ -30,6 +30,7 @@ import {
   useTopics,
 } from '../../lib/workspace/hooks.ts'
 import { closeWorkspaceAppMutation, updateWorkspaceConversationMutation } from '../../lib/workspace/mutations.ts'
+import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { ConversationDock } from '../conversation-dock.tsx'
 import { useKeyboardInset } from '../use-keyboard.ts'
 import { useConversation, useDockInsets, useTranscript } from '../use-conversation.ts'
@@ -342,7 +343,7 @@ export function AppPage({ id, focus }: { readonly id: string; readonly focus?: s
   const main = useRef<HTMLDivElement>(null)
   const [chatOpen, setChatOpen] = useState(false)
   const { problem, asleep, showAgain } = usePageApp(id, app, focus)
-  const title = appNames(apps).get(id) ?? 'App'
+  const title = appNames(apps, useConnectionLabels()).get(id) ?? 'App'
   const talking = chatOpen && view !== undefined
   const bar = app !== undefined && !talking
   useCoveredEdges(id, main, bar)

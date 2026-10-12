@@ -24,6 +24,7 @@ import { useAppPlacement } from './placement.ts'
 import { appNames } from '../../lib/app-names.ts'
 import { appPin } from '../../lib/pins.ts'
 import { useApps } from '../../lib/workspace/hooks.ts'
+import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { PinButton } from '../shell/pin-toggle.tsx'
 
 type Axes = { x: Motion; y: Motion; width: Motion; height: Motion }
@@ -182,7 +183,9 @@ function ChromeButton({ label, icon: Icon, onClick }: { label: string; icon: typ
 function AppChrome({ instance, onPage }: { readonly instance: Instance; readonly onPage: () => void }) {
   const host = useAppHost()
   const { id } = instance.app
-  const title = useApps((apps: readonly AppView[]) => appNames(apps).get(id)) ?? instance.app.title
+  // The labels are read here: a hook cannot run inside the selector.
+  const label = useConnectionLabels()
+  const title = useApps((apps: readonly AppView[]) => appNames(apps, label).get(id)) ?? instance.app.title
   return (
     <div className="app-chrome">
       <span className="app-chrome-title">{title}</span>
