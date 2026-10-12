@@ -39,6 +39,7 @@ export function createMcpEndpoint(deps: McpDeps): (request: Request, env: Wallet
         era: ctx.era,
         client: principal.clientName,
         scopes: principal.scopes,
+        origin: url.origin,
         readView: (name) => readView(env, url.origin, name),
       }),
     )

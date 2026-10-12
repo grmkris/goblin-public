@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { TOOLS } from '@goblin/wallet/contract'
-import { readStatus } from '../../services/programs/status.ts'
+import { setupSentence } from '../../services/programs/setup.ts'
+import { readStatusWithSetup } from '../../services/programs/status.ts'
 import { answer, refusal } from '../results.ts'
 import type { Toolbox } from '../toolbox.ts'
 
@@ -14,9 +15,9 @@ export function registerWalletStatus(server: McpServer, box: Toolbox): void {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
-      const result = await box.run(readStatus)
-      if (!result.ok) return refusal(result.failure)
-      const { status, limits } = result.value
+      const read = await box.run(readStatusWithSetup)
+      if (!read.ok) return refusal(read.failure)
+      const { status, limits } = read.value.result
       const tokens = status.tokens.map(
         (t) => `${t.symbol} balance ${t.balance ?? '?'}, spendable ${t.spendable ?? '?'}`,
       )
@@ -25,10 +26,14 @@ export function registerWalletStatus(server: McpServer, box: Toolbox): void {
         ...tokens,
         `${limits.length} limits are in force; ask for allowances to see each layer.`,
         status.expiresAt === undefined ? '' : `The grant expires ${status.expiresAt}.`,
+        setupSentence(read.value.setup, box.origin) ?? '',
       ]
         .filter((line) => line !== '')
         .join('\n')
-      return answer(text, { ...result.value })
+      return answer(text, {
+        ...read.value.result,
+        ...(read.value.setup.length === 0 ? {} : { setup: read.value.setup }),
+      })
     },
   )
 }

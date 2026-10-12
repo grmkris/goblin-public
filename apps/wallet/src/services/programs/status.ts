@@ -6,6 +6,7 @@ import * as Option from 'effect/Option'
 import { Ledger } from '../ledger.ts'
 import { type BalanceRead, Rails } from '../rails.ts'
 import { deriveStatus } from './derive-status.ts'
+import { setupGaps } from './setup.ts'
 
 const NO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
@@ -55,4 +56,16 @@ export const readStatus = Effect.gen(function* () {
     checkedAt: DateTime.formatIso(DateTime.makeUnsafe(now)),
   }
   return result
+})
+
+/** `wallet_status` for the agent: the status plus what the owner still has to set up, if anything. */
+export const readStatusWithSetup = Effect.gen(function* () {
+  const result = yield* readStatus
+  const profile = yield* (yield* Ledger).use((api) => api.profile())
+  const setup = setupGaps({
+    hasAgent: profile.agentAddress !== undefined,
+    chains: profile.chains,
+    balances: result.balances,
+  })
+  return { result, setup }
 })
