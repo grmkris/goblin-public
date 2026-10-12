@@ -1,7 +1,6 @@
 import * as Data from 'effect/Data'
 import type { EvmChain, JsonRpc, TopUp } from '@goblin/wallet/balances'
 import type { ChainKey, ChainSetup, AgentSigner } from '@goblin/wallet/contract'
-import type { RelayResult, UpgradeRequest as RelayUpgrade } from '@goblin/wallet/relay'
 
 /** What the wallet knows of its owner: written by onboarding, read from the ledger. */
 export interface RailsProfile {
@@ -21,7 +20,7 @@ export interface StoredAllowance {
 
 /**
  * Everything the rails need from the rest of the wallet. The Worker wiring builds this once per request: the ledger
- * answers `profile`, lane S's delegation code answers `topUp` and `allowances`, the Worker's secrets make the relay.
+ * answers `profile`, lane S's delegation code answers `topUp` and `allowances`, the Worker's Pimlico key the bundler.
  */
 export interface RailsDeps {
   /** Mainnets when true (`WALLET_LIVE=1`), their testnets otherwise. Tokens, RPCs and explorers follow it. */
@@ -32,8 +31,6 @@ export interface RailsDeps {
   /** How the agent redeems the owner's allowance on a chain, or undefined when none is set up. */
   readonly topUp?: (chain: EvmChain) => Promise<TopUp | undefined>
   readonly allowances?: () => Promise<readonly StoredAllowance[]>
-  /** Sends the owner's EIP-7702 upgrade; absent where no relay key is configured. */
-  readonly relay?: { upgrade(request: RelayUpgrade): Promise<RelayResult> }
   readonly rpcFor: (chain: ChainKey) => JsonRpc
   /** Pimlico's bundler per chain (ERC-4337, gas paid in USDC); absent where no key is configured. */
   readonly bundlerFor?: (chain: ChainKey) => JsonRpc

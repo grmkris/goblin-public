@@ -9,7 +9,6 @@ import { productionWiring } from './wiring.ts'
 
 export { WalletLedger } from './ledger/durable.ts'
 export { WalletAuth } from './oauth/index.ts'
-export { WalletRelay } from './rails/relay.ts'
 
 const route = createRouter({
   oauth: handleOAuth,

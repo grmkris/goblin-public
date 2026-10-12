@@ -2,7 +2,6 @@ import { httpJsonRpc } from '@goblin/wallet/balances'
 import { pimlicoUrl } from '@goblin/wallet/bundler'
 import { chainByKey } from '@goblin/wallet/chains'
 import type { ChainKey } from '@goblin/wallet/contract'
-import { relayAccountFromKey } from '@goblin/wallet/relay'
 import { agentSigner } from '@goblin/wallet/signer'
 import { authorizationSigner, createAgentWallet, PrivyClient } from '@goblin/wallet/privy'
 import { allowanceRails, productionAllowance } from './allowance.ts'
@@ -10,7 +9,6 @@ import { defaultWiring, type Wiring } from './context.ts'
 import type { WalletEnv } from './env.ts'
 import { ledgerClient } from './ledger/durable.ts'
 import { createRails } from './rails/index.ts'
-import { relayClient, relayStubs } from './rails/relay.ts'
 import { rpcFromEnv } from './rails/rpc.ts'
 import { failure } from './services/errors.ts'
 
@@ -24,20 +22,6 @@ const privyFor = async (env: WalletEnv): Promise<PrivyClient> => {
   const authorize = cached ?? authorizationSigner(env.PRIVY_AUTHORIZATION_KEY)
   authorizers.set(env.PRIVY_AUTHORIZATION_KEY, authorize)
   return new PrivyClient({ appId: env.PRIVY_APP_ID, appSecret: env.PRIVY_APP_SECRET, authorize: await authorize })
-}
-
-/** The relay address per key, derived once per isolate; it names the relay's Durable Objects. */
-const relayAddresses = new Map<string, string>()
-
-/**
- * The relay as a client of the `WalletRelay` Durable Object for each chain: that object, not this isolate, allocates
- * the nonce, stores the signed bytes before broadcast and enforces the daily quota.
- */
-const relayFor = (env: WalletEnv) => {
-  if (env.RELAY_PRIVATE_KEY === '') return undefined
-  const address = relayAddresses.get(env.RELAY_PRIVATE_KEY) ?? relayAccountFromKey(env.RELAY_PRIVATE_KEY).address
-  relayAddresses.set(env.RELAY_PRIVATE_KEY, address)
-  return relayClient(relayStubs(env, address))
 }
 
 /** Pimlico's bundler per chain, or undefined where no key is configured (then no UserOperation is sent). */
@@ -74,7 +58,6 @@ export const productionWiring: Wiring = {
   rails: (env, owner, signer) => {
     const live = env.WALLET_LIVE === '1'
     const rpcFor = rpcFromEnv(env.RPC_URLS, live)
-    const relay = relayFor(env)
     const bundlerFor = bundlersFor(env, live)
     return createRails({
       live,
@@ -82,7 +65,6 @@ export const productionWiring: Wiring = {
       profile: () => ledgerClient(env.LEDGER.getByName(owner.userId)).profile(),
       rpcFor,
       ...allowanceRails(env, owner.userId, rpcFor),
-      ...(relay === undefined ? {} : { relay }),
       ...(bundlerFor === undefined ? {} : { bundlerFor }),
     })
   },
