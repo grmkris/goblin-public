@@ -43,12 +43,12 @@ afterEach(() => {
   for (const close of closes.splice(0)) close()
 })
 
-/** What the wallet's status tool answers, and the account's plan. */
+/** What the wallet's status tool answers, and whether the account has goblin Pro (ADR 0054). */
 type Wallet = {
   readonly dollars?: string
   readonly setup?: readonly string[]
   readonly payFrom?: typeof PAY_FROM
-  readonly plan?: AccountPlan['source']
+  readonly pro?: boolean
 }
 
 /**
@@ -58,7 +58,7 @@ type Wallet = {
 const start = (
   servers: readonly ServerView[],
   grants: readonly Grant[],
-  { dollars = '0', setup, payFrom = PAY_FROM, plan = 'free' }: Wallet = {},
+  { dollars = '0', setup, payFrom = PAY_FROM, pro = false }: Wallet = {},
 ) => {
   const { db, close } = chatDatabase()
   closes.push(close)
@@ -87,8 +87,10 @@ const start = (
               return { content: [], structuredContent: answer }
             }),
         }),
-        // SAFETY: Start reads only the plan's source.
-        stub(Entitlements, { state: () => Effect.succeed({ source: plan } as AccountPlan) }),
+        // SAFETY: Start reads only whether the plan is active.
+        stub(Entitlements, {
+          state: () => Effect.succeed({ source: pro ? 'wallet' : 'none', active: pro } as AccountPlan),
+        }),
         // SAFETY: Start reads only the stage's free-plan dollars and the app's address from the instance input.
         Layer.succeed(AgentInput, { env: { FREE_WALLET_USD: '5', APP_URL: 'https://goblin.test' } } as AgentInputs),
         // Main is session `s1`; the day's allowance is none until the wallet holds the free plan's dollars.
@@ -129,7 +131,7 @@ describe('first-run Start (ADR 0048)', () => {
         allowed: false,
         ready: false,
         gaps: [],
-        needs: '5',
+        needs: '0',
         funded: false,
       })
       expect(yield* onboardingState).toEqual({ status: 'open', step: 'welcome' })
@@ -168,39 +170,41 @@ describe('first-run Start (ADR 0048)', () => {
     }).pipe(Effect.provide(layer))
   })
 
-  it.effect('is done, untouched, once the wallet is set up and funded, without Mercator, and keeps that', () => {
-    const { layer, reads } = start(walletOnly, walletAllowed, { dollars: '6.5' })
-    return Effect.gen(function* () {
-      const view = yield* onboardingView
-      expect(view.status).toBe('done')
-      expect(view.wallet).toMatchObject({ ready: true, gaps: [], payFrom: PAY_FROM, dollars: '6.5', funded: true })
-      expect(view.mercator).toMatchObject({ connected: false, allowed: false })
-      expect(done(view)).toEqual(['wallet'])
-      expect((yield* kept)?.status).toBe('done')
-      // Kept, the gate's answer asks no server.
-      const before = reads.length
-      expect(yield* onboardingState).toEqual({ status: 'done' })
-      expect(reads).toHaveLength(before)
-    }).pipe(Effect.provide(layer))
-  })
-
   it.effect(
-    'stays open while a ready wallet holds less than the free plan asks; another plan needs only something',
-    () =>
-      Effect.gen(function* () {
+    'is done, untouched, once the wallet is set up and funded and Pro is on, without Mercator, and keeps that',
+    () => {
+      const { layer, reads } = start(walletOnly, walletAllowed, { dollars: '6.5', pro: true })
+      return Effect.gen(function* () {
         const view = yield* onboardingView
-        expect(view.wallet).toMatchObject({ ready: true, dollars: '3', funded: false })
-        expect(view.status).toBe('open')
-        expect((yield* kept)?.status).toBeUndefined()
-      }).pipe(Effect.provide(start(everything, allowed, { dollars: '3' }).layer)),
+        expect(view.status).toBe('done')
+        expect(view.wallet).toMatchObject({ ready: true, gaps: [], payFrom: PAY_FROM, dollars: '6.5', funded: true })
+        expect(view.mercator).toMatchObject({ connected: false, allowed: false })
+        expect(done(view)).toEqual(['wallet'])
+        expect((yield* kept)?.status).toBe('done')
+        // Kept, the gate's answer asks no server.
+        const before = reads.length
+        expect(yield* onboardingState).toEqual({ status: 'done' })
+        expect(reads).toHaveLength(before)
+      }).pipe(Effect.provide(layer))
+    },
   )
 
-  it.effect('counts any dollars as funded on a paid plan', () =>
+  it.effect("stays open while a ready, funded wallet has no Pro: choosing it is where the wallet's step ends", () =>
+    Effect.gen(function* () {
+      const view = yield* onboardingView
+      expect(view.wallet).toMatchObject({ ready: true, dollars: '3', funded: true })
+      expect(view.status).toBe('open')
+      expect(done(view)).toEqual([])
+      expect((yield* kept)?.status).toBeUndefined()
+    }).pipe(Effect.provide(start(everything, allowed, { dollars: '3' }).layer)),
+  )
+
+  it.effect('counts any dollars as funded: the wallet holds no set sum, Pro is what goblin needs', () =>
     Effect.gen(function* () {
       const view = yield* onboardingView
       expect(view.wallet).toMatchObject({ needs: '0', ready: true, funded: true })
       expect(view.status).toBe('done')
-    }).pipe(Effect.provide(start(everything, allowed, { dollars: '0.5', plan: 'subscription' }).layer)),
+    }).pipe(Effect.provide(start(everything, allowed, { dollars: '0.5', pro: true }).layer)),
   )
 
   it.effect("keeps the owner's word over what it would derive, each step once, and the first kickoff", () =>
@@ -225,7 +229,7 @@ describe('first-run Start (ADR 0048)', () => {
       const view = yield* changeOnboarding({ step: 'welcome' })
       expect(view.status).toBe('done')
       expect((yield* kept)?.status).toBe('done')
-    }).pipe(Effect.provide(start(walletOnly, walletAllowed, { dollars: '6.5' }).layer)),
+    }).pipe(Effect.provide(start(walletOnly, walletAllowed, { dollars: '6.5', pro: true }).layer)),
   )
 
   it('reads an older Start\'s row: the steps it no longer has are dropped, and its "open" is derived', () => {

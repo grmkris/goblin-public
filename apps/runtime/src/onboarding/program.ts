@@ -13,7 +13,7 @@ import { Entitlements } from '../billing/gates.ts'
 import { Budget } from '../budget.ts'
 import { Chats } from '../chats/service.ts'
 import { epochSeconds } from '../clock.ts'
-import { freeWalletUsd, stablecoinDollars } from '../layers/budget.ts'
+import { stablecoinDollars } from '../layers/budget.ts'
 import { profileOf, walletPageUrl } from '../mcp/first-class.ts'
 import { allowRecommended, serverStatus } from '../mcp/first-class-owner.ts'
 import { McpGrants, McpServers } from '../mcp/service.ts'
@@ -86,11 +86,12 @@ const walletState = (found: Found, status: WalletStatus | null, needs: number): 
 }
 
 /** Each step's state, in Start's order: the wallet's from the wallet, the others from what the owner did. */
-const stepsOf = (record: OnboardingRecord | undefined, wallet: Wallet) => {
+const stepsOf = (record: OnboardingRecord | undefined, wallet: Wallet, subscribed: boolean) => {
   const went = (step: OnboardingStep) => record?.steps.includes(step) === true
   const done: Record<OnboardingStep, boolean> = {
     welcome: went('welcome'),
-    wallet: wallet.funded,
+    // The wallet's step ends with goblin Pro chosen and signed in it (ADR 0054): without Pro goblin does not answer.
+    wallet: wallet.funded && subscribed,
     services: went('services'),
     goblin: record?.kickoffAt !== undefined || went('goblin'),
   }
@@ -141,18 +142,20 @@ export const onboardingView = Effect.gen(function* () {
   const grants = yield* McpGrants.use((owner) => owner.list())
   const walletFound = find(servers, grants, 'wallet')
   const mercator = find(servers, grants, 'mercator')
-  // Only the free plan asks the wallet to hold a sum (ADR 0047); any other plan is funded by anything it holds.
+  // goblin answers only with goblin Pro, a day pass or monthly paid from the wallet (ADR 0054); the wallet holds no
+  // set sum any more, so it is funded by anything it holds.
   const plan = yield* Entitlements.use((plans) => plans.state()).pipe(Effect.option)
-  const free = Option.isNone(plan) || plan.value.source === 'free'
-  const needs = free ? freeWalletUsd(env.FREE_WALLET_USD) : 0
+  const subscribed = Option.isSome(plan) && plan.value.active
+  const needs = 0
   const wallet = walletState(walletFound, yield* walletStatus(walletFound), needs)
-  if (record?.status === undefined && wallet.funded) yield* keepDone
+  const complete = wallet.funded && subscribed
+  if (record?.status === undefined && complete) yield* keepDone
   const others = servers.filter(
     (each) => each.status === 'connected' && each.profile?.id !== 'wallet' && each.profile?.id !== 'mercator',
   )
   const view: OnboardingView = {
-    status: record?.status ?? (wallet.funded ? 'done' : 'open'),
-    steps: stepsOf(record, wallet),
+    status: record?.status ?? (complete ? 'done' : 'open'),
+    steps: stepsOf(record, wallet, subscribed),
     wallet: walletOf(walletFound, wallet, needs, env.APP_URL),
     mercator: server(mercator),
     connected: others.length,
@@ -246,9 +249,7 @@ export const setupNote = ({
       ? []
       : ['- The Goblin Wallet is not connected or its tools are not allowed, so you cannot pay for anything.']),
     ...(walletAllowed && unfunded
-      ? [
-          `- The Goblin Wallet is not set up or not funded, so the free plan has no Credits; the owner finishes it ${inWallet(setupUrl)}.`,
-        ]
+      ? [`- The Goblin Wallet is not set up or not funded; the owner finishes it ${inWallet(setupUrl)}.`]
       : []),
     ...(mercatorAllowed ? [] : ['- Mercator (optional) is not connected: no web search and no outside jobs.']),
   ]
