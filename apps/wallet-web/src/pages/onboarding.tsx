@@ -1,3 +1,5 @@
+// Setup, on one screen: top up the wallet and connect the agent first, both possible at once, then the three steps that
+// finish the wallet. Connecting never waits on setup: a connected agent tells the owner what is still missing.
 import { Button, Spinner } from '@goblin/ui'
 import { DEFAULT_GRANT_DAYS, type Me } from '@goblin/wallet/contract'
 import { useQueryClient } from '@tanstack/react-query'
@@ -5,25 +7,15 @@ import { Check } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { useConnections, useCreateAgent, useStatus } from '../api/queries.tsx'
 import { useAuth } from '../app/auth.tsx'
-import { navigate } from '../app/router.tsx'
 import { cn } from '../ui/index.ts'
 import { LAYERS } from '../ui/layer.tsx'
-import { Page } from '../ui/page.tsx'
+import { Page, Section } from '../ui/page.tsx'
 import { AddFundsCard } from './add-funds.tsx'
 import { ConnectPanel } from './connect-panel.tsx'
 import { fundedOnBase, type StepId, setupProgress } from './progress.ts'
 import { ActionError, DEFAULT_PER_HOUR, isPerHour, PerHourField, useAction } from './setup-actions.tsx'
 
-const SKIP_KEY = 'goblin-wallet:connect-skipped'
-
-export const readSkipped = (): boolean => {
-  try {
-    return window.localStorage.getItem(SKIP_KEY) === '1'
-  } catch {
-    // expected: storage can be blocked; the step then simply stays visible
-    return false
-  }
-}
+type StepState = 'done' | 'current' | 'upcoming'
 
 function Step({
   index,
@@ -33,7 +25,7 @@ function Step({
   children,
 }: {
   readonly index: number
-  readonly state: 'done' | 'current' | 'upcoming'
+  readonly state: StepState
   readonly title: string
   readonly summary?: string
   readonly children?: ReactNode
@@ -68,7 +60,7 @@ function Step({
   )
 }
 
-function CreateStep({ index, state }: { readonly index: number; readonly state: 'done' | 'current' | 'upcoming' }) {
+function CreateStep({ index, state }: { readonly index: number; readonly state: StepState }) {
   const create = useCreateAgent()
   const action = useAction(() => create.mutateAsync())
   return (
@@ -86,35 +78,16 @@ function CreateStep({ index, state }: { readonly index: number; readonly state: 
   )
 }
 
-function FundStep({
+function UpgradeStep({
   index,
   state,
-  owner,
-  unread,
+  waiting,
 }: {
   readonly index: number
-  readonly state: 'done' | 'current' | 'upcoming'
-  readonly owner: string
-  /** The balance on Base could not be read yet. */
-  readonly unread: boolean
+  readonly state: StepState
+  /** Nothing has landed on Base yet: the upgrade opens once the wallet is topped up. */
+  readonly waiting: boolean
 }) {
-  return (
-    <Step index={index} state={state} title="Fund your account" summary="Your account holds funds on Base.">
-      <p className="text-sm/relaxed text-muted-foreground text-pretty">
-        Your account needs USDC or ETH on Base before the upgrade. Send some from any chain; this step finishes when it
-        lands.
-      </p>
-      {unread && (
-        <p className="text-sm text-muted-foreground">
-          Your balance on Base could not be read yet. It is checked again every few seconds.
-        </p>
-      )}
-      <AddFundsCard owner={owner} />
-    </Step>
-  )
-}
-
-function UpgradeStep({ index, state }: { readonly index: number; readonly state: 'done' | 'current' | 'upcoming' }) {
   const auth = useAuth()
   const client = useQueryClient()
   const action = useAction(async () => {
@@ -125,18 +98,25 @@ function UpgradeStep({ index, state }: { readonly index: number; readonly state:
     <Step index={index} state={state} title="Upgrade your account on Base" summary="Your account can grant allowances.">
       <p className="text-sm/relaxed text-muted-foreground text-pretty">
         EIP-7702 lets your existing address run a smart-account contract, so it can hand your agent a capped allowance
-        without moving your funds or changing your address. You sign once; we pay the gas.
+        without moving your funds or changing your address. You sign once. We pay the gas; it is repaid in USDC from
+        your allowance later.
       </p>
-      <ActionError message={action.error} />
-      <Button type="button" disabled={action.pending} onClick={() => void action.start()} className="self-start">
-        {action.pending && <Spinner data-icon="inline-start" />}
-        Sign and upgrade
-      </Button>
+      {waiting ? (
+        <p className="text-sm text-muted-foreground">Top up first: this opens once USDC or ETH is on Base.</p>
+      ) : (
+        <>
+          <ActionError message={action.error} />
+          <Button type="button" disabled={action.pending} onClick={() => void action.start()} className="self-start">
+            {action.pending && <Spinner data-icon="inline-start" />}
+            Sign and upgrade
+          </Button>
+        </>
+      )}
     </Step>
   )
 }
 
-function AllowanceStep({ index, state }: { readonly index: number; readonly state: 'done' | 'current' | 'upcoming' }) {
+function AllowanceStep({ index, state }: { readonly index: number; readonly state: StepState }) {
   const auth = useAuth()
   const client = useQueryClient()
   const [perHour, setPerHour] = useState(DEFAULT_PER_HOUR)
@@ -171,60 +151,107 @@ function AllowanceStep({ index, state }: { readonly index: number; readonly stat
   )
 }
 
-function ConnectStep({ index, state }: { readonly index: number; readonly state: 'done' | 'current' | 'upcoming' }) {
-  const skip = (): void => {
-    try {
-      window.localStorage.setItem(SKIP_KEY, '1')
-    } catch {
-      // expected: storage can be blocked; the owner just goes home
-    }
-    navigate('/')
-    window.location.reload()
-  }
+function FundingLine({ funded, unread }: { readonly funded: boolean | undefined; readonly unread: boolean }) {
+  if (unread)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Your balance on Base could not be read yet. It is checked every few seconds.
+      </p>
+    )
+  if (funded === undefined) return null
   return (
-    <Step index={index} state={state} title="Connect goblin" summary="Connect an MCP client when you are ready.">
-      <ConnectPanel />
-      <div>
-        <Button type="button" variant="ghost" onClick={skip}>
-          Skip for now
-        </Button>
-      </div>
-    </Step>
+    <p role="status" className="flex items-center gap-2 text-sm">
+      <span
+        aria-hidden
+        className={cn('size-1.5 shrink-0 rounded-full', funded ? 'bg-success' : 'bg-muted-foreground/50')}
+      />
+      {funded ? 'Your wallet has funds on Base.' : 'Waiting for USDC or ETH on Base.'}
+    </p>
   )
 }
 
-/** The five steps from a fresh sign-in to a connected agent. Each shows its own error and keeps its place on refresh. */
-export function OnboardingPage({ me }: { readonly me: Me }) {
+function TopUp({
+  owner,
+  funded,
+  unread,
+}: {
+  readonly owner: string
+  readonly funded: boolean | undefined
+  readonly unread: boolean
+}) {
+  return (
+    <Section title="Top up your wallet">
+      <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
+        Your agent spends from here, within limits you set.
+      </p>
+      <FundingLine funded={funded} unread={unread} />
+      <AddFundsCard owner={owner} />
+    </Section>
+  )
+}
+
+function ConnectAgent() {
   const connections = useConnections()
+  const clients = connections.data ?? []
+  return (
+    <Section title="Connect your agent">
+      <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
+        You can connect before setup is finished. Your agent will tell you what is still missing.
+      </p>
+      {clients.length > 0 && (
+        <p role="status" className="flex items-center gap-2 text-sm">
+          <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-success" />
+          Connected: {clients.map((connection) => connection.client).join(', ')}
+        </p>
+      )}
+      <ConnectPanel />
+    </Section>
+  )
+}
+
+/** The three steps that finish the wallet, in order; the one in progress is open. */
+function Checklist({ progress }: { readonly progress: StepId | 'done' }) {
+  const order: readonly StepId[] = ['agent', 'fund', 'upgrade', 'allowance']
+  const at = progress === 'done' ? order.length : order.indexOf(progress)
+  const stateOf = (id: StepId): StepState => {
+    const position = order.indexOf(id)
+    if (position < at) return 'done'
+    return position === at ? 'current' : 'upcoming'
+  }
+  return (
+    <Section title="Finish setup">
+      <ol className="flex max-w-2xl flex-col rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
+        <CreateStep index={1} state={stateOf('agent')} />
+        <UpgradeStep
+          index={2}
+          state={progress === 'fund' ? 'current' : stateOf('upgrade')}
+          waiting={progress === 'fund'}
+        />
+        <AllowanceStep index={3} state={stateOf('allowance')} />
+      </ol>
+    </Section>
+  )
+}
+
+/** One screen until the wallet is set up: top up and connect at the top, side by side when there is room. */
+export function OnboardingPage({ me }: { readonly me: Me }) {
   const beforeUpgrade = me.agent !== undefined && me.chains.find((chain) => chain.chain === 'base')?.upgraded !== true
   // Until the upgrade, the balance on Base decides the step: check it while the owner may be sending.
   const status = useStatus(beforeUpgrade ? 10_000 : false)
   const funded = fundedOnBase(status.data)
-  const connected = (connections.data?.length ?? 0) > 0
-  const progress = setupProgress(me, { connected, skipped: readSkipped(), funded })
-  const order: readonly StepId[] = ['agent', 'fund', 'upgrade', 'allowance', 'connect']
-  const at = progress === 'done' ? order.length : order.indexOf(progress)
-  const stateOf = (id: StepId): 'done' | 'current' | 'upcoming' => {
-    const position = order.indexOf(id)
-    return position < at ? 'done' : position === at ? 'current' : 'upcoming'
-  }
+  const unread = me.agent !== undefined && (status.isError || (status.isSuccess && funded === undefined))
   return (
     <Page
       title="Set up your wallet"
-      description="Five steps. You can stop and come back; this page picks up where you left off."
+      description="Top up and connect your agent now. Finish setup below when you are ready."
     >
-      <ol className="flex flex-col">
-        <CreateStep index={1} state={stateOf('agent')} />
-        <FundStep
-          index={2}
-          state={stateOf('fund')}
-          owner={me.owner}
-          unread={status.isError || (status.isSuccess && funded === undefined)}
-        />
-        <UpgradeStep index={3} state={stateOf('upgrade')} />
-        <AllowanceStep index={4} state={stateOf('allowance')} />
-        <ConnectStep index={5} state={stateOf('connect')} />
-      </ol>
+      <div className="@container">
+        <div className="grid gap-10 @4xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] @4xl:gap-8">
+          <TopUp owner={me.owner} funded={me.agent === undefined ? undefined : funded} unread={unread} />
+          <ConnectAgent />
+        </div>
+      </div>
+      <Checklist progress={setupProgress(me, { funded })} />
     </Page>
   )
 }

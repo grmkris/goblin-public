@@ -25,10 +25,13 @@ const isCurrent = (pathname: string, to: string): boolean => (to === '/' ? pathn
  */
 export function Shell({
   owner,
+  wide = false,
   onSignOut,
   children,
 }: {
   readonly owner: string
+  /** A page with columns side by side (setup) takes more width than a reading page. */
+  readonly wide?: boolean
   readonly onSignOut: () => void
   readonly children: ReactNode
 }) {
@@ -67,7 +70,14 @@ export function Shell({
           </Button>
         </div>
       </TopBar>
-      <main className="mx-auto w-full max-w-3xl flex-1 px-(--page-gutter-left) pt-6 pb-28 md:pb-16">{children}</main>
+      <main
+        className={cn(
+          'mx-auto w-full flex-1 px-(--page-gutter-left) pt-6 pb-28 md:pb-16',
+          wide ? 'max-w-5xl' : 'max-w-3xl',
+        )}
+      >
+        {children}
+      </main>
       <nav
         aria-label="Pages"
         className="material-chrome fixed inset-x-0 bottom-0 z-(--z-chrome) grid grid-cols-4 border-t border-border pb-(--safe-bottom) md:hidden"

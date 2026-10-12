@@ -1,14 +1,14 @@
-import { useConnections, useMe } from '../api/queries.tsx'
+import { useMe } from '../api/queries.tsx'
 import { ActivityPage } from '../pages/activity.tsx'
 import { ApprovePage } from '../pages/approve.tsx'
 import { ConsentPage } from '../pages/consent.tsx'
 import { ConnectionsPage } from '../pages/connections.tsx'
 import { HomePage } from '../pages/home.tsx'
 import { LimitsPage } from '../pages/limits.tsx'
-import { OnboardingPage, readSkipped } from '../pages/onboarding.tsx'
-import { setupProgress } from '../pages/progress.ts'
+import { OnboardingPage } from '../pages/onboarding.tsx'
+import { isSetUp } from '../pages/progress.ts'
 import { SignInPage } from '../pages/sign-in.tsx'
-import { Async, LoadingBlock } from '../ui/async.tsx'
+import { Async } from '../ui/async.tsx'
 import { useAuth } from './auth.tsx'
 import { useLocation } from './router.tsx'
 import { Shell } from './shell.tsx'
@@ -21,29 +21,23 @@ function Routes() {
   return <HomePage />
 }
 
-/** Setup first: until the wallet is created, upgraded, allowed and connected (or skipped), every page is the wizard. */
+/**
+ * Setup first: until the agent has a wallet and the account is upgraded and allowed on Base, every page is the setup
+ * screen. Connecting an agent never gates it; the Connections page has the MCP URL whenever the owner wants it.
+ */
 function SignedIn() {
   const auth = useAuth()
   const me = useMe()
-  const connections = useConnections()
   return (
     <Async query={me} rows={2}>
-      {(data) => (
-        <Shell owner={data.owner} onSignOut={auth.logout}>
-          {connections.isPending ? (
-            <LoadingBlock rows={2} />
-          ) : setupProgress(data, {
-              connected: (connections.data?.length ?? 0) > 0,
-              skipped: readSkipped(),
-              // Funding orders the steps before the upgrade only; whether setup is done never waits on a balance.
-              funded: undefined,
-            }) === 'done' ? (
-            <Routes />
-          ) : (
-            <OnboardingPage me={data} />
-          )}
-        </Shell>
-      )}
+      {(data) => {
+        const ready = isSetUp(data)
+        return (
+          <Shell owner={data.owner} wide={!ready} onSignOut={auth.logout}>
+            {ready ? <Routes /> : <OnboardingPage me={data} />}
+          </Shell>
+        )
+      }}
     </Async>
   )
 }

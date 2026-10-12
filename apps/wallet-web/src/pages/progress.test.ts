@@ -1,11 +1,11 @@
 import type { Me } from '@goblin/wallet/contract'
 import { describe, expect, it } from 'vitest'
 import { STATUS } from '../api/fixtures.ts'
-import { fundedOnBase, setupProgress } from './progress.ts'
+import { fundedOnBase, isSetUp, setupProgress } from './progress.ts'
 
 const owner = '0x4f1B7c0a2D9e3b86A5c1E7f09d4B2a6C8e3F5a17'
 const allowance = { perHour: '20', expiresAt: '2026-10-19T00:00:00Z', delegationHash: '0xab' }
-const waiting = { connected: false, skipped: false, funded: undefined }
+const waiting = { funded: undefined }
 
 describe('setupProgress', () => {
   it('walks the steps in order from server state', () => {
@@ -13,17 +13,22 @@ describe('setupProgress', () => {
     expect(setupProgress(fresh, waiting)).toBe('agent')
     const withAgent: Me = { ...fresh, agent: owner }
     expect(setupProgress(withAgent, waiting)).toBe('fund')
-    expect(setupProgress(withAgent, { ...waiting, funded: false })).toBe('fund')
-    expect(setupProgress(withAgent, { ...waiting, funded: true })).toBe('upgrade')
+    expect(setupProgress(withAgent, { funded: false })).toBe('fund')
+    expect(setupProgress(withAgent, { funded: true })).toBe('upgrade')
     const upgraded: Me = { ...withAgent, chains: [{ chain: 'base', upgraded: true }] }
     expect(setupProgress(upgraded, waiting)).toBe('allowance')
     const allowed: Me = { ...withAgent, chains: [{ chain: 'base', upgraded: true, allowance }] }
-    expect(setupProgress(allowed, waiting)).toBe('connect')
+    expect(setupProgress(allowed, { funded: false })).toBe('done')
   })
-  it('finishes when an agent is connected or the owner skipped, whatever the balance', () => {
+})
+
+describe('isSetUp', () => {
+  it('needs the agent wallet, the upgrade and the allowance on Base, and no connection', () => {
     const allowed: Me = { userId: 'u', owner, agent: owner, chains: [{ chain: 'base', upgraded: true, allowance }] }
-    expect(setupProgress(allowed, { ...waiting, connected: true })).toBe('done')
-    expect(setupProgress(allowed, { ...waiting, skipped: true, funded: false })).toBe('done')
+    expect(isSetUp(allowed)).toBe(true)
+    expect(isSetUp({ ...allowed, agent: undefined })).toBe(false)
+    expect(isSetUp({ ...allowed, chains: [{ chain: 'base', upgraded: true }] })).toBe(false)
+    expect(isSetUp({ ...allowed, chains: [{ chain: 'arbitrum', upgraded: true, allowance }] })).toBe(false)
   })
 })
 

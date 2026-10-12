@@ -1,15 +1,22 @@
 import type { Me, WalletStatusResult } from '@goblin/wallet/contract'
 import { ownerOnBase } from './deposit-model.ts'
 
-export type StepId = 'agent' | 'fund' | 'upgrade' | 'allowance' | 'connect'
+export type StepId = 'agent' | 'fund' | 'upgrade' | 'allowance'
 
 interface SetupState {
-  /** An MCP client is connected. */
-  readonly connected: boolean
-  /** The owner chose to connect later. */
-  readonly skipped: boolean
   /** The owner holds USDC or ETH on Base; undefined until Base is read. */
   readonly funded: boolean | undefined
+}
+
+const baseOf = (me: Me) => me.chains.find((chain) => chain.chain === 'base')
+
+/**
+ * The wallet works once the agent has a wallet and the account is upgraded and allowed on Base. Connecting an agent is
+ * not part of it: an agent can connect at any time, before or after, and tells the owner what is still missing.
+ */
+export function isSetUp(me: Me): boolean {
+  const base = baseOf(me)
+  return me.agent !== undefined && base?.upgraded === true && base.allowance !== undefined
 }
 
 /**
@@ -18,10 +25,9 @@ interface SetupState {
  */
 export function setupProgress(me: Me, state: SetupState): StepId | 'done' {
   if (me.agent === undefined) return 'agent'
-  const base = me.chains.find((chain) => chain.chain === 'base')
+  const base = baseOf(me)
   if (base?.upgraded !== true) return state.funded === true ? 'upgrade' : 'fund'
-  if (base.allowance === undefined) return 'allowance'
-  return state.connected || state.skipped ? 'done' : 'connect'
+  return base.allowance === undefined ? 'allowance' : 'done'
 }
 
 /** Any USDC or ETH in the owner's account on Base: the account is topped up. Undefined until Base is read. */

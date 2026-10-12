@@ -41,8 +41,8 @@ function YourAddress({ owner }: { readonly owner: string }) {
         <CopyButton text={owner} label="Copy your address" />
       </div>
       <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
-        Send ETH or USDC on Base, Arbitrum or Ethereum to this address. It is the same address on every EVM chain. Sent
-        on Base, it works right away.
+        Send USDC (or ETH) on Base, Arbitrum or Ethereum to this address. It is the same address on every EVM chain.
+        Sent on Base, it works right away.
       </p>
     </div>
   )
@@ -116,17 +116,11 @@ function AmountField({
   )
 }
 
-function DepositForm({
-  receiveFirst,
-  onQuote,
-}: {
-  readonly receiveFirst: DepositRequest['receive']
-  readonly onQuote: (quote: DepositAddress) => void
-}) {
+function DepositForm({ onQuote }: { readonly onQuote: (quote: DepositAddress) => void }) {
   const [from, setFrom] = useState<DepositRequest['from']>('arbitrum')
-  const [asset, setAsset] = useState<DepositRequest['asset']>('ETH')
+  const [asset, setAsset] = useState<DepositRequest['asset']>('USDC')
   const [amount, setAmount] = useState('')
-  const [receive, setReceive] = useState<DepositRequest['receive']>(receiveFirst)
+  const [receive, setReceive] = useState<DepositRequest['receive']>('USDC')
   const deposit = useDeposit()
   const problem = amountProblem(amount, asset)
   const direct = needsNoDeposit({ from, asset, receive })
@@ -256,17 +250,8 @@ function DepositProgress({
   )
 }
 
-/**
- * The card: the owner's address, then a deposit address from another chain or token. `receive` is what to land on Base
- * unless the owner picks otherwise: USDC on Home, ETH in onboarding, where the account needs gas first.
- */
-export function AddFundsCard({
-  owner,
-  receive = 'USDC',
-}: {
-  readonly owner: string
-  readonly receive?: DepositRequest['receive']
-}) {
+/** The card: the owner's address, then a deposit address from another chain or token, landing USDC on Base unless picked otherwise. */
+export function AddFundsCard({ owner }: { readonly owner: string }) {
   const status = useStatus()
   const [deposit, setDeposit] = useState<{ readonly quote: DepositAddress; readonly before: bigint | undefined }>()
   return (
@@ -276,10 +261,7 @@ export function AddFundsCard({
       <div className="flex flex-col gap-4">
         <h3 className="text-sm font-medium">From another chain or token</h3>
         {deposit === undefined ? (
-          <DepositForm
-            receiveFirst={receive}
-            onQuote={(quote) => setDeposit({ quote, before: ownerOnBase(status.data, quote.receive) })}
-          />
+          <DepositForm onQuote={(quote) => setDeposit({ quote, before: ownerOnBase(status.data, quote.receive) })} />
         ) : (
           <DepositProgress quote={deposit.quote} before={deposit.before} onReset={() => setDeposit(undefined)} />
         )}
