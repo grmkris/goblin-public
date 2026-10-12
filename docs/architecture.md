@@ -1230,7 +1230,8 @@ output token it may write, 0.1 per input token, at least $0.00075). It forwards 
 key and returns the payment's receipt. Settings' "How goblin pays for its model" card (`inference-card.tsx`) picks between
 the plan's Credits and each paid route, and Activity's Get started offers it until a paid route is picked or put off.
 Where the stage sets `GOBLIN_FREE_WALLET_USD`, the free plan's Credits apply only while a connected Goblin Wallet holds
-that many dollars of USDC and USDC.e by its status line (the server's claim, read as the owner, `layers/budget.ts`):
+that many dollars of stablecoins: the total its status adds up on every chain (`stablecoinUsd`), else its status
+line's USDC and USDC.e (the server's claim, read as the owner, `layers/budget.ts`):
 a funded answer is kept ten minutes, an unfunded one a minute. Below it the day's allowance is none, and the web says
 a funded wallet is needed instead of that the day is spent.
 

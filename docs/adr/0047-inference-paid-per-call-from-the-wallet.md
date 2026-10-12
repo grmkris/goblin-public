@@ -46,7 +46,8 @@ day. Routines and housekeeping stay on goblin's own models: a paid pick stands i
 - **Charges are up front.** At goblin's 32,768-token output cap, a call through the proxy costs about $0.02, whatever
   the answer uses.
 - **The free plan's Credits ask for a funded wallet.** Where the stage sets `GOBLIN_FREE_WALLET_USD` (5 on dev and
-  prod), a free account's 50 Credits a day apply only while its Goblin Wallet holds that much in USDC and USDC.e.
+  prod), a free account's 50 Credits a day apply only while its Goblin Wallet holds that much in stablecoins, by the
+  total its status adds up over every chain.
 
 ## Rejected
 

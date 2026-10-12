@@ -139,6 +139,11 @@ describe('Goblin Wallet (first-class profile)', () => {
       tokens: [{ symbol: 'USDC', balance: '25', remaining: '10', spendable: '10' }],
       periodEndsAt: '2026-10-19T00:00:00Z',
     })
+    expect(goblinWallet(walletAnswer({ stablecoinUsd: '5.25', stablecoinUsdPartial: true }))).toMatchObject({
+      stablecoinUsd: '5.25',
+      stablecoinUsdPartial: true,
+    })
+    expect(goblinWallet(walletAnswer({ stablecoinUsdPartial: false }))).toBeUndefined()
   })
 
   it('bounds what the server says, and reads nothing from an answer that does not fit', () => {

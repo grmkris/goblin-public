@@ -72,8 +72,18 @@ type Reported = {
   }>
   readonly periodEndsAt?: string | null | undefined
   readonly expiresAt?: string | null | undefined
+  readonly stablecoinUsd?: string | undefined
+  readonly stablecoinUsdPartial?: true | undefined
 }
-const shaped = ({ paid, funding, tokens, periodEndsAt, expiresAt }: Reported): WalletStatus => ({
+const shaped = ({
+  paid,
+  funding,
+  tokens,
+  periodEndsAt,
+  expiresAt,
+  stablecoinUsd,
+  stablecoinUsdPartial,
+}: Reported): WalletStatus => ({
   kind: 'wallet' as const,
   paid,
   funding,
@@ -85,6 +95,8 @@ const shaped = ({ paid, funding, tokens, periodEndsAt, expiresAt }: Reported): W
   })),
   ...optionalShort('periodEndsAt', periodEndsAt),
   ...optionalShort('expiresAt', expiresAt),
+  ...optionalShort('stablecoinUsd', stablecoinUsd),
+  ...(stablecoinUsdPartial === true ? { stablecoinUsdPartial } : {}),
 })
 
 /** Mercator's wallet, read from its status tool: readiness, balances and limits, and when they run out. */
@@ -122,6 +134,8 @@ const GoblinWalletStatus = Schema.Struct({
     ),
     periodEndsAt: Schema.optional(Schema.String),
     expiresAt: Schema.optional(Schema.String),
+    stablecoinUsd: Schema.optional(Amount),
+    stablecoinUsdPartial: Schema.optional(Schema.Literal(true)),
   }),
 })
 const decodeGoblinWallet = Schema.decodeUnknownOption(GoblinWalletStatus)

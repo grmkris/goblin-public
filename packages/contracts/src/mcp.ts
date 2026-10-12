@@ -258,7 +258,7 @@ const Short = Schema.String.check(Schema.isMaxLength(64))
 /**
  * A first-class server's wallet as goblin reads it from the server's status tool (ADR 0043): whether paid work can run
  * now and whether it is funded, each token's balance, what its signed limit has left and can spend now, when the
- * limit's period ends and when the wallet's key expires. All of it is the server's claim, decoded by goblin and bounded.
+ * limit's period ends, when the wallet's key expires and, where the server sums them, its stablecoin dollars. All of it is the server's claim, decoded by goblin and bounded.
  */
 export const WalletStatus = Schema.Struct({
   kind: Schema.Literal('wallet'),
@@ -274,6 +274,10 @@ export const WalletStatus = Schema.Struct({
   ).check(Schema.isMaxLength(8)),
   periodEndsAt: Schema.optional(Short),
   expiresAt: Schema.optional(Short),
+  /** The dollar stablecoins held on every chain the server read, a decimal string, when it adds them up itself. */
+  stablecoinUsd: Schema.optional(Short),
+  /** Set when a chain could not be read, so `stablecoinUsd` may be short of what is held. */
+  stablecoinUsdPartial: Schema.optional(Schema.Literal(true)),
 })
 export type WalletStatus = typeof WalletStatus.Type
 

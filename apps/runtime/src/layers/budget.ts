@@ -19,11 +19,22 @@ export const freeWalletUsd = (value: string | undefined): number => {
   return Number.isFinite(dollars) && dollars > 0 ? dollars : 0
 }
 
-/** The dollars of stablecoins a Goblin Wallet's status line reports: its USDC and USDC.e, owner and agent together. */
+/** A decimal amount as dollars; anything unreadable is none. */
+const dollars = (value: string | undefined): number => {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount : 0
+}
+
+/**
+ * The dollars of stablecoins a Goblin Wallet holds: the total its status adds up on every chain, else what its status
+ * line's USDC and USDC.e come to, owner and agent together. A partial total counts what was read.
+ */
 export const stablecoinDollars = (status: WalletStatus): number =>
-  status.tokens
-    .filter((token) => token.symbol === 'USDC' || token.symbol === 'USDC.e')
-    .reduce((sum, token) => sum + (Number.isFinite(Number(token.balance)) ? Number(token.balance) : 0), 0)
+  status.stablecoinUsd !== undefined
+    ? dollars(status.stablecoinUsd)
+    : status.tokens
+        .filter((token) => token.symbol === 'USDC' || token.symbol === 'USDC.e')
+        .reduce((sum, token) => sum + dollars(token.balance), 0)
 
 /**
  * Whether a connected Goblin Wallet holds at least `needs` dollars of stablecoins, by its status tool (the server's

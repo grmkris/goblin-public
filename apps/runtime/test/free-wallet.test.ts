@@ -28,4 +28,11 @@ describe('the free plan asks for a funded Goblin Wallet (ADR 0047)', () => {
     ).toBeCloseTo(5.079224, 6)
     expect(stablecoinDollars(status([{ symbol: 'USDC.e' }]))).toBe(0)
   })
+
+  it("takes the wallet's own total over every chain when it reports one, a partial one for what was read", () => {
+    const tokens = [{ symbol: 'USDC', balance: '1' }]
+    expect(stablecoinDollars({ ...status(tokens), stablecoinUsd: '6.5' })).toBe(6.5)
+    expect(stablecoinDollars({ ...status(tokens), stablecoinUsd: '4.2', stablecoinUsdPartial: true })).toBe(4.2)
+    expect(stablecoinDollars({ ...status(tokens), stablecoinUsd: 'n/a' })).toBe(0)
+  })
 })
