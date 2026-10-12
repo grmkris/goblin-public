@@ -165,6 +165,7 @@ const FEES: Record<string, unknown> = {
 }
 
 const BALANCE_OF = '0x70a08231'
+const ALLOWANCE_OF = '0xdd62ed3e'
 const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`
 
 /** A Base node; the agent holds `usdc` base units (10 USDC unless told otherwise). */
@@ -174,7 +175,12 @@ const nodeWith =
     if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
     if (method === 'eth_getBalance') return word(10n ** 15n)
     if (method in FEES) return FEES[method]
-    if (method === 'eth_call') return String(field(params[0], 'data')).startsWith(BALANCE_OF) ? word(usdc) : '0x'
+    if (method === 'eth_call') {
+      const data = String(field(params[0], 'data'))
+      // The depository's allowance shows as soon as it is asked for: this node never lags.
+      if (data.startsWith(ALLOWANCE_OF)) return word(10n ** 12n)
+      return data.startsWith(BALANCE_OF) ? word(usdc) : '0x'
+    }
     throw new Error(`unexpected ${String(field({}, 'x'))}${method}`)
   }
 
@@ -283,6 +289,20 @@ describe('Relay bridge execute', () => {
       'op-bridge-0001:approve',
       'op-bridge-0001:deposit',
     ])
+  })
+
+  test('an approval the node never shows stops before the deposit is signed', async () => {
+    const bridge = await quote()
+    const node = fakeRpc
+    const stuck = {
+      ...harness(),
+      rpc: (async (method, params) =>
+        method === 'eth_call' && String(field(params[0], 'data')).startsWith(ALLOWANCE_OF)
+          ? word(0n)
+          : node(method, params)) satisfies JsonRpc,
+    }
+    await expect(run(bridge, stuck, ['success'])).rejects.toMatchObject({ code: 'rpc_unavailable', uncertain: false })
+    expect(stuck.sent.map((s) => s.key)).toEqual(['op-bridge-0001:approve'])
   })
 
   test('refuses an expired quote without sending', async () => {

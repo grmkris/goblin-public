@@ -9,10 +9,10 @@
  */
 import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
-import { decodeFunctionData, parseAbi } from 'viem'
+import { decodeFunctionData, encodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
 import { erc20Balance } from '../balances/erc20.ts'
-import { toHex } from '../balances/hex.ts'
+import { toAddress, toHex } from '../balances/hex.ts'
 import { field, type JsonRpc, type WaitOptions } from '../balances/rpc.ts'
 import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
 import { ensureUsdc, type TopUp } from '../balances/transfer.ts'
@@ -343,6 +343,32 @@ const fundDeposit = async (input: ExecuteBridgeInput, origin: Chain): Promise<vo
     )
 }
 
+const ALLOWANCE = parseAbi(['function allowance(address owner, address spender) view returns (uint256)'])
+const pauseFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Waits until the RPC shows the depository's fresh allowance: a load-balanced node behind the approval's block would
+ * answer the deposit's simulation with a revert. Giving up is a plain failure; the deposit is not signed yet.
+ */
+const untilApproved = async (input: ExecuteBridgeInput, origin: Chain): Promise<void> => {
+  const data = encodeFunctionData({
+    abi: ALLOWANCE,
+    functionName: 'allowance',
+    args: [toAddress(input.agent.address), toAddress(RELAY_DEPOSITORY)],
+  })
+  for (let attempt = 0; attempt < (input.wait?.attempts ?? 10); attempt += 1) {
+    // expected: an unanswered or unreadable read counts as not visible yet; the loop asks again.
+    const raw = await input.rpc('eth_call', [{ to: origin.usdc.address, data }, 'latest']).catch(() => '0x')
+    const shown = /^0x[0-9a-fA-F]{64}$/u.test(String(raw)) ? BigInt(String(raw)) : 0n
+    if (shown >= BigInt(input.bridge.amountIn)) return
+    await (input.wait?.sleep ?? pauseFor)(input.wait?.intervalMs ?? 1000)
+  }
+  throw new TransferError(
+    'rpc_unavailable',
+    'The approval landed but the chain did not show it in time; nothing was bridged. Try again.',
+  )
+}
+
 /** Executes a frozen bridge: funding, the approval (if quoted), the deposit, then Relay's delivery status. */
 export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeResult> => {
   const { bridge } = input
@@ -362,6 +388,7 @@ export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeRe
         'The approval did not confirm.',
         sent.status === 'pending',
       )
+    if (step.id === 'approve') await untilApproved(input, origin)
     if (step.id === 'deposit') deposit = sent
   }
   if (deposit === undefined) throw new BridgeError('bad_quote', 'The quote has no deposit step.')
