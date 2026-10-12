@@ -1,10 +1,24 @@
-// One of the owner's connections (ADR 0041): its name, the server it reaches, where it stands, its actions, and once
-// connected, the events, skills, Telegram channel and tools it offers. A server's title and description are its own
-// claims.
+// One of the owner's connections (ADR 0041): its name, the server it reaches, where it stands and its actions (Open for
+// its App), then once connected a summary, and behind Manage access its words, events, skills, Telegram channel and
+// tools. A server's title and description are its own claims.
 import { useEffect, useId, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerView, ToolView } from '@goblin/contracts'
-import { Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle, Switch } from '@goblin/ui'
+import { Link } from '@tanstack/react-router'
+import {
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Switch,
+} from '@goblin/ui'
+import { ChevronRightIcon } from 'lucide-react'
 import {
   connectMutation,
   connectedToolsQuery,
@@ -21,7 +35,7 @@ import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
 import { AnotherConnection, ChooseAccess, RenameConnection } from './connection-forms.tsx'
 import { type Action, type Edit, RemoveConfirm, ServerMenu } from './server-menu.tsx'
-import { FirstClassPart } from './first-class.tsx'
+import { FirstClassAccess, FirstClassSummary } from './first-class.tsx'
 import { ToolGrants } from './tool-grants.tsx'
 
 /** The endpoint without its scheme, which is always https for an added server. */
@@ -77,7 +91,10 @@ function SkillsSwitch({
   )
 }
 
-/** What a connected server offers: its events (and what goblin does with them), skills, Telegram, then its tools. */
+/**
+ * What a connected server offers, behind Manage access: its own words, its paid tool's rule, its events (and what goblin
+ * does with them), skills, Telegram, then its tools.
+ */
 function ServerBody({
   server,
   tools,
@@ -92,8 +109,18 @@ function ServerBody({
   const settings = server.skillsOffered === true || server.skillsEnabled === true || hasTelegramTools(tools ?? [])
   return (
     <CardContent>
-      <div className="server-body">
-        {server.profile !== undefined && <FirstClassPart server={server} profile={server.profile} tools={tools} />}
+      <div className="server-body server-body-open">
+        {/* A first-class server is described in goblin's own words (ADR 0043); any other only as it claims. */}
+        {server.profile === undefined ? (
+          server.description !== undefined && (
+            <p className="server-claim">
+              <span>The server says:</span> {server.description}
+            </p>
+          )
+        ) : (
+          <p className="server-note">{server.profile.description}</p>
+        )}
+        {server.profile !== undefined && <FirstClassAccess server={server} profile={server.profile} tools={tools} />}
         <ConnectionEvents server={server} />
         {settings && (
           <section className="server-part" aria-label="Settings">
@@ -162,7 +189,7 @@ function useServerActions(server: ServerView, onMessage: (message: string) => vo
   return { pending, act }
 }
 
-/** The card's inline part under its header: the server's own words, Remove's confirmation, or a menu's form. */
+/** The card's inline part under its header while one is open: Remove's confirmation, or a menu's form. */
 function CardForms({
   server,
   editing,
@@ -175,21 +202,10 @@ function CardForms({
   readonly removing: boolean
   readonly onClose: () => void
 }) {
-  if (server.description === undefined && server.profile === undefined && !removing && editing === undefined)
-    return null
+  if (!removing && editing === undefined) return null
   return (
     <CardContent>
       <div className="server-body">
-        {/* A first-class server is described in goblin's own words (ADR 0043); any other only as it claims. */}
-        {server.profile === undefined ? (
-          server.description !== undefined && (
-            <p className="server-claim">
-              <span>The server says:</span> {server.description}
-            </p>
-          )
-        ) : (
-          <p className="server-note">{server.profile.description}</p>
-        )}
         {removing && <RemoveConfirm server={server} onCancel={onClose} onMessage={onMessage} />}
         {editing === 'rename' && <RenameConnection server={server} onDone={onClose} onMessage={onMessage} />}
         {editing === 'access' && <ChooseAccess server={server} onCancel={onClose} onMessage={onMessage} />}
@@ -208,15 +224,111 @@ function CardForms({
   )
 }
 
+/** The card's head: the connection's name and server, where it stands, Open for its App, and its menu. */
+function ServerHeading({
+  server,
+  pending,
+  onAct,
+  onEdit,
+  onRemove,
+}: {
+  readonly server: ServerView
+  readonly pending: Action | undefined
+  readonly onAct: (action: Action) => void
+  readonly onEdit: (edit: Edit) => void
+  readonly onRemove: () => void
+}) {
+  const from = serverName(server)
+  const appTool = server.profile?.app?.tool ?? server.entrypoint
+  const connected = server.status === 'connected'
+  return (
+    <CardHeader>
+      <CardTitle>
+        <span className="server-title">
+          <AppTile origin={server.connectionId} />
+          {server.label}
+        </span>
+      </CardTitle>
+      <CardDescription>
+        {from === undefined || from === server.label ? '' : `${from} · `}
+        {shortEndpoint(server.endpoint)}
+      </CardDescription>
+      <CardAction>
+        <div className="server-actions">
+          <StatusLabel label={serverStatus(server.status)} />
+          {connected && appTool !== undefined && (
+            <Button
+              size="sm"
+              variant="outline"
+              nativeButton={false}
+              render={<Link to="/connections/$connectionId/app" params={{ connectionId: server.connectionId }} />}
+            >
+              Open
+            </Button>
+          )}
+          {!connected && (
+            <Button size="sm" pending={pending === 'connect'} onClick={() => onAct('connect')}>
+              {server.status === 'needs_auth' ? 'Sign in again' : 'Connect'}
+            </Button>
+          )}
+          <ServerMenu
+            server={server}
+            busy={pending !== undefined && pending !== 'connect'}
+            onAct={onAct}
+            onEdit={onEdit}
+            onRemove={onRemove}
+          />
+        </div>
+      </CardAction>
+    </CardHeader>
+  )
+}
+
 /** Where a connection's card is on Connections, for a link from Activity. */
 export const connectionAnchor = (connectionId: string): string => `connection-${connectionId}`
+
+/** "12 of 17 tools allowed", once the tools are read. */
+const allowedCount = (tools: readonly ToolView[] | undefined): string =>
+  tools === undefined ? '' : `${tools.filter((tool) => tool.granted).length} of ${tools.length} tools allowed`
+
+/**
+ * A connected server at a glance: its first-class line and recommended access, and Manage access, which opens what it
+ * offers and what the agent may call. The card a #connection link names opens at once.
+ */
+function ServerSummary({
+  server,
+  tools,
+  open,
+}: {
+  readonly server: ServerView
+  readonly tools: readonly ToolView[] | undefined
+  readonly open: boolean
+}) {
+  return (
+    <CardContent>
+      <div className="server-summary">
+        {server.profile !== undefined && <FirstClassSummary server={server} profile={server.profile} tools={tools} />}
+        <div className="server-summary-row">
+          <CollapsibleTrigger render={<button type="button" className="server-toggle" />}>
+            <ChevronRightIcon aria-hidden />
+            {open ? 'Hide access' : 'Manage access'}
+          </CollapsibleTrigger>
+          <span className="server-note tabular-nums">{allowedCount(tools)}</span>
+        </div>
+      </div>
+    </CardContent>
+  )
+}
 
 export function ServerCard({ server, onReload, onMessage, onDone, channel }: ServerCardProps) {
   const { tools, error, retry } = useServerTools(server)
   const { pending, act } = useServerActions(server, onMessage)
   const [removing, setRemoving] = useState(false)
   const [editing, setEditing] = useState<Edit>()
-  const from = serverName(server)
+  const [open, setOpen] = useState(
+    () => typeof window !== 'undefined' && window.location.hash === `#${connectionAnchor(server.connectionId)}`,
+  )
+  const connected = server.status === 'connected'
   const loaded = tools !== undefined
   // Loading tools opens the connection; reload once so what it declares (skills) shows.
   useEffect(() => {
@@ -224,41 +336,19 @@ export function ServerCard({ server, onReload, onMessage, onDone, channel }: Ser
   }, [loaded, server.live, onReload])
   return (
     <Card id={connectionAnchor(server.connectionId)}>
-      <CardHeader>
-        <CardTitle>
-          <span className="server-title">
-            <AppTile origin={server.connectionId} />
-            {server.label}
-          </span>
-        </CardTitle>
-        <CardDescription>
-          {from === undefined || from === server.label ? '' : `${from} · `}
-          {shortEndpoint(server.endpoint)}
-        </CardDescription>
-        <CardAction>
-          <div className="server-actions">
-            <StatusLabel label={serverStatus(server.status)} />
-            {server.status !== 'connected' && (
-              <Button size="sm" pending={pending === 'connect'} onClick={() => act('connect')}>
-                {server.status === 'needs_auth' ? 'Sign in again' : 'Connect'}
-              </Button>
-            )}
-            <ServerMenu
-              server={server}
-              busy={pending !== undefined && pending !== 'connect'}
-              onAct={act}
-              onEdit={(edit) => {
-                setRemoving(false)
-                setEditing(edit)
-              }}
-              onRemove={() => {
-                setEditing(undefined)
-                setRemoving(true)
-              }}
-            />
-          </div>
-        </CardAction>
-      </CardHeader>
+      <ServerHeading
+        server={server}
+        pending={pending}
+        onAct={act}
+        onEdit={(edit) => {
+          setRemoving(false)
+          setEditing(edit)
+        }}
+        onRemove={() => {
+          setEditing(undefined)
+          setRemoving(true)
+        }}
+      />
       <CardForms
         server={server}
         editing={editing}
@@ -270,15 +360,20 @@ export function ServerCard({ server, onReload, onMessage, onDone, channel }: Ser
         onDone={onDone}
         onMessage={onMessage}
       />
-      {server.status === 'connected' && (
-        <ServerBody
-          server={server}
-          tools={tools}
-          failure={{ error, retry }}
-          onReload={onReload}
-          onMessage={onMessage}
-          channel={channel}
-        />
+      {connected && (
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <ServerSummary server={server} tools={tools} open={open} />
+          <CollapsibleContent>
+            <ServerBody
+              server={server}
+              tools={tools}
+              failure={{ error, retry }}
+              onReload={onReload}
+              onMessage={onMessage}
+              channel={channel}
+            />
+          </CollapsibleContent>
+        </Collapsible>
       )}
     </Card>
   )

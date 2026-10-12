@@ -1,8 +1,7 @@
-// A server goblin supports first-class (ADR 0043) on its Connections card: our words for it, its wallet as its status
-// tool reports it (the server's claim), and Allow recommended until its recommended grants are in place.
+// A server goblin supports first-class (ADR 0043) on its Connections card: its wallet as its status tool reports it (the
+// server's claim), Review recommended access until those grants are in place, then the rule for its paid tool.
 import { type ReactNode, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
 import type { ServerProfile, ServerView, ToolView, WalletStatus } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
 import { CircleAlertIcon, WalletIcon } from 'lucide-react'
@@ -70,8 +69,90 @@ export function WalletLine({
   )
 }
 
-/** A first-class server's part of its card, once it is connected. */
-export function FirstClassPart({
+/** The recommended set as the owner reviews it: the tools the server lists now, by title, in each policy. */
+export function recommendedList(
+  profile: ServerProfile,
+  tools: readonly ToolView[],
+): { readonly run: readonly string[]; readonly ask: readonly string[] } {
+  const listed = new Map(tools.map((tool) => [tool.name, tool]))
+  const titles = (names: readonly string[]) =>
+    names.flatMap((name) => {
+      const tool = listed.get(name)
+      return tool === undefined ? [] : [tool.title ?? name]
+    })
+  return { run: titles(profile.recommended.run), ask: titles(profile.recommended.ask) }
+}
+
+/**
+ * Review recommended access: what it allows, listed exactly, before one Allow. Free tools run when needed; the ones
+ * that pay ask first, every time, until the owner changes that below.
+ */
+function RecommendedReview({
+  server,
+  profile,
+  tools,
+}: {
+  readonly server: ServerView
+  readonly profile: ServerProfile
+  readonly tools: readonly ToolView[]
+}) {
+  const allow = useMutation(allowRecommendedMutation)
+  const [open, setOpen] = useState(false)
+  const { run, ask } = recommendedList(profile, tools)
+  const count = run.length + ask.length
+  return (
+    <div className="recommended">
+      <div className="setting-row">
+        <span className="grant-text">
+          <span className="grant-name">Recommended access</span>
+          <span className="grant-about">
+            {run.length} tools run when needed; {ask.length} ask you first, every time.
+          </span>
+        </span>
+        <Button size="sm" variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? 'Hide' : 'Review'}
+        </Button>
+      </div>
+      {open && (
+        <div className="recommended-review">
+          <p className="recommended-head">Run without asking</p>
+          <ul className="recommended-list">
+            {run.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ul>
+          <p className="recommended-head">Ask you first, every time</p>
+          <ul className="recommended-list">
+            {ask.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ul>
+          <Button
+            size="sm"
+            className="self-start"
+            pending={allow.isPending}
+            onClick={() => allow.mutate(server.connectionId)}
+          >
+            Allow these {count} tools
+          </Button>
+        </div>
+      )}
+      {allow.error !== null && (
+        <Receipt tone="error">
+          <CircleAlertIcon aria-hidden />
+          <span>{messageOf(allow.error, 'allow the recommended tools')}</span>
+        </Receipt>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A first-class server at a glance on its card: its wallet line (the status tool's claim), Open for its App whatever
+ * the owner has allowed (opening it as the owner grants the agent nothing), and Review recommended access until it is
+ * in place.
+ */
+export function FirstClassSummary({
   server,
   profile,
   tools,
@@ -81,52 +162,28 @@ export function FirstClassPart({
   readonly tools: readonly ToolView[] | undefined
 }) {
   const status = useQuery(serverStatusQuery(server.connectionId, server.status === 'connected' && profile.status))
-  const allow = useMutation(allowRecommendedMutation)
   const applied = tools !== undefined && recommendedApplied(profile, tools)
   return (
-    <section className="server-part" aria-label={profile.title}>
+    <>
       {status.data != null && <WalletLine wallet={status.data} profile={profile} />}
-      {profile.app !== undefined && applied && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="self-start"
-          nativeButton={false}
-          render={<Link to="/connections/$connectionId/app" params={{ connectionId: server.connectionId }} />}
-        >
-          Open {profile.title}
-        </Button>
-      )}
-      {!applied && (
-        <div className="setting-row">
-          <span className="grant-text">
-            <span className="grant-name">Allow recommended</span>
-            <span className="grant-about">
-              Its free tools run when needed; {profile.recommended.ask.join(', ')} asks you first, every time, until you
-              change it below.
-            </span>
-          </span>
-          <Button
-            size="sm"
-            pending={allow.isPending}
-            disabled={tools === undefined}
-            onClick={() => allow.mutate(server.connectionId)}
-          >
-            Allow
-          </Button>
-        </div>
-      )}
-      {profile.spend !== undefined && applied && (
-        <SpendingRule connectionId={server.connectionId} tool={profile.spend.tool} />
-      )}
-      {allow.error !== null && (
-        <Receipt tone="error">
-          <CircleAlertIcon aria-hidden />
-          <span>{messageOf(allow.error, 'allow the recommended tools')}</span>
-        </Receipt>
-      )}
-    </section>
+      {tools !== undefined && !applied && <RecommendedReview server={server} profile={profile} tools={tools} />}
+    </>
   )
+}
+
+/** A first-class server's own rule for its paid tool, once its recommended access is in place. */
+export function FirstClassAccess({
+  server,
+  profile,
+  tools,
+}: {
+  readonly server: ServerView
+  readonly profile: ServerProfile
+  readonly tools: readonly ToolView[] | undefined
+}) {
+  const applied = tools !== undefined && recommendedApplied(profile, tools)
+  if (profile.spend === undefined || !applied) return null
+  return <SpendingRule connectionId={server.connectionId} tool={profile.spend.tool} />
 }
 
 /** Up to two dollar amounts, as the owner's form takes them: empty, or a plain decimal with at most two places. */

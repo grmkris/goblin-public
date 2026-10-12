@@ -1105,6 +1105,75 @@
     flex-direction: column;
     gap: 1.25rem;
   }
+  /* Behind Manage access: what the server offers, set apart from the summary it opens from. */
+  .server-body-open {
+    padding-top: 1.25rem;
+  }
+  /* A connected server at a glance: its first-class line and recommended access, then Manage access. */
+  .server-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .server-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 2.5rem;
+  }
+  .server-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-height: 2.5rem;
+    margin-left: -0.25rem;
+    padding-inline: 0.25rem;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 500;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .server-toggle:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .server-toggle > svg {
+    width: 1rem;
+    height: 1rem;
+    color: var(--muted-foreground);
+    transition: rotate 150ms var(--ease-out);
+  }
+  .server-toggle[data-panel-open] > svg {
+    rotate: 90deg;
+  }
+  /* Review recommended access: the exact tools, in each policy, before one Allow. */
+  .recommended,
+  .recommended-review {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .recommended-review {
+    padding: 0.75rem;
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+  }
+  .recommended-head {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .recommended-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+    margin: 0 0 0.25rem;
+    padding: 0;
+    font-size: var(--text-13);
+    list-style: none;
+  }
   .server-claim {
     max-width: 62ch;
     margin: 0;
@@ -1383,6 +1452,44 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-variant-numeric: tabular-nums;
+  }
+  /* A tool's row opens to what its server says about it; closed, its purpose takes one line. */
+  .grant-toggle {
+    min-height: 2.5rem;
+    border-radius: var(--radius-md);
+    text-align: start;
+    touch-action: manipulation;
+  }
+  .grant-toggle:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .grant-toggle > .grant-about {
+    -webkit-line-clamp: 1;
+  }
+  .grant-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    max-width: 62ch;
+    padding: 0 0 0.75rem;
+    color: var(--muted-foreground);
+    font-size: var(--text-13);
+  }
+  .grant-detail > p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .grant-group {
+    display: flex;
+    flex-direction: column;
+    margin-top: 0.75rem;
+  }
+  .grant-group-title {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
   }
   code.grant-about {
     font-family: var(--font-mono);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ServerProfile, ToolView } from '@goblin/contracts'
-import { recommendedApplied, topUpOf } from '../src/components/first-class.tsx'
+import { recommendedApplied, recommendedList, topUpOf } from '../src/components/first-class.tsx'
+import { purposeGroups } from '../src/components/tool-grants.tsx'
 
 const profile: ServerProfile = {
   id: 'mercator',
@@ -44,5 +45,32 @@ describe('where the owner adds funds', () => {
     expect(topUpOf(funded, wallet('ready'))).toBeUndefined()
     expect(topUpOf(profile, wallet('blocked'))).toBeUndefined()
     expect(topUpOf({ ...profile, topUp: { url: 'javascript:alert(1)' } }, wallet('blocked'))).toBeUndefined()
+  })
+})
+
+describe('what Review recommended access lists', () => {
+  it('names exactly the recommended tools the server lists now, by title, in each policy', () => {
+    const listed = [
+      { ...tool('search_services', false), title: 'Search services' },
+      tool('quote_plan', false),
+      { ...tool('create_job', false), title: 'Create a job' },
+      tool('unrelated', false),
+    ]
+    // list_jobs is recommended but not offered now, so it is not promised.
+    expect(recommendedList(profile, listed)).toEqual({ run: ['Search services', 'quote_plan'], ask: ['Create a job'] })
+  })
+})
+
+describe('how Connections groups the tools outside an App', () => {
+  it("sorts by the server's own read-only claim and leaves App tools to their App", () => {
+    const groups = purposeGroups([
+      { ...tool('read', false), readOnlyHint: true },
+      tool('write', false),
+      { ...tool('view', false), appResource: 'ui://x/view' },
+    ])
+    expect(groups.map(({ title, members }) => [title, members.map((each) => each.name)])).toEqual([
+      ['The server says these only read', ['read']],
+      ['These may change things or spend', ['write']],
+    ])
   })
 })

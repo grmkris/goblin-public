@@ -5,7 +5,17 @@ import { useId, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
 import { NotFound } from '@goblin/contracts/api'
-import { Badge, Button, NativeSelect, NativeSelectOption, Receipt, Switch } from '@goblin/ui'
+import {
+  Badge,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  NativeSelect,
+  NativeSelectOption,
+  Receipt,
+  Switch,
+} from '@goblin/ui'
 import { CircleAlertIcon } from 'lucide-react'
 import { appGrantMutation, askFirstMutation, refreshToolsMutation, toolGrantMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
@@ -50,38 +60,50 @@ function ToolRow({
 }) {
   const id = useId()
   return (
-    <li className="grant-row">
-      <span className="grant-text">
-        <span className="grant-name">
-          <span id={id}>{tool.title ?? tool.name}</span>
-          {tool.title !== undefined && <code>{tool.name}</code>}
-          {tool.readOnlyHint === true && <Badge variant="outline">says read-only</Badge>}
-          {tool.destructiveHint === true && <Badge variant="destructive">says destructive</Badge>}
-          {!tool.modelVisible && <Badge variant="outline">App only</Badge>}
-        </span>
-        {tool.description && <span className="grant-about">{tool.description}</span>}
-      </span>
-      {tool.granted && (
-        // A choice, never a toggle on a label: it shows the policy in force and changes only once the runtime has the
-        // new one (the value follows the cache, so a refused change stays as it was).
-        <NativeSelect
-          size="sm"
-          aria-label={`When ${tool.title ?? tool.name} is called`}
-          value={tool.askFirst === true ? 'ask' : 'run'}
-          disabled={pending}
-          onChange={(event) => onAskFirst(event.target.value === 'ask')}
-        >
-          <NativeSelectOption value="run">Runs without asking</NativeSelectOption>
-          <NativeSelectOption value="ask">Asks you first</NativeSelectOption>
-        </NativeSelect>
-      )}
-      <Switch
-        checked={tool.granted}
-        disabled={pending}
-        aria-busy={pending}
-        aria-labelledby={id}
-        onCheckedChange={(checked) => onToggle(checked)}
-      />
+    <li>
+      <Collapsible>
+        <div className="grant-row">
+          {/* The row opens to what the server says about the tool: its raw name, hints and whole description. */}
+          <CollapsibleTrigger render={<button type="button" className="grant-text grant-toggle" />}>
+            <span className="grant-name">
+              <span id={id}>{tool.title ?? tool.name}</span>
+              {tool.destructiveHint === true && <Badge variant="destructive">says destructive</Badge>}
+            </span>
+            {tool.description && <span className="grant-about">{tool.description}</span>}
+          </CollapsibleTrigger>
+          {tool.granted && (
+            // A choice, never a toggle on a label: it shows the policy in force and changes only once the runtime has
+            // the new one (the value follows the cache, so a refused change stays as it was).
+            <NativeSelect
+              size="sm"
+              aria-label={`When ${tool.title ?? tool.name} is called`}
+              value={tool.askFirst === true ? 'ask' : 'run'}
+              disabled={pending}
+              onChange={(event) => onAskFirst(event.target.value === 'ask')}
+            >
+              <NativeSelectOption value="run">Runs without asking</NativeSelectOption>
+              <NativeSelectOption value="ask">Asks you first</NativeSelectOption>
+            </NativeSelect>
+          )}
+          <Switch
+            checked={tool.granted}
+            disabled={pending}
+            aria-busy={pending}
+            aria-labelledby={id}
+            onCheckedChange={(checked) => onToggle(checked)}
+          />
+        </div>
+        <CollapsibleContent>
+          <div className="grant-detail">
+            <span className="grant-name">
+              <code>{tool.name}</code>
+              {tool.readOnlyHint === true && <Badge variant="outline">says read-only</Badge>}
+              {!tool.modelVisible && <Badge variant="outline">App only</Badge>}
+            </span>
+            {tool.description && <p>{tool.description}</p>}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
     </li>
   )
 }
@@ -194,6 +216,20 @@ function GrantsHead({
 
 const names = (list: Tools): readonly string[] => list.map((each) => each.name)
 
+/**
+ * The tools outside an App, by what the server says they do. The headings are its claims: grouping is how the list
+ * reads, never what it allows.
+ */
+export function purposeGroups(tools: Tools): readonly { readonly title: string; readonly members: Tools }[] {
+  const loose = tools.filter((tool) => tool.appResource === undefined)
+  const reads = loose.filter((tool) => tool.readOnlyHint === true)
+  const rest = loose.filter((tool) => tool.readOnlyHint !== true)
+  return [
+    { title: 'The server says these only read', members: reads },
+    { title: 'These may change things or spend', members: rest },
+  ].filter((group) => group.members.length > 0)
+}
+
 const appsOf = (tools: Tools): readonly string[] => [
   ...new Set(tools.flatMap((tool) => (tool.appResource === undefined ? [] : [tool.appResource]))),
 ]
@@ -287,31 +323,38 @@ export function ToolGrants({ connectionId, tools }: { readonly connectionId: str
           <span>{note.text}</span>
         </Receipt>
       )}
-      <ul className="grant-list">
-        {appsOf(tools).map((uri) => (
-          <AppGroup
-            key={uri}
-            connectionId={connectionId}
-            uri={uri}
-            tools={tools.filter((tool) => tool.appResource === uri)}
-            pending={grants.pending}
-            onAllow={(allowed) => grants.allowApp(uri, allowed)}
-            onToggle={grants.toggle}
-            onAskFirst={grants.askFirst}
-          />
-        ))}
-        {tools
-          .filter((tool) => tool.appResource === undefined)
-          .map((tool) => (
-            <ToolRow
-              key={tool.name}
-              tool={tool}
-              pending={grants.pending.has(tool.name)}
-              onToggle={(allowed) => grants.toggle(tool, allowed)}
-              onAskFirst={(enabled) => grants.askFirst(tool, enabled)}
+      {appsOf(tools).length > 0 && (
+        <ul className="grant-list">
+          {appsOf(tools).map((uri) => (
+            <AppGroup
+              key={uri}
+              connectionId={connectionId}
+              uri={uri}
+              tools={tools.filter((tool) => tool.appResource === uri)}
+              pending={grants.pending}
+              onAllow={(allowed) => grants.allowApp(uri, allowed)}
+              onToggle={grants.toggle}
+              onAskFirst={grants.askFirst}
             />
           ))}
-      </ul>
+        </ul>
+      )}
+      {purposeGroups(tools).map(({ title, members }) => (
+        <div key={title} className="grant-group">
+          <h4 className="grant-group-title">{title}</h4>
+          <ul className="grant-list">
+            {members.map((tool) => (
+              <ToolRow
+                key={tool.name}
+                tool={tool}
+                pending={grants.pending.has(tool.name)}
+                onToggle={(allowed) => grants.toggle(tool, allowed)}
+                onAskFirst={(enabled) => grants.askFirst(tool, enabled)}
+              />
+            ))}
+          </ul>
+        </div>
+      ))}
       <p className="server-note">
         Your agent may call only the tools you allow. Ask first holds each call for your decision; remote hints do not
         choose that policy.
