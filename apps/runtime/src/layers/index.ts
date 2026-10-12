@@ -11,6 +11,7 @@ import { DecisionsLive } from './decisions.ts'
 import { DelegationLive, HelperExecutionLive } from './delegation.ts'
 import { ActivateMemoriesLive, CheapModelsLive, KnowledgeLive } from './knowledge.ts'
 import { McpEventsLive, McpHostLive } from './mcp.ts'
+import { OnboardingLive } from './onboarding.ts'
 import { ChannelLive, RoutineRunsLive, RoutinesLive } from './routines.ts'
 import { SkillsLive } from './skills.ts'
 import { WorkspaceLive } from '../workspace/live.ts'
@@ -76,6 +77,7 @@ export const AgentLive = (input: AgentInputs) =>
     then(AppsLive),
     then(DecisionsLive),
     then(WorkspaceLive),
+    then(OnboardingLive),
     then(AgentHttp.layer),
   )
 
