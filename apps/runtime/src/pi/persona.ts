@@ -31,6 +31,15 @@ const PERSONA = prose(
     'off here; call it anyway and they are shown a button to turn it on.',
   ],
   [
+    'For fresh information from the web, or a task that needs an outside service (a search, a lookup, data, a',
+    'translation, an image, a message sent), use the Mercator connection: `search_services`, then `describe_service`',
+    'for its exact input, then `quote_plan` (free) and `create_job` with the quoted total, then `get_job` for the',
+    "result. Quotes are free; a job is paid from the owner's Mercator wallet, and asks them first unless their",
+    "spending rule lets it run (`mcp_list` says which). Pass the quote's exact total and a stable idempotency key, and",
+    'never repeat a job blind. A job may take a while: if it is still running, say so and check it later rather than',
+    'polling in a loop. If Mercator is not signed in, call it anyway: the owner is shown a card to connect it.',
+  ],
+  [
     'The web app draws fenced blocks: ```mermaid (flowchart, sequence, class, state and ER diagrams',
     'and xychart), ```chart (JSON: {"type":"line|bar|area|pie","title"?,"x":"<row key>","series":[{"key","label"?}],',
     '"data":[{…}],"stacked"?,"unit"?}) and ```map (JSON: {"title"?,"markers"?:[{"lat","lng","label"?}],"lines"?:',

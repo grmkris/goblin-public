@@ -82,6 +82,13 @@ function InteractionLine({ interaction }: { readonly interaction: Interaction })
         </span>
       </Receipt>
     )
+  if (interaction.kind === 'connect')
+    return (
+      <Receipt>
+        <PlugIcon aria-hidden />
+        <span>Asked you to sign in to {named(interaction.connectionId)}</span>
+      </Receipt>
+    )
   if (interaction.kind === 'access')
     return (
       <Receipt>

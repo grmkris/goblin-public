@@ -410,6 +410,41 @@ function QuestionCard({ interaction, onAnswer }: { readonly interaction: Questio
   )
 }
 
+type Connect = Extract<Interaction, { kind: 'connect' }>
+
+/**
+ * A call to a connection the owner has not signed in to (ADR 0043): Connect tells the agent to wait and goes to the
+ * server's sign-in; the owner comes back and says to continue. Not now leaves it.
+ */
+function ConnectCard({ interaction, onAnswer }: { readonly interaction: Connect; readonly onAnswer: Answer }) {
+  const { connectionId, name } = interaction
+  const connection = useConnectionLabels()(connectionId)
+  const { busy, error, replying } = useReplying()
+  const connectNow = useConnectNow()
+  const reply = (yes: boolean) =>
+    void replying(async () => {
+      await onAnswer(
+        yes ? `Signing in to ${connection}; continue once it is connected.` : 'Not now.',
+        interactionOperation(interaction),
+      )
+      if (yes) await connectNow(connectionId)
+    })
+  return (
+    <AskCard aria-label={`Sign in to ${connection}`}>
+      <AskCardHeader>
+        <PlugIcon aria-hidden />
+        <p>
+          Your agent needs <strong className="font-medium">{connection}</strong> for {name}, and you are not signed in
+        </p>
+      </AskCardHeader>
+      <AskCardDescription>
+        Sign in to it, choose what your agent may use, then come back and continue.
+      </AskCardDescription>
+      <CardReplies busy={busy} error={error} yes={`Connect ${connection}`} onReply={reply} />
+    </AskCard>
+  )
+}
+
 /** What the agent is waiting on in `thread`, pinned above the composer until the owner replies. */
 export function InteractionCards({
   interactions,
@@ -426,6 +461,8 @@ export function InteractionCards({
       return <GrantCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'access')
       return <AccessCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
+    if (interaction.kind === 'connect')
+      return <ConnectCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />
     if (interaction.kind === 'url') return <UrlRequestCard key={interaction.callId} interaction={interaction} />
     if (interaction.kind === 'server')
       return <ServerRequestCard key={interaction.callId} interaction={interaction} onAnswer={onAnswer} />

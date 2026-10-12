@@ -20,6 +20,8 @@ export type Interaction =
       readonly name: string
     }
   | { readonly kind: 'grant'; readonly callId: string; readonly connectionId: string; readonly name: string }
+  /** A call to a connection the owner has not signed in to: they connect it (ADR 0043). */
+  | { readonly kind: 'connect'; readonly callId: string; readonly connectionId: string; readonly name: string }
   /** A call needed more access than the connection's sign-in granted: the owner signs in again (ADR 0042). */
   | {
       readonly kind: 'access'
@@ -92,6 +94,7 @@ function setupOf(part: ToolPart, details: Record<string, unknown>): Interaction 
 const MARKERS = new Map<string, (part: ToolPart, details: Record<string, unknown>) => Interaction | undefined>([
   ['approval-required', approvalOf],
   ['grant-required', grantOf],
+  ['connect-required', connectOf],
   ['scope-required', accessOf],
   ['url-required', urlOf],
   ['not-in-topic', setupOf],
@@ -139,6 +142,14 @@ function grantOf(part: ToolPart, details: Record<string, unknown>): Interaction 
   if (part.call.name !== 'mcp_call' || target === undefined) return undefined
   if (details.connectionId !== target.connectionId || details.name !== target.name) return undefined
   return { kind: 'grant', callId: part.call.id, connectionId: target.connectionId, name: target.name }
+}
+
+/** A sign-in the owner owes, only from `mcp_call` and only for the connection and tool that were called. */
+function connectOf(part: ToolPart, details: Record<string, unknown>): Interaction | undefined {
+  const target = part.target
+  if (part.call.name !== 'mcp_call' || target === undefined) return undefined
+  if (details.connectionId !== target.connectionId || details.name !== target.name) return undefined
+  return { kind: 'connect', callId: part.call.id, connectionId: target.connectionId, name: target.name }
 }
 
 /** A request for more access, only from `mcp_call` and only for the connection that was called. */
@@ -250,6 +261,7 @@ const OPERATION = {
   approval: 'approval',
   question: 'answer',
   grant: 'grant',
+  connect: 'connect',
   access: 'access',
   url: 'url',
   setup: 'setup',

@@ -94,6 +94,20 @@ describe('what the agent waits on the owner for', () => {
       interactionOperation({ kind: 'approval', callId: 'g1', approvalId: 'mcp:1:g1', connectionId: 's', name: 'n' }),
     ).toBe('approval:g1')
   })
+  it('asks to connect a signed-out connection only for the call that met it (ADR 0043)', () => {
+    const connect = { kind: 'connect-required', connectionId: 'myplan', name: 'document_edit' }
+    expect(interactionOf(mcpCall(connect))).toEqual({
+      kind: 'connect',
+      callId: 'g1',
+      connectionId: 'myplan',
+      name: 'document_edit',
+    })
+    expect(interactionOf(mcpCall({ ...connect, connectionId: 'other' }))).toBeUndefined()
+    expect(
+      interactionOf(mcpCall({ ...connect, origin: { connectionId: 'myplan', trust: 'untrusted' } })),
+    ).toBeUndefined()
+    expect(openInteractions([mcpCall(connect), user('u2')])).toEqual([])
+  })
   it('asks to sign in again with more access only for the connection that was called (ADR 0042)', () => {
     const scope = { kind: 'scope-required', connectionId: 'myplan', scope: 'notes:write' }
     expect(interactionOf(mcpCall(scope))).toEqual({

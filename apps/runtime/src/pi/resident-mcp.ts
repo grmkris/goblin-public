@@ -9,10 +9,10 @@ import { Chats } from '../chats/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import type { SetupScope } from '../setup/scope.ts'
 import { Setups } from '../setup/service.ts'
-import { type GrantDenied, NotFound, type ScopeRequired, UpstreamMcp } from '../http/errors.ts'
+import { type GrantDenied, type NeedsAuthorization, NotFound, type ScopeRequired, UpstreamMcp } from '../http/errors.ts'
 import { describeError } from '../telemetry/attributes.ts'
 import { offersEvents, toolAppResource, toolOffered } from '../mcp/remote.ts'
-import { grantRequiredResult, mcpModelResult, scopeRequiredResult } from '../mcp/extension.ts'
+import { connectRequiredResult, grantRequiredResult, mcpModelResult, scopeRequiredResult } from '../mcp/extension.ts'
 import { named } from '../mcp/labels.ts'
 import { Events, McpConnections, McpGrants, McpServers, Spending, requireResident } from '../mcp/service.ts'
 import { ruleText } from '../mcp/spend.ts'
@@ -56,6 +56,13 @@ const grantRequired = (denied: GrantDenied, options: McpRequestOptions) =>
     const labels = yield* (yield* McpServers).labels()
     return grantRequiredResult(denied.connectionId, denied.name, named(labels, denied.connectionId))
   })
+
+/** A call to a connection the owner has not signed in to, as the model reads it: the owner connects it (ADR 0043). */
+const connectRequired = (needed: NeedsAuthorization, name: string) =>
+  Effect.map(
+    McpServers.use((servers) => servers.labels()),
+    (labels) => new ReadyResult(connectRequiredResult(needed.connectionId, name, named(labels, needed.connectionId))),
+  )
 
 /** A call beyond the connection's granted scope, as the model reads it: the owner signs in again (ADR 0042). */
 const scopeRequired = (required: ScopeRequired, name: string, session: string) =>
@@ -314,6 +321,7 @@ export function residentMcpExtension(run: RunProgram) {
                     ),
                   ),
                   Effect.catchTag('ScopeRequired', (required) => scopeRequired(required, input.name, session)),
+                  Effect.catchTag('NeedsAuthorization', (needed) => connectRequired(needed, input.name)),
                 )
             }),
           ),
