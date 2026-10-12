@@ -8,9 +8,10 @@ import { CircleAlertIcon, CircleCheckIcon, CopyIcon, WalletIcon } from 'lucide-r
 import { useId, useState } from 'react'
 import { useBilling } from '../../account/hooks.ts'
 import { QueryBoundary } from '../../lib/query/query-boundary.tsx'
-import { serversQuery } from '../../mcp/queries.ts'
+import { serverStatusQuery, serversQuery } from '../../mcp/queries.ts'
 import { startAddMutation } from '../../onboarding/queries.ts'
 import { SuggestedServers } from '../server-add.tsx'
+import { PrepaidLine } from '../first-class.tsx'
 import { PayModeChoices } from '../inference-card.tsx'
 import { ConnectServer } from './connect-server.tsx'
 import { QrCode } from './qr-code.tsx'
@@ -177,17 +178,18 @@ export function FundsStep({ view }: { readonly view: OnboardingView }) {
   )
 }
 
+/** Mercator's own balance and how goblin keeps it topped up from the wallet (ADR 0049), once it is connected. */
+function MercatorBalance({ server }: { readonly server: ServerView }) {
+  const status = useQuery(serverStatusQuery(server.connectionId, true)).data
+  if (server.profile === undefined) return null
+  return <PrepaidLine connectionId={server.connectionId} profile={server.profile} wallet={status} />
+}
+
 export function MercatorStep({ view }: { readonly view: OnboardingView }) {
+  const server = useServer(view.mercator.connectionId)
   return (
-    <ConnectServer
-      server={useServer(view.mercator.connectionId)}
-      step="mercator"
-      title="Mercator"
-      allowed={view.mercator.allowed}
-    >
-      <p className="start-note">
-        Mercator pays for jobs from its own balance. goblin tops it up from your Goblin Wallet when a job needs it.
-      </p>
+    <ConnectServer server={server} step="mercator" title="Mercator" allowed={view.mercator.allowed}>
+      {server !== undefined && server !== 'loading' && <MercatorBalance server={server} />}
     </ConnectServer>
   )
 }

@@ -154,11 +154,46 @@ export const startConnect = (request: OnboardingConnect) =>
 /** How long after the kickoff goblin is reminded to propose Topics and Personas (seconds). */
 const KICKOFF_WINDOW = 20 * 60
 
+/** What the agent should know about setup, from the facts below; nothing when there is nothing to say. */
+type SetupFacts = {
+  readonly walletAllowed: boolean
+  readonly unfunded: boolean
+  readonly mercatorAllowed: boolean
+  readonly kickoff: boolean
+}
+
+const KICKOFF_ASK =
+  'The owner just finished setup and said in their first message what they want goblin for. If you have not yet, propose 2 to 4 Topics and at most 2 Personas that fit it, in one ask_user question (kind "multi", each option one Topic or Persona with a one-line why). Create only the ones they choose, with topic_create and persona_create.'
+
+/** The setup note's lines: the pieces still missing, who keeps Mercator funded, and the kickoff's ask. */
+export const setupNote = ({ walletAllowed, unfunded, mercatorAllowed, kickoff }: SetupFacts): string | undefined => {
+  const gaps = [
+    ...(walletAllowed ? [] : ['- The Goblin Wallet is not connected or its tools are not allowed.']),
+    ...(walletAllowed && unfunded ? ['- The Goblin Wallet is not funded, so the free plan has no Credits.'] : []),
+    ...(mercatorAllowed ? [] : ['- Mercator is not connected: no web search and no outside jobs.']),
+  ]
+  const lines = [
+    // Mercator's own balance is goblin's to keep topped up from the wallet (ADR 0049), never the owner's chore.
+    ...(mercatorAllowed && walletAllowed
+      ? [
+          "Mercator's balance is topped up from the Goblin Wallet before a job that needs it; never ask the owner to fund Mercator by hand.",
+        ]
+      : []),
+    ...(gaps.length === 0
+      ? []
+      : [
+          'Setup still missing (the owner finishes it at /start, "Set up goblin"):',
+          ...gaps,
+          'Only when the owner asks for something that needs a missing piece, say which one in one line and point to Set up goblin. Do not bring it up otherwise.',
+        ]),
+    ...(kickoff ? [KICKOFF_ASK] : []),
+  ]
+  return lines.length === 0 ? undefined : lines.join('\n')
+}
+
 /**
- * What goblin's context block says about setup, in main only: the pieces still missing (each one line, so the agent
- * can name it when a request needs it), and right after the kickoff the ask to propose Topics and Personas. Nothing
- * when nothing is missing. Read from what the agent knows locally and the budget's own kept reading of the wallet, so
- * it costs no call to any server.
+ * What goblin's context block says about setup, in main only (`setupNote`). Read from what the agent knows locally
+ * and the budget's own kept reading of the wallet, so it costs no call to any server.
  */
 export const onboardingContext = (session: string) =>
   Effect.gen(function* () {
@@ -168,30 +203,11 @@ export const onboardingContext = (session: string) =>
     const record = yield* Onboarding.use((onboarding) => onboarding.read)
     const servers = yield* McpServers.use((owner) => owner.list())
     const grants = yield* McpGrants.use((owner) => owner.list())
-    const wallet = find(servers, grants, 'wallet')
-    const mercator = find(servers, grants, 'mercator')
     const today = yield* Budget.use((budget) => budget.today(now))
-    const gaps = [
-      ...(wallet.allowed ? [] : ['- The Goblin Wallet is not connected or its tools are not allowed.']),
-      ...(wallet.allowed && today.limit === 0
-        ? ['- The Goblin Wallet is not funded, so the free plan has no Credits.']
-        : []),
-      ...(mercator.allowed ? [] : ['- Mercator is not connected: no web search and no outside jobs.']),
-    ]
-    const kickoff = record?.kickoffAt !== undefined && now - record.kickoffAt < KICKOFF_WINDOW
-    if (gaps.length === 0 && !kickoff) return undefined
-    return [
-      ...(gaps.length === 0
-        ? []
-        : [
-            'Setup still missing (the owner finishes it at /start, "Set up goblin"):',
-            ...gaps,
-            'Only when the owner asks for something that needs a missing piece, say which one in one line and point to Set up goblin. Do not bring it up otherwise.',
-          ]),
-      ...(kickoff
-        ? [
-            'The owner just finished setup and said in their first message what they want goblin for. If you have not yet, propose 2 to 4 Topics and at most 2 Personas that fit it, in one ask_user question (kind "multi", each option one Topic or Persona with a one-line why). Create only the ones they choose, with topic_create and persona_create.',
-          ]
-        : []),
-    ].join('\n')
+    return setupNote({
+      walletAllowed: find(servers, grants, 'wallet').allowed,
+      unfunded: today.limit === 0,
+      mercatorAllowed: find(servers, grants, 'mercator').allowed,
+      kickoff: record?.kickoffAt !== undefined && now - record.kickoffAt < KICKOFF_WINDOW,
+    })
   })

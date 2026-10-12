@@ -152,7 +152,10 @@ describe('first-run Start (ADR 0048)', () => {
 
   it.effect('asks goblin to propose Topics and Personas right after the kickoff, even with nothing missing', () =>
     Effect.gen(function* () {
-      expect(yield* onboardingContext('s1')).toBeUndefined()
+      // All set: only that Mercator's balance is goblin's to top up, never the owner's chore (ADR 0049).
+      const settled = yield* onboardingContext('s1')
+      expect(settled).toContain('never ask the owner to fund Mercator')
+      expect(settled).not.toContain('ask_user')
       yield* changeOnboarding({ status: 'done', step: 'goblin', kickoff: true })
       const kickoff = yield* onboardingContext('s1')
       expect(kickoff).toContain('ask_user')
