@@ -7,9 +7,10 @@ import { MAX_APP_CONTEXT } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
 import { contextPreview } from '../../lib/app-context.ts'
 import type { DownloadFile } from '../../lib/app-download.ts'
+import { appNames } from '../../lib/app-names.ts'
 import { useConnectionLabels } from '../../mcp/hooks.ts'
 import { useAppHost } from './host.tsx'
-import { useConversation } from '../../lib/workspace/hooks.ts'
+import { useApps, useConversation } from '../../lib/workspace/hooks.ts'
 
 export function LinkOffer({
   link,
@@ -118,26 +119,34 @@ export function useSharedContext(conversation: string) {
   }
 }
 
-/** Above the composer: what the conversation's Apps will share with the owner's next message, removable before. */
+/**
+ * Above the composer: one line for what the conversation's Apps will share with the owner's next message, the newest
+ * App by its readable name and how many more share beside it, removable at once before it is sent.
+ */
 export function SharedContextChips({ conversation }: { readonly conversation: string }) {
-  const { shared, drop } = useSharedContext(conversation)
+  const { shared, clear } = useSharedContext(conversation)
   const view = useConversation(conversation)
+  const names = appNames(useApps(), useConnectionLabels())
+  const newest = shared.at(-1)
+  if (newest === undefined) return null
+  const more = shared.length - 1
   const destination = conversation === '1' ? '' : ` to ${view?.title ?? 'Thread'}`
-  return shared.map((instance) => (
-    <div key={instance.app.id} className="app-offer" role="status">
+  return (
+    <div className="app-offer" role="status">
       <AppWindowIcon aria-hidden />
-      <span className="truncate" title={instance.context}>
-        Sharing from {instance.app.title}
-        {destination}: {contextPreview(instance.context ?? '')}
+      <span className="truncate" title={shared.map((instance) => instance.context ?? '').join('\n\n')}>
+        Sharing from {names.get(newest.app.id) ?? newest.app.title}
+        {more > 0 && <span className="tabular-nums"> (+{more})</span>}
+        {destination}: {contextPreview(newest.context ?? '')}
       </span>
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Don't share this with your next message"
-        onClick={() => drop(instance.app.id)}
+        aria-label={more > 0 ? "Don't share these with your next message" : "Don't share this with your next message"}
+        onClick={clear}
       >
         <XIcon />
       </Button>
     </div>
-  ))
+  )
 }
