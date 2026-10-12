@@ -45,7 +45,8 @@ day. Routines and housekeeping stay on goblin's own models: a paid pick stands i
 - **A turn Pi runs again pays again.** A payment is keyed by its challenge, and a re-run gets a new challenge.
 - **Charges are up front.** At goblin's 32,768-token output cap, a call through the proxy costs about $0.02, whatever
   the answer uses.
-- **The 50-Credit free plan stays.** The plan makes it depend on a funded wallet; that lands with the free-tier gate.
+- **The free plan's Credits ask for a funded wallet.** Where the stage sets `GOBLIN_FREE_WALLET_USD` (5 on dev and
+  prod), a free account's 50 Credits a day apply only while its Goblin Wallet holds that much in USDC and USDC.e.
 
 ## Rejected
 

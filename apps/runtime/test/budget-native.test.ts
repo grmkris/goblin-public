@@ -8,6 +8,8 @@ import { Budget } from '../src/budget.ts'
 import { ModelBudgetLive } from '../src/layers/budget.ts'
 import { EntitlementsLive } from '../src/layers/core.ts'
 import { AgentInput, type AgentInputs } from '../src/runtime/input.ts'
+import { McpConnections, McpServers } from '../src/mcp/service.ts'
+import { stub } from './http/api/fixture.ts'
 import { chatDatabase, sqliteDb } from './chats-sqlite.ts'
 
 const PLAN: AccountPlan = {
@@ -40,6 +42,9 @@ const lane = () => {
     Layer.provide(
       Layer.mergeAll(
         sqliteDb(db),
+        // No Goblin Wallet: a plan that is not free never asks for one (ADR 0047).
+        stub(McpServers, { list: () => Effect.succeed([]) }),
+        stub(McpConnections),
         // SAFETY: the budget, the kept plan and the picker read only these from the instance input.
         Layer.succeed(AgentInput, { entitlements: plans, env: { MODEL_ID: 'model-a' } } as AgentInputs),
       ),

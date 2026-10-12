@@ -35,6 +35,8 @@ export interface RuntimeEnv {
    * such an account must subscribe.
    */
   readonly FREE_DAILY_CREDITS?: string
+  /** The dollars a connected Goblin Wallet must hold for the free plan's Credits (ADR 0047); unset or 0, none. */
+  readonly FREE_WALLET_USD?: string
   /**
    * The routes of inference paid per call from the owner's Goblin Wallet a deployment offers (ADR 0047):
    * comma-separated `tempo` (Tempo's MPP proxy) and `goblin` (this deployment's own paid endpoint).

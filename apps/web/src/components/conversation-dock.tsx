@@ -175,6 +175,7 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
     named,
     waiting: waitingOnOwner(waiting, states),
     exhausted: usage !== undefined && budgetFraction(usage) >= 1,
+    walletNeeded: usage?.limit === 0,
   })
   return { running, usage, waiting, context, presence }
 }

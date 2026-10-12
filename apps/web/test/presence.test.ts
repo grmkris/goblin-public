@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Part, ToolPart } from '../src/lib/parts.ts'
 import { presenceOf } from '../src/lib/presence.ts'
 import type { ConversationProjection } from '../src/lib/projection.ts'
+import { BudgetExhausted } from '@goblin/contracts/api'
+import { WALLET_NEEDED, messageOf } from '../src/lib/query/app-error.ts'
 
 const projection = (extra: Partial<ConversationProjection> = {}): ConversationProjection => ({
   messages: [],
@@ -83,6 +85,10 @@ describe('the agent’s presence', () => {
   })
   it('settles into how the last turn ended; stopping is not an error, a cut-off answer says so', () => {
     expect(presenceOf({ ...base, exhausted: true, projection: projection() }).state).toBe('exhausted')
+    // A day with no allowance at all: the free plan waits for a funded Goblin Wallet (ADR 0047).
+    expect(presenceOf({ ...base, exhausted: true, walletNeeded: true, projection: projection() }).label).toBe(
+      'Needs a funded Goblin Wallet',
+    )
     expect(presenceOf({ ...base, projection: projection(), parts: [failure()] }).state).toBe('error')
     expect(presenceOf({ ...base, projection: projection(), parts: [failure(true)] }).state).toBe('idle')
     const cutOff: Part = { kind: 'failure', id: 'f2', failure: { text: 'Cut off', provider: false, cutOff: true } }
@@ -91,5 +97,12 @@ describe('the agent’s presence', () => {
       label: 'Cut off',
     })
     expect(presenceOf({ ...base, projection: projection() })).toEqual({ state: 'idle', label: 'Ready' })
+  })
+})
+
+describe('what a send refused for a wallet says (ADR 0047)', () => {
+  it('points at the wallet and paying per call, not at a spent day', () => {
+    expect(messageOf(new BudgetExhausted({ limit: 0, resetsAt: 86_400 }), 'send the message')).toBe(WALLET_NEEDED)
+    expect(messageOf(new BudgetExhausted({ limit: 50, resetsAt: 86_400 }), 'send the message')).not.toBe(WALLET_NEEDED)
   })
 })
