@@ -199,13 +199,16 @@ async function serverReport(
   const report: ServerReport = { connectionId, status: server.status }
   if (report.status !== 'connected') return report
   // A connected server whose host no longer answers (a stopped tunnel) is the server's outage, not goblin's: the
-  // agent answers it as UpstreamMcp (502, or 504 on a timeout), which the report records instead of failing.
+  // agent answers it as UpstreamMcp (502, or 504 on a timeout), which the report records instead of failing. One that
+  // asks for sign-in on this refresh (NeedsAuthorization, 409) is the server's state too, and is recorded the same way.
   const tools = await dev.owner((api) =>
-    api.mcp
-      .tools({ params: { id: connectionId }, query: { refresh: '' } })
-      .pipe(Effect.catchTag('UpstreamMcp', () => Effect.succeed(undefined))),
+    api.mcp.tools({ params: { id: connectionId }, query: { refresh: '' } }).pipe(
+      Effect.catchTag('UpstreamMcp', () => Effect.succeed('unreachable' as const)),
+      Effect.catchTag('NeedsAuthorization', () => Effect.succeed('needs_auth' as const)),
+    ),
   )
-  if (tools === undefined) return { ...report, probe: 'unreachable' }
+  if (tools === 'unreachable') return { ...report, probe: 'unreachable' }
+  if (tools === 'needs_auth') return { ...report, status: 'needs_auth' }
   report.tools = tools.length
   report.granted = tools.filter((tool) => tool.granted).length
   const probe = probeOf(server.endpoint)
