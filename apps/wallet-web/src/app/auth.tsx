@@ -1,6 +1,7 @@
 // What the app needs from the signed-in owner: who they are and the two signatures each chain asks for. The Privy
 // implementation lives in src/privy/** (lane S) and is mounted by `main.tsx`; `fixture-auth.tsx` stands in for demos.
 import type { EvmChain } from '@goblin/wallet/balances'
+import type { SubscriptionView } from '@goblin/wallet/contract'
 import { createContext, use } from 'react'
 
 /** The chains the owner upgrades and grants an allowance on: every EVM chain the wallet serves (Tempo has no 7702). */
@@ -34,6 +35,10 @@ export interface Auth {
     readonly perHour: string
     readonly days: number
   }) => Promise<void>
+  /** Prepare a merchant's subscription, rebuild and compare it with the terms shown, sign it, confirm it (ADR 0054). */
+  readonly signSubscription: (view: SubscriptionView) => Promise<SubscriptionView>
+  /** Cancel a subscription: the owner's own `disableDelegation` operation, checked, signed and sent. */
+  readonly cancelSubscription: (view: SubscriptionView) => Promise<'revoked' | 'submitted'>
 }
 
 /**

@@ -1,5 +1,6 @@
-// Which page a path is. The console's pages sit inside the Shell and its navigation; setup, consent and approvals are
-// pages the owner lands on from outside, one task each, without it. Any other path is Home.
+// Which page a path is. The console's pages sit inside the Shell and its navigation; setup, consent, approvals and a
+// merchant's subscription (`/subscribe/:id`, ADR 0054) are pages the owner lands on from outside, one task each,
+// without it. Any other path is Home.
 import { normalizePath } from './router.tsx'
 
 /** A page inside the console's Shell. */
@@ -9,6 +10,7 @@ export type Route =
   | { readonly page: ConsolePageName }
   | { readonly page: 'setup' | 'consent' }
   | { readonly page: 'approve'; readonly operationId: string }
+  | { readonly page: 'subscribe'; readonly subscriptionId: string }
 
 const SHELL_PAGES = ['activity', 'limits', 'connections', 'add-funds'] as const
 const FOCUS_PAGES = ['setup', 'consent'] as const
@@ -28,6 +30,10 @@ export function routeOf(path: string): Route {
   if (pathname.startsWith('/approve/')) {
     const operationId = decoded(pathname.slice('/approve/'.length))
     if (operationId !== '') return { page: 'approve', operationId }
+  }
+  if (pathname.startsWith('/subscribe/')) {
+    const subscriptionId = decoded(pathname.slice('/subscribe/'.length))
+    if (subscriptionId !== '') return { page: 'subscribe', subscriptionId }
   }
   const name = pathname.slice(1)
   const shell = SHELL_PAGES.find((page) => page === name)

@@ -29,6 +29,7 @@ import {
   whereOf,
 } from './home-model.ts'
 import { fundedOnBase, isSetUp, setupProgress } from './progress.ts'
+import { Subscriptions } from './subscriptions.tsx'
 
 const QUIET_LINK =
   'rounded-sm text-sm text-muted-foreground underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring pointer-fine:hover:text-foreground'
@@ -383,6 +384,7 @@ export function HomePage() {
         <Actions />
       </div>
       {attention.length > 0 && <NeedsYou items={attention} onCheck={(operation) => check.mutateAsync(operation.id)} />}
+      <Subscriptions />
       <Recent activity={activity} shown={new Set(attention.map((item) => item.operation.id))} />
       <Agents />
     </div>

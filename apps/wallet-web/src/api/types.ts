@@ -14,6 +14,7 @@ import type {
   Recipient,
   ReturnCheck,
   ServiceRule,
+  SubscriptionView,
   WalletLimits,
   WalletStatusResult,
 } from '@goblin/wallet/contract'
@@ -55,4 +56,8 @@ export interface WalletApi {
   readonly deposit: (request: DepositRequest) => Promise<DepositAddress>
   /** Relay's progress for one deposit address; `unknown` when Relay's status API does not answer. */
   readonly depositStatus: (depositAddress: string) => Promise<DepositStatus>
+  /** A merchant's subscription request (or the subscription it became); the first owner to read it is bound to it. */
+  readonly subscription: (id: string) => Promise<SubscriptionView>
+  /** The owner's signed subscriptions, newest first. */
+  readonly subscriptions: () => Promise<readonly SubscriptionView[]>
 }

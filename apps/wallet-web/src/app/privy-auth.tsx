@@ -1,6 +1,6 @@
 // The real Auth: lane S's Privy hooks behind the port the pages use. Onboarding is on Base; Home adds the other chains.
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
-import { useOwner, useSignAllowance, useUpgradeAccount } from '../privy/index.ts'
+import { useOwner, useSignAllowance, useSubscriptionSigning, useUpgradeAccount } from '../privy/index.ts'
 import { type Auth, AuthContext, signInStatus } from './auth.tsx'
 
 /** How long a sign-in may stay unfinished before the page offers to try again or sign out. */
@@ -24,10 +24,11 @@ export function PrivyAuthProvider({ children }: { readonly children: ReactNode }
   const owner = useOwner()
   const upgrader = useUpgradeAccount()
   const allowance = useSignAllowance()
+  const subscriptions = useSubscriptionSigning()
   // The hooks return fresh objects each render; the latest ones are read at call time so `auth` can stay stable.
-  const live = useRef({ owner, upgrader, allowance })
+  const live = useRef({ owner, upgrader, allowance, subscriptions })
   useEffect(() => {
-    live.current = { owner, upgrader, allowance }
+    live.current = { owner, upgrader, allowance, subscriptions }
   })
   const stalled = useStalled(signInStatus({ ...owner, stalled: false }) === 'loading')
   const status = signInStatus({ ...owner, stalled })
@@ -46,6 +47,8 @@ export function PrivyAuthProvider({ children }: { readonly children: ReactNode }
       signAllowance: async (input) => {
         await live.current.allowance.sign(input)
       },
+      signSubscription: (view) => live.current.subscriptions.sign(view),
+      cancelSubscription: (view) => live.current.subscriptions.cancel(view),
     }),
     [status, address],
   )

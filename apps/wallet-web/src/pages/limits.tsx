@@ -31,6 +31,7 @@ import { checkLimits, type LimitDraft } from './limit-draft.ts'
 import { type Meter as LimitMeter, type MeterPeriod, metersOf } from './limits-model.ts'
 import { OtherNetworks } from './other-networks.tsx'
 import { PolicyRequests } from './policy-requests.tsx'
+import { Subscriptions } from './subscriptions.tsx'
 
 const FIELDS = [
   ['perCall', 'Per payment', 'The most one payment can be.'],
@@ -365,6 +366,7 @@ export function LimitsPage() {
       <Async query={limits} rows={3}>
         {(rows) => <InForce limits={rows} me={me.data} />}
       </Async>
+      <Subscriptions />
       <div className="flex flex-col divide-y divide-border border-y border-border">
         <PolicyRequests />
         {limits.data !== undefined && limits.data.length > 0 && (

@@ -1,6 +1,6 @@
 // The real WalletApi: fetch over OwnerRoutes with the Privy access token, every response decoded with the contract's
 // own schemas so a server that drifts from the contract fails loudly here rather than rendering garbage.
-import { ApiError, OwnerRoutes } from '@goblin/wallet/contract'
+import { ApiError, OwnerRoutes, SubscriptionRoutes } from '@goblin/wallet/contract'
 import * as Data from 'effect/Data'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
@@ -133,7 +133,13 @@ const writes = (
   deposit: (request) => call(OwnerRoutes.deposit, { body: request }),
 })
 
+/** Subscriptions a merchant asked the owner to sign (ADR 0054); signing and cancelling go through `src/privy`. */
+const subscriptions = (call: Call): Pick<WalletApi, 'subscription' | 'subscriptions'> => ({
+  subscription: (id) => call(SubscriptionRoutes.view, { params: { id } }),
+  subscriptions: () => call(SubscriptionRoutes.list),
+})
+
 export function createHttpApi(getToken: () => Promise<string | null>): WalletApi {
   const call = makeCall(getToken)
-  return { ...reads(call), ...writes(call) }
+  return { ...reads(call), ...writes(call), ...subscriptions(call) }
 }

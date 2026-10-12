@@ -60,6 +60,15 @@ export const usePolicyChanges = () => {
   const api = useApi()
   return useQuery({ queryKey: ['policy-changes'], queryFn: api.policyChanges })
 }
+/** A subscription request as its sign page shows it; a refusal (another owner's, unknown) is not retried. */
+export const useSubscription = (id: string) => {
+  const api = useApi()
+  return useQuery({ queryKey: ['subscription', id], queryFn: () => api.subscription(id), retry: false })
+}
+export const useSubscriptions = () => {
+  const api = useApi()
+  return useQuery({ queryKey: ['subscriptions'], queryFn: api.subscriptions })
+}
 export const useOAuthRequest = (id: string) => {
   const api = useApi()
   return useQuery({ queryKey: ['oauth-request', id], queryFn: () => api.oauthRequest(id), retry: false })

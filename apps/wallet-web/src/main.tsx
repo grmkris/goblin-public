@@ -23,7 +23,11 @@ const fixtureStart: FixtureStart = FIXTURE_STARTS.find((start) => start === fixt
 function Fixtures() {
   const world = useMemo(() => createFixtureApi(fixtureStart), [])
   return (
-    <FixtureAuthProvider onUpgrade={world.simulate.upgrade} onAllowance={world.simulate.allowance}>
+    <FixtureAuthProvider
+      onUpgrade={world.simulate.upgrade}
+      onAllowance={world.simulate.allowance}
+      onSubscription={world.simulate.subscription}
+    >
       <ApiProvider api={world}>
         <App />
       </ApiProvider>

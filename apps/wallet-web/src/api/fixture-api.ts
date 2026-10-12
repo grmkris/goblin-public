@@ -13,6 +13,7 @@ import {
   type Me,
   type Operation,
   type PolicyChange,
+  type SubscriptionView,
   termsHash,
   type WalletStatusResult,
 } from '@goblin/wallet/contract'
@@ -33,6 +34,7 @@ import {
   SERVICES,
   STATUS,
 } from './fixtures.ts'
+import { fixtureSubscriptions, signedNow } from './subscription-fixtures.ts'
 import type { WalletApi } from './types.ts'
 
 const delay = async <T>(value: T): Promise<T> => {
@@ -73,6 +75,8 @@ interface World {
   readonly activity: readonly Operation[]
   readonly limits: readonly LimitView[]
   readonly deposits: Map<string, FixtureDeposit>
+  /** goblin Pro: a request to sign, and in a busy wallet a subscription already running. */
+  subscriptions: readonly SubscriptionView[]
   /** Balance reads since the agent wallet was created, in `fresh`: the third one sees the send land. */
   reads: number
 }
@@ -82,6 +86,8 @@ export interface FixtureApi extends WalletApi {
   readonly simulate: {
     readonly upgrade: (chain: EvmChain) => void
     readonly allowance: (input: { readonly chain: EvmChain; readonly perHour: string }) => void
+    /** The owner signed subscription `id` (and its first period was paid), or cancelled it. */
+    readonly subscription: (id: string, change: 'signed' | 'cancelled') => SubscriptionView | undefined
   }
 }
 
@@ -94,6 +100,12 @@ const withSetup = (chains: Me['chains'], chain: EvmChain, patch: Partial<ChainSe
 
 function simulate(world: World): FixtureApi['simulate'] {
   return {
+    subscription: (id, change) => {
+      world.subscriptions = world.subscriptions.map((view) =>
+        view.id !== id ? view : change === 'signed' ? signedNow(view) : { ...view, status: 'revoked' },
+      )
+      return world.subscriptions.find((view) => view.id === id)
+    },
     upgrade: (chain) => {
       world.me = { ...world.me, chains: withSetup(world.me.chains, chain, { upgraded: true }) }
     },
@@ -346,7 +358,15 @@ export function createFixtureApi(start: FixtureStart = 'ready'): FixtureApi {
     activity: busy ? OPERATIONS : [],
     limits: busy ? LIMITS : FRESH_STATUS.limits,
     deposits: new Map(),
+    subscriptions: fixtureSubscriptions(busy),
     reads: 0,
   }
-  return { ...reads(world), ...writes(world), ...deposits(world), simulate: simulate(world) }
+  const subscriptions: Pick<WalletApi, 'subscription' | 'subscriptions'> = {
+    subscription: (id) => {
+      const found = world.subscriptions.find((view) => view.id === id)
+      return found === undefined ? Promise.reject(new Error('This subscription is not known.')) : delay(found)
+    },
+    subscriptions: () => delay(world.subscriptions.filter((view) => view.status !== 'pending')),
+  }
+  return { ...reads(world), ...writes(world), ...deposits(world), ...subscriptions, simulate: simulate(world) }
 }

@@ -8,10 +8,11 @@
  * The browser never signs what the server says: `reviewSubscription` rebuilds the delegation from the terms the owner
  * was shown and compares hashes first, as `reviewAllowance` does.
  */
-import { type Address, type Hex, getAddress } from 'viem'
+import { type Address, type Hex, getAddress, isAddress, isHex } from 'viem'
 import { parseUnits } from '../amounts/index.ts'
 import type { Chain } from '../chains/index.ts'
 import { canonicalJson } from '../contract/hash.ts'
+import type { SignedDelegation } from '../contract/merchant.ts'
 import type { TypedDataJson } from '../contract/signer.ts'
 import * as Option from 'effect/Option'
 import {
@@ -214,12 +215,35 @@ export const periodAt = (startsAt: string, terms: Pick<SubscriptionTerms, 'perio
 export const periodStart = (startsAt: string, terms: Pick<SubscriptionTerms, 'periodDays'>, n: number): string =>
   new Date(Date.parse(startsAt) + (n - 1) * periodSeconds(terms) * 1000).toISOString()
 
+const hexOf = (value: string): Hex => {
+  if (!isHex(value, { strict: true })) throw new Error('invalid_delegation: a field is not hex')
+  return value
+}
+const addressOf = (value: string): Address => {
+  if (!isAddress(value, { strict: false })) throw new Error('invalid_delegation: a field is not an address')
+  return value
+}
+
+/** A signed delegation as the contract carries it (plain strings), checked back into the encoders' types. */
+const delegationJsonOf = (signed: typeof SignedDelegation.Type): DelegationJson => ({
+  delegate: addressOf(signed.delegate),
+  delegator: addressOf(signed.delegator),
+  authority: hexOf(signed.authority),
+  caveats: signed.caveats.map((item) => ({
+    enforcer: addressOf(item.enforcer),
+    terms: hexOf(item.terms),
+    args: hexOf(item.args),
+  })),
+  salt: signed.salt,
+  signature: hexOf(signed.signature),
+})
+
 /**
  * The owner's cancellation as one call of their own account: `DelegationManager.disableDelegation` of the signed
  * subscription. Only the delegator's account can send it; the chain refuses every redemption after it.
  */
-export const revokeCall = (chain: Chain, signed: DelegationJson) => ({
+export const revokeCall = (chain: Chain, signed: typeof SignedDelegation.Type) => ({
   target: chain.delegation.manager,
   value: 0n,
-  callData: disableCalldata(fromDelegationJson(signed)),
+  callData: disableCalldata(fromDelegationJson(delegationJsonOf(signed))),
 })

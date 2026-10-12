@@ -8,6 +8,7 @@ import { HomePage } from '../pages/home.tsx'
 import { LimitsPage } from '../pages/limits.tsx'
 import { SetupPage } from '../pages/setup/setup-page.tsx'
 import { SignInPage } from '../pages/sign-in.tsx'
+import { SubscribePage } from '../pages/subscribe.tsx'
 import { Async } from '../ui/async.tsx'
 import { useAuth } from './auth.tsx'
 import { useLocation } from './router.tsx'
@@ -55,5 +56,6 @@ export function App() {
   if (route.page === 'setup') return <SetupPage />
   if (route.page === 'consent') return <ConsentPage />
   if (route.page === 'approve') return <ApprovePage operationId={route.operationId} />
+  if (route.page === 'subscribe') return <SubscribePage subscriptionId={route.subscriptionId} />
   return <SignedIn page={route.page} />
 }

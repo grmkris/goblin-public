@@ -1,3 +1,4 @@
+import type { SubscriptionView } from '@goblin/wallet/contract'
 import { type ReactNode, useMemo, useState } from 'react'
 import { OWNER } from '../api/fixtures.ts'
 import { type Auth, AuthContext, type OwnerChain } from './auth.tsx'
@@ -8,10 +9,12 @@ const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 
 export function FixtureAuthProvider({
   onUpgrade,
   onAllowance,
+  onSubscription,
   children,
 }: {
   readonly onUpgrade: (chain: OwnerChain) => void
   readonly onAllowance: (input: { readonly chain: OwnerChain; readonly perHour: string }) => void
+  readonly onSubscription: (id: string, change: 'signed' | 'cancelled') => SubscriptionView | undefined
   readonly children: ReactNode
 }) {
   const [signedIn, setSignedIn] = useState(true)
@@ -34,8 +37,17 @@ export function FixtureAuthProvider({
         await pause()
         onAllowance({ chain, perHour })
       },
+      signSubscription: async (view) => {
+        await pause()
+        return onSubscription(view.id, 'signed') ?? view
+      },
+      cancelSubscription: async (view) => {
+        await pause()
+        onSubscription(view.id, 'cancelled')
+        return 'revoked'
+      },
     }),
-    [signedIn, onUpgrade, onAllowance],
+    [signedIn, onUpgrade, onAllowance, onSubscription],
   )
   return <AuthContext value={auth}>{children}</AuthContext>
 }
