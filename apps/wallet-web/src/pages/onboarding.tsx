@@ -99,9 +99,9 @@ function FundStep({
   readonly unread: boolean
 }) {
   return (
-    <Step index={index} state={state} title="Fund your account" summary="Your account holds ETH on Base.">
+    <Step index={index} state={state} title="Fund your account" summary="Your account holds funds on Base.">
       <p className="text-sm/relaxed text-muted-foreground text-pretty">
-        Your account needs a little ETH on Base before the upgrade. Send some from any chain; this step finishes when it
+        Your account needs USDC or ETH on Base before the upgrade. Send some from any chain; this step finishes when it
         lands.
       </p>
       {unread && (
@@ -109,7 +109,7 @@ function FundStep({
           Your balance on Base could not be read yet. It is checked again every few seconds.
         </p>
       )}
-      <AddFundsCard owner={owner} receive="ETH" />
+      <AddFundsCard owner={owner} />
     </Step>
   )
 }

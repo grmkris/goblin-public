@@ -27,13 +27,22 @@ describe('setupProgress', () => {
   })
 })
 
+const ownerOnBaseZero = (row: (typeof STATUS.balances)[number]) =>
+  row.chain === 'base' && row.holder === 'owner' ? { ...row, balance: '0' } : row
+const keepOwner = (symbol: string) => (row: (typeof STATUS.balances)[number]) =>
+  row.chain === 'base' && row.holder === 'owner' && row.symbol !== symbol ? { ...row, balance: '0' } : row
+
 describe('fundedOnBase', () => {
-  it('needs ETH in the owner account on Base, and says nothing until Base is read', () => {
+  it('counts USDC or ETH in the owner account on Base', () => {
     expect(fundedOnBase(STATUS)).toBe(true)
-    const noGas = STATUS.balances.map((row) =>
-      row.chain === 'base' && row.holder === 'owner' && row.symbol === 'ETH' ? { ...row, balance: '0' } : row,
-    )
-    expect(fundedOnBase({ ...STATUS, balances: noGas })).toBe(false)
+    expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('USDC')) })).toBe(true)
+    expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('ETH')) })).toBe(true)
+  })
+  it('ignores the agent wallet and other networks', () => {
+    const elsewhere = STATUS.balances.map((row) => ownerOnBaseZero({ ...row, balance: '50' }))
+    expect(fundedOnBase({ ...STATUS, balances: elsewhere })).toBe(false)
+  })
+  it('says nothing until Base is read', () => {
     expect(fundedOnBase({ ...STATUS, balances: [] })).toBeUndefined()
     expect(fundedOnBase(undefined)).toBeUndefined()
   })

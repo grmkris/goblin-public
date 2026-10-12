@@ -8,7 +8,7 @@ interface SetupState {
   readonly connected: boolean
   /** The owner chose to connect later. */
   readonly skipped: boolean
-  /** The owner holds ETH on Base; undefined until Base is read. */
+  /** The owner holds USDC or ETH on Base; undefined until Base is read. */
   readonly funded: boolean | undefined
 }
 
@@ -24,8 +24,8 @@ export function setupProgress(me: Me, state: SetupState): StepId | 'done' {
   return state.connected || state.skipped ? 'done' : 'connect'
 }
 
-/** Any ETH in the owner's account on Base: what the upgrade and the fees after it need. Undefined until Base is read. */
+/** Any USDC or ETH in the owner's account on Base: the account is topped up. Undefined until Base is read. */
 export function fundedOnBase(status: WalletStatusResult | undefined): boolean | undefined {
-  const eth = ownerOnBase(status, 'ETH')
-  return eth === undefined ? undefined : eth > 0n
+  const held = [ownerOnBase(status, 'USDC'), ownerOnBase(status, 'ETH')].filter((units) => units !== undefined)
+  return held.length === 0 ? undefined : held.some((units) => units > 0n)
 }
