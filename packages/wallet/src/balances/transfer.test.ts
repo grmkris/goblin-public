@@ -20,8 +20,17 @@ interface Sent {
 
 const down: JsonRpc = () => Promise.reject(new JsonRpcError('eth_getBalance', 'HTTP 429'))
 
-const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; mined?: boolean; baseFee?: bigint }) => {
+const harness = (options: {
+  held: bigint
+  gas?: bigint
+  revertWith?: string
+  mined?: boolean
+  baseFee?: bigint
+  /** How many balance reads after the top-up still show the old balance (a lagging RPC node). */
+  staleReads?: number
+}) => {
   const sent: Sent[] = []
+  let stale = options.staleReads ?? 0
   const agent: AgentSigner = {
     address: AGENT,
     signTypedData: () => Promise.reject(new Error('unused')),
@@ -38,6 +47,8 @@ const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; min
       case 'eth_call': {
         const to = String(field(params[0], 'to'))
         if (options.revertWith !== undefined && to === BASE.delegation.manager) throw new Error(options.revertWith)
+        // After the top-up is sent the agent holds what it asked for, once the node has caught up.
+        if (sent.some((s) => s.to === BASE.delegation.manager) && (stale -= 1) < 0) return word(10n ** 12n)
         return word(options.held)
       }
       case 'eth_getTransactionReceipt':
@@ -100,6 +111,35 @@ describe('EVM transfer', () => {
     expect(h.sent.map((s) => s.to)).toEqual([BASE.delegation.manager, BASE.usdc.address])
     expect(h.sent.map((s) => s.key)).toEqual(['op-tr-evm-1:topup', 'op-tr-evm-1:pay'])
     expect(result.topUpAmount).toBe(1_500_000n)
+  })
+
+  test('after a top-up, waits for a lagging node to show the new balance, or fails before paying', async () => {
+    const slept: number[] = []
+    const wait = { attempts: 4, sleep: async (ms: number) => void slept.push(ms) }
+    const lagging = harness({ held: 0n, staleReads: 2 })
+    const paid = await transferUsdc({
+      ...base,
+      amount: 1_000_000n,
+      agent: lagging.agent,
+      rpc: lagging.rpc,
+      topUp: topUp(10_000_000n),
+      wait,
+    })
+    expect(lagging.sent.map((s) => s.key)).toEqual(['op-tr-evm-1:topup', 'op-tr-evm-1:pay'])
+    expect(paid.status).toBe('success')
+    expect(slept.length).toBeGreaterThan(0)
+    const stuck = harness({ held: 0n, staleReads: 99 })
+    await expect(
+      transferUsdc({
+        ...base,
+        amount: 1_000_000n,
+        agent: stuck.agent,
+        rpc: stuck.rpc,
+        topUp: topUp(10_000_000n),
+        wait,
+      }),
+    ).rejects.toMatchObject({ code: 'rpc_unavailable', uncertain: false })
+    expect(stuck.sent.map((s) => s.key)).toEqual(['op-tr-evm-1:topup'])
   })
 
   test('refuses before sending when there is no allowance to cover the shortfall', async () => {

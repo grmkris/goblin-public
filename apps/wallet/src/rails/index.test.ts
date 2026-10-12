@@ -209,8 +209,11 @@ describe('paid fetch', () => {
 
   test('after an allowance top-up, the x402 payment waits for the new balance to settle before it signs', async () => {
     const slept: number[] = []
+    let toppedUp = false
     const empty: JsonRpc = async (method) => {
       if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
+      // Once the top-up's receipt is in, the agent holds the USDC it asked for.
+      if (method === 'eth_call' && toppedUp) return word(10_000_000n)
       if (method === 'eth_getBlockByNumber') return { baseFeePerGas: '0x989680' }
       if (method === 'eth_estimateGas') return '0x186a0'
       if (method === 'eth_maxPriorityFeePerGas') return '0xf4240'
@@ -219,7 +222,13 @@ describe('paid fetch', () => {
     const rails = createRails(
       deps({
         rpcFor: () => empty,
-        topUp: async () => ({ redeemCalldata: () => '0xfeed', available: async () => 20_000_000n }),
+        topUp: async () => ({
+          redeemCalldata: () => {
+            toppedUp = true
+            return '0xfeed'
+          },
+          available: async () => 20_000_000n,
+        }),
         wait: { attempts: 2, sleep: async (ms) => void slept.push(ms) },
         fetchFn: exaFetch(),
       }),

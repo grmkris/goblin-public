@@ -93,6 +93,27 @@ export interface EnsureFundsInput {
   readonly wait?: WaitOptions | undefined
 }
 
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Waits until the RPC shows the topped-up balance. A load-balanced public RPC can answer the next read from a node that
+ * has not seen the top-up's block, and the payment's simulation would then fail for want of funds. Nothing of the
+ * payment is signed yet, so giving up is a plain failure: the agent keeps the topped-up USDC for the next attempt.
+ */
+const untilVisible = async (input: EnsureFundsInput, token: string): Promise<void> => {
+  const sleep = input.wait?.sleep ?? pause
+  for (let attempt = 0; attempt < (input.wait?.attempts ?? 10); attempt += 1) {
+    // expected: an unanswered read counts as not visible yet; the loop asks again.
+    const held = await erc20Balance(input.rpc, token, input.agent.address).catch(() => 0n)
+    if (held >= input.amount) return
+    await sleep(input.wait?.intervalMs ?? 1000)
+  }
+  throw new TransferError(
+    'rpc_unavailable',
+    'The allowance top-up landed but the chain did not show it in time; nothing was paid. Try again.',
+  )
+}
+
 /** Makes sure the agent holds `amount` USDC, redeeming exactly the shortfall from the owner's allowance if it is short. */
 export const ensureUsdc = async (input: EnsureFundsInput): Promise<{ topUpTxHash?: Hex; topUpAmount?: bigint }> => {
   const chain = chainByKey(input.chain, input.live ?? true)
@@ -111,6 +132,7 @@ export const ensureUsdc = async (input: EnsureFundsInput): Promise<{ topUpTxHash
       'The allowance top-up did not confirm.',
       redeemed.status === 'pending',
     )
+  await untilVisible(input, chain.usdc.address)
   return { topUpTxHash: redeemed.hash, topUpAmount: shortfall }
 }
 
