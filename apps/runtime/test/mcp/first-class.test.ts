@@ -156,6 +156,21 @@ describe('Goblin Wallet (first-class profile)', () => {
     expect(goblinWallet(walletAnswer())?.payFrom).toBeUndefined()
   })
 
+  it('keeps the setup the wallet says is left, bounded, and none when it lists nothing', () => {
+    const setup = ['create the agent wallet', "add USDC to the account on Base (the upgrade's gas is paid in USDC)"]
+    expect(goblinWallet({ ...walletAnswer(), setup })?.setup).toEqual(setup)
+    expect(goblinWallet({ ...walletAnswer(), setup: [] })).not.toHaveProperty('setup')
+    expect(goblinWallet(walletAnswer())).not.toHaveProperty('setup')
+    const many = goblinWallet({
+      ...walletAnswer(),
+      setup: ['  ', ...Array.from({ length: 20 }, () => 'x'.repeat(500))],
+    })
+    expect(many?.setup).toHaveLength(8)
+    expect(many?.setup?.[0]).toHaveLength(120)
+    // A setup list that is not a list of phrases is no status at all: goblin cannot tell the wallet is ready.
+    expect(goblinWallet({ ...walletAnswer(), setup: 'create the agent wallet' })).toBeUndefined()
+  })
+
   it("reads the wallet's own status shape from structuredContent.status", () => {
     expect(goblinWallet(walletAnswer())).toEqual({
       kind: 'wallet',

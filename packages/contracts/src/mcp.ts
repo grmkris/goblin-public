@@ -280,6 +280,18 @@ export type ServerProfile = typeof ServerProfile.Type
 const Readiness = Schema.Literals(['ready', 'blocked', 'not_verified'])
 const Short = Schema.String.check(Schema.isMaxLength(64))
 
+/** At most this many setup gaps a wallet reports, each at most `SETUP_GAP_LENGTH` characters. */
+export const SETUP_GAPS = 8
+export const SETUP_GAP_LENGTH = 120
+
+/**
+ * What a wallet says the owner still has to set up on its own site before it can pay, in its own short phrases ("create
+ * the agent wallet"): the server's claim, bounded, shown as plain text only.
+ */
+export const SetupGaps = Schema.Array(Schema.String.check(Schema.isMaxLength(SETUP_GAP_LENGTH))).check(
+  Schema.isMaxLength(SETUP_GAPS),
+)
+
 /**
  * A first-class server's wallet as goblin reads it from the server's status tool (ADR 0043): whether paid work can run
  * now and whether it is funded, each token's balance, what its signed limit has left and can spend now, when the
@@ -313,6 +325,8 @@ export const WalletStatus = Schema.Struct({
    * and token it takes. The balance itself is the token's in `tokens`.
    */
   depositTo: Schema.optional(Schema.Struct({ address: Short, chain: Short, token: Short })),
+  /** What is left to set up on the wallet's own site before it can pay (the Goblin Wallet's `setup`); absent when none. */
+  setup: Schema.optional(SetupGaps),
 })
 export type WalletStatus = typeof WalletStatus.Type
 

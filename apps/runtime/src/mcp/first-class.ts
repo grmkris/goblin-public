@@ -1,4 +1,4 @@
-import type { ServerProfile, WalletStatus } from '@goblin/contracts'
+import { SETUP_GAPS, SETUP_GAP_LENGTH, type ServerProfile, type WalletStatus } from '@goblin/contracts'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
@@ -96,7 +96,16 @@ type Reported = {
     | { readonly address: string; readonly chain: string; readonly token: string; readonly held?: string | undefined }
     | undefined
   readonly depositTo?: { readonly address: string; readonly chain: string; readonly token: string } | undefined
+  readonly setup?: readonly string[] | undefined
 }
+
+/** The setup gaps a wallet reports, bounded: at most `SETUP_GAPS`, each cut to `SETUP_GAP_LENGTH`, blank ones dropped. */
+const gapsOf = (setup: readonly string[] | undefined): readonly string[] =>
+  (setup ?? [])
+    .map((gap) => gap.trim().slice(0, SETUP_GAP_LENGTH))
+    .filter((gap) => gap !== '')
+    .slice(0, SETUP_GAPS)
+
 const shaped = ({
   paid,
   funding,
@@ -107,6 +116,7 @@ const shaped = ({
   stablecoinUsdPartial,
   payFrom,
   depositTo,
+  setup,
 }: Reported): WalletStatus => ({
   kind: 'wallet' as const,
   paid,
@@ -136,6 +146,7 @@ const shaped = ({
     : {
         depositTo: { address: short(depositTo.address), chain: short(depositTo.chain), token: short(depositTo.token) },
       }),
+  ...(gapsOf(setup).length === 0 ? {} : { setup: gapsOf(setup) }),
 })
 
 /**
@@ -165,10 +176,12 @@ export const mercatorWallet = (structured: unknown): WalletStatus | undefined =>
   )
 
 /**
- * The part of Goblin Wallet's `wallet_status` answer goblin reads: its `status`, which has goblin's own shape, and
- * where the agent pays from (`payFrom`, absent until the agent wallet exists).
+ * The part of Goblin Wallet's `wallet_status` answer goblin reads: its `status`, which has goblin's own shape, where the
+ * agent pays from (`payFrom`, absent until the agent wallet exists), and what the owner still has to set up on the
+ * wallet's own site (`setup`, its short phrases, absent when nothing is left).
  */
 const GoblinWalletStatus = Schema.Struct({
+  setup: Schema.optional(Schema.Array(Schema.String)),
   payFrom: Schema.optional(
     Schema.Struct({ address: Address, chain: Schema.String, token: Schema.String, held: Schema.optional(Amount) }),
   ),
@@ -191,11 +204,18 @@ const GoblinWalletStatus = Schema.Struct({
 })
 const decodeGoblinWallet = Schema.decodeUnknownOption(GoblinWalletStatus)
 
-/** Goblin Wallet's status, read from `structuredContent.status` of its status tool, with the address it pays from. */
+/**
+ * Goblin Wallet's status, read from `structuredContent.status` of its status tool, with the address it pays from and
+ * the setup it says is left.
+ */
 export const goblinWallet = (structured: unknown): WalletStatus | undefined =>
   Option.getOrUndefined(
-    Option.map(decodeGoblinWallet(structured), ({ status, payFrom }) =>
-      shaped({ ...status, payFrom: payFrom === undefined || NO_ADDRESS.test(payFrom.address) ? undefined : payFrom }),
+    Option.map(decodeGoblinWallet(structured), ({ status, payFrom, setup }) =>
+      shaped({
+        ...status,
+        payFrom: payFrom === undefined || NO_ADDRESS.test(payFrom.address) ? undefined : payFrom,
+        setup,
+      }),
     ),
   )
 
