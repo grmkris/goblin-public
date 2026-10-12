@@ -36,7 +36,34 @@ function jsonResult(text: string): FormResult {
   })
 }
 
-/** One field: free text, a number, one of a list (or any), yes or no (or any), or texts separated by commas. */
+/** The choices a field picks from: an enum's values, or yes and no; none for a field typed in. */
+const choicesOf = (field: FormField): readonly { readonly value: string; readonly label: string }[] | undefined => {
+  if (field.kind === 'choice') return field.options.map((option) => ({ value: option, label: option }))
+  if (field.kind !== 'boolean') return undefined
+  return [
+    { value: 'true', label: 'Yes' },
+    { value: 'false', label: 'No' },
+  ]
+}
+
+/** A typed-in field's own input props: the server's default as its hint, and a number's keyboard. */
+const inputKind = (field: FormField) => ({
+  ...(field.fallback === undefined ? {} : { placeholder: field.fallback }),
+  ...(field.kind === 'number'
+    ? { type: 'number', inputMode: field.integer ? ('numeric' as const) : ('decimal' as const) }
+    : {}),
+})
+
+/** What a list's empty choice says: pick one, the server's default, or any value. */
+const emptyChoice = (field: FormField): string => {
+  if (field.required && !field.nullable) return 'Choose one'
+  return field.fallback === undefined ? 'Any' : `Default: ${field.fallback}`
+}
+
+/**
+ * One field: free text, a number, one of a list (or any), yes or no (or any), or texts separated by commas. Left empty,
+ * it shows the server's default when it has one.
+ */
 function FormFieldInput({
   id,
   field,
@@ -49,37 +76,25 @@ function FormFieldInput({
   readonly onInput: (value: string) => void
 }) {
   const control = `${id}-${field.name}`
-  const choices =
-    field.kind === 'choice'
-      ? field.options.map((option) => ({ value: option, label: option }))
-      : field.kind === 'boolean'
-        ? [
-            { value: 'true', label: 'Yes' },
-            { value: 'false', label: 'No' },
-          ]
-        : undefined
+  const choices = choicesOf(field)
+  const needed = field.required && !field.nullable
   return (
     <Field>
       <FieldLabel htmlFor={control}>
         {field.title}
-        {!field.required && <span className="field-optional"> (optional)</span>}
+        {!needed && <span className="field-optional"> (optional)</span>}
       </FieldLabel>
       {choices === undefined ? (
         <Input
           id={control}
           value={value}
           onChange={(event) => onInput(event.target.value)}
-          required={field.required}
-          {...(field.kind === 'number' && { type: 'number', inputMode: field.integer ? 'numeric' : 'decimal' })}
+          required={needed}
+          {...inputKind(field)}
         />
       ) : (
-        <NativeSelect
-          id={control}
-          value={value}
-          onChange={(event) => onInput(event.target.value)}
-          required={field.required}
-        >
-          <NativeSelectOption value="">{field.required ? 'Choose one' : 'Any'}</NativeSelectOption>
+        <NativeSelect id={control} value={value} onChange={(event) => onInput(event.target.value)} required={needed}>
+          <NativeSelectOption value="">{emptyChoice(field)}</NativeSelectOption>
           {choices.map((choice) => (
             <NativeSelectOption key={choice.value} value={choice.value}>
               {choice.label}
@@ -158,7 +173,7 @@ export function SchemaForm({
     <div className="schema-form">
       {asJson ? (
         <Field>
-          <FieldLabel htmlFor={`${id}-json`}>Only events matching (optional)</FieldLabel>
+          <FieldLabel htmlFor={`${id}-json`}>Filters as JSON (optional)</FieldLabel>
           <Textarea
             id={`${id}-json`}
             value={json}
@@ -166,7 +181,9 @@ export function SchemaForm({
             maxLength={16_384}
             onChange={(event) => write(event.target.value)}
           />
-          <FieldDescription>Exact values as JSON, which the server checks for you.</FieldDescription>
+          <FieldDescription>
+            Exact values the events must have, which the server checks. Empty takes every one.
+          </FieldDescription>
         </Field>
       ) : (
         fields?.map((field) => (
@@ -180,7 +197,7 @@ export function SchemaForm({
         ))
       )}
       {fields?.length === 0 && !asJson && (
-        <p className="server-note">This event takes no filters: every one matches.</p>
+        <p className="server-note">This event takes no filters: you get every one.</p>
       )}
       {problem !== '' && (
         <p className="server-note" role="alert">

@@ -60,4 +60,34 @@ describe('a form from an event input schema (ADR 0041)', () => {
     expect(formInputs(fields, { kind: 'other' })).toBeUndefined()
     expect(formInputs(fields, { unknown: 'x' })).toBeUndefined()
   })
+
+  it('takes a nullable property as a plain optional field, with the server default as its hint', () => {
+    const fields = formFields({
+      type: 'object',
+      properties: {
+        botId: { type: ['string', 'null'], title: 'Bot', description: 'Which bot.' },
+        chat: { anyOf: [{ type: 'string' }, { type: 'null' }], default: 'all' },
+        limit: { type: 'integer', default: 20 },
+      },
+      required: ['botId'],
+    })
+    expect(
+      fields?.map(({ name, kind, required, nullable, fallback }) => ({ name, kind, required, nullable, fallback })),
+    ).toEqual([
+      { name: 'botId', kind: 'text', required: true, nullable: true, fallback: undefined },
+      { name: 'chat', kind: 'text', required: false, nullable: true, fallback: 'all' },
+      { name: 'limit', kind: 'number', required: false, nullable: false, fallback: '20' },
+    ])
+    // Left empty, a required field that takes null sends null; a filled one sends its value.
+    expect(formValue(fields ?? [], {})).toEqual({ value: { botId: null } })
+    expect(formValue(fields ?? [], { botId: 'b-1' })).toEqual({ value: { botId: 'b-1' } })
+    expect(formInputs(fields ?? [], { botId: null })).toEqual({ botId: '' })
+  })
+
+  it('still sends a union of types to JSON', () => {
+    expect(formFields({ type: 'object', properties: { id: { type: ['string', 'number'] } } })).toBeUndefined()
+    expect(
+      formFields({ type: 'object', properties: { id: { anyOf: [{ type: 'string' }, { type: 'number' }] } } }),
+    ).toBeUndefined()
+  })
 })
