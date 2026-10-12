@@ -125,10 +125,29 @@ describe('Goblin Wallet (first-class profile)', () => {
       'request_policy_change',
     ])
     expect(view.recommended.run).toContain('wallet_open')
+    // Funding the agent from any chain signs and spends nothing, so its App's Add funds runs when needed.
+    for (const funding of ['add_funds', 'add_funds_status', 'view_state'])
+      expect(view.recommended.run).toContain(funding)
     // Checking an uncertain spend never pays, so it runs when needed; paying again always asks.
     expect(view.recommended.run).toContain('operation_check')
     for (const moving of view.recommended.ask) expect(view.recommended.run).not.toContain(moving)
     expect(profileOf('https://wallet.goblin.surf/mcp')?.statusTool?.name).toBe('wallet_status')
+  })
+
+  it('reads where the agent pays from, and nothing while the agent wallet does not exist yet', () => {
+    const payFrom = { address: `0x${'b'.repeat(40)}`, chain: 'tempo', token: 'USDC.e', held: '4.93' }
+    expect(goblinWallet({ ...walletAnswer(), payFrom })?.payFrom).toEqual(payFrom)
+    const unread = { ...payFrom, held: undefined }
+    expect(goblinWallet({ ...walletAnswer(), payFrom: unread })?.payFrom).toEqual({
+      address: payFrom.address,
+      chain: 'tempo',
+      token: 'USDC.e',
+    })
+    expect(goblinWallet({ ...walletAnswer(), payFrom: { ...payFrom, address: `0x${'0'.repeat(40)}` } })?.payFrom).toBe(
+      undefined,
+    )
+    expect(goblinWallet({ ...walletAnswer(), payFrom: { ...payFrom, address: 'not-an-address' } })).toBeUndefined()
+    expect(goblinWallet(walletAnswer())?.payFrom).toBeUndefined()
   })
 
   it("reads the wallet's own status shape from structuredContent.status", () => {

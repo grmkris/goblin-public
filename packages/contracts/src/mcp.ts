@@ -278,6 +278,11 @@ export const WalletStatus = Schema.Struct({
   stablecoinUsd: Schema.optional(Short),
   /** Set when a chain could not be read, so `stablecoinUsd` may be short of what is held. */
   stablecoinUsdPartial: Schema.optional(Schema.Literal(true)),
+  /**
+   * Where the server's own payments come from, when it says so: the address to fund, its chain and token, and what it
+   * holds there (a decimal string; absent when that chain could not be read).
+   */
+  payFrom: Schema.optional(Schema.Struct({ address: Short, chain: Short, token: Short, held: Schema.optional(Short) })),
 })
 export type WalletStatus = typeof WalletStatus.Type
 

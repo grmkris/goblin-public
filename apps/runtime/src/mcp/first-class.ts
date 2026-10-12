@@ -74,6 +74,9 @@ type Reported = {
   readonly expiresAt?: string | null | undefined
   readonly stablecoinUsd?: string | undefined
   readonly stablecoinUsdPartial?: true | undefined
+  readonly payFrom?:
+    | { readonly address: string; readonly chain: string; readonly token: string; readonly held?: string | undefined }
+    | undefined
 }
 const shaped = ({
   paid,
@@ -83,6 +86,7 @@ const shaped = ({
   expiresAt,
   stablecoinUsd,
   stablecoinUsdPartial,
+  payFrom,
 }: Reported): WalletStatus => ({
   kind: 'wallet' as const,
   paid,
@@ -97,6 +101,16 @@ const shaped = ({
   ...optionalShort('expiresAt', expiresAt),
   ...optionalShort('stablecoinUsd', stablecoinUsd),
   ...(stablecoinUsdPartial === true ? { stablecoinUsdPartial } : {}),
+  ...(payFrom === undefined
+    ? {}
+    : {
+        payFrom: {
+          address: short(payFrom.address),
+          chain: short(payFrom.chain),
+          token: short(payFrom.token),
+          ...optionalShort('held', payFrom.held),
+        },
+      }),
 })
 
 /** Mercator's wallet, read from its status tool: readiness, balances and limits, and when they run out. */
@@ -119,8 +133,18 @@ export const mercatorWallet = (structured: unknown): WalletStatus | undefined =>
     ),
   )
 
-/** The part of Goblin Wallet's `wallet_status` answer goblin reads: its `status`, which has goblin's own shape. */
+/** An EVM address, and the one a wallet reports when it has none yet. */
+const Address = Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]{40}$/u))
+const NO_ADDRESS = /^0x0{40}$/u
+
+/**
+ * The part of Goblin Wallet's `wallet_status` answer goblin reads: its `status`, which has goblin's own shape, and
+ * where the agent pays from (`payFrom`, absent until the agent wallet exists).
+ */
 const GoblinWalletStatus = Schema.Struct({
+  payFrom: Schema.optional(
+    Schema.Struct({ address: Address, chain: Schema.String, token: Schema.String, held: Schema.optional(Amount) }),
+  ),
   status: Schema.Struct({
     paid: Readiness,
     funding: Readiness,
@@ -140,9 +164,13 @@ const GoblinWalletStatus = Schema.Struct({
 })
 const decodeGoblinWallet = Schema.decodeUnknownOption(GoblinWalletStatus)
 
-/** Goblin Wallet's status, read from `structuredContent.status` of its status tool. */
+/** Goblin Wallet's status, read from `structuredContent.status` of its status tool, with the address it pays from. */
 export const goblinWallet = (structured: unknown): WalletStatus | undefined =>
-  Option.getOrUndefined(Option.map(decodeGoblinWallet(structured), ({ status }) => shaped(status)))
+  Option.getOrUndefined(
+    Option.map(decodeGoblinWallet(structured), ({ status, payFrom }) =>
+      shaped({ ...status, payFrom: payFrom === undefined || NO_ADDRESS.test(payFrom.address) ? undefined : payFrom }),
+    ),
+  )
 
 /** Mercator (ADR 0043): search and paid outside tasks, paid from the owner's Mercator wallet. */
 const MERCATOR: Profile = {
@@ -217,6 +245,10 @@ const WALLET: Profile = {
       'wallet_home',
       'swap_quote',
       'bridge_quote',
+      // Funding the agent from any chain: a deposit address and its progress; they sign and spend nothing.
+      'add_funds',
+      'add_funds_status',
+      'view_state',
       // Paid inference's payments: within the wallet's own limits, and never visible to the model (ADR 0047).
       'pay_challenge',
     ],
