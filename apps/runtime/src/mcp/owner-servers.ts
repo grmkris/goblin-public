@@ -324,7 +324,10 @@ const connecting = (owner: OwnerServers) => ({
     yield* Effect.sync(() => owner.offers?.settle(connectionId, state, at))
   }),
   tools: Effect.fn('McpServers.tools')(function* (connectionId: string, refresh: boolean) {
-    const snapshot = refresh ? yield* owner.manager.reconnect(connectionId) : yield* owner.manager.connect(connectionId)
+    // "Look for new tools" lists them again over the open connection: reconnecting would cut off calls under way.
+    const snapshot = refresh
+      ? yield* owner.manager.refreshTools(connectionId)
+      : yield* owner.manager.connect(connectionId)
     return snapshot.tools.map((tool) => toolView(owner.grants, connectionId, tool))
   }),
 })

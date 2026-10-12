@@ -643,7 +643,12 @@ Grants are per discovered tool (`app_mcp_grants`), toggled by the owner. A tool 
 resource. An App's switch (`PUT /api/mcp/app-grants`, `McpGrants.setApp`) grants an App as a whole: exactly the
 tools that declare its `ui://` resource, including the ones only the App may call, and the resource itself.
 Connections (`components/tool-grants.tsx`) lists those tools under the switch, each still adjustable, and offers Allow
-all and None, which send the same exact grants one at a time. Tool annotations from the server are shown as its claims
+all and None, which send the same exact grants one at a time, skip (and count) a tool the server no longer offers, then
+read the list again; the card says how it went. Granting a tool goblin has not listed lists the tools once more first;
+taking a grant back always works, even for a tool the server dropped or while it cannot be reached. When a connection's
+whole tool list differs from the last one it saw, the runtime publishes `mcp.tools` with a digest of the new list; the
+workspace feed carries it (`tools`) and the web reads that connection's tools again. "Look for new tools" lists them
+again over the open connection. Tool annotations from the server are shown as its claims
 ("says read-only") but never grant anything. Disconnecting forgets credentials and keeps grants. When the model calls a tool that exists but is
 not granted, nothing runs. `mcp_call` returns an error result whose details are
 `{ kind: 'grant-required', connectionId, name }`, and the model is told to wait.

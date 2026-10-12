@@ -26,6 +26,26 @@ export const untilUnused = (lastUse: () => number, ms: number) =>
 const LISTEN_RETRY_MS = 60_000
 const LIST_FRESH_MS = 60_000
 
+/** A short digest of a tool list (FNV-1a over its JSON): equal lists, equal digests. */
+const digestOf = (tools: McpConnectionSnapshot['tools']): string => {
+  let hash = 0x81_1c_9d_c5
+  for (const char of JSON.stringify(tools)) {
+    hash ^= char.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 0x01_00_01_93) >>> 0
+  }
+  return `${hash.toString(16)}-${String(tools.length)}`
+}
+
+/** After a whole list: tells the manager's listener when the connection's tools differ from the last list it saw. */
+export const toolsListed = (manager: Manager, connection: Connection) =>
+  Effect.suspend(() => {
+    const connectionId = connection.server.connectionId
+    const digest = digestOf(connection.snapshot.tools)
+    if (manager.digests.get(connectionId) === digest) return Effect.void
+    manager.digests.set(connectionId, digest)
+    return manager.options.toolsChanged?.(connectionId, digest) ?? Effect.void
+  })
+
 /** One whole list of the connection's tools, bounded as discovery is: the snapshot with those tools. */
 const listTools = (manager: Manager, connection: Connection) => {
   const connectionId = connection.server.connectionId
@@ -58,6 +78,7 @@ export const refreshTools = (
         connection.snapshot = yield* listTools(manager, connection)
       }
       connection.listedAt = yield* Clock.currentTimeMillis
+      yield* toolsListed(manager, connection)
       return connection.snapshot
     }).pipe(
       Effect.tapError(() =>

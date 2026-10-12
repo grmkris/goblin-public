@@ -3,6 +3,7 @@ import type { AppView } from '@goblin/contracts'
 import { usageQuery } from '../../agent/queries.ts'
 import { agentAppQuery, agentAppsQuery } from '../../agent-apps/queries.ts'
 import { conversationKeys } from '../../conversations/queries.ts'
+import { mcpKeys } from '../../mcp/queries.ts'
 import { personaKeys } from '../../personas/queries.ts'
 import { routinesQuery } from '../../routines/queries.ts'
 import { type Activity, type Slice, type Slices, activityOf } from './slices.ts'
@@ -41,6 +42,14 @@ function agentAppEdges(before: readonly AppView[], after: readonly AppView[]): Q
   return [agentAppsQuery.queryKey, ...[...names].map((name) => agentAppQuery(name).queryKey)]
 }
 
+/** A connection whose tools the feed says changed: its tool list on Connections. */
+function toolEdges(before: Readonly<Record<string, string>>, after: Readonly<Record<string, string>>): QueryKey[] {
+  if (before === after) return []
+  return Object.keys(after)
+    .filter((connectionId) => before[connectionId] !== after[connectionId])
+    .map((connectionId) => mcpKeys.tools(connectionId))
+}
+
 /**
  * The one map from what the feed changed to the server reads that went stale with it. `before` is the cache as it was
  * (a slice not there yet changed nothing anyone read), `after` the cache now: Query keeps the values that did not
@@ -50,14 +59,16 @@ function agentAppEdges(before: readonly AppView[], after: readonly AppView[]): Q
  * - An agent app new, changed or gone: the Apps list and that app's page.
  * - A Persona changed: the Persona reads, what composers can tag, and the routines (one handed to it may wait to be
  *   confirmed again).
+ * - A connection's tools changed (the server said so, or a list came back different): its tool list.
  */
 export function staleAfter(before: Cached, after: Cached): readonly QueryKey[] {
-  const { activity, apps, personas } = after
+  const { activity, apps, personas, tools } = after
   return [
     ...(before.activity === undefined || activity === undefined ? [] : runEdges(before.activity, activity)),
     ...(before.apps === undefined || apps === undefined ? [] : agentAppEdges(before.apps, apps)),
     ...(before.personas === undefined || before.personas === personas
       ? []
       : [personaKeys.all, conversationKeys.composers, routinesQuery.queryKey]),
+    ...(before.tools === undefined || tools === undefined ? [] : toolEdges(before.tools, tools)),
   ]
 }

@@ -29,6 +29,7 @@ import {
 import { EMPTY_WORKSPACE, activityOf, applyChanges, fromSnapshot } from '../src/lib/workspace/slices.ts'
 import { workspaceQueries, workspaceSync } from '../src/lib/workspace/sync.ts'
 import { readNotificationsMutation } from '../src/notices/queries.ts'
+import { mcpKeys } from '../src/mcp/queries.ts'
 import { personaKeys } from '../src/personas/queries.ts'
 import { routinesQuery } from '../src/routines/queries.ts'
 
@@ -578,6 +579,7 @@ describe('what goes stale with a feed change', () => {
       receipts: undefined,
       proposals: undefined,
       notifications: undefined,
+      tools: undefined,
     }
     expect(staleAfter(none, before)).toEqual([])
   })
@@ -605,6 +607,14 @@ describe('what goes stale with a feed change', () => {
       conversationKeys.composers,
       routinesQuery.queryKey,
     ])
+  })
+
+  it('is a connection whose tools changed: its tool list, once per different list', () => {
+    const changed = applyChanges(before, [{ type: 'tools', connectionId: 'sq', digest: 'a1-4' }])
+    expect(staleAfter(present(before), changed)).toEqual([mcpKeys.tools('sq')])
+    const same = applyChanges(changed, [{ type: 'tools', connectionId: 'sq', digest: 'a1-4' }])
+    expect(same.tools).toBe(changed.tools)
+    expect(staleAfter(present(changed), same)).toEqual([])
   })
 
   it('is read again through the cache when the feed sends it', () => {

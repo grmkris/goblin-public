@@ -3,7 +3,7 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
 import { epochSeconds } from '../clock.ts'
-import { Forbidden, NotFound, attemptSync } from '../http/errors.ts'
+import { type AppError, Forbidden, NotFound, attemptSync } from '../http/errors.ts'
 import type { SingleFlight } from '../observability/single-flight.ts'
 import { mcpAuth } from './auth.ts'
 import type { McpManager } from './connections.ts'
@@ -18,7 +18,7 @@ import type { AddedRegistries } from './registries.ts'
 import { toolAppResource } from './remote.ts'
 import type { AddedServers } from './servers.ts'
 import { McpConnections, McpGrants, McpServers } from './service.ts'
-import type { McpManagerOptions, McpServerConfig } from './types.ts'
+import type { McpConnectionSnapshot, McpManagerOptions, McpServerConfig } from './types.ts'
 
 export type McpHostOptions = {
   /** The deployment's servers; they win over an added server with the same id. */
@@ -43,18 +43,49 @@ export type McpHostOptions = {
   readonly report?: StepReport
   /** The owner's decision on a call (held calls); without it, an ask-first tool is refused to all but the owner. */
   readonly authorizeTool?: McpManagerOptions['authorizeTool']
+  /** Told when a connection's tools change (mcp/tool-list.ts), so the owner's Connections page reads them again. */
+  readonly toolsChanged?: McpManagerOptions['toolsChanged']
 }
+
+/**
+ * The connection's tools, listed once more when `listed` finds nothing in them: the server may have changed its tools
+ * since goblin last listed (ADR 0042).
+ */
+const toolsNow = (
+  manager: McpManager,
+  connectionId: string,
+  listed: (snapshot: McpConnectionSnapshot) => boolean,
+): Effect.Effect<McpConnectionSnapshot, AppError> =>
+  Effect.flatMap(manager.connect(connectionId), (snapshot) =>
+    listed(snapshot) ? Effect.succeed(snapshot) : manager.refreshTools(connectionId),
+  )
+
+/**
+ * The tools to grant against: what `toolsNow` lists. A revoke does not need them: it goes ahead even when the server
+ * cannot be reached, or no longer lists the tool, so the owner can always take a grant back.
+ */
+const toolsFor = (
+  manager: McpManager,
+  connectionId: string,
+  allowed: boolean,
+  listed: (snapshot: McpConnectionSnapshot) => boolean,
+) =>
+  allowed
+    ? Effect.map(toolsNow(manager, connectionId, listed), Option.some)
+    : Effect.option(toolsNow(manager, connectionId, listed))
 
 /** Grants or revokes one discovered tool; its `ui://` App resource follows the tools that use it. */
 const setTool = (grants: Grants, manager: McpManager, tool: { readonly connectionId: string; readonly name: string }) =>
   Effect.fnUntraced(function* (allowed: boolean) {
     const { connectionId, name } = tool
-    const snapshot = yield* manager.connect(connectionId)
-    const found = snapshot.tools.find((item) => item.name === name)
-    if (found === undefined) return yield* new NotFound({ what: `tool ${name}` })
+    const named = (snapshot: McpConnectionSnapshot) => snapshot.tools.some((item) => item.name === name)
+    const snapshot = Option.getOrUndefined(yield* toolsFor(manager, connectionId, allowed, named))
+    const found = snapshot?.tools.find((item) => item.name === name)
+    if (found === undefined && allowed) return yield* new NotFound({ what: `tool ${name}` })
     const now = yield* epochSeconds
     return yield* Effect.sync(() => {
       grants.set({ connectionId, capability: 'tool', name }, allowed, now)
+      if (snapshot === undefined || found === undefined) return grants.list()
       const appResource = toolAppResource(found)
       if (appResource === undefined) return grants.list()
       const stillUsed = snapshot.tools.some(
@@ -74,9 +105,10 @@ const setTool = (grants: Grants, manager: McpManager, tool: { readonly connectio
 const setApp = (grants: Grants, manager: McpManager, app: { readonly connectionId: string; readonly uri: string }) =>
   Effect.fnUntraced(function* (allowed: boolean) {
     const { connectionId, uri } = app
-    const snapshot = yield* manager.connect(connectionId)
-    const tools = snapshot.tools.filter((tool) => toolAppResource(tool) === uri)
-    if (tools.length === 0) return yield* new NotFound({ what: `app ${uri}` })
+    const declares = (snapshot: McpConnectionSnapshot) => snapshot.tools.some((tool) => toolAppResource(tool) === uri)
+    const snapshot = Option.getOrUndefined(yield* toolsFor(manager, connectionId, allowed, declares))
+    const tools = snapshot?.tools.filter((tool) => toolAppResource(tool) === uri) ?? []
+    if (tools.length === 0 && allowed) return yield* new NotFound({ what: `app ${uri}` })
     const now = yield* epochSeconds
     return yield* Effect.sync(() => {
       for (const tool of tools) grants.set({ connectionId, capability: 'tool', name: tool.name }, allowed, now)
@@ -140,6 +172,7 @@ export const mcpHost = (
         auth: yield* mcpAuth({ credentials, appUrl: options.appUrl, fetch: options.fetch }),
         fetch: options.fetch,
         ...(options.report === undefined ? {} : { report: options.report }),
+        ...(options.toolsChanged === undefined ? {} : { toolsChanged: options.toolsChanged }),
       }).pipe(Effect.orDie)
       const servers = ownerServers({
         manager,

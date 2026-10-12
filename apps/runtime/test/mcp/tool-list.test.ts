@@ -1,4 +1,5 @@
 import { InMemoryServerEventBus, createMcpHandler } from '@modelcontextprotocol/server'
+import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { describe, expect, it } from 'vitest'
 import type { McpStep } from '../../src/telemetry/report.ts'
@@ -47,6 +48,8 @@ const rolesServer = ({ listChanged = false, listenIdleMs = 60_000 } = {}) => {
     { bus },
   )
   const reports: { step: McpStep; outcome: string }[] = []
+  /** Each change of the tool list goblin reported, as the owner's Connections page would hear it. */
+  const changed: string[] = []
   const manager = managerOf({
     servers: [serverConfig],
     allows: (grant) =>
@@ -59,6 +62,7 @@ const rolesServer = ({ listChanged = false, listenIdleMs = 60_000 } = {}) => {
     maxResultBytes: 4096,
     listenIdleMs,
     report: (step, outcome) => reports.push({ step, outcome }),
+    toolsChanged: (connectionId, digest) => Effect.sync(() => void changed.push(`${connectionId}:${digest}`)),
     fetch: async (input, init) => {
       const request = new Request(input, init)
       const body = request.method === 'POST' ? await request.clone().text() : ''
@@ -71,7 +75,7 @@ const rolesServer = ({ listChanged = false, listenIdleMs = 60_000 } = {}) => {
     await manager.dispose()
     await official.close()
   }
-  return { state, manager, reports, official, bus, dispose }
+  return { state, manager, reports, changed, official, bus, dispose }
 }
 
 /** Waits, in small real steps, until `check` holds; fails after about five seconds. */
@@ -153,6 +157,25 @@ describe("a connection's tools, re-listed in place (unit, ADR 0042)", () => {
 /** The names of the tools the connection lists now. */
 const listed = async (manager: ReturnType<typeof rolesServer>['manager']) =>
   Option.getOrThrow(await manager.connections.snapshot('roles')).tools.map(({ name }) => name)
+
+describe("telling the owner's page that a tool list changed", () => {
+  it('tells once per different list: at open, after a change, and never for a list that came back the same', async () => {
+    const { state, manager, changed, dispose } = rolesServer()
+    try {
+      await manager.connections.connect('roles')
+      expect(changed).toHaveLength(1)
+      await manager.connections.refreshTools('roles')
+      expect(changed).toHaveLength(1)
+      state.names = ['whoami', 'create_task']
+      await manager.connections.refreshTools('roles')
+      expect(changed).toHaveLength(2)
+      expect(changed[1]).not.toBe(changed[0])
+      expect(changed.every((each) => each.startsWith('roles:'))).toBe(true)
+    } finally {
+      await dispose()
+    }
+  })
+})
 
 describe('live tool lists over subscriptions/listen (unit, ADR 0042)', () => {
   it('lists the tools again, in place, when the server announces a change while the connection is used', async () => {

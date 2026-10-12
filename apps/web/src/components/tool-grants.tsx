@@ -4,8 +4,10 @@
 import { useId, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { ToolView } from '@goblin/contracts'
-import { Badge, Button, Switch } from '@goblin/ui'
-import { appGrantMutation, askFirstMutation, toolGrantMutation } from '../mcp/queries.ts'
+import { NotFound } from '@goblin/contracts/api'
+import { Badge, Button, Receipt, Switch } from '@goblin/ui'
+import { CircleAlertIcon } from 'lucide-react'
+import { appGrantMutation, askFirstMutation, refreshToolsMutation, toolGrantMutation } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { AppTile } from './apps/app-tile.tsx'
 
@@ -168,21 +170,45 @@ const appsOf = (tools: Tools): readonly string[] => [
   ...new Set(tools.flatMap((tool) => (tool.appResource === undefined ? [] : [tool.appResource]))),
 ]
 
+/** What the last change to a server's tools said: how Allow all went, or why a switch did not change. */
+type Note = { readonly tone: 'neutral' | 'error'; readonly text: string }
+
+/** Whole-server copy: "Allowed 57", with how many the server no longer offers. */
+const allNote = (allowed: boolean, changed: number, gone: number): Note => {
+  const done = `${allowed ? 'Allowed' : 'Turned off'} ${String(changed)}`
+  return {
+    tone: 'neutral',
+    text: gone === 0 ? `${done}.` : `${done} · ${String(gone)} no longer offered by the server.`,
+  }
+}
+
+/** One grant of a whole-server change: true when it changed, false when the server no longer offers it. */
+const offered = (grant: Promise<unknown>) =>
+  grant.then(
+    () => true,
+    (error: unknown) => {
+      if (error instanceof NotFound) return false
+      throw error
+    },
+  )
+
 /** The grant calls behind the switches; each updates the list in the cache once the runtime has it. */
-function useGrants(connectionId: string, tools: Tools, onMessage: (message: string) => void) {
+function useGrants(connectionId: string, tools: Tools, onNote: (note: Note | undefined) => void) {
   const { pending, during } = usePending()
   const toolGrant = useMutation(toolGrantMutation)
   const appGrant = useMutation(appGrantMutation)
   const askFirst = useMutation(askFirstMutation)
+  const refresh = useMutation(refreshToolsMutation)
   const tool = (name: string, allowed: boolean) => toolGrant.mutateAsync({ connectionId, name, allowed })
   const app = (uri: string, allowed: boolean) => appGrant.mutateAsync({ connectionId, uri, allowed })
   const attempt = (busy: readonly string[], action: string, work: () => Promise<unknown>) =>
-    void during(busy, () =>
-      work().then(
+    void during(busy, () => {
+      onNote(undefined)
+      return work().then(
         () => undefined,
-        (error: unknown) => onMessage(messageOf(error, action)),
-      ),
-    )
+        (error: unknown) => onNote({ tone: 'error', text: messageOf(error, action) }),
+      )
+    })
   return {
     pending,
     askFirst: (target: ToolView, enabled: boolean) =>
@@ -193,35 +219,46 @@ function useGrants(connectionId: string, tools: Tools, onMessage: (message: stri
       attempt([target.name], `change ${target.name}`, () => tool(target.name, allowed)),
     allowApp: (uri: string, allowed: boolean) =>
       attempt(names(tools.filter((each) => each.appResource === uri)), 'change that App', () => app(uri, allowed)),
-    /** Every App, then every other tool, one grant at a time; it stops at the first refusal. */
+    /**
+     * Every App, then every other tool, one grant at a time. A tool or App the server no longer offers is skipped and
+     * counted (the list shown may be older than the server's); any other refusal stops. The list is read again after.
+     */
     all: (allowed: boolean) => {
       const loose = tools.filter((each) => each.appResource === undefined && each.granted !== allowed)
       const apps = appsOf(tools).filter((uri) =>
         tools.some((each) => each.appResource === uri && each.granted !== allowed),
       )
       attempt(names(tools), allowed ? 'allow every tool' : 'turn every tool off', async () => {
-        for (const uri of apps) await app(uri, allowed)
-        for (const each of loose) await tool(each.name, allowed)
+        let changed = 0
+        let gone = 0
+        const count = (done: boolean, size: number) => {
+          if (done) changed += size
+          else gone += size
+        }
+        for (const uri of apps)
+          count(await offered(app(uri, allowed)), tools.filter((each) => each.appResource === uri).length)
+        for (const each of loose) count(await offered(tool(each.name, allowed)), 1)
+        await refresh.mutateAsync(connectionId)
+        onNote(allNote(allowed, changed, gone))
       })
     },
   }
 }
 
 /** The server's tools, an App's tools grouped under it; grants change here and the list follows. */
-export function ToolGrants({
-  connectionId,
-  tools,
-  onMessage,
-}: {
-  readonly connectionId: string
-  readonly tools: Tools
-  readonly onMessage: (message: string) => void
-}) {
-  const grants = useGrants(connectionId, tools, onMessage)
+export function ToolGrants({ connectionId, tools }: { readonly connectionId: string; readonly tools: Tools }) {
+  const [note, setNote] = useState<Note>()
+  const grants = useGrants(connectionId, tools, setNote)
   if (tools.length === 0) return <p className="server-note">This server offers no tools.</p>
   return (
     <section className="server-part" aria-label="Tools">
       <GrantsHead tools={tools} busy={grants.pending.size > 0} onAll={grants.all} />
+      {note !== undefined && (
+        <Receipt tone={note.tone}>
+          {note.tone === 'error' && <CircleAlertIcon aria-hidden />}
+          <span>{note.text}</span>
+        </Receipt>
+      )}
       <ul className="grant-list">
         {appsOf(tools).map((uri) => (
           <AppGroup

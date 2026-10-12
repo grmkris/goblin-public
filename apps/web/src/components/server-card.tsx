@@ -110,7 +110,7 @@ function ServerBody({
             Loading its tools…
           </p>
         ) : (
-          <ToolGrants connectionId={server.connectionId} tools={tools} onMessage={onMessage} />
+          <ToolGrants connectionId={server.connectionId} tools={tools} />
         )}
       </div>
     </CardContent>

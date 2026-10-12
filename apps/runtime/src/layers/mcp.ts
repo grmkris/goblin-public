@@ -36,6 +36,7 @@ import {
 import type { McpManagerOptions, UrlPrompt } from '../mcp/types.ts'
 import { type HeldUrlRequest, McpUrlRequestStore } from '../mcp/url-requests.ts'
 import type { SingleFlight } from '../observability/single-flight.ts'
+import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput, type AgentInputs } from '../runtime/input.ts'
 import { SqliteSkillState } from '../skills/store.ts'
@@ -170,11 +171,12 @@ const heldCalls =
 export const McpHostLive: Layer.Layer<
   McpConnections | McpServers | McpGrants | Approvals | UrlRequests | Cipher,
   never,
-  AgentInput | Db | SingleFlight
+  AgentInput | Db | SingleFlight | Changes
 > = Layer.unwrap(
   Effect.gen(function* () {
     const input = yield* AgentInput
     const db = yield* Db
+    const changes = yield* Changes
     const { env } = input
     const servers = configuredServers(env.MCP_SERVERS)
     const added = new AddedServerStore(db)
@@ -201,6 +203,7 @@ export const McpHostLive: Layer.Layer<
       appUrl: env.APP_URL,
       fetch: input.mcpFetch,
       report: mcpReporter(input.telemetry),
+      toolsChanged: (connectionId, digest) => changes.publish('mcp.tools', { connectionId, digest }),
     })
     return Layer.mergeAll(
       host,

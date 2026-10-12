@@ -35,6 +35,8 @@ export type Slices = {
   readonly receipts: readonly OrganizeReceipt[]
   readonly proposals: readonly DecisionProposal[]
   readonly notifications: readonly NotificationView[]
+  /** Each connection's tool list as the feed last named it (a digest), by connection id: a change means read it again. */
+  readonly tools: Readonly<Record<string, string>>
 }
 export type Slice = keyof Slices
 
@@ -48,6 +50,7 @@ export const SLICE_NAMES: readonly Slice[] = [
   'receipts',
   'proposals',
   'notifications',
+  'tools',
 ]
 
 export const EMPTY_WORKSPACE: Slices = {
@@ -60,6 +63,7 @@ export const EMPTY_WORKSPACE: Slices = {
   receipts: [],
   proposals: [],
   notifications: [],
+  tools: {},
 }
 
 /** How many settled Persona answers and organizing receipts the slices keep: enough for Activity and Tasks. */
@@ -174,6 +178,14 @@ const SLICES: { readonly [K in Slice]: SliceOf<Slices[K]> } = {
         ? upsertBy(value, change.notification, same, newestNotification).slice(0, KEPT_NOTIFICATIONS)
         : value,
   },
+  tools: {
+    // The snapshot names no lists: a connection's first change after it is a change all the same.
+    read: () => ({}),
+    apply: (value, change) =>
+      change.type === 'tools' && value[change.connectionId] !== change.digest
+        ? { ...value, [change.connectionId]: change.digest }
+        : value,
+  },
 }
 
 /** Slice `slice` as the snapshot describes it. */
@@ -194,6 +206,7 @@ export const fromSnapshot = (snapshot: WorkspaceSnapshot): Slices => ({
   receipts: sliceOf('receipts', snapshot),
   proposals: sliceOf('proposals', snapshot),
   notifications: sliceOf('notifications', snapshot),
+  tools: sliceOf('tools', snapshot),
 })
 
 /**
@@ -212,6 +225,7 @@ export const applyChanges = (slices: Slices, changes: readonly WorkspaceChange[]
   receipts: sliceAfter('receipts', slices.receipts, changes),
   proposals: sliceAfter('proposals', slices.proposals, changes),
   notifications: sliceAfter('notifications', slices.notifications, changes),
+  tools: sliceAfter('tools', slices.tools, changes),
 })
 
 /** `apps` with each App the owner just changed shown as that call will leave it, the latest last. */

@@ -28,6 +28,13 @@ import type { EventDescriptor } from './events/protocol.ts'
 import type { Consumer, Receipt, Subscription } from './events/store.ts'
 import type { Stage } from './suggested.ts'
 import type { HeldUrlRequest, UrlRequestRow } from './url-requests.ts'
+
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** A connection's tools changed (ADR 0042): `digest` names the new list, so a reader can tell it from the last. */
+    'mcp.tools': { readonly connectionId: string; readonly digest: string }
+  }
+}
 import type {
   McpCallOptions,
   McpConnectionSnapshot,

@@ -12,7 +12,7 @@ import type { GrantCapability } from './grants.ts'
 import { logClientError, timed } from './log.ts'
 import { ANSWERED, assertEndpoint, bounded, openRemote } from './remote.ts'
 import type { McpConnections } from './service.ts'
-import { listenWhileUsed, refreshTools, stopListening, untilUnused, watchTools } from './tool-list.ts'
+import { listenWhileUsed, refreshTools, stopListening, toolsListed, untilUnused, watchTools } from './tool-list.ts'
 import type { McpConnectionSnapshot, McpManagerOptions, McpRequestOptions, McpServerConfig, McpUse } from './types.ts'
 
 // The connection manager's state and its connections' lifecycle; the requests over a connection, and the manager
@@ -80,6 +80,8 @@ export type Manager = {
   readonly listenIdleMs: number
   /** How many connections it has opened. */
   opened: number
+  /** The digest of each connection's last whole tool list, to tell a change from a list that came back the same. */
+  readonly digests: Map<string, string>
 }
 
 /** The connections as the host that owns them uses them: also adding and removing the servers offered. */
@@ -173,6 +175,7 @@ const open = (manager: Manager, server: McpServerConfig, request: RequestOptions
     manager.connections.set(server.connectionId, connection)
     connection.idle = yield* Effect.forkIn(idleClose(manager, connection), manager.scope)
     yield* watchTools(manager, connection)
+    yield* toolsListed(manager, connection)
     return connection
   })
 
@@ -352,6 +355,7 @@ export const managerState = Effect.fnUntraced(function* (options: McpManagerOpti
     idleMs: options.idleMs ?? 300_000,
     listenIdleMs: options.listenIdleMs ?? 60_000,
     opened: 0,
+    digests: new Map(),
   }
   yield* Effect.addFinalizer(() => closeAll(manager))
   return manager

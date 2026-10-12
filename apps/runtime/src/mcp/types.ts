@@ -81,6 +81,11 @@ export type McpManagerOptions = {
   readonly listenIdleMs?: number
   /** Where each remote step is reported (the run ledger, ADR 0024); a log line when absent. */
   readonly report?: StepReport
+  /**
+   * Told when a connection's tools, as listed whole, differ from the last list it saw (`digest` names the new one), so
+   * the owner's Connections page reads them again.
+   */
+  readonly toolsChanged?: (connectionId: string, digest: string) => Effect.Effect<void>
 }
 export type ApprovalContext = {
   readonly sessionId: string

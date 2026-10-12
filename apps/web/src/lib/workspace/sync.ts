@@ -139,6 +139,7 @@ class WorkspaceSync {
       receipts: this.#cached('receipts'),
       proposals: this.#cached('proposals'),
       notifications: this.#cached('notifications'),
+      tools: this.#cached('tools'),
     }
   }
 
@@ -155,6 +156,7 @@ class WorkspaceSync {
       receipts: cached.receipts ?? EMPTY_WORKSPACE.receipts,
       proposals: cached.proposals ?? EMPTY_WORKSPACE.proposals,
       notifications: cached.notifications ?? EMPTY_WORKSPACE.notifications,
+      tools: cached.tools ?? EMPTY_WORKSPACE.tools,
     }
   }
 

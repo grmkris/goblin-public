@@ -71,6 +71,32 @@ const describe = ({ chats, conversations }: Sources, ids: readonly string[]) =>
       views.flatMap((view) => (Option.isNone(view) ? [] : [{ type: 'conversation', conversation: view.value }])),
   )
 
+/** The owner's decisions, Home layout and connections' tool lists, as `followTopics` follows the rest. */
+const followOwnerState = (
+  changes: Changes['Service'],
+  read: Sources,
+  follow: (where: string, changed: Effect.Effect<readonly WorkspaceChange[], AppError>) => Effect.Effect<void>,
+) =>
+  Effect.all([
+    changes.on('decisions.changed', ({ ids }) =>
+      follow(
+        'workspace.decisions',
+        each(ids, (id) =>
+          Effect.map(read.decisions.view(id), (proposal): WorkspaceChange => ({ type: 'proposal', proposal })),
+        ),
+      ),
+    ),
+    changes.on('mcp.tools', ({ connectionId, digest }) =>
+      follow('workspace.tools', Effect.succeed([{ type: 'tools', connectionId, digest }])),
+    ),
+    changes.on('home.changed', () =>
+      follow(
+        'workspace.home',
+        Effect.map(read.home.layout, (home): WorkspaceChange[] => [{ type: 'home', home }]),
+      ),
+    ),
+  ])
+
 /**
  * Follows every change bus topic the feed shows: each handler reads what its payload names, as it is now, through
  * `follow`. Conversations are described in `scope` (a view reads Pi), starting at once on the writer's stack, so a
@@ -141,20 +167,7 @@ const followTopics = (
         ),
       ),
     ),
-    changes.on('decisions.changed', ({ ids }) =>
-      follow(
-        'workspace.decisions',
-        each(ids, (id) =>
-          Effect.map(read.decisions.view(id), (proposal): WorkspaceChange => ({ type: 'proposal', proposal })),
-        ),
-      ),
-    ),
-    changes.on('home.changed', () =>
-      follow(
-        'workspace.home',
-        Effect.map(read.home.layout, (home): WorkspaceChange[] => [{ type: 'home', home }]),
-      ),
-    ),
+    followOwnerState(changes, read, follow),
   ])
 
 /**

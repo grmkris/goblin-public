@@ -43,5 +43,7 @@ export const WorkspaceChange = Schema.Union([
   Schema.Struct({ type: Schema.Literal('proposal'), proposal: DecisionProposal }),
   /** A notification as it is now: a new one, or one the owner read. */
   Schema.Struct({ type: Schema.Literal('notification'), notification: NotificationView }),
+  /** A connection's tools changed (ADR 0042): `digest` names the new list, so its tool list is read again. */
+  Schema.Struct({ type: Schema.Literal('tools'), connectionId: Schema.String, digest: Schema.String }),
 ])
 export type WorkspaceChange = typeof WorkspaceChange.Type
