@@ -32,7 +32,12 @@ function SignedIn() {
         <Shell owner={data.owner} onSignOut={auth.logout}>
           {connections.isPending ? (
             <LoadingBlock rows={2} />
-          ) : setupProgress(data, (connections.data?.length ?? 0) > 0, readSkipped()) === 'done' ? (
+          ) : setupProgress(data, {
+              connected: (connections.data?.length ?? 0) > 0,
+              skipped: readSkipped(),
+              // Funding orders the steps before the upgrade only; whether setup is done never waits on a balance.
+              funded: undefined,
+            }) === 'done' ? (
             <Routes />
           ) : (
             <OnboardingPage me={data} />

@@ -229,6 +229,19 @@ export const STATUS: WalletStatusResult = {
   checkedAt: ago(0),
 }
 
+/** A wallet just created: the agent exists, nothing is funded yet, the owner has not upgraded. */
+export const FRESH_STATUS: WalletStatusResult = {
+  ...STATUS,
+  status: { kind: 'wallet', paid: 'blocked', funding: 'blocked', tokens: [], expiresAt: ahead(60 * 24 * 7) },
+  owner: { address: OWNER, upgraded: false },
+  balances: (['base', 'arbitrum', 'ethereum', 'tempo'] as const).flatMap((chain) => [
+    ...held(chain, 'agent', '0'),
+    ...held(chain, 'owner', '0'),
+  ]),
+  limits: LIMITS.filter((limit) => limit.layer === 'ledger'),
+  recent: [],
+}
+
 export const APPROVAL: ApprovalView = {
   operationId: 'op_pending_01',
   reason: 'over_limit',

@@ -18,6 +18,7 @@ import {
   AGENT,
   APPROVAL,
   CONNECTIONS,
+  FRESH_STATUS,
   LIMITS,
   ME,
   OAUTH_REQUEST,
@@ -225,7 +226,7 @@ function deposits(world: World): Pick<WalletApi, 'deposit' | 'depositStatus'> {
 export function createFixtureApi(start: 'fresh' | 'ready' = 'ready'): FixtureApi {
   const world: World = {
     me: start === 'ready' ? ME : { userId: ME.userId, owner: OWNER, chains: [] },
-    status: STATUS,
+    status: start === 'ready' ? STATUS : FRESH_STATUS,
     connections: start === 'ready' ? CONNECTIONS : [],
     approval: APPROVAL,
     policyChanges: start === 'ready' ? POLICY_CHANGES : [],

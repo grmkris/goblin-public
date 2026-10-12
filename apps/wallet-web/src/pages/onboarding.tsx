@@ -3,14 +3,15 @@ import { DEFAULT_GRANT_DAYS, type Me } from '@goblin/wallet/contract'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { useConnections, useCreateAgent } from '../api/queries.tsx'
+import { useConnections, useCreateAgent, useStatus } from '../api/queries.tsx'
 import { useAuth } from '../app/auth.tsx'
 import { navigate } from '../app/router.tsx'
 import { cn } from '../ui/index.ts'
 import { LAYERS } from '../ui/layer.tsx'
 import { Page } from '../ui/page.tsx'
+import { AddFundsCard } from './add-funds.tsx'
 import { ConnectPanel } from './connect-panel.tsx'
-import { type StepId, setupProgress } from './progress.ts'
+import { fundedOnBase, type StepId, setupProgress } from './progress.ts'
 import { ActionError, DEFAULT_PER_HOUR, isPerHour, PerHourField, useAction } from './setup-actions.tsx'
 
 const SKIP_KEY = 'goblin-wallet:connect-skipped'
@@ -81,6 +82,34 @@ function CreateStep({ index, state }: { readonly index: number; readonly state: 
         {action.pending && <Spinner data-icon="inline-start" />}
         Create wallet
       </Button>
+    </Step>
+  )
+}
+
+function FundStep({
+  index,
+  state,
+  owner,
+  unread,
+}: {
+  readonly index: number
+  readonly state: 'done' | 'current' | 'upcoming'
+  readonly owner: string
+  /** The balance on Base could not be read yet. */
+  readonly unread: boolean
+}) {
+  return (
+    <Step index={index} state={state} title="Fund your account" summary="Your account holds ETH on Base.">
+      <p className="text-sm/relaxed text-muted-foreground text-pretty">
+        Your account needs a little ETH on Base before the upgrade. Send some from any chain; this step finishes when it
+        lands.
+      </p>
+      {unread && (
+        <p className="text-sm text-muted-foreground">
+          Your balance on Base could not be read yet. It is checked again every few seconds.
+        </p>
+      )}
+      <AddFundsCard owner={owner} receive="ETH" />
     </Step>
   )
 }
@@ -164,12 +193,16 @@ function ConnectStep({ index, state }: { readonly index: number; readonly state:
   )
 }
 
-/** The four steps from a fresh sign-in to a connected agent. Each shows its own error and keeps its place on refresh. */
+/** The five steps from a fresh sign-in to a connected agent. Each shows its own error and keeps its place on refresh. */
 export function OnboardingPage({ me }: { readonly me: Me }) {
   const connections = useConnections()
+  const beforeUpgrade = me.agent !== undefined && me.chains.find((chain) => chain.chain === 'base')?.upgraded !== true
+  // Until the upgrade, the balance on Base decides the step: check it while the owner may be sending.
+  const status = useStatus(beforeUpgrade ? 10_000 : false)
+  const funded = fundedOnBase(status.data)
   const connected = (connections.data?.length ?? 0) > 0
-  const progress = setupProgress(me, connected, readSkipped())
-  const order: readonly StepId[] = ['agent', 'upgrade', 'allowance', 'connect']
+  const progress = setupProgress(me, { connected, skipped: readSkipped(), funded })
+  const order: readonly StepId[] = ['agent', 'fund', 'upgrade', 'allowance', 'connect']
   const at = progress === 'done' ? order.length : order.indexOf(progress)
   const stateOf = (id: StepId): 'done' | 'current' | 'upcoming' => {
     const position = order.indexOf(id)
@@ -178,13 +211,19 @@ export function OnboardingPage({ me }: { readonly me: Me }) {
   return (
     <Page
       title="Set up your wallet"
-      description="Four steps. You can stop and come back; this page picks up where you left off."
+      description="Five steps. You can stop and come back; this page picks up where you left off."
     >
       <ol className="flex flex-col">
         <CreateStep index={1} state={stateOf('agent')} />
-        <UpgradeStep index={2} state={stateOf('upgrade')} />
-        <AllowanceStep index={3} state={stateOf('allowance')} />
-        <ConnectStep index={4} state={stateOf('connect')} />
+        <FundStep
+          index={2}
+          state={stateOf('fund')}
+          owner={me.owner}
+          unread={status.isError || (status.isSuccess && funded === undefined)}
+        />
+        <UpgradeStep index={3} state={stateOf('upgrade')} />
+        <AllowanceStep index={4} state={stateOf('allowance')} />
+        <ConnectStep index={5} state={stateOf('connect')} />
       </ol>
     </Page>
   )
