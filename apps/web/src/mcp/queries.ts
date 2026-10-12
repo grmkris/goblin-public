@@ -25,6 +25,7 @@ export const mcpKeys = {
   catalog: (q: string | undefined): readonly ['mcp', 'catalog', string | undefined] => ['mcp', 'catalog', q],
   tools: (connectionId: string) => ['mcp', 'tools', connectionId] as const,
   status: (connectionId: string) => ['mcp', 'status', connectionId] as const,
+  app: (connectionId: string, tool: string) => ['mcp', 'app', connectionId, tool] as const,
   events: (connectionId: string) => ['mcp', 'events', connectionId] as const,
 }
 
@@ -252,6 +253,25 @@ export const serverStatusQuery = (connectionId: string, connected: boolean) =>
       : skipToken,
     staleTime: 60_000,
   })
+
+/**
+ * A first-class server's own App, as the owner opens it (ADR 0043): its app tool called as the owner, and the `ui://`
+ * resource that tool declares; nothing to show when the tool declares none. Read again on each open.
+ */
+export const serverAppQuery = (connectionId: string, tool: string) => ({
+  ...owner.apiQuery({
+    queryKey: mcpKeys.app(connectionId, tool),
+    queryFn: (api) =>
+      Effect.map(
+        Effect.all([
+          api.mcp.callTool({ params: { id: connectionId }, headers: {}, payload: { name: tool } }),
+          api.mcp.tools({ params: { id: connectionId }, query: {} }),
+        ]),
+        ([result, tools]) => ({ result, uri: tools.find((each) => each.name === tool)?.appResource }),
+      ),
+  }),
+  staleTime: 0,
+})
 
 /** Adds a registry to search, or removes one of the owner's; the answer is the list as it is now. */
 export const registryMutation = mutationOptions({

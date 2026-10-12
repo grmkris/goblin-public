@@ -27,6 +27,7 @@ import { Route as AppsNameRouteImport } from './routes/apps.$name'
 import { Route as CChatIdRouteImport } from './routes/c.$chatId'
 import { Route as PIdRouteImport } from './routes/p.$id'
 import { Route as SubscribeSuccessRouteImport } from './routes/subscribe.success'
+import { Route as ConnectionsConnectionIdAppRouteImport } from './routes/connections_.$connectionId.app'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -118,6 +119,12 @@ const SubscribeSuccessRoute = SubscribeSuccessRouteImport.update({
   path: '/success',
   getParentRoute: () => SubscribeRoute,
 } as any)
+const ConnectionsConnectionIdAppRoute =
+  ConnectionsConnectionIdAppRouteImport.update({
+    id: '/connections_/$connectionId/app',
+    path: '/connections/$connectionId/app',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByFullPath {
   '/p/$id': typeof PIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
+  '/connections/$connectionId/app': typeof ConnectionsConnectionIdAppRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -158,6 +166,7 @@ export interface FileRoutesByTo {
   '/p/$id': typeof PIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps': typeof AppsIndexRoute
+  '/connections/$connectionId/app': typeof ConnectionsConnectionIdAppRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -179,6 +188,7 @@ export interface FileRoutesById {
   '/p/$id': typeof PIdRoute
   '/subscribe/success': typeof SubscribeSuccessRoute
   '/apps/': typeof AppsIndexRoute
+  '/connections_/$connectionId/app': typeof ConnectionsConnectionIdAppRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/p/$id'
     | '/subscribe/success'
     | '/apps/'
+    | '/connections/$connectionId/app'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -221,6 +232,7 @@ export interface FileRouteTypes {
     | '/p/$id'
     | '/subscribe/success'
     | '/apps'
+    | '/connections/$connectionId/app'
   id:
     | '__root__'
     | '/'
@@ -241,6 +253,7 @@ export interface FileRouteTypes {
     | '/p/$id'
     | '/subscribe/success'
     | '/apps/'
+    | '/connections_/$connectionId/app'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -261,6 +274,7 @@ export interface RootRouteChildren {
   CChatIdRoute: typeof CChatIdRoute
   PIdRoute: typeof PIdRoute
   AppsIndexRoute: typeof AppsIndexRoute
+  ConnectionsConnectionIdAppRoute: typeof ConnectionsConnectionIdAppRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -391,6 +405,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SubscribeSuccessRouteImport
       parentRoute: typeof SubscribeRoute
     }
+    '/connections_/$connectionId/app': {
+      id: '/connections_/$connectionId/app'
+      path: '/connections/$connectionId/app'
+      fullPath: '/connections/$connectionId/app'
+      preLoaderRoute: typeof ConnectionsConnectionIdAppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -424,6 +445,7 @@ const rootRouteChildren: RootRouteChildren = {
   CChatIdRoute: CChatIdRoute,
   PIdRoute: PIdRoute,
   AppsIndexRoute: AppsIndexRoute,
+  ConnectionsConnectionIdAppRoute: ConnectionsConnectionIdAppRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

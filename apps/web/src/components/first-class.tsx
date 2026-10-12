@@ -2,6 +2,7 @@
 // tool reports it (the server's claim), and Allow recommended until its recommended grants are in place.
 import type { ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import type { ServerProfile, ServerView, ToolView, WalletStatus } from '@goblin/contracts'
 import { Button, Receipt } from '@goblin/ui'
 import { CircleAlertIcon, WalletIcon } from 'lucide-react'
@@ -64,6 +65,17 @@ export function FirstClassPart({
   return (
     <section className="server-part" aria-label={profile.title}>
       {status.data != null && <WalletLine wallet={status.data} />}
+      {profile.app !== undefined && applied && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="self-start"
+          nativeButton={false}
+          render={<Link to="/connections/$connectionId/app" params={{ connectionId: server.connectionId }} />}
+        >
+          Open {profile.title}
+        </Button>
+      )}
       {!applied && (
         <div className="setting-row">
           <span className="grant-text">

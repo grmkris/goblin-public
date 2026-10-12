@@ -92,6 +92,8 @@ const MERCATOR: Profile = {
       'get_job',
       'get_job_details',
       'list_jobs',
+      // Only the owner opens its App (its visibility is App-only), and the grant covers the App's resource.
+      'open_mercator',
     ],
     ask: ['create_job'],
   },
