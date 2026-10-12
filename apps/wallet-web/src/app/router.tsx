@@ -1,5 +1,5 @@
 // A small history router: five owner pages and two deep links that goblin and the OAuth flow open.
-import { type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
+import { type ComponentProps, type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
 
 const listeners = new Set<() => void>()
 const subscribe = (listener: () => void): (() => void) => {
@@ -26,26 +26,29 @@ export function useLocation(): { readonly pathname: string; readonly search: URL
   return { pathname, search: new URLSearchParams(query) }
 }
 
+/**
+ * An in-app link. When a Button renders as one, the props it hands over (its own click handler among them) are kept,
+ * and its handler runs before the navigation instead of replacing it: a replaced handler made every such link a full
+ * page load.
+ */
 export function Link({
   to,
   children,
-  className,
+  onClick,
   ...rest
-}: {
+}: Omit<ComponentProps<'a'>, 'href'> & {
   readonly to: string
   /** Optional so a Button can render as a Link and pass its own children. */
   readonly children?: ReactNode
-  readonly className?: string
-  readonly 'aria-current'?: 'page'
-  readonly 'aria-label'?: string
 }) {
-  const onClick = (event: MouseEvent<HTMLAnchorElement>): void => {
+  const follow = (event: MouseEvent<HTMLAnchorElement>): void => {
+    onClick?.(event)
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return
     event.preventDefault()
     navigate(to)
   }
   return (
-    <a href={to} onClick={onClick} className={className} {...rest}>
+    <a {...rest} href={to} onClick={follow}>
       {children}
     </a>
   )
