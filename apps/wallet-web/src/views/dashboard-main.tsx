@@ -1,10 +1,41 @@
-import { type Operation, type OperationCheck, TOOLS } from '@goblin/wallet/contract'
-import { useState } from 'react'
+import {
+  type DepositAddress,
+  type DepositRequest,
+  type DepositStatus,
+  type Operation,
+  type OperationCheck,
+  TOOLS,
+} from '@goblin/wallet/contract'
+import type { App } from '@modelcontextprotocol/ext-apps'
+import { useCallback, useMemo, useState } from 'react'
 import { Dashboard } from './dashboard.tsx'
-import { checkOf, recentOf, refusalOf, statusOf } from './decode.ts'
+import { checkOf, depositOf, depositStatusOf, recentOf, refusalOf, statusOf } from './decode.ts'
+import type { FundActions } from './fund.tsx'
 import { ViewFrame, ViewStatus } from './frame.tsx'
 import { mount } from './mount.tsx'
 import { useWalletApp } from './use-wallet-app.ts'
+
+/** Asks the wallet, through the host, for a deposit address that lands as USDC.e with the agent on Tempo. */
+async function quoteDeposit(app: App | null, request: DepositRequest): Promise<DepositAddress> {
+  if (app === null) throw new Error('The wallet is not connected to its host yet.')
+  const answer = await app.callServerTool({ name: TOOLS.addFunds, arguments: { ...request } })
+  const deposit = depositOf(answer)
+  if (answer.isError === true || deposit === undefined)
+    throw new Error(refusalOf(answer) ?? 'No deposit address just now. Try again.')
+  return deposit
+}
+
+/** Where a deposit address stands, as Relay tells the wallet. */
+async function depositProgress(app: App | null, depositAddress: string): Promise<DepositStatus> {
+  if (app === null) throw new Error('The wallet is not connected to its host yet.')
+  const answer = await app.callServerTool({
+    name: TOOLS.addFundsStatus,
+    arguments: { deposit_address: depositAddress },
+  })
+  const found = depositStatusOf(answer)
+  if (answer.isError === true || found === undefined) throw new Error(refusalOf(answer) ?? 'Relay did not answer.')
+  return found
+}
 
 function DashboardView() {
   const { app, error, context, result, cancelled, refusedLink } = useWalletApp('Goblin Wallet')
@@ -15,7 +46,7 @@ function DashboardView() {
   const shown = refreshed !== undefined && refreshed.from === result ? refreshed.result : result
   const status = statusOf(shown)
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (app === null) return
     setRefreshing(true)
     setRefreshError(undefined)
@@ -29,7 +60,17 @@ function DashboardView() {
     } finally {
       setRefreshing(false)
     }
-  }
+  }, [app, result])
+
+  // Stable across renders, so a deposit in flight keeps one follow timer.
+  const fund = useMemo<FundActions>(
+    () => ({
+      quote: (request) => quoteDeposit(app, request),
+      progress: (depositAddress) => depositProgress(app, depositAddress),
+      refresh: () => void refresh(),
+    }),
+    [app, refresh],
+  )
 
   /** Asks the wallet to check an uncertain operation against the chain, then reads the status again. Never pays. */
   async function check(operation: Operation): Promise<OperationCheck> {
@@ -60,6 +101,7 @@ function DashboardView() {
           refreshError={refreshError}
           refusedLink={refusedLink}
           onCheck={check}
+          fund={fund}
           fullscreen={context?.displayMode === 'fullscreen'}
           onRefresh={() => void refresh()}
           // Only a host that offers both places can move the view; on a host's own page it already fills the pane.

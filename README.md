@@ -75,7 +75,9 @@ server at `wallet.goblin.surf` (`wallet-dev.goblin.surf` for dev), built from `a
 USDC (Relay deposit addresses convert from Base, Arbitrum or Ethereum), and has the account upgraded with EIP-7702 to
 MetaMask's DeleGator; the relay pays that gas. The owner then signs an ERC-7710 period allowance to an agent wallet that
 Privy holds under a signer policy. The agent pays x402 services on Base and MPP services on Tempo, sends USDC, swaps
-through LI.FI and bridges through Relay, topping up just in time from the allowance.
+through LI.FI and bridges through Relay, topping up just in time from the allowance. Paid inference and MPP services pay
+from the agent's own address on Tempo; the wallet App shows that address with a QR code and adds funds to it from any
+chain.
 
 Every limit names the layer that enforces it: the on-chain allowance, Privy's policy, the wallet's ledger (per call,
 hour and week) or goblin's spending rules (ADR 0044). A spend over the limit, or to a new recipient, becomes a URL

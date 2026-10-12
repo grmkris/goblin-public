@@ -1,6 +1,14 @@
 // Tool results arrive from a server we trust but over a channel we do not own: decode, never cast.
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import { LimitView, Operation, OperationCheck, SpendResult, WalletStatusResult } from '@goblin/wallet/contract'
+import {
+  DepositAddress,
+  DepositStatus,
+  LimitView,
+  Operation,
+  OperationCheck,
+  SpendResult,
+  WalletStatusResult,
+} from '@goblin/wallet/contract'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
@@ -31,6 +39,17 @@ const decodeCheck = Schema.decodeUnknownOption(OperationCheck)
 
 export const checkOf = (result: CallToolResult | undefined): OperationCheck | undefined =>
   Option.getOrUndefined(decodeCheck(payloadOf(result)))
+
+const decodeDeposit = Schema.decodeUnknownOption(Schema.Struct({ deposit: DepositAddress }))
+const decodeDepositStatus = Schema.decodeUnknownOption(Schema.Struct({ deposit: DepositStatus }))
+
+/** `add_funds`: the one-off deposit address. */
+export const depositOf = (result: CallToolResult | undefined): DepositAddress | undefined =>
+  Option.getOrUndefined(Option.map(decodeDeposit(payloadOf(result)), (payload) => payload.deposit))
+
+/** `add_funds_status`: where that deposit stands. */
+export const depositStatusOf = (result: CallToolResult | undefined): DepositStatus | undefined =>
+  Option.getOrUndefined(Option.map(decodeDepositStatus(payloadOf(result)), (payload) => payload.deposit))
 
 /** A refused call's own words (its first text block), bounded, for the owner to read. */
 export function refusalOf(result: CallToolResult): string | undefined {

@@ -1,15 +1,19 @@
-// The dashboard App: what the agent can spend now and what holds it back, what needs the owner, then the overview,
-// activity and limits as tabs. Pure of the host: it renders what it is given and calls back for the two things only
-// the host can do. Owner actions (funding, allowances, approvals) live in the wallet site, so here they are named.
+// The dashboard App: the address the agent pays from (with Add funds from any chain), what it can spend now and what
+// holds it back, what needs the owner, then the overview, activity and limits as tabs. Pure of the host: it renders what
+// it is given and calls back for what only the host can do. Owner actions that sign (allowances, approvals) live in the
+// wallet site, so here they are named.
 import type { Operation, OperationCheck, WalletStatusResult } from '@goblin/wallet/contract'
 import { Button, buttonVariants, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '@goblin/ui'
 import { ExternalLink, Maximize2, Minimize2, RefreshCw } from 'lucide-react'
+import { useState } from 'react'
 import { CheckStatus } from '../ui/check-status.tsx'
 import { LimitMeter, ReceiptRow, timeAgo } from '../ui/index.ts'
 import { EmptyState, RowList, Section } from '../ui/page.tsx'
+import { type FundActions, PaysFrom } from './fund.tsx'
+import { agentOnTempo, isEmpty, opensOnAddFunds } from './fund-model.ts'
 import { NEXT_LABEL } from './overview-copy.ts'
 import { attentionOf, balanceGroups, boundariesOf, limitOrder, nextActionOf, spendingOf } from './overview-model.ts'
-import type { Attention, NextAction } from './overview-model.ts'
+import type { Attention, NextAction, Spending } from './overview-model.ts'
 import {
   AttentionList,
   BalanceGroups,
@@ -20,11 +24,10 @@ import {
 } from './overview.tsx'
 
 /** What the owner does next, said in the App where the action itself lives in the wallet site. */
-const IN_WALLET: Record<Exclude<NextAction, 'refresh' | 'wait'>, string> = {
+const IN_WALLET: Record<Exclude<NextAction, 'refresh' | 'wait' | 'add_funds'>, string> = {
   finish_setup: 'Finish setup in your wallet.',
   renew_access: 'Review your limits in your wallet.',
   set_allowance: "Set an allowance from your wallet's Home.",
-  add_funds: "Add funds from your wallet's Home.",
 }
 
 function Header({
@@ -118,14 +121,28 @@ function RefusedLink({ link }: { readonly link: string | undefined }) {
 
 type Step = Exclude<NextAction, 'wait'>
 
-function NextStep({ action, onRefresh }: { readonly action: Step; readonly onRefresh: () => void }) {
-  if (action === 'refresh')
+function NextStep({
+  action,
+  onRefresh,
+  onAddFunds,
+}: {
+  readonly action: Step
+  readonly onRefresh: () => void
+  readonly onAddFunds: () => void
+}) {
+  if (action === 'refresh' || action === 'add_funds')
     return (
-      <Button type="button" variant="outline" onClick={onRefresh}>
-        {NEXT_LABEL.refresh}
+      <Button type="button" variant="outline" onClick={action === 'refresh' ? onRefresh : onAddFunds}>
+        {action === 'refresh' ? NEXT_LABEL.refresh : 'Add funds from any chain'}
       </Button>
     )
   return <p className="text-sm text-muted-foreground">{IN_WALLET[action]}</p>
+}
+
+/** Add funds starts open when the wallet is empty, and is open whenever the host asks for it or the owner opens it. */
+function useAddFundsOpen(status: WalletStatusResult): readonly [boolean, () => void] {
+  const [opened, setOpened] = useState(() => opensOnAddFunds(status))
+  return [opened || status.focus === 'add_funds', () => setOpened(true)]
 }
 
 function LimitsTab({ status }: { readonly status: WalletStatusResult }) {
@@ -141,6 +158,58 @@ function LimitsTab({ status }: { readonly status: WalletStatusResult }) {
   )
 }
 
+/** Overview, activity and limits, as tabs below what the agent can spend now. */
+function DashboardTabs({
+  status,
+  recent,
+  spending,
+  onCheck,
+}: {
+  readonly status: WalletStatusResult
+  readonly recent: readonly Operation[]
+  readonly spending: Spending
+  readonly onCheck: (operation: Operation) => Promise<OperationCheck>
+}) {
+  return (
+    <Tabs defaultValue="overview">
+      <TabsList>
+        <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="activity">Activity</TabsTrigger>
+        <TabsTrigger value="limits">Limits</TabsTrigger>
+      </TabsList>
+      <TabsContent value="overview">
+        <div className="flex flex-col gap-8">
+          <OverviewColumns>
+            <RecentWork operations={recent} />
+            <BoundaryList
+              boundaries={boundariesOf(spending, status.limits)}
+              chain={spending.spend.chain}
+              expiresAt={status.status.expiresAt}
+            />
+          </OverviewColumns>
+          <Section title="Balances">
+            <BalanceGroups groups={balanceGroups(status)} />
+          </Section>
+        </div>
+      </TabsContent>
+      <TabsContent value="activity">
+        {recent.length === 0 ? (
+          <EmptyState title="Nothing spent yet" description="When your agent pays for something, it shows up here." />
+        ) : (
+          <RowList>
+            {recent.map((operation) => (
+              <ReceiptRow key={operation.id} operation={operation} onCheck={onCheck} />
+            ))}
+          </RowList>
+        )}
+      </TabsContent>
+      <TabsContent value="limits">
+        <LimitsTab status={status} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
 export function Dashboard({
   status,
   recent,
@@ -148,6 +217,7 @@ export function Dashboard({
   refreshError,
   refusedLink,
   onCheck,
+  fund,
   fullscreen,
   onRefresh,
   onToggleFullscreen,
@@ -159,11 +229,13 @@ export function Dashboard({
   /** The last link the host would not open, named so the owner can open it themselves. */
   readonly refusedLink: string | undefined
   readonly onCheck: (operation: Operation) => Promise<OperationCheck>
+  readonly fund: FundActions
   readonly fullscreen: boolean
   readonly onRefresh: () => void
   /** Absent when the host offers no full screen. */
   readonly onToggleFullscreen: (() => void) | undefined
 }) {
+  const [addFundsOpen, openAddFunds] = useAddFundsOpen(status)
   const spending = spendingOf(status)
   const next = spending.blocker === undefined ? undefined : nextActionOf(spending.blocker)
   const step = next === undefined || next === 'wait' ? undefined : next
@@ -179,47 +251,24 @@ export function Dashboard({
         onToggleFullscreen={onToggleFullscreen}
       />
       <RefusedLink link={refusedLink} />
+      {status.payFrom !== undefined && (
+        <PaysFrom
+          payFrom={status.payFrom}
+          empty={isEmpty(status)}
+          open={addFundsOpen}
+          held={agentOnTempo(status)}
+          actions={fund}
+          onOpen={openAddFunds}
+        />
+      )}
       <AttentionList items={attentionOf(recent)} actionFor={attentionFor(status.site, onCheck)} />
       <SpendingSummary
         spending={spending}
-        action={step === undefined ? undefined : <NextStep action={step} onRefresh={onRefresh} />}
+        action={
+          step === undefined ? undefined : <NextStep action={step} onRefresh={onRefresh} onAddFunds={openAddFunds} />
+        }
       />
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="limits">Limits</TabsTrigger>
-        </TabsList>
-        <TabsContent value="overview">
-          <div className="flex flex-col gap-8">
-            <OverviewColumns>
-              <RecentWork operations={recent} />
-              <BoundaryList
-                boundaries={boundariesOf(spending, status.limits)}
-                chain={spending.spend.chain}
-                expiresAt={status.status.expiresAt}
-              />
-            </OverviewColumns>
-            <Section title="Balances">
-              <BalanceGroups groups={balanceGroups(status)} />
-            </Section>
-          </div>
-        </TabsContent>
-        <TabsContent value="activity">
-          {recent.length === 0 ? (
-            <EmptyState title="Nothing spent yet" description="When your agent pays for something, it shows up here." />
-          ) : (
-            <RowList>
-              {recent.map((operation) => (
-                <ReceiptRow key={operation.id} operation={operation} onCheck={onCheck} />
-              ))}
-            </RowList>
-          )}
-        </TabsContent>
-        <TabsContent value="limits">
-          <LimitsTab status={status} />
-        </TabsContent>
-      </Tabs>
+      <DashboardTabs status={status} recent={recent} spending={spending} onCheck={onCheck} />
     </>
   )
 }

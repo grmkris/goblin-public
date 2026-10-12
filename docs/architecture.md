@@ -1808,6 +1808,9 @@ rows, never as a zero balance, and turns a "no" into "not verified". The dashboa
 overview of that answer (`apps/wallet-web/src/views/overview-model.ts`, `views/overview.tsx`): what needs the owner
 (an approval to review, an unknown outcome to check), what the agent can spend on which network and what holds it back,
 recent work (each row opens to payment, delivery and evidence), the limits on that network, and balances by network.
+The App opens with the address the agent pays from (`views/fund.tsx`: copy, a QR code, Tempo and its USDC.e) and Add
+funds from any chain through `add_funds`, which follows the deposit until the balance shows it. It is open by itself as
+"Fund this address" when nothing is held anywhere, and when the host opened the App with `focus: "add_funds"`.
 Limits lists every limit one line each (`LimitLine`) with each layer's promise said once. The status also names the
 owner's `site`, so the App opens Approve and the site through its host.
 
