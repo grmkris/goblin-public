@@ -32,4 +32,5 @@ const productionCollector = async (env: WalletEnv, config: MerchantConfig): Prom
 export const productionMerchant: MerchantDeps = {
   store: (env) => subscriptionStore(env.AUTH),
   collector: productionCollector,
+  base: (env) => chainAccess(env).rpcFor('base'),
 }

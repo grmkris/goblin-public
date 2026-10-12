@@ -58,6 +58,11 @@ export const MerchantSubscription = Schema.Struct({
   expiresAt: Schema.optional(Instant),
   delegationHash: Schema.optional(Hex),
   collector: Address,
+  /**
+   * For an active subscription, what the owner's account on Base lacks for one payment ("0" when it covers it), so the
+   * merchant can say "Add $X" before a renewal; never the balance itself. Absent when it could not be read.
+   */
+  shortUsd: Schema.optional(UsdAmount),
 })
 export type MerchantSubscription = typeof MerchantSubscription.Type
 

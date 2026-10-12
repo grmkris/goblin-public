@@ -5,6 +5,9 @@ import {
   type SubscriptionCreated,
   SubscriptionRequest,
 } from '@goblin/wallet/contract'
+import { formatUnits, parseUnits } from '@goblin/wallet/amounts'
+import { erc20Balance, type JsonRpc } from '@goblin/wallet/balances'
+import { chainByKey } from '@goblin/wallet/chains'
 import { MAX_PERIODS } from '@goblin/wallet/delegation'
 import { readBody } from '../api/call.ts'
 import type { WalletEnv } from '../env.ts'
@@ -18,6 +21,8 @@ export interface MerchantDeps {
   readonly store: (env: WalletEnv) => SubscriptionApi
   /** The collector's chain access and signer; built only for a collection. */
   readonly collector: (env: WalletEnv, config: MerchantConfig) => Promise<CollectDeps>
+  /** Base's node, for what an owner lacks for the next payment. */
+  readonly base: (env: WalletEnv) => JsonRpc
   /** Epoch milliseconds. */
   readonly now?: () => number
 }
@@ -42,6 +47,26 @@ export const merchantView = (row: SubscriptionRow, now: number): MerchantSubscri
   ...(row.expiresAt === null ? {} : { expiresAt: iso(row.expiresAt) }),
   ...(row.delegationHash === null ? {} : { delegationHash: row.delegationHash }),
 })
+
+/** What the owner's account on Base lacks for one payment of an active subscription; undefined when unread. */
+const shortOf = async (env: WalletEnv, row: SubscriptionRow, deps: MerchantDeps): Promise<string | undefined> => {
+  if (row.ownerAddress === null) return undefined
+  const chain = chainByKey('base', env.WALLET_LIVE === '1')
+  const amount = parseUnits(row.amountUsd, chain.usdc.decimals)
+  const held = await erc20Balance(deps.base(env), chain.usdc.address, row.ownerAddress).catch(
+    // expected: an unread balance is left out of the answer; the merchant says nothing about funds then.
+    () => undefined,
+  )
+  if (held === undefined) return undefined
+  return held >= amount ? '0' : formatUnits(amount - held, chain.usdc.decimals)
+}
+
+/** `GET /api/merchant/subscriptions/:id`: the subscription, and for an active one what the owner lacks for a payment. */
+async function read(env: WalletEnv, row: SubscriptionRow, deps: MerchantDeps, now: number): Promise<Response> {
+  const view = merchantView(row, now)
+  const short = view.status === 'active' ? await shortOf(env, row, deps) : undefined
+  return json({ ...view, ...(short === undefined ? {} : { shortUsd: short }) } satisfies MerchantSubscription)
+}
 
 /** `POST /api/merchant/subscriptions`: a request for the owner to sign, at a page of this wallet. */
 async function create(request: Request, env: WalletEnv, config: MerchantConfig, deps: MerchantDeps) {
@@ -107,7 +132,7 @@ export function createMerchantApi(deps: MerchantDeps): (request: Request, env: W
     const row = await store.merchantSubscription(matched.id ?? '', GOBLIN_MERCHANT)
     if (row === undefined) return apiError('not_found', 'No such subscription.', 404)
     const nowMs = deps.now?.() ?? Date.now()
-    if (matched.route === 'get') return json(merchantView(row, Math.floor(nowMs / 1000)))
+    if (matched.route === 'get') return read(env, row, deps, Math.floor(nowMs / 1000))
     const body = await readBody(request, CollectRequest)
     if (!body.ok) return body.response
     return json(await collect(store, await deps.collector(env, config), row, body.value))
