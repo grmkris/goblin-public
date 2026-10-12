@@ -16,6 +16,7 @@ import {
   Textarea,
 } from '@goblin/ui'
 import { EditorPart } from './editor-part.tsx'
+import { ProNote } from './pro-note.tsx'
 
 type Tool = { readonly connectionId: string; readonly name: string }
 
@@ -41,6 +42,8 @@ export type HandKit = {
   readonly available: readonly Tool[]
   readonly selected: readonly Tool[]
   readonly toggle: (tool: Tool, on: boolean) => void
+  /** The plan hands over (Pro); on the free plan a routine only tells (ADR 0012, amended 2026-10-12). */
+  readonly canHandOver: boolean
 }
 
 const same = (a: Tool, b: Tool): boolean => a.connectionId === b.connectionId && a.name === b.name
@@ -198,21 +201,28 @@ function PersonaField({ kit }: { readonly kit: HandKit }) {
   )
 }
 
-/** Hand to: nobody, Goblin or a Persona; a hand-over says what to do, then with which tools, within which limits. */
+/**
+ * Hand to: nobody, goblin or a Persona; a hand-over says what to do, then with which tools, within which limits. On the
+ * free plan a hand-over cannot be picked (one the routine already has stays shown), and Get Pro says why.
+ */
 export function HandToFields({ kit }: { readonly kit: HandKit }) {
   const { id, hand, setHand, handOver } = kit
+  const locked = !kit.canHandOver
   return (
     <>
       <EditorPart title="Hand to">
         <Tabs value={hand} onValueChange={(value: HandKind) => setHand(value)}>
           <TabsList>
             <TabsTrigger value="none">Nobody</TabsTrigger>
-            <TabsTrigger value="goblin">Goblin</TabsTrigger>
-            <TabsTrigger value="persona" disabled={kit.personas.length === 0}>
+            <TabsTrigger value="goblin" disabled={locked && hand !== 'goblin'}>
+              goblin
+            </TabsTrigger>
+            <TabsTrigger value="persona" disabled={kit.personas.length === 0 || (locked && hand !== 'persona')}>
               A Persona
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        {locked && <ProNote>Handing it to goblin or a Persona is part of Pro.</ProNote>}
         {hand === 'none' ? (
           <p className="server-note">It only tells you. Turn Tell me on, or hand it over.</p>
         ) : (

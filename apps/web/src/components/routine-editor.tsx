@@ -22,11 +22,13 @@ import {
   FieldLabel,
   Input,
 } from '@goblin/ui'
+import { useBilling } from '../account/hooks.ts'
 import { grantsQuery } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { usePersonas, useTopics } from '../lib/workspace/hooks.ts'
 import { saveRoutineMutation } from '../routines/queries.ts'
 import { EditorPart } from './editor-part.tsx'
+import { hasHandOver } from './pro-note.tsx'
 import { type HandKind, HandToFields, TellMeFields, WhereField } from './routine-hand.tsx'
 import { type EventChoice, type Kind, WhenFields, eventOf, triggerFrom } from './routine-when.tsx'
 
@@ -89,7 +91,9 @@ function useHand(initial: RoutineDefinition, startTopic: number) {
     setSelected((current) => (on ? [...current, tool] : current.filter((item) => !same(item, tool))))
   const topics = useTopics().filter((each) => each.archivedAt === undefined || each.id === topic)
   const personas = usePersonas().filter((each) => each.archivedAt === undefined || each.id === persona)
+  const plan = useBilling().state
   return {
+    canHandOver: hasHandOver(plan),
     topic,
     setTopic,
     tellMe,

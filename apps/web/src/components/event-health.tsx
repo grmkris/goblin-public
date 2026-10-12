@@ -1,4 +1,5 @@
 import type { EventHealth } from '@goblin/contracts'
+import { eventWords } from '../lib/events.ts'
 import { eventStatus } from '../lib/labels.ts'
 import { StatusLabel } from './status-label.tsx'
 import { useMinute } from './use-now.ts'
@@ -28,7 +29,9 @@ export function EventsHealthList({ events }: { readonly events: readonly EventHe
     <ul className="event-list">
       {events.map((event) => (
         <li key={event.subscriptionId} className="event-row">
-          <span className="event-name">{event.name.startsWith('skills.') ? 'Skill updates' : event.name}</span>
+          <span className="event-name">
+            {event.name.startsWith('skills.') ? 'Skill updates' : eventWords(event.name)}
+          </span>
           <StatusLabel label={event.granted ? eventStatus(event.status) : { text: 'Paused by you', tone: 'quiet' }} />
           <span className="event-meta">
             {event.lastReceiptAt === null ? 'None yet' : `Last one ${relativeTime(seconds(event.lastReceiptAt), now)}`}

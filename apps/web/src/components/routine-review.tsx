@@ -1,5 +1,5 @@
 // A routine's card: what it does and when, its facts, and the owner's Confirm, Pause, Edit and Archive, with its runs.
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { type RoutineDefinition, type RoutinePersona, type RoutineView, handOverOf } from '@goblin/contracts'
 import {
   Alert,
@@ -12,11 +12,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@goblin/ui'
+import { eventTitle, eventWords, filtersInWords } from '../lib/events.ts'
 import { dateTime } from '../lib/format.ts'
 import { usePersonas, useTopics } from '../lib/workspace/hooks.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
 import { routineStatus } from '../lib/labels.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { eventsQuery } from '../mcp/queries.ts'
 import { changeRoutineMutation } from '../routines/queries.ts'
 import { RoutineHistory } from './routine-history.tsx'
 import { StatusLabel } from './status-label.tsx'
@@ -24,15 +26,35 @@ import { StatusLabel } from './status-label.tsx'
 const operation = () => crypto.randomUUID()
 const count = (value: number) => value.toLocaleString()
 
-/** When a routine runs, in words; an event names its connection as the owner does (`connection`). */
-function whenOf(definition: RoutineDefinition, connection: (id: string) => string): string {
+/**
+ * When a routine runs, in words; an event names its connection as the owner does (`connection`) and the event by its
+ * title (`event`).
+ */
+function whenOf(definition: RoutineDefinition, connection: (id: string) => string, event: string | undefined): string {
   const trigger = definition.trigger
   if (trigger.kind === 'once') {
     const at = Date.parse(trigger.at)
     return Number.isNaN(at) ? `Once, at ${trigger.at}` : `Once, ${dateTime(at, definition.timezone)}`
   }
   if (trigger.kind === 'cron') return `Repeats on the schedule ${trigger.expression}`
-  return `When ${connection(trigger.connectionId)} sends ${trigger.name}`
+  return `When ${connection(trigger.connectionId)} sends “${event ?? eventWords(trigger.name)}”`
+}
+
+/** When a routine runs, in words, with its connection's label and its event's title as they are now. */
+function useWhenOf(definition: RoutineDefinition): string {
+  const connection = useConnectionLabels()
+  const stream = useStreamOf(definition)
+  return whenOf(definition, connection, stream === undefined ? undefined : eventTitle(stream))
+}
+
+/**
+ * The event stream a routine waits for, as its server describes it now (its title and filter schema); none for a
+ * routine on no event, or while the server has not said.
+ */
+function useStreamOf(definition: RoutineDefinition) {
+  const { trigger } = definition
+  const streams = useQuery(eventsQuery(trigger.kind === 'event' ? trigger.connectionId : undefined))
+  return trigger.kind === 'event' ? streams.data?.find((stream) => stream.name === trigger.name) : undefined
 }
 
 /** Whether a routine tells the owner, in words (ADR 0041). */
@@ -44,7 +66,7 @@ function useHandedTo(definition: RoutineDefinition): string | undefined {
   const personas = usePersonas()
   const { handTo } = definition
   if (handTo.kind === 'none') return undefined
-  if (handTo.kind === 'goblin') return 'Goblin'
+  if (handTo.kind === 'goblin') return 'goblin'
   const name = personas.find((persona) => persona.id === handTo.persona)?.name ?? `Persona ${String(handTo.persona)}`
   return `@${name}, revision ${String(handTo.revision)}`
 }
@@ -56,6 +78,7 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
   const handOver = handOverOf(definition)
   const handedTo = useHandedTo(definition)
   const topic = useTopics().find((each) => each.id === routine.topic)
+  const stream = useStreamOf(definition)
   return (
     <>
       {handOver !== undefined && <p className="routine-prompt">{handOver.instruction}</p>}
@@ -74,10 +97,8 @@ function RoutineDetails({ routine }: { readonly routine: RoutineView }) {
         )}
         {trigger.kind === 'event' && (
           <div>
-            <dt>Only events matching</dt>
-            <dd>
-              <code>{JSON.stringify(trigger.arguments)}</code>
-            </dd>
+            <dt>Which ones</dt>
+            <dd>{filtersInWords(trigger.arguments, stream?.inputSchema)}</dd>
           </div>
         )}
         {handOver !== undefined && (
@@ -159,7 +180,7 @@ export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineVi
   const { state, definition } = routine
   const busy = pending !== undefined
   const persona = personaNote(routine.persona)
-  const connection = useConnectionLabels()
+  const when = useWhenOf(definition)
   const repin = persona !== undefined && routine.persona?.archived === false && state !== 'archived'
   return (
     <Card>
@@ -168,7 +189,7 @@ export function RoutineReview({ routine, onEdit }: { readonly routine: RoutineVi
           <span className="routine-title">{definition.title}</span>
         </CardTitle>
         <CardDescription>
-          <span className="routine-title">{whenOf(definition, connection)}</span>
+          <span className="routine-title">{when}</span>
         </CardDescription>
         <CardAction>
           <StatusLabel label={routineStatus(routine)} />

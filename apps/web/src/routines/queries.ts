@@ -1,5 +1,6 @@
 import { type QueryClient, mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
 import type { RoutineDefinition, RoutineSettings } from '@goblin/contracts'
+import * as Effect from 'effect/Effect'
 import { owner } from '../lib/api.ts'
 import { mcpKeys } from '../mcp/queries.ts'
 import { withOperation } from '../lib/query/api-query.ts'
@@ -89,6 +90,41 @@ export const changeRoutineMutation = mutationOptions({
     await listChanged(client)
     // A confirmed event routine answers its connection's offer of events (ADR 0041).
     if (action === 'confirm' || action === 'confirmAgain') await client.invalidateQueries({ queryKey: mcpKeys.servers })
+  },
+})
+
+/** One event the owner set up from a connection's picker: its routine, in its Topic, under one operation. */
+export type EventSetUpRequest = {
+  readonly operationId: string
+  readonly topic: number
+  readonly definition: RoutineDefinition
+}
+/**
+ * The events the owner picked, set up in one step (ADR 0041): each is proposed, then confirmed at the revision it was
+ * proposed at, one after the other, so each confirmation grants exactly its own selector. The first failure stops the
+ * rest; what was set up before it stays, and the routines and servers are read again either way.
+ */
+export const setUpEventsMutation = mutationOptions({
+  ...owner.apiMutation({
+    mutationFn: (api, requests: readonly EventSetUpRequest[]) =>
+      Effect.forEach(requests, ({ operationId, topic, definition }) =>
+        Effect.gen(function* () {
+          const proposed = yield* withOperation(operationId)(
+            api.routines.propose({ payload: { operationId, topic, definition } }),
+          )
+          const confirm = `${operationId}:confirm`
+          return yield* withOperation(confirm)(
+            api.routines.confirm({
+              params: { id: proposed.id },
+              payload: { revision: proposed.revision, operationId: confirm },
+            }),
+          )
+        }),
+      ),
+  }),
+  onSettled: async (_routines, _error, _requests, _result, { client }) => {
+    await listChanged(client)
+    await client.invalidateQueries({ queryKey: mcpKeys.servers })
   },
 })
 
