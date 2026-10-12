@@ -5,6 +5,7 @@ import * as Exit from 'effect/Exit'
 import * as Layer from 'effect/Layer'
 import { SubscriptionRequired } from '../http/errors.ts'
 import type { RuntimeEnv } from '../env.ts'
+import { FREE, freeCredits } from './plans.ts'
 import { planOf, type AccountPlan } from './reconcile.ts'
 import { makeBillingStore } from './store.ts'
 import type { Internal } from '../http/errors.ts'
@@ -19,8 +20,9 @@ export interface EntitlementPolicy {
 }
 export const accountEntitlements = (env: RuntimeEnv, userId: () => string): EntitlementPolicy => {
   const store = makeBillingStore(env.AUTH_DB)
-  const state = () => planOf(store, userId(), env.STAGE ?? 'test', billingMode(env))
-  return { state, require: () => activePlan(state()) }
+  const free = freeCredits(env.FREE_DAILY_CREDITS)
+  const state = () => planOf(store, userId(), env.STAGE ?? 'test', billingMode(env), { free })
+  return { state, require: (feature) => activePlan(state(), feature) }
 }
 export class Entitlements extends Context.Service<Entitlements, EntitlementPolicy>()('goblin/Entitlements') {
   static layer(env: RuntimeEnv, userId: () => string) {
@@ -28,17 +30,24 @@ export class Entitlements extends Context.Service<Entitlements, EntitlementPolic
   }
 }
 
-/** The plan the agent keeps, `SubscriptionRequired` unless it is active (with `feature`, when one is named). */
+/**
+ * The plan the agent keeps, `SubscriptionRequired` unless it is active and, when `feature` is named, includes it: the
+ * free plan has no routines.
+ */
 export const requirePlan = (
   feature?: 'agent' | 'routines' | 'subagents',
 ): Effect.Effect<AccountPlan, Internal | SubscriptionRequired, Entitlements> =>
   Entitlements.use((plans) => plans.require(feature))
-const activePlan = (state: Effect.Effect<AccountPlan, Internal>) =>
-  state.pipe(
-    Effect.flatMap((plan) =>
-      plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
-    ),
-  )
+type Feature = 'agent' | 'routines' | 'subagents'
+
+/** `plan`, when it is active and includes `feature`; else `SubscriptionRequired`. */
+const included = (plan: AccountPlan, feature?: Feature) =>
+  plan.active && !(plan.source === 'free' && feature === 'routines' && !FREE.routines)
+    ? Effect.succeed(plan)
+    : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' }))
+
+const activePlan = (state: Effect.Effect<AccountPlan, Internal>, feature?: Feature) =>
+  Effect.flatMap(state, (plan) => included(plan, feature))
 
 /** How long the agent keeps an active plan before it reads auth D1 again (ADR 0015, 0026). */
 const PLAN_TTL = Duration.seconds(60)
@@ -54,7 +63,11 @@ export const cachedPolicy = Effect.fn('Entitlements.cachedPolicy')(function* (po
     Exit.isSuccess(exit) && exit.value.active ? PLAN_TTL : Duration.zero
   const [state] = yield* Effect.cachedInvalidateWithTTL(policy.state(), keep)
   const [require] = yield* Effect.cachedInvalidateWithTTL(policy.require(), keep)
-  return Entitlements.of({ state: () => state, require: () => require })
+  // The cached answer is the plan's; each feature is checked on it, so a free plan never passes for routines.
+  return Entitlements.of({
+    state: () => state,
+    require: (feature) => Effect.flatMap(require, (plan) => included(plan, feature)),
+  })
 })
 
 /**

@@ -93,6 +93,7 @@ export default Alchemy.Stack(
         APP_URL: appUrl,
         BETTER_AUTH_SECRET: Config.Redacted('GOBLIN_BETTER_AUTH_SECRET'),
         SIGNUP_MODE: signupMode,
+        FREE_DAILY_CREDITS: yield* Config.String('GOBLIN_FREE_DAILY_CREDITS').pipe(Config.withDefault('0')),
         ...(mailSender === ''
           ? {}
           : {

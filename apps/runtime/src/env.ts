@@ -30,6 +30,11 @@ export interface RuntimeEnv {
   /** `open`, `invite` (needs `SIGNUP_INVITE_CODE`) or `closed`; anything else counts as `closed`. */
   readonly SIGNUP_MODE?: string
   readonly SIGNUP_INVITE_CODE?: string
+  /**
+   * The free plan's daily model Credits for an account without Pro (ADR 0026); unset or 0, there is no free plan and
+   * such an account must subscribe.
+   */
+  readonly FREE_DAILY_CREDITS?: string
   readonly MODEL_BASE_URL: string
   /** The default model; also the first one offered. */
   readonly MODEL_ID: string

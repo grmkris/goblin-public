@@ -49,6 +49,6 @@ export const billingTestRoute = Effect.fn('billing.fixture')(function* (
     )
     return Response.json({ ok: true })
   }
-  if (action === 'as-prod') return Response.json(yield* planOf(deps.store, userId, 'prod', 'live_mode', at))
-  return Response.json(yield* planOf(deps.store, userId, 'test', 'test_mode', at))
+  if (action === 'as-prod') return Response.json(yield* planOf(deps.store, userId, 'prod', 'live_mode', { at }))
+  return Response.json(yield* planOf(deps.store, userId, 'test', 'test_mode', { at }))
 })

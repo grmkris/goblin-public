@@ -2,7 +2,8 @@ import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { type EntitlementPolicy, Entitlements, cachedPolicy, requirePlan } from '../src/billing/gates.ts'
-import type { AccountPlan } from '../src/billing/reconcile.ts'
+import { freeCredits } from '../src/billing/plans.ts'
+import { type AccountPlan, planOf } from '../src/billing/reconcile.ts'
 import { Internal, SubscriptionRequired } from '../src/http/errors.ts'
 
 const PLAN: AccountPlan = {
@@ -96,6 +97,49 @@ describe('requirePlan', () => {
       )
       expect(lapsed).toBeInstanceOf(SubscriptionRequired)
       expect(asked).toEqual(['routines', undefined])
+    }),
+  )
+
+  it.effect('lets a free plan use the agent but never routines, also from the kept answer', () =>
+    Effect.gen(function* () {
+      const free: AccountPlan = { ...PLAN, source: 'free', dailyCredits: 50, status: 'free' }
+      const plans = yield* cachedPolicy(counted([free]).policy)
+      expect(yield* plans.require()).toEqual(free)
+      expect(yield* plans.require('agent')).toEqual(free)
+      expect(yield* Effect.flip(plans.require('routines'))).toMatchObject({ _tag: 'SubscriptionRequired' })
+      // Pro keeps routines.
+      const pro = yield* cachedPolicy(counted([PLAN]).policy)
+      expect(yield* pro.require('routines')).toEqual(PLAN)
+    }),
+  )
+})
+
+/** An account with no billing row and no subscription, as auth D1 answers for a new sign-up. */
+const newAccount = {
+  account: () => Effect.succeed(undefined),
+  subscriptions: () => Effect.succeed([]),
+}
+
+describe('the free plan (FREE_DAILY_CREDITS)', () => {
+  it('reads the setting as whole Credits up to Pro, and anything else as no free plan', () => {
+    expect([freeCredits('50'), freeCredits('800'), freeCredits('5000')]).toEqual([50, 800, 800])
+    for (const none of [undefined, '', '0', '-5', '2.5', 'fifty']) expect(freeCredits(none), String(none)).toBe(0)
+  })
+
+  it.effect('gives an account without Pro the free plan only when the deployment sets one', () =>
+    Effect.gen(function* () {
+      const store = newAccount
+      expect(yield* planOf(store, 'u1', 'prod', 'live_mode', { at: 0 })).toMatchObject({
+        active: false,
+        source: 'none',
+        dailyCredits: 0,
+      })
+      expect(yield* planOf(store, 'u1', 'prod', 'live_mode', { at: 0, free: 50 })).toMatchObject({
+        active: true,
+        source: 'free',
+        dailyCredits: 50,
+        status: 'free',
+      })
     }),
   )
 })

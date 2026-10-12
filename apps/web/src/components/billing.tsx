@@ -21,8 +21,13 @@ import { AuthShell } from './auth-shell.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { shortDate } from '../lib/format.ts'
 
+/** Whether the account has Pro: an active plan that is not the free one. */
+const isPro = (state: BillingState): boolean => state.active && state.source !== 'free'
+
 /** When the paid period ends or renews, in words. */
 function periodLine(state: BillingState): string {
+  if (state.source === 'free')
+    return `Free: ${String(state.dailyCredits)} model Credits a day, no routines. Pro gives 800 a day and routines.`
   if (state.until === null)
     return state.active ? 'Included with your account.' : 'Subscribe to use your personal agent.'
   if (state.cancelAtPeriodEnd || state.status === 'cancelled') return `Access until ${shortDate(state.until)}.`
@@ -57,7 +62,7 @@ export function BillingCard() {
               </Button>
             </div>
           )}
-          {state?.active === false && !state.hasCustomer && (
+          {state !== undefined && !isPro(state) && !state.hasCustomer && (
             <div className="card-actions">
               <Button nativeButton={false} render={<Link to="/subscribe" />}>
                 Choose Pro
@@ -112,7 +117,7 @@ export function Subscribe() {
             <AlertDescription>{failure || error}</AlertDescription>
           </Alert>
         )}
-        {state?.active ? (
+        {state !== undefined && isPro(state) ? (
           <Button size="lg" className="w-full" nativeButton={false} render={<Link to="/" />}>
             Open your agent
           </Button>
@@ -127,7 +132,7 @@ export function Subscribe() {
             {state?.mode === 'test_mode' ? 'Continue to test checkout' : 'Subscribe for $10 a month'}
           </Button>
         )}
-        {state !== undefined && state.mode === null && !state.active && (
+        {state !== undefined && state.mode === null && !isPro(state) && (
           <p role="status" className="server-note">
             Checkout is being set up. Please try again later.
           </p>

@@ -9,6 +9,7 @@ import * as HttpServer from 'effect/http/HttpServer'
 import * as HttpApiBuilder from 'effect/http-api/HttpApiBuilder'
 import { listInboundClients, revokeInboundClient } from '../../auth/clients.ts'
 import { billingMode } from '../../billing/gates.ts'
+import { freeCredits } from '../../billing/plans.ts'
 import { planOf } from '../../billing/reconcile.ts'
 import { billingDeps, startCheckout } from '../../billing/routes.ts'
 import { makeBillingStore } from '../../billing/store.ts'
@@ -84,12 +85,15 @@ export const accountRecords = (env: RuntimeEnv): AccountRecords => {
     clients: (userId) => attempt(() => listInboundClients(env, userId)),
     revokeClient: (userId, clientId) => attempt(() => revokeInboundClient(env, userId, clientId)),
     billingState: (userId) =>
-      Effect.map(planOf(store, userId, stage, billingMode(env)), (plan) => ({
-        ...plan,
-        mode: deps?.dodo.mode ?? null,
-        plan: plan.active ? ('pro' as const) : null,
-        priceCents: 1000,
-      })),
+      Effect.map(
+        planOf(store, userId, stage, billingMode(env), { free: freeCredits(env.FREE_DAILY_CREDITS) }),
+        (plan) => ({
+          ...plan,
+          mode: deps?.dodo.mode ?? null,
+          plan: plan.active ? (plan.source === 'free' ? ('free' as const) : ('pro' as const)) : null,
+          priceCents: 1000,
+        }),
+      ),
     checkout: (userId) =>
       deps === undefined
         ? refused('billing_unavailable')

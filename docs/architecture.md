@@ -178,6 +178,9 @@ IP per hour; sign-in permits twenty attempts per IP per five minutes. D1 holds r
 per request. `GOBLIN_SIGNUP_MODE=open` admits new addresses; `invite` requires `GOBLIN_SIGNUP_INVITE_CODE` in the
 `x-invite-code` header on both send and verify; `closed` permits only existing accounts. A successful OTP creates an
 email-verified account or signs its owner in. Password, reset, verification-link and passkey endpoints are unavailable.
+A stage that sets `GOBLIN_FREE_DAILY_CREDITS` gives every account without Pro a free plan (`billing/plans.ts`,
+`source: 'free'`): the agent with those Credits a day and no routines (`requirePlan('routines')` refuses it, also
+from the agent's kept answer), with Pro still on offer.
 
 Every stage requires a mail sender. Deployed mail uses Cloudflare Email Sending from `hello@goblin.surf`; local
 workerd captures `.eml` files through Alchemy's simulator. Better Auth 1.7.6 swallows mail callback errors, so a
@@ -1586,7 +1589,7 @@ grace end or three days after the period end; missing dates fail closed. Existin
 dev-only override, which grants nothing on prod. Operator overrides may supply their own allowance.
 
 Each Agent's usage ledger still records its owner's UTC-day spend, while the allowance now comes from that account's
-plan (800 Credits a day for Pro, ADR 0026), at the Credit rates the stage configures; the defaults are Alibaba's
+plan (800 Credits a day for Pro, the stage's free Credits otherwise; ADR 0026), at the Credit rates the stage configures; the defaults are Alibaba's
 example rates and need operator review against the plan's real billing.
 
 The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. The return page

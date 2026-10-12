@@ -46,6 +46,7 @@ export const serverName = (server: Pick<ServerView, 'title' | 'serverName'>): st
 /** The owner's plan, from billing state. */
 export function planStatus(state: BillingState): Label {
   if (!state.active) return { text: 'Not subscribed', tone: 'quiet' }
+  if (state.source === 'free') return { text: 'Free', tone: 'quiet' }
   if (state.status === 'past_due' || state.status === 'on_hold') return { text: 'Payment due', tone: 'attention' }
   if (state.cancelAtPeriodEnd || state.status === 'cancelled') return { text: 'Ending', tone: 'quiet' }
   return { text: 'Active', tone: 'good' }

@@ -19,7 +19,7 @@ export const startCheckout = Effect.fn('billing.startCheckout')(function* (
   stage: string,
 ) {
   const now = yield* Clock.currentTimeMillis
-  const plan = yield* planOf(deps.store, userId, stage, deps.dodo.mode, now)
+  const plan = yield* planOf(deps.store, userId, stage, deps.dodo.mode, { at: now })
   if (plan.active) return { error: 'already_subscribed', status: 409 } as const
   if ((yield* deps.store.checkoutCount(userId, now - 60_000)) >= 5)
     return { error: 'checkout_limit', status: 429 } as const

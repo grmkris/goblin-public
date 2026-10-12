@@ -8,7 +8,8 @@ import type { DodoMode } from './dodo.ts'
 
 export interface AccountPlan {
   readonly active: boolean
-  readonly source: 'override' | 'subscription' | 'none'
+  /** `free`: no Pro, and the deployment gives accounts a free plan (`FREE_DAILY_CREDITS`). */
+  readonly source: 'override' | 'subscription' | 'free' | 'none'
   readonly until: number | null
   /** The daily model allowance in estimated Token Plan Credits (ADR 0026). */
   readonly dailyCredits: number
@@ -21,6 +22,7 @@ const effectivePlan = (
   rows: readonly Subscription[],
   stage: string,
   now: number,
+  free: number,
 ): AccountPlan => {
   const hasCustomer = account?.customerId != null
   if (account?.planOverride === 'pro' && (account.overrideStage === null || account.overrideStage === stage))
@@ -39,11 +41,11 @@ const effectivePlan = (
   const latest = rows.toSorted((a, b) => b.providerUpdatedAt - a.providerUpdatedAt)[0]
   if (active === undefined)
     return {
-      active: false,
-      source: 'none',
+      active: free > 0,
+      source: free > 0 ? 'free' : 'none',
       until: null,
-      dailyCredits: 0,
-      status: latest?.status ?? 'unsubscribed',
+      dailyCredits: free,
+      status: latest?.status ?? (free > 0 ? 'free' : 'unsubscribed'),
       hasCustomer,
       cancelAtPeriodEnd: latest?.cancelAtPeriodEnd === 1,
     }
@@ -58,14 +60,15 @@ const effectivePlan = (
   }
 }
 export const planOf = Effect.fn('billing.planOf')(function* (
-  store: BillingStore,
+  store: Pick<BillingStore, 'account' | 'subscriptions'>,
   userId: string,
   stage: string,
   mode: DodoMode,
-  at?: number,
+  /** `at`: the time to read it at (now). `free`: the deployment's free plan Credits (none). */
+  { at, free = 0 }: { readonly at?: number | undefined; readonly free?: number } = {},
 ) {
   const now = at ?? (yield* Clock.currentTimeMillis)
   const account = yield* store.account(userId)
   const rows = yield* store.subscriptions(userId, mode)
-  return effectivePlan(account, rows, stage, now)
+  return effectivePlan(account, rows, stage, now, free)
 })
