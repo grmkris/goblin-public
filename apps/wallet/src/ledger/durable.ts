@@ -8,7 +8,7 @@ import { LEDGER_METHODS, type LedgerApi, SCHEDULE_FLOAT } from './client.ts'
 import { fromDurableObjectSql } from './sql.ts'
 import { LedgerStore } from './store.ts'
 
-export { LEDGER_METHODS, type LedgerApi, ledgerClient } from './client.ts'
+export { type LedgerApi, ledgerClient } from './client.ts'
 
 /** One run of the owner's float alarm over its own ledger; answers when to run again after a failure. */
 export type FloatRunner = (ledger: LedgerApi) => Promise<{ retryInMs?: number }>
