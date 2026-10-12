@@ -128,6 +128,9 @@ const singleton = (namespace: DurableObjectNamespace) => namespace.get(namespace
 /** The singleton's OAuth client from the Worker's binding. */
 export const authStore = (namespace: DurableObjectNamespace): AuthApi => authClient(singleton(namespace))
 
-/** The singleton's subscription client from the Worker's binding. */
+/**
+ * The singleton's subscription client from the Worker's binding. The stub is fetched on a call, not here: every owner
+ * request builds this client, and most never use it.
+ */
 export const subscriptionStore = (namespace: DurableObjectNamespace): SubscriptionApi =>
-  subscriptionClient(singleton(namespace))
+  subscriptionClient({ fetch: (request) => singleton(namespace).fetch(request) })
