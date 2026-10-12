@@ -1,5 +1,8 @@
 import type { WalletEnv } from './env.ts'
 import { apiError } from './http.ts'
+import { defaultWiring } from './context.ts'
+import { refuseAll } from './mcp/auth.ts'
+import { createMcpEndpoint } from './mcp/handler.ts'
 import { createRouter } from './router.ts'
 
 export { WalletLedger } from './ledger/durable.ts'
@@ -16,7 +19,7 @@ const notYet = (): Promise<Response> => Promise.resolve(apiError('not_found', 'N
 const route = createRouter({
   oauth: () => Promise.resolve(undefined),
   api: notYet,
-  mcp: notYet,
+  mcp: createMcpEndpoint({ authenticate: refuseAll, wiring: defaultWiring }),
 })
 
 export default {

@@ -43,6 +43,8 @@ import {
   type ReserveOptions,
   type ReserveOutcome,
 } from './reserve.ts'
+import { type Profile, readProfile, updateProfile } from './profile.ts'
+import { getQuote, putQuote, type StoredQuote } from './quotes.ts'
 import { migrate } from './schema.ts'
 import type { Sql } from './sql.ts'
 import { getState, isRevoked, putState, REVOKED_KEY } from './state.ts'
@@ -167,6 +169,22 @@ export class LedgerStore {
 
   putViewState(json: string): boolean {
     return writeViewState(this.#ctx, json)
+  }
+
+  profile(): Profile {
+    return readProfile(this.#ctx)
+  }
+
+  updateProfile(patch: Partial<Profile>): Profile {
+    return updateProfile(this.#ctx, patch)
+  }
+
+  putQuote(stored: StoredQuote): void {
+    putQuote(this.#ctx, stored)
+  }
+
+  getQuote(id: string): StoredQuote | undefined {
+    return getQuote(this.#ctx, id)
   }
 
   isRevoked(): boolean {

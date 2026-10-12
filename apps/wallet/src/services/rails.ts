@@ -1,5 +1,6 @@
 import type {
   ChainBalance,
+  LimitView,
   ExecuteQuoteInput,
   Operation,
   Payment,
@@ -55,6 +56,8 @@ export interface RailsPort {
   bridgeQuote(input: BridgeQuoteInput): Promise<FrozenQuote>
   bridgeExecute(operation: Operation, payload: unknown): Promise<PayOutcome>
   balances(): Promise<ChainBalance[]>
+  /** The limits the chain and the signer enforce (layers `onchain`, `tempo`, `signer`), with what is left. */
+  allowances(): Promise<LimitView[]>
   /** Relays the owner's signed EIP-7702 authorization. */
   upgrade(request: UpgradeRequest): Promise<Operation>
 }

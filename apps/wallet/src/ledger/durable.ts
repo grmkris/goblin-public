@@ -30,6 +30,10 @@ export const LEDGER_METHODS = [
   'policyChanges',
   'viewState',
   'putViewState',
+  'profile',
+  'updateProfile',
+  'putQuote',
+  'getQuote',
   'isRevoked',
   'revoke',
 ] as const satisfies readonly (keyof LedgerStore)[]

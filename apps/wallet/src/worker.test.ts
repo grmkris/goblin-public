@@ -1,44 +1,8 @@
 import { describe, expect, test } from 'vitest'
-import type { WalletEnv } from './env.ts'
+import { testEnv } from './test-env.ts'
 import worker from './worker.ts'
 
-const stubNamespace: DurableObjectNamespace = {
-  newUniqueId: () => {
-    throw new Error('not used by these tests')
-  },
-  idFromName: () => {
-    throw new Error('not used by these tests')
-  },
-  idFromString: () => {
-    throw new Error('not used by these tests')
-  },
-  get: () => {
-    throw new Error('not used by these tests')
-  },
-  getByName: () => {
-    throw new Error('not used by these tests')
-  },
-  jurisdiction: () => stubNamespace,
-}
-const envWith = (extra: Partial<WalletEnv>): WalletEnv => ({
-  ASSETS: {
-    fetch: () => Promise.resolve(new Response('asset')),
-    connect: () => {
-      throw new Error('not used by these tests')
-    },
-  },
-  LEDGER: stubNamespace,
-  AUTH: stubNamespace,
-  PRIVY_APP_ID: 'app-123',
-  PRIVY_SIGNER_ID: '',
-  PRIVY_POLICY_ID: '',
-  PRIVY_APP_SECRET: '',
-  PRIVY_AUTHORIZATION_KEY: '',
-  RELAY_PRIVATE_KEY: '',
-  RPC_URLS: '',
-  WALLET_LIVE: '0',
-  ...extra,
-})
+const envWith = testEnv
 
 const get = (path: string, method = 'GET', env = envWith({})) =>
   worker.fetch(new Request(`https://wallet.test${path}`, { method }), env)
@@ -72,12 +36,22 @@ describe('worker skeleton', () => {
       ['/nope', 'GET'],
       ['/health', 'POST'],
       ['/api/unknown', 'GET'],
-      ['/mcp', 'POST'],
     ] as const) {
       const response = await get(path, method)
       expect(response.status).toBe(404)
       expect(response.headers.get('content-type')).toContain('application/json')
     }
+  })
+})
+
+describe('mcp', () => {
+  test('POST /mcp without a token is answered with the OAuth challenge', async () => {
+    const response = await worker.fetch(
+      new Request('https://wallet.test/mcp', { method: 'POST', headers: { host: 'wallet.test' } }),
+      envWith({}),
+    )
+    expect(response.status).toBe(401)
+    expect(response.headers.get('www-authenticate')).toContain('Bearer')
   })
 })
 

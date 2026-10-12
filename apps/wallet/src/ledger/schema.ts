@@ -24,6 +24,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS policy_changes (
     id TEXT PRIMARY KEY, change_text TEXT NOT NULL, reason TEXT NOT NULL, client TEXT NOT NULL,
     status TEXT NOT NULL, created_at_ms INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS quotes (
+    id TEXT PRIMARY KEY, body_json TEXT NOT NULL, expires_at_ms INTEGER NOT NULL, created_at_ms INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 ]
 
