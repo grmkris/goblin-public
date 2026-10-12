@@ -10,8 +10,8 @@ import type { CredentialCipher } from './cipher.ts'
 import { argumentsHash } from './approvals.ts'
 import type { UrlPrompt } from './types.ts'
 
-// URL requests (ADR 0042): a model's MCP call the server answered "input required: open this URL", kept until the
-// owner finishes or cancels it. Sealing and every other wait run outside SQLite transactions.
+// URL requests (ADR 0042): a model's MCP call (its own, or the held call the owner approved) the server answered "input
+// required: open this URL", kept until the owner finishes or cancels it. Sealing and every other wait run outside SQLite transactions.
 
 export type UrlRequestRow = typeof requests.$inferSelect
 
@@ -50,9 +50,6 @@ const keptSchema = (schema: Tool['inputSchema'] | undefined): string | null => {
 const decodeArguments = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))
 const Prompt = Schema.Struct({ url: Schema.String, message: Schema.String })
 const decodePrompt = Schema.decodeUnknownSync(Schema.fromJsonString(Prompt))
-
-/** A URL request id: one per model call. */
-export const urlRequestId = (session: string, callId: string): string => `mcp-url:${session}:${callId}`
 
 const matches = (row: UrlRequestRow, input: HeldUrlRequest, hash: string) =>
   row.argumentsHash === hash &&

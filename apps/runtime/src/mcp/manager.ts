@@ -44,19 +44,20 @@ import { type AskingOutcome, callAsking, urlPromptOf } from './url-asks.ts'
 
 /**
  * One tool call as its checks see it: the server, the tool and the arguments, serialized once; `held` is the tool as
- * listed when the server asked, for an answer it asked for.
+ * listed when the server asked, for an answer it asked for, and `answered` marks a call that carries that answer.
  */
 type ToolCall = {
   readonly connectionId: string
   readonly name: string
   readonly argumentsJson: string
   readonly held?: Tool
+  readonly answered?: true
 }
 
 /** The checks of one tool call: before it connects and again before each of its HTTP dispatches. */
 const toolGuards = (
   manager: Manager,
-  { connectionId, name, argumentsJson }: ToolCall,
+  { connectionId, name, argumentsJson, answered }: ToolCall,
   { caller = 'model', authorize, approvalId, approvalContext }: McpCallOptions,
 ) => {
   // SAFETY: the arguments were serialized once by the caller, so this JSON object is the immutable dispatch input.
@@ -74,7 +75,15 @@ const toolGuards = (
       if (decide === undefined) return
       const { endpoint } = yield* serverOf(manager, connectionId)
       const context = approvalContext === undefined ? {} : { approvalContext }
-      const dispatched = { connectionId, name, arguments: frozen(), caller, endpoint, ...context }
+      const dispatched = {
+        connectionId,
+        name,
+        arguments: frozen(),
+        caller,
+        endpoint,
+        ...context,
+        ...(answered === undefined ? {} : { answered }),
+      }
       yield* decide(dispatched, approvalId, dispatching, authorize)
     })
   let sent = false
@@ -340,6 +349,7 @@ const requests = (manager: Manager) => ({
       connectionId,
       name,
       argumentsJson: JSON.stringify(args),
+      ...(answer === undefined ? {} : { answered: true as const }),
       ...(answer === undefined || heldTool === undefined ? {} : { held: heldTool }),
     }
     const outcome = yield* callTool(

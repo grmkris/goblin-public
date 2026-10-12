@@ -389,6 +389,11 @@ export const ApprovalView = Schema.Struct({
     'expired',
   ]),
   expiresAt: Schema.Number,
+  /**
+   * The URL request its approved dispatch met (ADR 0042): the server asked the owner to finish a step on its site
+   * first, so the call goes on as that request.
+   */
+  urlRequest: Schema.optional(Schema.String),
 })
 export type ApprovalView = typeof ApprovalView.Type
 

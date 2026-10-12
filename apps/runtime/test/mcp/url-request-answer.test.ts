@@ -8,10 +8,11 @@ import { ChatId } from '../../src/chats/directory.ts'
 import { Chats, Conversations } from '../../src/chats/service.ts'
 import type { AppError } from '../../src/http/errors.ts'
 import type { AgentServices } from '../../src/layers/index.ts'
-import { urlRequestsOver } from '../../src/layers/mcp.ts'
+import { approvalsOver, urlRequestsOver } from '../../src/layers/mcp.ts'
+import { McpApprovalStore } from '../../src/mcp/approvals.ts'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
 import { mcpHost } from '../../src/mcp/host.ts'
-import { McpConnections, Resident, UrlRequests } from '../../src/mcp/service.ts'
+import { Approvals, McpConnections, Resident, UrlRequests } from '../../src/mcp/service.ts'
 import { answerUrlRequest, holdUrlRequest, urlRequestView } from '../../src/mcp/url-request.ts'
 import { McpUrlRequestStore } from '../../src/mcp/url-requests.ts'
 import { FlowEvents } from '../../src/observability/flows.ts'
@@ -49,10 +50,8 @@ const fixture = async () => {
   const flows: FlowEvent[] = []
   const { db, close } = chatDatabase()
   cleanups.push(close)
-  const store = new McpUrlRequestStore(
-    durable(db),
-    await CredentialCipher.fromBase64(btoa(String.fromCharCode(...new Uint8Array(32)))),
-  )
+  const cipher = await CredentialCipher.fromBase64(btoa(String.fromCharCode(...new Uint8Array(32))))
+  const store = new McpUrlRequestStore(durable(db), cipher)
   const credentials = new MemoryCredentials()
   await credentials.saveTokens('sq', { access_token: 'fixture', token_type: 'bearer' }, 0)
   const host = mcpHost({
@@ -70,6 +69,7 @@ const fixture = async () => {
         SingleFlight.layer,
         FlowEvents.layerWith((event) => Effect.sync(() => void flows.push(event))),
         Layer.succeed(UrlRequests, urlRequestsOver(store)),
+        Layer.succeed(Approvals, approvalsOver(new McpApprovalStore(durable(db), cipher))),
         Layer.succeed(Changes, makeChanges()),
         stub(Resident, { require: () => Effect.void }),
         stub(RoutineRuns, { session: () => Effect.succeed(undefined) }),

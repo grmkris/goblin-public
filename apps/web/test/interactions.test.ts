@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerText,
+  followUrlRequests,
   interactionOf,
   interactionOperation,
   openInteractions,
@@ -169,6 +170,27 @@ describe('what the agent waits on the owner for', () => {
     // Ended, or forgotten by its store: it leaves; its outcome row says how it went.
     expect(stillOpen(open, states('failed', 'completed'))).toEqual([grantAsk])
     expect(stillOpen(open, states('gone', 'expired'))).toEqual([grantAsk])
+  })
+  it('follows a held call whose approved dispatch met a URL request to that request (ADR 0042)', () => {
+    const held = {
+      kind: 'approval',
+      callId: 'g2',
+      approvalId: 'mcp:7:g2',
+      connectionId: 'wallet',
+      name: 'transfer',
+    } as const
+    const other = { kind: 'approval', callId: 'g3', approvalId: 'mcp:7:g3', connectionId: 'wallet', name: 'x' } as const
+    const open = [held, other]
+    expect(followUrlRequests(open, new Map())).toBe(open)
+    const followed = followUrlRequests(open, new Map([['mcp:7:g2', 'mcp-url:7:g2']]))
+    expect(followed).toEqual([
+      { kind: 'url', callId: 'g2', requestId: 'mcp-url:7:g2', connectionId: 'wallet', name: 'transfer' },
+      other,
+    ])
+    // The followed card stays while the request waits, under the request's own state.
+    const requestStates = new Map([['mcp-url:7:g2', 'pending']])
+    expect(stillOpen(followed, requestStates)).toEqual(followed)
+    expect(waitingOnOwner(followed.slice(0, 1), requestStates)).toBe(1)
   })
   it('reads ask_user questions, and ignores details that do not fit the contract', () => {
     expect(interactionOf(asked([question]))).toEqual({ kind: 'question', callId: 'q1', questions: [question] })

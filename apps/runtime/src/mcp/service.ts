@@ -198,8 +198,9 @@ export class McpConnections extends Context.Service<
       options?: McpCallOptions,
     ) => Effect.Effect<McpToolResult, AppError>
     /**
-     * A model's own call of a granted tool (ADR 0042): on a 2026 connection it declares URL elicitation for this
-     * request, so the server may answer with a URL request instead of a result; `answer` retries it with the owner's.
+     * A model's call of a granted tool, its own or the held call the owner approved for it (ADR 0042): on a 2026
+     * connection it declares URL elicitation for this request, so the server may answer with a URL request instead of
+     * a result; `answer` retries it with the owner's.
      */
     readonly callModelTool: (
       connectionId: string,
@@ -267,6 +268,8 @@ export class Approvals extends Context.Service<
     readonly arguments: (id: string) => Effect.Effect<JsonObject, AppError>
     /** Records a dispatched call's result. */
     readonly finish: (id: string, result: CallToolResult) => Effect.Effect<void, AppError>
+    /** The dispatch met a URL request (ADR 0042): it is spent, and the call goes on as that request. */
+    readonly toUrlRequest: (id: string) => Effect.Effect<void>
     /** An approved or dispatching call that did not complete: `uncertain` once it may have taken effect. */
     readonly fail: (id: string, state: 'failed' | 'uncertain') => Effect.Effect<void>
     /** A completed call's result, decrypted. */

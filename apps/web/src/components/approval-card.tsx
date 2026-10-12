@@ -8,6 +8,7 @@ import { messageOf } from '../lib/query/app-error.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
 import { serversQuery } from '../mcp/queries.ts'
 import { PaidJob, RunUpTo, paidAmount } from './paid-job.tsx'
+import { UrlRequestCard } from './url-request-card.tsx'
 
 type Approval = Extract<Interaction, { kind: 'approval' }>
 
@@ -136,6 +137,11 @@ export function ApprovalCard({ interaction }: { readonly interaction: Approval }
         ? messageOf(read.error, 'read the call')
         : ''
   const pending = view?.state === 'pending'
+  // The server asked the owner to finish a step first (ADR 0042): the call goes on as that request.
+  if (view?.urlRequest !== undefined) {
+    const { callId, connectionId, name } = interaction
+    return <UrlRequestCard interaction={{ kind: 'url', callId, requestId: view.urlRequest, connectionId, name }} />
+  }
   if (view?.state === 'completed' || view?.state === 'refused') return null
   const standing = view === undefined ? undefined : STANDING[view.state]
   return (

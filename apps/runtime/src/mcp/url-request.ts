@@ -9,15 +9,16 @@ import { Chats } from '../chats/service.ts'
 import { FlowEvents } from '../observability/flows.ts'
 import { RoutineRuns } from '../routines/service.ts'
 import { bound } from '../runtime/boundary.ts'
-import { authority, resumeRoutine } from './approval-decision.ts'
-import { type McpCallInput, heldCallChanged, waitOnOwner } from './approval-request.ts'
+import { authority, resumeRoutine } from './held-authority.ts'
+import { metUrlRequest, urlRequestId } from './approvals.ts'
+import { type McpCallInput, heldCallChanged, modelApprovalId, waitOnOwner } from './approval-request.ts'
 import { urlRequiredResult } from './extension.ts'
 import { keepLateApp } from './kept-app.ts'
 import { named } from './labels.ts'
 import { redactSecretFields } from './redaction.ts'
-import { McpConnections, McpServers, UrlRequests } from './service.ts'
+import { Approvals, McpConnections, McpServers, UrlRequests } from './service.ts'
 import type { HeldCallOutcome, UrlAnswer, UrlPrompt } from './types.ts'
-import { type UrlRequestRow, urlRequestId } from './url-requests.ts'
+import type { UrlRequestRow } from './url-requests.ts'
 
 /** How long a URL request waits on the owner at most. */
 const URL_REQUEST_TTL = 86_400_000
@@ -107,6 +108,19 @@ const failure = (error: AppError): 'failed' | 'uncertain' =>
   error instanceof UpstreamMcp && UNCERTAIN.has(error.reason) ? 'uncertain' : 'failed'
 
 /**
+ * The held call a URL request goes on from, when its dispatch met it (ADR 0042): the retry carries that approval, so an
+ * ask-first tool's answer goes out under exactly the authority the owner reviewed. None for the model's own call.
+ */
+const approvedFrom = (row: UrlRequestRow) =>
+  Effect.gen(function* () {
+    const id = modelApprovalId(row.sessionId, row.sourceCallId)
+    const approval = Option.getOrUndefined(yield* (yield* Approvals).find(id))
+    if (approval === undefined || !metUrlRequest(approval)) return {}
+    const approvalContext = { sessionId: row.sessionId, sourceCallId: row.sourceCallId, taskId: row.taskId }
+    return { approvalId: id, approvalContext }
+  })
+
+/**
  * Retries the held call once with the owner's answer and the server's request state, under the authority the call
  * needs now. A server still waiting makes the request pending again with its newer prompt; an answer is kept, and the
  * connection's tools are listed again, since finishing a server's step can change them.
@@ -120,6 +134,7 @@ const retry = (row: UrlRequestRow, action: UrlAnswer['action']) =>
     const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
     const connections = yield* McpConnections
     const outcome = yield* connections.callModelTool(row.connectionId, row.name, args, {
+      ...(yield* approvedFrom(row)),
       authorize,
       answer: { inputKey: prompt.inputKey, action, requestState: prompt.requestState },
       heldTool: yield* requests.tool(row.id),

@@ -1,6 +1,6 @@
 import { useQueries } from '@tanstack/react-query'
 import { NotFound } from '@goblin/contracts/api'
-import { type Interaction, type StoredStates, storedId } from '../lib/interactions.ts'
+import { type Interaction, type StoredStates, followUrlRequests, storedId } from '../lib/interactions.ts'
 import { approvalQuery, urlRequestQuery } from './queries.ts'
 
 /**
@@ -24,6 +24,27 @@ export function useStoredStates(interactions: readonly Interaction[]): StoredSta
           if (read.error instanceof NotFound) return [[id, 'gone']]
           return read.data === undefined ? [] : [[id, read.data.state]]
         }),
+      ),
+  })
+}
+
+/**
+ * The interactions as they stand now: a held call whose approved dispatch met a URL request (ADR 0042) goes on as that
+ * request (`followUrlRequests`), read from the approval its card keeps reading.
+ */
+export function useFollowed(interactions: readonly Interaction[]): readonly Interaction[] {
+  return useQueries({
+    queries: interactions.flatMap((interaction) =>
+      interaction.kind === 'approval' ? [approvalQuery(interaction.approvalId)] : [],
+    ),
+    combine: (reads) =>
+      followUrlRequests(
+        interactions,
+        new Map(
+          reads.flatMap((read): [string, string][] =>
+            read.data?.urlRequest === undefined ? [] : [[read.data.id, read.data.urlRequest]],
+          ),
+        ),
       ),
   })
 }

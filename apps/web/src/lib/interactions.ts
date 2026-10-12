@@ -228,6 +228,25 @@ export const storedId = (interaction: Interaction): string | undefined =>
       ? interaction.requestId
       : undefined
 
+/**
+ * The interactions with each held call whose approved dispatch met a URL request (ADR 0042) followed to that request,
+ * by the approvals' ids in `asked` (approval id to request id): the call goes on as the request, so its card and its
+ * state are the request's. The same list when nothing was asked.
+ */
+export function followUrlRequests(
+  open: readonly Interaction[],
+  asked: ReadonlyMap<string, string>,
+): readonly Interaction[] {
+  if (asked.size === 0) return open
+  return open.map((interaction) => {
+    if (interaction.kind !== 'approval') return interaction
+    const requestId = asked.get(interaction.approvalId)
+    if (requestId === undefined) return interaction
+    const { callId, connectionId, name } = interaction
+    return { kind: 'url', callId, requestId, connectionId, name }
+  })
+}
+
 /** The states a stored ask is still under way in: waiting on the owner, or on its way after their answer. */
 const UNDER_WAY: Readonly<Record<'approval' | 'url', ReadonlySet<string>>> = {
   approval: new Set(['pending', 'approved', 'dispatching']),

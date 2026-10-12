@@ -25,6 +25,22 @@ export type HeldCall = {
   readonly arguments: Record<string, unknown>
 }
 const decodeArguments = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))
+
+/** A URL request id: one per model call, whether the model's own call met it or the held call the owner approved. */
+export const urlRequestId = (session: string, callId: string): string => `mcp-url:${session}:${callId}`
+
+/**
+ * Whether the held call's one dispatch met a URL request (ADR 0042): the server asked the owner to finish a step on
+ * its site first, so the call goes on as that request. Its dispatch is spent, and it keeps no result of its own.
+ */
+export const metUrlRequest = (row: ApprovalRow): boolean => row.state === 'completed' && row.resultSealed === null
+
+/** The URL request a held call goes on as (`metUrlRequest`), by its id; none for any other held call. */
+export const urlRequestOf = (row: ApprovalRow): string | undefined =>
+  metUrlRequest(row) && row.sessionId !== null && row.sourceCallId !== null
+    ? urlRequestId(row.sessionId, row.sourceCallId)
+    : undefined
+
 /** What a held call's arguments are checked by: the SHA-256 of their JSON, as held. */
 export const argumentsHash = (args: Record<string, unknown>): Promise<string> =>
   sha256Hex(JSON.stringify(decodeArguments(args)))
@@ -143,7 +159,9 @@ export class McpApprovalStore {
   /**
    * The held call `id` still carries exactly the authority the owner reviewed: approved, unexpired, the same grant
    * version, endpoint, server, tool, caller, arguments (`hash`, from `argumentsHash`) and conversation. A `dispatch`
-   * check also claims the one dispatch.
+   * check also claims the one dispatch. The retry of a URL request its dispatch met (`call.answered`) needs the same
+   * authority from a call whose dispatch went out once and met it; the URL request's own claim keeps that retry to one
+   * per owner answer, and its own expiry stands in for the approval's.
    */
   check(input: {
     readonly id: string
@@ -156,9 +174,9 @@ export class McpApprovalStore {
     const { id, call, hash, version, now, dispatch } = input
     const row = this.get(id)
     const context = call.approvalContext
+    const reviewed = call.answered === true ? metUrlRequest(row) : row.state === 'approved' && row.expiresAt > now
     if (
-      row.state !== 'approved' ||
-      row.expiresAt <= now ||
+      !reviewed ||
       row.grantVersion !== version ||
       row.endpoint !== call.endpoint ||
       row.connectionId !== call.connectionId ||
@@ -170,7 +188,8 @@ export class McpApprovalStore {
       row.taskId !== (context?.taskId ?? null)
     )
       throw new Conflict({ reason: 'held call no longer has its reviewed authority' })
-    if (dispatch && !this.claim(id, now)) throw new Conflict({ reason: 'approval was already dispatched' })
+    if (dispatch && call.answered !== true && !this.claim(id, now))
+      throw new Conflict({ reason: 'approval was already dispatched' })
   }
 
   /** `check` with the call's arguments hashed here. */
@@ -190,6 +209,17 @@ export class McpApprovalStore {
     this.#db
       .update(approvals)
       .set({ state: 'completed', resultSealed: sealed, updatedAt: now })
+      .where(and(eq(approvals.id, id), eq(approvals.state, 'dispatching')))
+      .run()
+  }
+  /**
+   * The dispatch met a URL request (ADR 0042): the server answered, nothing completed, and the call goes on as the
+   * request the caller has just kept. The approval's dispatch is spent; it keeps no result (`metUrlRequest`).
+   */
+  toUrlRequest(id: string, now: number): void {
+    this.#db
+      .update(approvals)
+      .set({ state: 'completed', updatedAt: now })
       .where(and(eq(approvals.id, id), eq(approvals.state, 'dispatching')))
       .run()
   }
@@ -216,6 +246,7 @@ export class McpApprovalStore {
   }
   async view(id: string, now: number): Promise<ApprovalView> {
     const row = this.get(id)
+    const urlRequest = urlRequestOf(row)
     return {
       id,
       connectionId: row.connectionId,
@@ -224,6 +255,7 @@ export class McpApprovalStore {
       state: row.state === 'pending' && row.expiresAt <= now ? 'expired' : row.state,
       expiresAt: row.expiresAt,
       ...(row.sessionId === null ? {} : { conversation: row.sessionId }),
+      ...(urlRequest === undefined ? {} : { urlRequest }),
     }
   }
 }

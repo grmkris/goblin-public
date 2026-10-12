@@ -104,10 +104,10 @@ const fixture = async () => {
 
 describe('an App kept for a call that ends its turn waiting on the owner (unit)', () => {
   it('registers the App when the owner approves the held call, and shows its real result instead of the placeholder', async () => {
-    const { registered, approvals, run } = await fixture()
+    const { server, registered, approvals, run } = await fixture()
     const held = await approvals.hold(
       {
-        id: 'mcp-approval:41:c1',
+        id: 'mcp:41:c1',
         caller: 'model',
         sessionId: '41',
         sourceCallId: 'c1',
@@ -125,11 +125,15 @@ describe('an App kept for a call that ends its turn waiting on the owner (unit)'
     expect(registered).toEqual([])
     expect(await run(settledDetails(placeholder))).toEqual(placeholder)
     approvals.decide(held.id, true, 1)
-    await run(sendApproved(approvals.get(held.id)))
+    // The server asks the owner to finish a step first (ADR 0042): the call goes on as that URL request.
+    expect((await run(sendApproved(approvals.get(held.id)))).kind).toBe('url')
+    expect(registered).toEqual([])
+    expect(await run(settledDetails(placeholder))).toEqual(placeholder)
+    server.state.approved = true
+    await run(answerUrlRequest({ id: 'mcp-url:41:c1', action: 'accept', continue: () => Effect.void }))
     expect(registered).toEqual([{ session: '41', callId: 'c1', uri: 'ui://sq/agent' }])
     const details = await run(settledDetails(placeholder))
-    expect(details).toMatchObject({ origin: { connectionId: 'sq' } })
-    expect(JSON.stringify(details)).toContain('Approval needed')
+    expect(details).toMatchObject({ origin: { connectionId: 'sq' }, structuredContent: { agent: 'ag_1' } })
     expect(details).not.toHaveProperty('kind')
   })
 

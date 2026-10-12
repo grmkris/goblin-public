@@ -1,7 +1,9 @@
+import type { CallToolResult } from '@modelcontextprotocol/client'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { Apps } from '../apps/service.ts'
 import { isRecord } from '../runtime/digest.ts'
+import { urlRequestOf } from './approvals.ts'
 import { mcpResultDetails } from './extension.ts'
 import { toolAppResource } from './remote.ts'
 import { Approvals, McpConnections, UrlRequests } from './service.ts'
@@ -44,21 +46,25 @@ export const keepLateApp = (
 
 /**
  * What an App shows for the result in its call's transcript entry: the real result when that entry is a placeholder
- * for a call the owner approved, or a URL request they finished, and the server has answered it. The placeholder
- * stays for a call that is still waiting, was refused, or has no readable result.
+ * for a call the owner approved (and the URL request its dispatch met, once they finished it), or a URL request they
+ * finished, and the server has answered it. The placeholder stays for a call that is still waiting, was refused, or
+ * has no readable result.
  */
 export const settledDetails = (details: unknown) =>
   Effect.gen(function* () {
     if (!isRecord(details) || typeof details['connectionId'] !== 'string') return details
     const connectionId = details['connectionId']
+    const settled = (result: Option.Option<CallToolResult>) =>
+      Option.match(result, { onNone: () => details, onSome: (value) => mcpResultDetails(connectionId, value) })
     if (details['kind'] === 'approval-required' && typeof details['approvalId'] === 'string') {
-      const result = yield* (yield* Approvals).result(details['approvalId'])
-      return Option.match(result, { onNone: () => details, onSome: (value) => mcpResultDetails(connectionId, value) })
+      const approvals = yield* Approvals
+      const result = yield* approvals.result(details['approvalId'])
+      // An approved call whose dispatch met a URL request has the request's answer, once the owner finished it.
+      const asked = Option.isNone(result) ? urlRequestOf(yield* approvals.get(details['approvalId'])) : undefined
+      return settled(asked === undefined ? result : yield* (yield* UrlRequests).result(asked))
     }
-    if (details['kind'] === 'url-required' && typeof details['requestId'] === 'string') {
-      const result = yield* (yield* UrlRequests).result(details['requestId'])
-      return Option.match(result, { onNone: () => details, onSome: (value) => mcpResultDetails(connectionId, value) })
-    }
+    if (details['kind'] === 'url-required' && typeof details['requestId'] === 'string')
+      return settled(yield* (yield* UrlRequests).result(details['requestId']))
     return details
   }).pipe(
     // expected: a result that cannot be read leaves the placeholder, which is what the transcript says happened.

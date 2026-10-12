@@ -329,10 +329,12 @@ export function residentMcpExtension(run: RunProgram) {
               const session = String(api.conversationId)
               if (off !== undefined) return new ReadyResult(outsideScopeResult(off, scope))
               const held = yield* holdModelCall(session, api.callId, String(api.taskId), input)
-              // Approved by the owner's spending rule (ADR 0044): it goes out now, exactly as held, and answers here.
+              // Approved by the owner's spending rule (ADR 0044): it goes out now, exactly as held, and answers here,
+              // or with the URL request the server asked first (ADR 0042).
               if (held?.state === 'approved') {
-                const result = yield* sendApproved(held, requestFor(api, context.abortSignal))
-                return new ReadyResult(mcpModelResult(input.connectionId, result))
+                const sent = yield* sendApproved(held, requestFor(api, context.abortSignal))
+                if (sent.kind === 'url') return new ReadyResult(sent.result)
+                return new ReadyResult(mcpModelResult(input.connectionId, sent.result))
               }
               if (held !== undefined) return new ReadyResult(yield* approvalResult(session, api.callId, held.id, input))
               const connections = yield* McpConnections

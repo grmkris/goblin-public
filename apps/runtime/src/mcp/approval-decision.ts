@@ -1,54 +1,21 @@
+import type { ToolExecutionResult } from '@earendil-works/pi-durable'
 import type { McpOutcome } from '@goblin/contracts'
-import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { requirePlan } from '../billing/gates.ts'
-import { Setups } from '../setup/service.ts'
-import { Chats, Conversations } from '../chats/service.ts'
-import { type AppError, NotFound } from '../http/errors.ts'
+import type { AppError } from '../http/errors.ts'
 import { bound } from '../runtime/boundary.ts'
-import { requireRoutineSession } from '../routines/authority.ts'
-import { RoutineRuns } from '../routines/service.ts'
-import type { ApprovalRow } from './approvals.ts'
+import { type ApprovalRow, metUrlRequest } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
 import { named } from './labels.ts'
 import { heldCallChanged } from './approval-request.ts'
 import { keepLateApp } from './kept-app.ts'
 import { profileOf } from './first-class.ts'
-import { Approvals, McpConnections, McpServers, Spending, requireResident } from './service.ts'
+import { authority, resumeRoutine } from './held-authority.ts'
+import { Approvals, McpConnections, McpServers, Spending } from './service.ts'
 import { microsOf } from './spend.ts'
-import type { HeldCallOutcome, McpRequestOptions } from './types.ts'
-
-/** The call a held row stands for: its conversation (when the model or an App made it), connection and tool. */
-type HeldTarget = { readonly sessionId: string | null; readonly connectionId: string; readonly name: string }
-
-/**
- * What a held call (or a URL request's retry) needs again just before it goes out: current authority, its open chat
- * and its scope.
- */
-export const authority = (row: HeldTarget) =>
-  Effect.gen(function* () {
-    yield* requireResident
-    if (row.sessionId === null) return
-    const session = row.sessionId
-    const chat = yield* (yield* Chats).chatOf(session)
-    if (Option.isNone(chat)) return yield* new NotFound({ what: 'chat' })
-    yield* (yield* Conversations).requireActing(chat.value)
-    yield* requireRoutineSession(session)
-    if (!(yield* (yield* Setups).scope(session)).tool(row.connectionId, row.name))
-      return yield* new NotFound({ what: 'tool scope' })
-  })
-
-/** A routine run waiting on the owner goes on running once its held call is approved (or its URL request answered). */
-export const resumeRoutine = (row: { readonly sessionId: string | null; readonly id: string }) =>
-  Effect.gen(function* () {
-    if (row.sessionId === null) return
-    const session = row.sessionId
-    const runs = yield* RoutineRuns
-    const record = yield* runs.session(session)
-    if (record === undefined || record.state !== 'waiting_owner') return
-    yield* runs.resume(session, `mcp-decision-resume:${row.id}`, yield* Clock.currentTimeMillis, 'approved')
-  })
+import type { HeldCallOutcome, McpRequestOptions, McpToolResult } from './types.ts'
+import { holdUrlRequest } from './url-request.ts'
 
 /**
  * A paid call goblin sends counts toward the day (ADR 0044), whoever approved it: the owner's card here, the owner's
@@ -64,8 +31,18 @@ const countSpend = (row: ApprovalRow, args: Record<string, unknown>) =>
   })
 
 /**
+ * How an approved held call went out: the server's result, or the URL request it asked first (ADR 0042), kept for the
+ * owner, with goblin's own result for the turn that waits on it.
+ */
+export type ApprovedOutcome =
+  | { readonly kind: 'complete'; readonly result: McpToolResult }
+  | { readonly kind: 'url'; readonly result: ToolExecutionResult }
+
+/**
  * Sends an approved held call, exactly its frozen arguments, once: the manager checks authority again right before it
  * dispatches, and a dispatch that did not complete is recorded as failed, or uncertain once it may have taken effect.
+ * A model's held call declares URL elicitation as the model's own call does (ADR 0042): a server that asks the owner to
+ * finish a step first gets a URL request, kept for the call's conversation, and the call goes on as that request.
  * `request` carries the caller's signal when the turn waits on it (a call approved by the owner's rule).
  */
 export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) =>
@@ -83,20 +60,39 @@ export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) 
           }
     // The manager checks authority again right before it dispatches, from inside its own guard: the plan, then the rest.
     const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
-    const result = yield* (yield* McpConnections).callTool(row.connectionId, row.name, args, {
+    const options = {
       ...request,
-      caller: row.caller,
       // The owner approved it, now or by their rule: their use, which holds the connection's listen stream.
-      use: 'foreground',
+      use: 'foreground' as const,
       approvalId: row.id,
-      ...(context === undefined
-        ? {}
-        : { approvalContext: context, runContext: { conversationId: context.sessionId, taskId: context.taskId } }),
       authorize,
+    }
+    const connections = yield* McpConnections
+    if (row.caller !== 'model' || context === undefined) {
+      const result = yield* connections.callTool(row.connectionId, row.name, args, { ...options, caller: row.caller })
+      yield* approvals.finish(row.id, result)
+      return { kind: 'complete', result } satisfies ApprovedOutcome
+    }
+    const outcome = yield* connections.callModelTool(row.connectionId, row.name, args, {
+      ...options,
+      approvalContext: context,
+      runContext: { conversationId: context.sessionId, taskId: context.taskId },
     })
-    yield* approvals.finish(row.id, result)
-    if (row.caller === 'model') yield* keepLateApp(row.sessionId, row.sourceCallId, row)
-    return result
+    if (outcome.kind === 'url') {
+      const input = { connectionId: row.connectionId, name: row.name, arguments: args }
+      const result = yield* holdUrlRequest(
+        context.sessionId,
+        context.sourceCallId,
+        context.taskId,
+        input,
+        outcome.prompt,
+      )
+      yield* approvals.toUrlRequest(row.id)
+      return { kind: 'url', result } satisfies ApprovedOutcome
+    }
+    yield* approvals.finish(row.id, outcome.result)
+    yield* keepLateApp(row.sessionId, row.sourceCallId, row)
+    return { kind: 'complete', result: outcome.result } satisfies ApprovedOutcome
   }).pipe(
     Effect.tapError(() =>
       Effect.gen(function* () {
@@ -149,7 +145,8 @@ export const decideApproval = <R>(input: {
     if (decision.changed && decision.row.state === 'approved') yield* dispatch(decision.row)
     const row = yield* approvals.get(input.id)
     if (decision.changed) yield* heldCallChanged(row.sessionId)
-    if (row.sessionId !== null && DECIDED.has(row.state)) {
+    // A dispatch that met a URL request goes on as that request: its answer, not this decision, continues the turn.
+    if (row.sessionId !== null && DECIDED.has(row.state) && !metUrlRequest(row)) {
       const result = yield* approvals.result(input.id)
       const labels = yield* (yield* McpServers).labels()
       const outcome: McpOutcome = {

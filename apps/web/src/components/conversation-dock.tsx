@@ -4,7 +4,7 @@ import type { AppContext, ComposerSelection, UsageToday } from '@goblin/contract
 import { Alert, AlertDescription, Button, PresenceBorder, PresenceOrb } from '@goblin/ui'
 import { RotateCcwIcon, WalletIcon } from 'lucide-react'
 import { modelQuery, payQuery, usageQuery } from '../agent/queries.ts'
-import { useStoredStates } from '../approvals/hooks.ts'
+import { useFollowed, useStoredStates } from '../approvals/hooks.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
 import { WALLET_NEEDED } from '../lib/query/app-error.ts'
 import { openInteractions, stillOpen, waitingOnOwner } from '../lib/interactions.ts'
@@ -177,7 +177,9 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
   const running = projection?.running ?? false
   const usage = useQuery(usageQuery).data
   const pay = useQuery(payQuery).data
-  const asked = useMemo(() => openInteractions(parts), [parts])
+  const opened = useMemo(() => openInteractions(parts), [parts])
+  // A held call whose approved dispatch met a URL request goes on as that request (ADR 0042).
+  const asked = useFollowed(opened)
   // A stored ask (a held call, a URL request) stays until its store says it ended; only a pending one waits on you.
   const states = useStoredStates(asked)
   const waiting = useMemo(() => stillOpen(asked, states), [asked, states])

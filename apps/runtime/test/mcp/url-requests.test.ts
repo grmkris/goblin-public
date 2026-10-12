@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { CredentialCipher } from '../../src/mcp/cipher.ts'
-import { type HeldUrlRequest, McpUrlRequestStore, urlRequestId } from '../../src/mcp/url-requests.ts'
+import { urlRequestId } from '../../src/mcp/approvals.ts'
+import { type HeldUrlRequest, McpUrlRequestStore } from '../../src/mcp/url-requests.ts'
 import { appMcpUrlRequests } from '../../src/storage/mcp-url-requests.ts'
 import { chatDatabase, durable } from '../chats-sqlite.ts'
 

@@ -16,7 +16,7 @@ import { makeEvents } from '../mcp/events.ts'
 import { type EventConsumerPorts, installEventConsumers } from '../mcp/events/consumers.ts'
 import { eventsHookToken, eventsHookUrl } from '../mcp/events/route-token.ts'
 import { SqliteEventStore } from '../mcp/events/store.ts'
-import { GrantStore } from '../mcp/grants.ts'
+import { GrantStore, type Grants } from '../mcp/grants.ts'
 import { mcpHost } from '../mcp/host.ts'
 import { logEndpointsReset } from '../mcp/log.ts'
 import { RegistryStore } from '../mcp/registries.ts'
@@ -78,6 +78,10 @@ export const approvalsOver = (store: McpApprovalStore) =>
     finish: Effect.fn('Approvals.finish')(function* (id: string, result: CallToolResult) {
       const now = yield* Clock.currentTimeMillis
       yield* attempt(() => store.finish(id, result, now))
+    }),
+    toUrlRequest: Effect.fn('Approvals.toUrlRequest')(function* (id: string) {
+      const now = yield* Clock.currentTimeMillis
+      yield* Effect.sync(() => store.toUrlRequest(id, now))
     }),
     fail: Effect.fn('Approvals.fail')(function* (id: string, state: 'failed' | 'uncertain') {
       const now = yield* Clock.currentTimeMillis
@@ -157,11 +161,12 @@ export const urlRequestsOver = (store: McpUrlRequestStore) =>
 
 /**
  * The owner's decision on a call by the model or an App: an ask-first tool's call goes out only as the held call the
- * owner approved, with exactly its reviewed arguments, conversation and grant version; `authorize`, the caller's own
- * check, runs after the arguments are hashed and before the held call is read.
+ * owner approved, with exactly its reviewed arguments, conversation and grant version (and the retry of a URL request
+ * its dispatch met, with the owner's answer, under the same); `authorize`, the caller's own check, runs after the
+ * arguments are hashed and before the held call is read.
  */
-const heldCalls =
-  (approvals: McpApprovalStore, grants: GrantStore): NonNullable<McpManagerOptions['authorizeTool']> =>
+export const heldCalls =
+  (approvals: McpApprovalStore, grants: Grants): NonNullable<McpManagerOptions['authorizeTool']> =>
   (call, approvalId, dispatch, authorize) =>
     Effect.gen(function* () {
       if (call.caller === 'human') return

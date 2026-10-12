@@ -30,9 +30,15 @@ Holding it only while in use lets the object sleep a minute after the last call.
 ### URL requests
 
 **A URL request is a server asking the owner to finish something on its site before a call can complete.**
-- Only the model's own calls (Goblin, a Persona, a routine run) offer to answer them. They declare URL elicitation per
-  request, and only on a 2026 connection. The owner's tool console, MCP Apps and the dispatch of an ask-first approval
-  never do, so servers answer those with a plain link as before.
+- Only the model's calls (Goblin, a Persona, a routine run) offer to answer them: its own, and the dispatch of its
+  held call once the owner approved it. They declare URL elicitation per request, and only on a 2026 connection. The
+  owner's tool console and MCP Apps never do, so servers answer those with a plain link as before.
+- The approved dispatch declares it too (amended 2026-10-12, F5). A 2026 server whose SDK may not ask a request that
+  did not declare it refuses the call with a JSON-RPC error (-32021) instead. On prod the Goblin Wallet did exactly that
+  for an approved `transfer` to a new recipient, which then read "may have run". Now the approval's one dispatch
+  goes on as the URL request: the approval is spent, its card becomes the request's, and the request's retry carries
+  the approval, so an ask-first tool's answer goes out under exactly the authority the owner reviewed (the same grant
+  version, endpoint, tool, arguments and conversation). The request's answer, not the approval, continues the turn.
 - goblin accepts only url-mode elicitation. It keeps the request (the call's frozen arguments, the server's request
   state, the link and its message) for up to 24 hours, or until the routine run's deadline when that is sooner, and
   ends the turn.
@@ -65,8 +71,8 @@ through step-up, for just that.
 
 ## Rejected
 
-- **Declaring URL elicitation on the client.** Every call, including the owner's console, Apps and ask-first dispatch,
-  would then receive requests it cannot answer and fail.
+- **Declaring URL elicitation on the client.** Every call, including the owner's console and Apps, would then receive
+  requests it cannot answer and fail.
 - **Holding the listen stream as long as the connection is cached, or always.** The Durable Object would stay awake for
   minutes after every use, or never sleep.
 - **Re-using sign-in for step-up.** Connecting again drops the connection and its tokens before the owner has

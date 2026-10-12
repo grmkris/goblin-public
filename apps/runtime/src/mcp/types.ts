@@ -109,6 +109,8 @@ export type ApprovedDispatch = {
   readonly arguments: Record<string, unknown>
   readonly caller: McpCaller
   readonly approvalContext?: ApprovalContext
+  /** It carries the owner's answer to a URL request (ADR 0042): with an approval, one its dispatch met. */
+  readonly answered?: true
 }
 export type McpCallOptions = McpRequestOptions & {
   readonly caller?: McpCaller
@@ -139,8 +141,11 @@ export type UrlAnswer = {
   readonly requestState: string | undefined
 }
 
-/** A model's own call: it may meet a URL request, and its retry carries the owner's answer. */
-export type McpModelCallOptions = Omit<McpCallOptions, 'caller' | 'approvalId' | 'approvalContext'> & {
+/**
+ * A model's call, its own or the held call the owner approved for it (`approvalId`): it may meet a URL request, and its
+ * retry carries the owner's answer.
+ */
+export type McpModelCallOptions = Omit<McpCallOptions, 'caller'> & {
   readonly answer?: UrlAnswer
   /** With an `answer`: the tool as it was listed when the server asked, sent to even if the server no longer lists it. */
   readonly heldTool?: Tool

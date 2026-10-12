@@ -764,10 +764,14 @@ connection; one that drops it (a deploy) or fails it on the way is asked again a
 never closed for being idle while a request on it is under way. The SDK client's stray errors are logged by type
 only.
 
-**URL requests** (`mcp/url-asks.ts`, `mcp/url-request.ts`, `app_mcp_url_requests`). Only the model's own `mcp_call`
+**URL requests** (`mcp/url-asks.ts`, `mcp/url-request.ts`, `app_mcp_url_requests`). Only the model's `mcp_call`
 (Goblin, a Persona, a routine run) declares URL elicitation, per request and only on a 2026 connection, and takes an
-`input_required` result back (`McpConnections.callModelTool`). The owner's console, Apps and an ask-first approval's
-dispatch never declare it, so servers answer them with a plain link. goblin accepts one url-mode elicitation with an
+`input_required` result back (`McpConnections.callModelTool`): its own call, and the dispatch of its held call once the
+owner (or their spending rule) approved it (`sendApproved`). The owner's console and Apps never declare it, so servers
+answer them with a plain link. An approved dispatch that meets a URL request is spent (`completed` with no result,
+`metUrlRequest`), its `ApprovalView` names the request (`urlRequest`) and the web follows its card to the request's
+(`followUrlRequests`). The request's retry carries the approval (`answered`), which `heldCalls` checks as it checks the
+dispatch, without claiming it again; the request's answer, not the decision, continues the turn. goblin accepts one url-mode elicitation with an
 https link and no credentials; anything else is refused as `unsupported`. It keeps the call's arguments, the server's
 request state (at most 64 KiB) and the link with its message, sealed, for a day or until the routine run's deadline,
 and ends the turn with `{ kind: 'url-required', requestId, connectionId, name }`: the details carry neither the link nor
