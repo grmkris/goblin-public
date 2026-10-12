@@ -24,7 +24,10 @@ const sqlHost = () => {
   }
 }
 
-const setup = (upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed') => {
+const setup = (
+  upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed',
+  options: { fetchFn?: typeof fetch; live?: boolean } = {},
+) => {
   const ledger = new LedgerObject(sqlHost(), () => Date.parse('2026-10-12T10:00:00.000Z'))
   const auth = authClient(new WalletAuth(sqlHost()))
   const upgrades: unknown[] = []
@@ -47,6 +50,7 @@ const setup = (upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed'
   }
   const wiring: Wiring = {
     ...defaultWiring,
+    fetchFn: options.fetchFn,
     ledger: () => ledger,
     rails: () => rails,
     createAgent: () => Promise.resolve({ address: AGENT, walletId: 'wallet-1' }),
@@ -72,10 +76,54 @@ const setup = (upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed'
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       }),
-      testEnv(),
+      testEnv(options.live === true ? { WALLET_LIVE: '1' } : {}),
     )
   return { call, ledger, auth, upgrades }
 }
+
+/** Relay as the deposit routes see it: a quote with one deposit address, and one filled request for it. */
+const relay: typeof fetch = async (input) => {
+  const url = String(input instanceof Request ? input.url : input)
+  if (url.endsWith('/quote'))
+    return Response.json({
+      steps: [{ id: 'deposit', depositAddress: '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f', requestId: '0x1791' }],
+      details: { currencyOut: { amount: '10158603' }, timeEstimate: 2 },
+      fees: { relayer: { amountUsd: '0.032409' } },
+    })
+  return Response.json({ requests: [{ status: 'success', data: { inTxs: [{ hash: '0xab' }], outTxs: [] } }] })
+}
+
+describe('deposit addresses', () => {
+  test('quotes a one-off address to the owner on Base and follows it by address; testnets refuse', async () => {
+    const { call } = setup('confirmed', { fetchFn: relay, live: true })
+    const quote = await call('POST', '/api/deposits', { from: 'base', asset: 'ETH', amount: '0.004', receive: 'USDC' })
+    expect(quote.status).toBe(200)
+    expect(await quote.json()).toMatchObject({
+      depositAddress: '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f',
+      recipient: OWNER,
+      expectedOut: '10.158603',
+      asset: 'ETH',
+      receive: 'USDC',
+    })
+    const followed = await call('GET', '/api/deposits/0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f')
+    expect(await followed.json()).toEqual({
+      depositAddress: '0xc9b1672f6fbc38f66d775bb9a5d46b8f0dd2613f',
+      status: 'success',
+      txHashes: ['0xab'],
+    })
+    expect((await call('GET', '/api/deposits/not-an-address')).status).toBe(400)
+    const same = await call('POST', '/api/deposits', { from: 'base', asset: 'USDC', amount: '5', receive: 'USDC' })
+    expect(await same.json()).toMatchObject({ error: { code: 'deposit_unavailable' } })
+    const testnet = setup('confirmed', { fetchFn: relay })
+    const refused = await testnet.call('POST', '/api/deposits', {
+      from: 'base',
+      asset: 'ETH',
+      amount: '1',
+      receive: 'USDC',
+    })
+    expect(refused.status).toBe(409)
+  })
+})
 
 describe('the owner API', () => {
   test('refuses a request without a Privy token', async () => {

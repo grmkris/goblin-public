@@ -41,6 +41,8 @@ export interface Wiring {
   readonly ledger: (env: WalletEnv, owner: Owner) => { fetch(request: Request): Promise<Response> }
   readonly signer: (env: WalletEnv, owner: Owner) => Promise<AgentSigner | undefined>
   readonly rails: (env: WalletEnv, owner: Owner, signer: AgentSigner | undefined) => RailsPort
+  /** Outbound fetch for keyless third-party APIs (Relay deposit addresses); tests inject one, production uses `fetch`. */
+  readonly fetchFn?: typeof fetch | undefined
 }
 
 const unavailable = (): Promise<never> =>

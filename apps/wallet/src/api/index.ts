@@ -9,6 +9,7 @@ import { walletLayer } from '../services/index.ts'
 import { approval, decide } from './approvals.ts'
 import type { ApiCall, Route } from './call.ts'
 import { connections, disconnectOne, revokeAll } from './connections.ts'
+import { deposit, depositStatus } from './deposits.ts'
 import { limits, setLimits } from './limits.ts'
 import { activity, addressBook, services } from './lists.ts'
 import { me, status } from './me.ts'
@@ -56,6 +57,8 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.disconnect.method, OwnerRoutes.disconnect.path, disconnectOne),
   compile(OwnerRoutes.policyChanges.method, OwnerRoutes.policyChanges.path, policyChanges),
   compile(OwnerRoutes.decidePolicyChange.method, OwnerRoutes.decidePolicyChange.path, decidePolicyChange),
+  compile(OwnerRoutes.deposit.method, OwnerRoutes.deposit.path, deposit),
+  compile(OwnerRoutes.depositStatus.method, OwnerRoutes.depositStatus.path, depositStatus),
   compile(OwnerRoutes.revokeAll.method, OwnerRoutes.revokeAll.path, revokeAll),
 ]
 
