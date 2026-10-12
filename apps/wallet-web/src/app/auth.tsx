@@ -1,6 +1,16 @@
-// What the app needs from the signed-in owner: who they are and the two signatures onboarding asks for. The Privy
+// What the app needs from the signed-in owner: who they are and the two signatures each chain asks for. The Privy
 // implementation lives in src/privy/** (lane S) and is mounted by `main.tsx`; `fixture-auth.tsx` stands in for demos.
+import type { EvmChain } from '@goblin/wallet/balances'
 import { createContext, use } from 'react'
+
+/** The chains the owner upgrades and grants an allowance on: every EVM chain the wallet serves (Tempo has no 7702). */
+export type OwnerChain = EvmChain
+
+/**
+ * Where an upgrade stands once the relay answered: `confirmed` when the chain shows the account delegating to the
+ * DeleGator, `submitted` while the relay's transaction is still in flight. A refusal rejects instead.
+ */
+export type UpgradeOutcome = 'confirmed' | 'submitted'
 
 export interface Auth {
   readonly status: 'loading' | 'signed-out' | 'ready'
@@ -9,11 +19,11 @@ export interface Auth {
   readonly getToken: () => Promise<string | null>
   readonly login: () => void
   readonly logout: () => void
-  /** Sign the owner's EIP-7702 authorization for Base and have the relay send it. */
-  readonly upgrade: (chain: 'base') => Promise<void>
-  /** Prepare the allowance, rebuild and compare it, sign it, confirm it. */
+  /** Sign the owner's EIP-7702 authorization for `chain` and have the relay send it. */
+  readonly upgrade: (chain: OwnerChain) => Promise<UpgradeOutcome>
+  /** Prepare the allowance on `chain`, rebuild and compare it, sign it, confirm it. */
   readonly signAllowance: (input: {
-    readonly chain: 'base'
+    readonly chain: OwnerChain
     readonly perHour: string
     readonly days: number
   }) => Promise<void>

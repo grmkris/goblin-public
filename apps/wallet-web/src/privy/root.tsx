@@ -3,7 +3,7 @@ import { PrivyProvider } from '@privy-io/react-auth'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 import { type ReactNode, useEffect, useState } from 'react'
-import { ARBITRUM, BASE, type Chain, ETHEREUM } from '@goblin/wallet/chains'
+import { ARBITRUM, ARBITRUM_SEPOLIA, BASE, BASE_SEPOLIA, type Chain, ETHEREUM, SEPOLIA } from '@goblin/wallet/chains'
 
 const decodeConfig = Schema.decodeUnknownOption(Config)
 
@@ -27,6 +27,12 @@ const privyChain = (chain: Chain) => ({
   rpcUrls: { default: { http: [chain.rpcUrl] } },
   blockExplorers: { default: { name: chain.name, url: chain.explorerUrl } },
 })
+
+/**
+ * Every chain the owner signs an EIP-7702 authorization for, mainnets and the testnets a non-live deployment uses:
+ * Privy's `signAuthorization` refuses a chain id its provider was not configured with.
+ */
+const OWNER_CHAINS: readonly Chain[] = [BASE, ARBITRUM, ETHEREUM, BASE_SEPOLIA, ARBITRUM_SEPOLIA, SEPOLIA]
 
 const prefersDark = (): boolean => window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -62,7 +68,7 @@ export function PrivyRoot({ children }: { readonly children: ReactNode }): React
         appearance: { theme: prefersDark() ? 'dark' : 'light', walletChainType: 'ethereum-only' },
         embeddedWallets: { ethereum: { createOnLogin: 'all-users' }, showWalletUIs: true },
         defaultChain: privyChain(BASE),
-        supportedChains: [BASE, ETHEREUM, ARBITRUM].map(privyChain),
+        supportedChains: OWNER_CHAINS.map(privyChain),
       }}
     >
       {children}

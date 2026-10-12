@@ -25,6 +25,7 @@ export function FixtureAuthProvider({
       upgrade: async () => {
         await pause()
         onUpgrade()
+        return 'confirmed'
       },
       signAllowance: async () => {
         await pause()
