@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@goblin/wallet": "workspace:*",
+    "@modelcontextprotocol/server": "2.2.0",
     "effect": "4.0.1"
   },
   "devDependencies": {
