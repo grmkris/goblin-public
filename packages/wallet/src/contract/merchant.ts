@@ -15,20 +15,36 @@ export type SubscriptionId = typeof SubscriptionId.Type
 /** What a merchant may sell as a subscription: goblin Pro. */
 export const MerchantPlan = Schema.Literal('pro')
 
-/** A period of 1 to 31 days, and 1 to 24 of them. */
-const PeriodDays = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 31 }))
-const Periods = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 24 }))
+/**
+ * How the merchant bills it. `day`, the day pass: periods of one day that run midnight to midnight UTC, the first one
+ * the day the owner signs, and the merchant collects only on days the owner uses it. `month`: periods of `periodDays`
+ * days from the moment the owner signs, each one collected.
+ */
+export const MerchantBilling = Schema.Literals(['day', 'month'])
+export type MerchantBilling = typeof MerchantBilling.Type
+
+/** The longest period, in days. */
+export const SUBSCRIPTION_MAX_PERIOD_DAYS = 30
+/** The longest a subscription runs, in months; a month is a twelfth of a 365-day year. */
+export const SUBSCRIPTION_MAX_MONTHS = 24
+/** The most periods a subscription has: one a day for the longest it runs. */
+export const SUBSCRIPTION_MAX_PERIODS = Math.floor((SUBSCRIPTION_MAX_MONTHS * 365) / 12)
+
+const PeriodDays = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SUBSCRIPTION_MAX_PERIOD_DAYS }))
+const Months = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SUBSCRIPTION_MAX_MONTHS }))
 
 /**
- * `POST /api/merchant/subscriptions`: so much USDC every `periodDays` days for `months` periods. `reference` is the
- * merchant's own (goblin's account); `returnUrl`, where the owner goes after signing, must be on one of the merchant's
- * allowed origins.
+ * `POST /api/merchant/subscriptions`: at most `amountUsd` USDC each period of `periodDays` days (1 for `day`), for
+ * `months` months (goblin asks 12): the subscription ends with the last whole period that fits in them. `reference` is
+ * the merchant's own (goblin's account); `returnUrl`, where the owner goes after signing, must be on one of the
+ * merchant's allowed origins.
  */
 export const SubscriptionRequest = Schema.Struct({
   plan: MerchantPlan,
+  billing: MerchantBilling,
   amountUsd: UsdAmount,
   periodDays: PeriodDays,
-  months: Periods,
+  months: Months,
   reference: Text(200),
   returnUrl: Text(2048),
 })
@@ -52,8 +68,10 @@ export const MerchantSubscription = Schema.Struct({
   status: SubscriptionStatus,
   owner: Schema.optional(Address),
   chain: Schema.Literal('base'),
+  billing: MerchantBilling,
   amountUsd: UsdAmount,
   periodDays: PeriodDays,
+  /** When period 1 starts; for `day`, the UTC midnight that begins the day the owner signed. */
   startsAt: Schema.optional(Instant),
   expiresAt: Schema.optional(Instant),
   delegationHash: Schema.optional(Hex),
@@ -67,11 +85,14 @@ export const MerchantSubscription = Schema.Struct({
 export type MerchantSubscription = typeof MerchantSubscription.Type
 
 /**
- * `POST /api/merchant/subscriptions/:id/collect`: take period `period`'s payment (1-based). Idempotent per period: a
- * period paid answers its payment whatever the operation id; one in flight answers `pending`.
+ * `POST /api/merchant/subscriptions/:id/collect`: take period `period`'s payment. Periods count from 1 at `startsAt`:
+ * period n runs from `startsAt + (n - 1) * periodDays` days to `startsAt + n * periodDays` days, so for `day` it is the
+ * UTC day n - 1 days after the one the owner signed. Idempotent per period: a period already paid answers its payment,
+ * whatever the operation id and even after the period ended or the subscription was revoked or expired; one in flight
+ * answers `pending`. Only a period that has not started yet is `not_due`; one that ended unpaid is `expired`.
  */
 export const CollectRequest = Schema.Struct({
-  period: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 24 })),
+  period: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SUBSCRIPTION_MAX_PERIODS })),
   operationId: OperationId,
 })
 export type CollectRequest = typeof CollectRequest.Type
@@ -119,16 +140,18 @@ export const SignedDelegation = Schema.Struct({
 /**
  * A subscription as its owner sees it. `merchant` and `merchantHost` say who asked (the host of the return address the
  * wallet vouched for); `returnUrl` is where the sign page goes once signed. `paidThrough` is the end of the last period
- * paid; `delegation` is the signed one, which the console rebuilds the cancellation from.
+ * paid (for `day`, the end of the last UTC day paid); `delegation` is the signed one, which the console rebuilds the
+ * cancellation from.
  */
 export const SubscriptionView = Schema.Struct({
   id: SubscriptionId,
   merchant: Text(120),
   merchantHost: Text(253),
   plan: MerchantPlan,
+  billing: MerchantBilling,
   amountUsd: UsdAmount,
   periodDays: PeriodDays,
-  months: Periods,
+  months: Months,
   chain: Schema.Literal('base'),
   collector: Address,
   status: SubscriptionStatus,

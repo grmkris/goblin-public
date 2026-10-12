@@ -2,11 +2,14 @@ import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
 import {
   canonicalJson,
+  CollectRequest,
   termsHash,
   DEFAULT_SERVICES,
   OperationId,
   PaidFetchInput,
   ServiceRule,
+  SUBSCRIPTION_MAX_PERIODS,
+  SubscriptionRequest,
   TOOLS,
   UsdAmount,
   WalletStatus,
@@ -63,5 +66,38 @@ describe('contract', () => {
     const reordered = { ...terms, token: { decimals: 6, address: terms.token.address, symbol: 'USDC' } }
     expect(await termsHash(terms)).toBe(await termsHash(reordered))
     expect(await termsHash(terms)).toMatch(/^0x[0-9a-f]{64}$/u)
+  })
+
+  it('asks a subscription per billing: a day pass of one-day periods, or a month of up to 30 days, for months', () => {
+    const request = {
+      plan: 'pro',
+      billing: 'day',
+      amountUsd: '1.00',
+      periodDays: 1,
+      months: 12,
+      reference: 'user_1',
+      returnUrl: 'https://goblin.surf/subscribe/success',
+    }
+    expect(decode(SubscriptionRequest, request)._tag).toBe('Success')
+    expect(decode(SubscriptionRequest, { ...request, billing: 'month', amountUsd: '15.00', periodDays: 30 })._tag).toBe(
+      'Success',
+    )
+    for (const bad of [
+      { billing: 'week' },
+      { billing: undefined },
+      { periodDays: 0 },
+      { periodDays: 31 },
+      { months: 0 },
+      { months: 25 },
+    ])
+      expect(decode(SubscriptionRequest, { ...request, ...bad })._tag, JSON.stringify(bad)).toBe('Failure')
+  })
+
+  it('collects any day of a year-long day pass, from period 1', () => {
+    expect(SUBSCRIPTION_MAX_PERIODS).toBe(730)
+    for (const period of [1, 365, 730])
+      expect(decode(CollectRequest, { period, operationId: 'pro:user_1:1' })._tag).toBe('Success')
+    for (const period of [0, 731, 1.5])
+      expect(decode(CollectRequest, { period, operationId: 'pro:user_1:1' })._tag).toBe('Failure')
   })
 })
