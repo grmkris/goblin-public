@@ -25,6 +25,7 @@ import {
   RecentWork,
   SpendingSummary,
 } from '../views/overview.tsx'
+import { AddFundsCard } from './add-funds.tsx'
 import { OtherNetworks } from './other-networks.tsx'
 
 const QUIET_LINK =
@@ -142,6 +143,11 @@ export function HomePage() {
           )
         }
       </Async>
+      {me.data !== undefined && (
+        <Section id="add-funds" title="Add funds">
+          <AddFundsCard owner={me.data.owner} />
+        </Section>
+      )}
       <OtherNetworks />
     </Page>
   )

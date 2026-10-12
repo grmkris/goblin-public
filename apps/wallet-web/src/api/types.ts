@@ -2,6 +2,9 @@ import type {
   ApprovalDecision,
   ApprovalView,
   Connection,
+  DepositAddress,
+  DepositRequest,
+  DepositStatus,
   LimitView,
   Me,
   Operation,
@@ -41,4 +44,8 @@ export interface WalletApi {
   readonly policyChanges: () => Promise<readonly PolicyChange[]>
   readonly decidePolicyChange: (id: string, decision: 'applied' | 'dismissed') => Promise<PolicyChange>
   readonly revokeAll: () => Promise<Me>
+  /** A one-off Relay deposit address: what is sent there from another chain lands in the owner's account on Base. */
+  readonly deposit: (request: DepositRequest) => Promise<DepositAddress>
+  /** Relay's progress for one deposit address; `unknown` when Relay's status API does not answer. */
+  readonly depositStatus: (depositAddress: string) => Promise<DepositStatus>
 }

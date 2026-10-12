@@ -1,6 +1,6 @@
 // Query hooks over the `WalletApi` the app was given. Pages never fetch themselves.
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ApprovalDecision, WalletLimits } from '@goblin/wallet/contract'
+import type { ApprovalDecision, DepositRequest, WalletLimits } from '@goblin/wallet/contract'
 import { createContext, type ReactNode, use, useState } from 'react'
 import type { WalletApi } from './types.ts'
 
@@ -27,9 +27,10 @@ export const useMe = (enabled = true) => {
   const api = useApi()
   return useQuery({ queryKey: ['me'], queryFn: api.me, enabled })
 }
-export const useStatus = () => {
+/** `refetchInterval` while something is expected to change the balances (a deposit on its way). */
+export const useStatus = (refetchInterval: number | false = false) => {
   const api = useApi()
-  return useQuery({ queryKey: ['status'], queryFn: api.status })
+  return useQuery({ queryKey: ['status'], queryFn: api.status, refetchInterval })
 }
 export const useLimits = () => {
   const api = useApi()
@@ -124,5 +125,34 @@ export function useCreateAgent() {
   return useMutation({
     mutationFn: api.createAgent,
     onSuccess: (me) => client.setQueryData(['me'], me),
+  })
+}
+
+export function useDeposit() {
+  const api = useApi()
+  return useMutation({ mutationFn: (request: DepositRequest) => api.deposit(request) })
+}
+
+/** Relay's answers after which a deposit address has nothing more to report. */
+const DEPOSIT_DONE: ReadonlySet<string> = new Set(['success', 'refunded', 'failed'])
+
+/**
+ * Relay's progress for one deposit address, every five seconds while `follow` holds and Relay has not answered with an
+ * outcome. Each answer also refreshes the balances: Relay's status is best effort, and the owner's balance on Base
+ * rising is arrival too.
+ */
+export function useDepositStatus(depositAddress: string | undefined, follow: boolean) {
+  const api = useApi()
+  const client = useQueryClient()
+  return useQuery({
+    queryKey: ['deposit', depositAddress],
+    queryFn: async () => {
+      if (depositAddress === undefined) throw new Error('No deposit to follow.')
+      const status = await api.depositStatus(depositAddress)
+      await client.invalidateQueries({ queryKey: ['status'] })
+      return status
+    },
+    enabled: depositAddress !== undefined,
+    refetchInterval: (query) => (follow && !DEPOSIT_DONE.has(query.state.data?.status ?? 'waiting') ? 5_000 : false),
   })
 }
