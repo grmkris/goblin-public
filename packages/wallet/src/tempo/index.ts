@@ -1,222 +1,33 @@
 /**
  * Tempo: the machine-payments rail (MPP `tempo` charge) and plain USDC.e transfers. The agent signs Tempo type-118
- * transactions through `TempoSigner`; `mppx` builds the transaction and the Payment credential around that signer.
+ * transactions through `TempoAgent`; `mppx` builds the transaction and the Payment credential around that signer.
  * Before anything is signed, every call in the transaction is checked against the approved terms: only USDC.e
- * `transfer`/`transferWithMemo` to the approved recipient, within the caller's cap.
+ * `transfer`/`transferWithMemo` to the approved recipient, within the caller's cap (`account.ts`). `challenge.ts` reads
+ * challenges and receipts.
  */
-import * as Data from 'effect/Data'
-import * as Option from 'effect/Option'
-import * as Schema from 'effect/Schema'
-import { Receipt } from 'mppx'
 import { Mppx, tempo } from 'mppx/client'
-import {
-  createClient,
-  decodeFunctionData,
-  http,
-  parseAbi,
-  type Account,
-  type Address,
-  type Client,
-  type Hex,
-} from 'viem'
-import { toAccount } from 'viem/accounts'
+import type { Address, Client, Hex } from 'viem'
 import { prepareTransactionRequest, sendRawTransactionSync, signTransaction } from 'viem/actions'
-import { tempo as tempoChain } from 'viem/chains'
-import { formatUnits, parseUnits } from '../amounts/index.ts'
-import { toAddress, toHex } from '../balances/hex.ts'
+import { parseUnits } from '../amounts/index.ts'
+import { toAddress } from '../balances/hex.ts'
 import { TEMPO } from '../chains/index.ts'
-import type { AgentSigner, Payment } from '../contract/index.ts'
+import type { Payment } from '../contract/index.ts'
+import {
+  type FetchFn,
+  TEMPO_CHAIN_ID,
+  type TempoAgent,
+  TempoError,
+  type TempoTerms,
+  tempoAccount,
+  tempoClient,
+  USDC_E,
+} from './account.ts'
+import { type ChargeChallenge, type MppQuote, paymentOf, quoteOf } from './challenge.ts'
 
-export const TEMPO_CHAIN_ID = 4217
-const USDC_E = TEMPO.usdc.address
+export * from './account.ts'
+export * from './challenge.ts'
+
 const DECIMALS = TEMPO.usdc.decimals
-
-/** One Tempo call as the signer takes it. */
-export interface TempoCallJson {
-  readonly to: string
-  readonly value: string
-  readonly data: string
-}
-
-/**
- * A Tempo type-118 transaction in the snake_case JSON Privy's `eth_signTransaction` takes. Quantities are 0x-hex
- * strings. `fee_payer: true` marks a sponsored transaction (the server pays the fee and co-signs); then no `fee_token`.
- */
-export interface TempoTransactionJson {
-  readonly type: 118
-  readonly chain_id: number
-  readonly nonce: string
-  readonly nonce_key: string
-  readonly gas_limit: string
-  readonly max_fee_per_gas: string
-  readonly max_priority_fee_per_gas: string
-  readonly calls: readonly TempoCallJson[]
-  readonly valid_before?: string
-  readonly valid_after?: string
-  readonly fee_token?: string
-  readonly fee_payer?: boolean
-}
-
-/** The agent's signer plus Tempo transaction signing. Resolves with the signed, serialized transaction. */
-export interface TempoAgent extends AgentSigner {
-  signTempoTransaction(input: { operationKey: string; transaction: TempoTransactionJson }): Promise<string>
-}
-
-/** True when the signer can also sign Tempo transactions. */
-export const isTempoAgent = (signer: AgentSigner): signer is TempoAgent =>
-  'signTempoTransaction' in signer && typeof signer.signTempoTransaction === 'function'
-
-export type TempoFailure =
-  | 'bad_challenge'
-  | 'terms_changed'
-  | 'above_cap'
-  | 'unsafe_call'
-  | 'sign_failed'
-  | 'fee_ceiling'
-
-export class TempoError extends Data.TaggedError('TempoError')<{
-  readonly code: TempoFailure
-  readonly message: string
-}> {
-  constructor(code: TempoFailure, message: string) {
-    super({ code, message })
-  }
-}
-
-export interface TempoTerms {
-  /** CAIP-2, "eip155:4217". */
-  readonly network: string
-  readonly asset: string
-  readonly recipient: string
-  /** Atomic USDC.e units, a decimal string. */
-  readonly amount: string
-}
-
-const TOKEN_ABI = parseAbi([
-  'function transfer(address to, uint256 amount) returns (bool)',
-  'function transferWithMemo(address to, uint256 amount, bytes32 memo)',
-])
-
-interface Spend {
-  readonly to: string
-  readonly amount: bigint
-}
-
-/** Decodes a call to USDC.e `transfer` or `transferWithMemo`; anything else is unsafe. */
-export const spendOf = (call: { to?: string | undefined; data?: string | undefined }): Spend => {
-  if (call.to?.toLowerCase() !== USDC_E.toLowerCase() || call.data === undefined)
-    throw new TempoError('unsafe_call', 'a call targets something other than USDC.e')
-  const decoded = decodeFunctionData({ abi: TOKEN_ABI, data: toHex(call.data) })
-  const [to, amount] = decoded.args
-  return { to, amount }
-}
-
-/** Refuses a transaction whose calls spend anything but the approved recipient's amount within the cap. */
-export const assertCalls = (
-  calls: readonly { to?: string | undefined; data?: string | undefined }[],
-  allow: { readonly recipient: string; readonly maxAtomic: bigint },
-): void => {
-  if (calls.length === 0) throw new TempoError('unsafe_call', 'the transaction has no calls')
-  let total = 0n
-  for (const call of calls) {
-    const spend = spendOf(call)
-    if (spend.to.toLowerCase() !== allow.recipient.toLowerCase())
-      throw new TempoError('unsafe_call', 'a call pays someone other than the approved recipient')
-    total += spend.amount
-  }
-  if (total > allow.maxAtomic) throw new TempoError('above_cap', 'the transaction spends more than approved')
-}
-
-const hex = (value: bigint | number | undefined): string => `0x${(value ?? 0).toString(16)}`
-
-/** Tempo prices gas in 18-decimal dollars and TIP-20 tokens have 6 decimals, so a fee in token units is gas × price / 10^12. */
-const FEE_SCALE = 10n ** 12n
-
-/**
- * The most fee one agent transaction may pay on Tempo, in USDC.e base units ($0.05; a transfer costs well under a cent).
- * The fee is paid in USDC.e from the agent's balance and the ledger does not reserve it yet, so this bounds what one
- * signature can burn.
- */
-export const TEMPO_FEE_CEILING = 50_000n
-
-/** Refuses a transaction whose worst-case fee (gas limit × max fee per gas) is above the ceiling, before it is signed. */
-export const assertFee = (
-  tx: { readonly gas?: bigint | undefined; readonly maxFeePerGas?: bigint | undefined },
-  ceiling: bigint = TEMPO_FEE_CEILING,
-): void => {
-  const fee = ((tx.gas ?? 0n) * (tx.maxFeePerGas ?? 0n) + FEE_SCALE - 1n) / FEE_SCALE
-  if (fee > ceiling)
-    throw new TempoError(
-      'fee_ceiling',
-      `the network fee (up to ${fee} USDC.e base units) is above the wallet's ceiling`,
-    )
-}
-
-interface ViemTempoTx {
-  readonly calls?: readonly { to?: string | undefined; data?: string | undefined; value?: bigint | undefined }[]
-  readonly chainId?: number
-  readonly nonce?: number
-  readonly nonceKey?: bigint | 'expiring'
-  readonly gas?: bigint
-  readonly maxFeePerGas?: bigint
-  readonly maxPriorityFeePerGas?: bigint
-  readonly validBefore?: number
-  readonly validAfter?: number
-  readonly feeToken?: string
-  readonly feePayer?: unknown
-}
-
-const EXPIRING_NONCE_KEY = 2n ** 256n - 1n
-
-/** viem's Tempo transaction request as the signer's JSON. */
-export const toTransactionJson = (tx: ViemTempoTx): TempoTransactionJson => ({
-  type: 118,
-  chain_id: tx.chainId ?? TEMPO_CHAIN_ID,
-  nonce: hex(tx.nonce),
-  nonce_key: hex(tx.nonceKey === 'expiring' || tx.nonceKey === undefined ? EXPIRING_NONCE_KEY : tx.nonceKey),
-  gas_limit: hex(tx.gas),
-  max_fee_per_gas: hex(tx.maxFeePerGas),
-  max_priority_fee_per_gas: hex(tx.maxPriorityFeePerGas),
-  calls: (tx.calls ?? []).map((call) => ({
-    to: call.to ?? '0x',
-    value: hex(call.value ?? 0n),
-    data: call.data ?? '0x',
-  })),
-  ...(tx.validBefore === undefined ? {} : { valid_before: hex(tx.validBefore) }),
-  ...(tx.validAfter === undefined ? {} : { valid_after: hex(tx.validAfter) }),
-  ...(tx.feePayer === true ? { fee_payer: true } : tx.feeToken === undefined ? {} : { fee_token: tx.feeToken }),
-})
-
-/** A viem account whose `signTransaction` goes to the TempoAgent, after checking the calls against the approval. */
-export const tempoAccount = (
-  agent: TempoAgent,
-  operationKey: string,
-  allow: { readonly recipient: string; readonly maxAtomic: bigint },
-): Account =>
-  toAccount({
-    address: toAddress(agent.address),
-    signMessage: () => Promise.reject(new TempoError('sign_failed', 'message signing is not used on Tempo')),
-    signTypedData: () => Promise.reject(new TempoError('sign_failed', 'typed data is not used on Tempo')),
-    // SAFETY: viem types the transaction by chain; the Tempo shape is the only one this account is given.
-    signTransaction: async (transaction: unknown) => {
-      // SAFETY: mppx and viem hand a Tempo request here; assertCalls rejects anything that is not a USDC.e spend.
-      const tx = transaction as ViemTempoTx
-      assertCalls(tx.calls ?? [], allow)
-      assertFee(tx)
-      return toHex(
-        await agent.signTempoTransaction({ operationKey: `${operationKey}:tempo`, transaction: toTransactionJson(tx) }),
-      )
-    },
-  })
-
-export type FetchFn = typeof fetch
-
-/** A viem client for Tempo over `fetch`; the RPC URL and fetch are injectable. */
-export const tempoClient = (rpcUrl: string = TEMPO.rpcUrl, fetchFn?: typeof fetch): Client =>
-  createClient({
-    chain: tempoChain,
-    transport: http(rpcUrl, fetchFn === undefined ? {} : { fetchFn }),
-  })
 
 export interface TempoPaidRequest {
   readonly method: 'GET' | 'POST'
@@ -232,41 +43,10 @@ const initOf = (request: TempoPaidRequest): RequestInit => ({
   ...(request.body === undefined ? {} : { body: request.body }),
 })
 
-export interface MppQuote {
-  readonly terms: TempoTerms
-  readonly amountUsd: string
-  readonly expiresAt: string | undefined
-}
-
 export type MppProbe =
   | { readonly kind: 'quote'; readonly quote: MppQuote }
   | { readonly kind: 'free'; readonly response: Response }
   | { readonly kind: 'unsupported'; readonly status: number }
-
-const ChargeRequest = Schema.Struct({
-  amount: Schema.String.check(Schema.isPattern(/^\d{1,30}$/u)),
-  currency: Schema.String,
-  recipient: Schema.optional(Schema.String),
-  methodDetails: Schema.optional(Schema.Struct({ chainId: Schema.optional(Schema.Number) })),
-})
-const decodeChargeRequest = Schema.decodeUnknownOption(ChargeRequest)
-
-interface Challenge {
-  readonly expires?: string | undefined
-  readonly request: unknown
-}
-
-const quoteOf = (challenge: Challenge): MppQuote | undefined => {
-  const request = Option.getOrUndefined(decodeChargeRequest(challenge.request))
-  if (request === undefined) return undefined
-  if (request.currency.toLowerCase() !== USDC_E.toLowerCase() || request.recipient === undefined) return undefined
-  if (request.methodDetails?.chainId !== undefined && request.methodDetails.chainId !== TEMPO_CHAIN_ID) return undefined
-  return {
-    terms: { network: TEMPO.caip2, asset: USDC_E, recipient: request.recipient, amount: request.amount },
-    amountUsd: formatUnits(BigInt(request.amount), DECIMALS),
-    expiresAt: challenge.expires,
-  }
-}
 
 const probeClient = () => Mppx.create({ polyfill: false, methods: [tempo.charge()] })
 
@@ -304,7 +84,7 @@ export interface MppPaid {
   readonly response: Response
 }
 
-const checkChallenge = (challenge: Challenge, input: PayMppInput): void => {
+const checkChallenge = (challenge: ChargeChallenge, input: PayMppInput): void => {
   const quote = quoteOf(challenge)
   if (quote === undefined) throw new TempoError('bad_challenge', 'the challenge is not a USDC.e charge on Tempo')
   const { terms } = quote
@@ -315,25 +95,6 @@ const checkChallenge = (challenge: Challenge, input: PayMppInput): void => {
     throw new TempoError('terms_changed', 'the price or recipient changed since the quote')
   if (BigInt(terms.amount) > parseUnits(input.maxUsd, DECIMALS))
     throw new TempoError('above_cap', 'the price is above max_usd')
-}
-
-/** The Payment-Receipt header as the contract's Payment. */
-export const paymentOf = (response: Response, now: Date): Payment | undefined => {
-  const header = response.headers.get('payment-receipt')
-  if (header === null) return undefined
-  try {
-    const { reference } = Receipt.deserialize(header)
-    const txHash = /^0x[0-9a-fA-F]{64}$/u.test(reference) ? toHex(reference) : undefined
-    return {
-      rail: 'mpp',
-      ...(txHash === undefined ? {} : { txHash, explorerUrl: `${TEMPO.explorerUrl}/tx/${txHash}` }),
-      reference: reference.slice(0, 512),
-      settledAt: now.toISOString(),
-    }
-  } catch {
-    // expected: an unreadable receipt leaves the payment unproven; the caller treats the outcome as unknown.
-    return undefined
-  }
 }
 
 /**
