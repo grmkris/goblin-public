@@ -5,62 +5,159 @@ It is one React component, the default export, drawn with goblin's components an
 app's state live (every change by you, the owner or a schedule) and changes it only through the app's actions. (The
 `views` in app.ts are something else: read-only queries you call as tools.)
 
+## Design
+
+Make the view look like one of goblin's own pages: calm, roomy, the important number first. Follow these rules.
+
+- Root: `mx-auto flex w-full max-w-3xl flex-col gap-6`, with `p-6` on a page and `p-4` in the chat. Read the surface
+  with `const { surface } = useHost()` and write `surface === 'page' ? 'p-6' : 'p-4'`.
+- Do not repeat the app's name as a heading: goblin's frame already shows it. Start with what the owner came for.
+- Sections: `<section className="flex flex-col gap-3">` with a small head,
+  `<h2 className="text-sm font-medium text-muted-foreground">Hotels</h2>`, then its content. `gap-6` between them.
+- One `Card` per group. Never a Card inside a Card. Cards side by side: `grid gap-4 sm:grid-cols-2`, each
+  `<Card size="sm">`.
+- A number that matters (a price, a count, a total) is big: `text-3xl font-semibold tabular-nums`, with a small muted
+  label above it. Every number that changes gets `tabular-nums`.
+- Buttons sit in `flex flex-wrap items-center gap-2`. One primary button (the default variant) per section; the rest
+  `outline` or `ghost`. Name a button by what it does: "Check now", not "Submit".
+- A state is a `Badge`: `default` for good news ("Under target"), `secondary` for neutral, `destructive` for a problem.
+- A log or a list of facts is two columns: `grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm`, the time or
+  name `text-muted-foreground`.
+- A map or a chart sizes itself. Put it straight into its section, not into a Card.
+- An empty list says so in one muted line and says what fills it.
+- Only goblin's colours (below). No gradients, shadows, emoji or decorative icons; an icon goes inside a button.
+
 ## view.tsx
 
+A trip app: a price target, the best price, a "Check now" button, the hotels on a map and as cards, the day plan and a
+log of checks.
+
 ```tsx
-import { useActions, useAppState } from '@goblin/app'
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input } from '@goblin/ui'
-import { useState } from 'react'
+import { useActions, useAppState, useHost } from '@goblin/app'
+import { MapView } from '@goblin/kit/map'
+import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@goblin/ui'
+import { RefreshCw } from 'lucide-react'
 import type { State } from './app'
+
+const euros = (value: number) => `€${Math.round(value)}`
 
 export default function View() {
   const [state] = useAppState<State>()
   const { act, pending, error } = useActions()
-  const [title, setTitle] = useState('')
-  const books = state.books ?? []
+  const { surface } = useHost()
+  const hotels = state.hotels ?? []
+  const checks = state.checks ?? []
+  const days = state.days ?? []
+  const best = hotels.length === 0 ? undefined : Math.min(...hotels.map((hotel) => hotel.price))
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <form
-        className="flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (title.trim() === '') return
-          void act('add', { title: title.trim() }).then(() => setTitle(''))
-        }}
-      >
-        <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Add a book" />
-        <Button type="submit" disabled={pending}>
-          Add
-        </Button>
-      </form>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <Card>
-        <CardHeader>
-          <CardTitle>To read</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {books.length === 0 && <p className="text-sm text-muted-foreground">Nothing yet.</p>}
-          {books.map((book) => (
-            <div key={book.id} className="flex items-center justify-between gap-2">
-              <span className={book.done ? 'text-muted-foreground line-through' : ''}>{book.title}</span>
-              {book.done ? (
-                <Badge variant="secondary">Read</Badge>
-              ) : (
-                <Button size="sm" variant="outline" onClick={() => void act('finish', { id: book.id })}>
-                  Done
-                </Button>
-              )}
+    <div className={`mx-auto flex w-full max-w-3xl flex-col gap-6 ${surface === 'page' ? 'p-6' : 'p-4'}`}>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Price watch</h2>
+        <Card>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Best tonight</p>
+                <p className="text-3xl font-semibold tabular-nums">{best === undefined ? '–' : euros(best)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Your target</p>
+                <p className="text-3xl font-semibold tabular-nums">{euros(state.target)}</p>
+              </div>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button disabled={pending} onClick={() => void act('check', {})}>
+                <RefreshCw />
+                Check now
+              </Button>
+              {state.checkedAt && <span className="text-sm text-muted-foreground">Last checked {state.checkedAt}</span>}
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Hotels</h2>
+        {hotels.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hotels yet. Check now to find some.</p>
+        ) : (
+          <>
+            <MapView
+              spec={{ markers: hotels.map((hotel) => ({ lat: hotel.lat, lng: hotel.lng, label: hotel.name })) }}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              {hotels.map((hotel) => (
+                <Card key={hotel.id} size="sm">
+                  <CardHeader>
+                    <CardTitle>{hotel.name}</CardTitle>
+                    <CardDescription>{hotel.area}</CardDescription>
+                    {hotel.price <= state.target && (
+                      <CardAction>
+                        <Badge>Under target</Badge>
+                      </CardAction>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <span className="text-2xl font-semibold tabular-nums">{euros(hotel.price)}</span>
+                    <span className="text-sm text-muted-foreground"> a night</span>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {days.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-medium text-muted-foreground">Plan</h2>
+          <Card>
+            <CardContent>
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+                {days.map((day) => (
+                  <div key={day.day} className="contents">
+                    <dt className="font-medium">{day.day}</dt>
+                    <dd>{day.plan}</dd>
+                  </div>
+                ))}
+              </dl>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Checks</h2>
+        {checks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No checks yet.</p>
+        ) : (
+          <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+            {checks.map((check) => (
+              <div key={check.at} className="contents">
+                <dt className="text-muted-foreground tabular-nums">{check.at}</dt>
+                <dd>{check.note}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
     </div>
   )
 }
 ```
 
-In app.ts, export the state's type for the view: `export type State = { books: { id: string; title: string; done:
-boolean }[] }`.
+In app.ts, export the state's type for the view:
+
+```ts
+export type State = {
+  target: number
+  checkedAt?: string
+  hotels: { id: string; name: string; area: string; price: number; lat: number; lng: number }[]
+  checks: { at: string; note: string }[]
+  days: { day: string; plan: string }[]
+}
+```
 
 ## Rules
 
@@ -82,14 +179,16 @@ boolean }[] }`.
   `recharts`, `react-leaflet`, `leaflet`, `lucide-react` (icons), and types from `./app`. Nothing else.
 - Style with Tailwind classes and goblin's colours, which follow light and dark: `bg-background`, `bg-card`,
   `bg-muted`, `text-foreground`, `text-muted-foreground`, `text-primary`, `text-destructive`, `border`. Do not write
-  colours like `#fff` or `bg-white`. Start the root with padding (`p-4`); the width changes, so let rows wrap.
+  colours like `#fff` or `bg-white`. Lay it out as **Design** says; the width changes, so let rows wrap.
 - If the view throws, the owner sees the error and you see it in the `<apps>` list at the end of each request and in
   `app_inspect` events. Fix it with `app_build` and `edits`.
 
 ## Components (`@goblin/ui`)
 
-- `Button` (`variant`: default, outline, secondary, ghost, destructive, link; `size`: default, xs, sm, lg, icon)
-- `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`, `CardContent`, `CardFooter`
+- `Button` (`variant`: default, outline, secondary, ghost, destructive, link; `size`: default, xs, sm, lg, and for
+  a button with only an icon, which needs an `aria-label`: icon, icon-xs, icon-sm, icon-lg)
+- `Card` (`size`: default, sm), `CardHeader`, `CardTitle`, `CardDescription`, `CardAction` (top right of the header),
+  `CardContent`, `CardFooter`
 - `Input`, `Textarea`, `Label`, `Switch` (`checked`, `onCheckedChange`), `NativeSelect` + `NativeSelectOption`
 - `Badge` (`variant`: default, secondary, destructive, outline), `Separator`, `Skeleton`, `Spinner`
 - `Tabs` (`defaultValue`), `TabsList`, `TabsTrigger` (`value`), `TabsContent` (`value`)
