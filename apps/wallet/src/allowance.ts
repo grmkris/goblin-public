@@ -9,7 +9,7 @@ import {
 } from '@goblin/wallet/delegation'
 import type { AllowancePort } from './context.ts'
 import type { WalletEnv } from './env.ts'
-import { ledgerClient } from './ledger/durable.ts'
+import { type LedgerApi, ledgerClient } from './ledger/client.ts'
 import type { StoredAllowance } from './rails/index.ts'
 import { failure } from './services/errors.ts'
 
@@ -73,18 +73,23 @@ const periodTerms = (env: WalletEnv, chain: ChainKey, signed: SignedAllowance): 
   return signed.delegation.caveats.find((item) => item.enforcer.toLowerCase() === enforcer)?.terms
 }
 
-const signedOf = async (env: WalletEnv, userId: string): Promise<{ chain: ChainKey; signed: SignedAllowance }[]> =>
-  (await ledgerOf(env, userId).signedAllowances()).map((row) => ({
+type AllowanceLedger = Pick<LedgerApi, 'signedAllowances'>
+
+const signedOf = async (ledger: AllowanceLedger): Promise<{ chain: ChainKey; signed: SignedAllowance }[]> =>
+  (await ledger.signedAllowances()).map((row) => ({
     // SAFETY: rows are keyed by the contract's ChainKey and hold what `confirm` above stored.
     chain: row.chain as ChainKey,
     // SAFETY: as above, JSON.stringify of a SignedAllowance.
     signed: JSON.parse(row.json) as SignedAllowance,
   }))
 
-/** What the rails need from the owner's allowances: how the agent tops itself up, and what each one has left. */
-export const allowanceRails = (env: WalletEnv, userId: string, rpcFor: (chain: ChainKey) => JsonRpc) => ({
+/**
+ * What the rails need from the owner's allowances, read from their ledger: how the agent tops itself up, and what each
+ * one has left.
+ */
+export const allowanceRails = (env: WalletEnv, ledger: AllowanceLedger, rpcFor: (chain: ChainKey) => JsonRpc) => ({
   topUp: async (chain: EvmChain): Promise<TopUp | undefined> => {
-    const found = (await signedOf(env, userId)).find((entry) => entry.chain === chain)
+    const found = (await signedOf(ledger)).find((entry) => entry.chain === chain)
     const terms = found === undefined ? undefined : periodTerms(env, chain, found.signed)
     if (found === undefined || terms === undefined) return undefined
     const onChain = chainByKey(chain, live(env))
@@ -95,7 +100,7 @@ export const allowanceRails = (env: WalletEnv, userId: string, rpcFor: (chain: C
     }
   },
   allowances: async (): Promise<readonly StoredAllowance[]> =>
-    (await signedOf(env, userId)).flatMap(({ chain, signed }) => {
+    (await signedOf(ledger)).flatMap(({ chain, signed }) => {
       const terms = periodTerms(env, chain, signed)
       return terms === undefined || !isEvmChain(chain)
         ? []

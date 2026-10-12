@@ -1,7 +1,28 @@
 import { DatabaseSync } from 'node:sqlite'
 import type { Terms } from '@goblin/wallet/contract'
-import { fromNodeSqlite } from './sql.ts'
+import type { LedgerHost } from './durable.ts'
+import { fromNodeSqlite, type SqlValue } from './sql.ts'
 import { LedgerStore } from './store.ts'
+
+/** A Durable Object host over an in-memory SQLite whose one alarm a test can read (`alarm.at`). */
+export function alarmHost(): LedgerHost & { readonly alarm: { at: number | null } } {
+  const db = new DatabaseSync(':memory:')
+  const alarm: { at: number | null } = { at: null }
+  return {
+    alarm,
+    storage: {
+      sql: {
+        // SAFETY: the ledger binds only SqlValue parameters.
+        exec: (query, ...bindings) => ({ toArray: () => db.prepare(query).all(...(bindings as SqlValue[])) }),
+      },
+      transactionSync: (write) => write(),
+      getAlarm: async () => alarm.at,
+      setAlarm: async (at) => {
+        alarm.at = at
+      },
+    },
+  }
+}
 
 /** Test helpers: an in-memory ledger on a controllable clock. */
 export const T0 = Date.parse('2026-10-12T10:00:00.000Z')

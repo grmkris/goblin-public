@@ -18,6 +18,21 @@ export interface StoredAllowance {
   readonly expiresAt: string
 }
 
+/** A trigger's request to the owner's ledger: check the Tempo float after `delayMs`, fitting a payment of `need` USD. */
+export interface FloatSchedule {
+  readonly delayMs: number
+  readonly need?: string | undefined
+}
+
+/**
+ * The Tempo float's single flight, kept by the owner's ledger (ADR 0051): whether a refill is in flight or paused after
+ * failures, and how to ask its alarm for one. Absent where nothing refills (tests, unconfigured deployments).
+ */
+export interface FloatHooks {
+  readonly state: () => Promise<{ readonly refilling: boolean; readonly pausedUntil?: string | undefined }>
+  readonly schedule: (request: FloatSchedule) => Promise<void>
+}
+
 /**
  * Everything the rails need from the rest of the wallet. The Worker wiring builds this once per request: the ledger
  * answers `profile`, lane S's delegation code answers `topUp` and `allowances`, the Worker's Pimlico key the bundler.
@@ -36,6 +51,8 @@ export interface RailsDeps {
   readonly bundlerFor?: (chain: ChainKey) => JsonRpc
   readonly fetchFn?: typeof fetch
   readonly now?: () => Date
+  /** The Tempo float's refills: asked for after an MPP payment leaves it low, or when one is refused for funds. */
+  readonly float?: FloatHooks
   /** Receipt polling; tests make it instant. */
   readonly wait?: { attempts?: number; intervalMs?: number; sleep?: (ms: number) => Promise<void> }
 }

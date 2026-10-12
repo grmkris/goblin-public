@@ -48,6 +48,16 @@ import {
 } from './reserve.ts'
 import { preparedAllowance, putPreparedAllowance, putSignedAllowance, signedAllowances } from './allowances.ts'
 import {
+  claimFloat,
+  endFloatRun,
+  type FloatClaim,
+  type FloatRunStart,
+  type FloatState,
+  floatState,
+  noteFloatNeed,
+  startFloatRun,
+} from './float.ts'
+import {
   type ChallengeCredential,
   challengeCredential,
   claimChallenge,
@@ -239,6 +249,29 @@ export class LedgerStore {
 
   getQuote(id: string, includeExpired = false): StoredQuote | undefined {
     return getQuote(this.#ctx, id, includeExpired)
+  }
+
+  /** The Tempo float's refill in flight, if any (ADR 0051). */
+  floatState(): FloatState {
+    return floatState(this.#ctx)
+  }
+
+  /** A trigger's payment the next refill run must fit (decimal USD). */
+  noteFloatNeed(need: string): void {
+    noteFloatNeed(this.#ctx, need)
+  }
+
+  startFloatRun(): FloatRunStart {
+    return startFloatRun(this.#ctx)
+  }
+
+  /** Claims the single flight for one refill: a new unreserved operation, or the one already in flight. */
+  claimFloat(input: { terms: Terms; termsHash: string }): FloatClaim {
+    return claimFloat(this.#ctx, input)
+  }
+
+  endFloatRun(result: 'sent' | 'failed' | 'idle'): { retryInMs?: number } {
+    return endFloatRun(this.#ctx, result)
   }
 
   isRevoked(): boolean {

@@ -120,6 +120,17 @@ export async function allowancePrepare(call: ApiCall): Promise<Response> {
   return json({ chain: body.value.chain, ...draft })
 }
 
+/**
+ * Seeds the agent's Tempo float once spending is on (ADR 0051): the ledger's alarm bridges from the new Base allowance
+ * after this answer, so the owner never waits on a bridge. Mainnet only; a seed that cannot be asked for now is asked
+ * for by the first payment that finds the float short.
+ */
+const seedFloat = async (call: ApiCall, chain: ChainSetup['chain']): Promise<void> => {
+  if (call.env.WALLET_LIVE !== '1' || chain !== 'base') return
+  // expected: the allowance is confirmed either way; a seed that did not start is started by the next short payment.
+  await call.ledger.scheduleFloat({ delayMs: 0 }).catch(() => undefined)
+}
+
 /** `POST /api/allowance/confirm`: verifies the owner's signature, stores the delegation and records the allowance. */
 export async function allowanceConfirm(call: ApiCall): Promise<Response> {
   const body = await readBody(call.request, AllowanceConfirm)
@@ -129,5 +140,6 @@ export async function allowanceConfirm(call: ApiCall): Promise<Response> {
   const allowance = await call.wiring.allowance.confirm(call.env, parties, body.value)
   const setup = await chainSetup(call, body.value.chain)
   await call.ledger.updateProfile({ chains: [{ ...setup, allowance }] })
+  await seedFloat(call, body.value.chain)
   return json(await readMe(call))
 }

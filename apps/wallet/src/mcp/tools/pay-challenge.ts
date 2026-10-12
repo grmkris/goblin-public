@@ -3,7 +3,7 @@ import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { type Operation, PayChallengeInput, type PayChallengeResult, TOOLS } from '@goblin/wallet/contract'
 import * as Effect from 'effect/Effect'
 import { failure } from '../../services/errors.ts'
-import { FUNDS_SHORT } from '../../rails/challenge.ts'
+import { FUNDS_SHORT, REFILL_RETRY_AFTER_SECONDS, REFILLING } from '../../rails/challenge.ts'
 import { payChallenge, reportChallengeReceipt } from '../../services/programs/challenge.ts'
 import { readLimits } from '../../services/programs/status.ts'
 import { answer, refusal } from '../results.ts'
@@ -25,6 +25,17 @@ const DESCRIPTION = [
 
 const PAY_FIELDS = ['url', 'method', 'challenge', 'max_usd'] as const
 
+/**
+ * A refusal for want of funds while the float refills from the Base allowance (ADR 0051) carries when to try again,
+ * so goblin's caller can wait rather than tell the owner to fund Tempo by hand.
+ */
+const refusalOf = (operation: Operation) => {
+  const refused = refusal(noCredential(operation))
+  if (operation.status !== 'failed' || operation.reason !== REFILLING) return refused
+  const error = { ...refused.structuredContent.error, retryAfterSeconds: REFILL_RETRY_AFTER_SECONDS }
+  return { ...refused, structuredContent: { error } }
+}
+
 /** Why an operation the spend left without a credential has none, as the tool's refusal. */
 const noCredential = (operation: Operation) => {
   if (operation.status === 'signing')
@@ -40,6 +51,13 @@ const noCredential = (operation: Operation) => {
       `Operation ${operation.id} may have signed, but no credential was kept for it.`,
       409,
       'Never pay this challenge again; fetch a new one under a new operation_id.',
+    )
+  if (operation.status === 'failed' && operation.reason === REFILLING)
+    return failure(
+      'insufficient_funds',
+      REFILLING,
+      402,
+      'Nothing was signed. Pay a fresh challenge under a new operation_id.',
     )
   if (operation.status === 'failed' && operation.reason?.startsWith(FUNDS_SHORT) === true)
     return failure(
@@ -65,7 +83,7 @@ const pay = async (box: Toolbox, ctx: ServerContext, input: PayChallengeInput) =
   if (!result.ok) return refusal(result.failure)
   const { outcome, credential, limits } = result.value
   if (outcome.kind === 'awaiting_approval') return spendReply(outcome, limits, ctx, box)
-  if (credential === undefined) return refusal(noCredential(outcome.operation))
+  if (credential === undefined) return refusalOf(outcome.operation)
   const structured: PayChallengeResult = { operation: outcome.operation, credential }
   const text = `${describeOperation(outcome.operation)}\nThe credential is in structuredContent.credential: send it as Authorization: Payment <credential>, then report the Payment-Receipt.`
   return answer(text, { ...structured, replay: outcome.replay })
