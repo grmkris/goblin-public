@@ -8,9 +8,16 @@ export type Sheets = { readonly theme: string; readonly imports: Readonly<Record
 /** At most this long is a word a class could be. */
 const LONGEST = 120
 
-/** Every word of `source` that could name a class; Tailwind ignores those that do not. */
+/**
+ * Every word of `source` that could name a class, whole and in its parts between parentheses; Tailwind ignores those
+ * that do not. Whole, a word keeps a class that holds parentheses, as `Card`'s `py-(--card-spacing)` does: split there,
+ * an app's cards lost their padding.
+ */
 export function candidates(source: string): string[] {
-  return source.split(/[\s"'`{}();,<>=]+/u).filter((word) => word !== '' && word.length <= LONGEST)
+  return source
+    .split(/[\s"'`{};,<>=]+/u)
+    .flatMap((word) => [word, ...word.split(/[()]+/u)])
+    .filter((word) => word !== '' && word.length <= LONGEST)
 }
 
 /** The stylesheet for exactly the classes among `words`, with the theme's variables and base styles. */
