@@ -74,6 +74,10 @@
     "apps/wallet": {
       "entry": ["alchemy.run.ts!", "src/worker.ts!"],
     },
+    "packages/wallet": {
+      // Operator scripts (the Privy policy updater), run by hand with bun.
+      "entry": ["scripts/*.ts!"],
+    },
     "apps/wallet-web": {
       // The MCP App views build from views/<name>.html through vite.views.config.ts (`vite build -c`), outside the SPA.
       "entry": ["src/views/*-main.tsx!"],
