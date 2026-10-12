@@ -227,6 +227,47 @@ agent writes only `/agent`.
 **Attachment**:
 A file the owner sent with a message: its path rides with the words, and the message shows it.
 
+## Goblin Wallet
+
+**Goblin Wallet**:
+The agent's wallet, its own MCP server and web app beside goblin: accounts, limits, signing and receipts. Any MCP
+client can connect it; goblin connects it as a first-class server (ADR 0045).
+_Avoid_: agentic wallet (the earlier working name), treasury
+
+**Owner account**:
+The owner's own EVM account, the embedded wallet Privy gives them at sign-in. It holds the funds the agent may draw on
+and is upgraded with EIP-7702 so it can grant an allowance.
+_Avoid_: main wallet, root wallet
+
+**Agent signer**:
+The wallet's signing key for the agent: a Privy server wallet the owner owns, on which Goblin Wallet is an additional
+signer bound to a policy. It never exports its key and signs only for an operation.
+_Avoid_: hot wallet, session key, bot wallet
+
+**Allowance**:
+On-chain only: the owner account's ERC-7710 delegation to the agent signer, capped per period by `ERC20PeriodTransfer`
+and expiring. Not goblin's spending rule and not the model budget.
+_Avoid_: budget, spending rule
+
+**Access key**:
+On Tempo: a keychain key of the owner's Tempo account with a per-token periodic limit and an expiry, enforced by the
+Tempo protocol.
+
+**Wallet limit**:
+A limit the wallet itself keeps for a connection: per call, per hour, per week, with an expiry, plus the allowed paid
+services and the address book. Each limit shows the layer that enforces it: on-chain allowance, access key, signer
+policy, wallet ledger or the client's spending rule.
+_Avoid_: budget, cap (alone)
+
+**Operation**:
+One spend or signature with frozen terms (amount, token, chain, recipient, service, expiry), reserved against the
+wallet limits before anything is signed and idempotent by its operation id. Payment and delivery are separate states.
+_Avoid_: transaction (an operation may be several, or none), job
+
+**Receipt**:
+What an operation leaves: its terms, the payment evidence (transaction hash or the rail's receipt), the delivery and
+the limits left.
+
 ## The agent's API and records
 
 **Owner API**:

@@ -2,7 +2,8 @@
 
 One Cloudflare Worker serves the web app and the API. Behind it, every user has their own `PersonalAgent` Durable
 Object, named by their user ID: it runs Pi, holds that user's outbound MCP connections and credentials, and keeps
-application state in its own SQLite. D1 holds Better Auth's account tables (users, sessions, inbound OAuth) and goblin's `app_billing_*` tables.
+application state in its own SQLite. D1 holds Better Auth's account tables (users, sessions, inbound OAuth) and goblin's `app_billing_*` tables. Goblin Wallet (ADR 0045) is a second Worker beside it, with its own sign-in, storage
+and stage; see Goblin Wallet.
 
 ```mermaid
 flowchart LR
@@ -1534,7 +1535,8 @@ meet its contract (ADR 0001). SQLite transactions are short and never span model
 `apps/web/alchemy.run.ts` declares the Vite Worker, the `PersonalAgent` namespace, the D1 database, the `FILES` R2
 bucket, the `FLOWS` Analytics Engine dataset (`goblin-<stage>-flows`, ADR 0037), the `LOADER` Worker Loader
 (Dynamic Workers, open beta, Workers Paid) and, on dev only, Workers AI as `AI` for typed decisions (ADR 0031; without
-it decisions judge nothing); it is the only deployment entrypoint.
+it decisions judge nothing); it is goblin's deployment entrypoint. `apps/wallet/alchemy.run.ts` deploys Goblin Wallet
+(see Goblin Wallet).
 `scripts/stage.ts` builds `packages/app`'s toolchain before Alchemy runs. The local stage runs in workerd with CLIProxy; the dev stage calls Railway LiteLLM with a
 dedicated model-limited, budget-capped key. Offered models and Credit rates come from stage configuration; the per-account allowance comes from its plan or
 operator override. The key's provider caps and shared quotas are managed outside this repository; source does not prove
@@ -1725,3 +1727,25 @@ its notices too. The rail's Activity count adds the unread notifications to what
 Main contains the transcript and composer, without a dashboard above the input. It opens at the transcript's end and uses the same jump button as other conversations. Apps follow page > inline placement; saved Home tiles no longer displace their tool-row views. The browser has no Home pinning, edit mode, tile renderer or special receipt actions.
 
 The runtime Home service, its tools, contracts and application tables remain active, and the workspace feed carries the layout (`home`); the owner API has no Home endpoint. Layout revisions, operation replay, owner authority and app-deletion cleanup still apply. Saved layouts and app state remain intact for a later UI iteration (ADR 0025). Layout edits currently have no visible browser surface; the agent's guidance says so and does not offer Home placement.
+
+## Goblin Wallet
+
+Goblin Wallet (ADR 0045) is a second Worker beside goblin's, with its own sign-in, storage and stage
+(`apps/wallet/alchemy.run.ts`, deployed by `scripts/wallet-stage.ts`; dev at `https://wallet-dev.goblin.surf`). It is an
+MCP server any client can connect; goblin connects it as a first-class server.
+
+- **`apps/wallet`** serves `/mcp` (`createMcpHandler`, MCP 2026 with stateless legacy), MCP OAuth (`/oauth/*`,
+  `/.well-known/*`, ported from Sidequest), the owner API (`/api/*`, Privy bearer tokens) and the App views
+  (`/views/*`, from the web app's build). A `WalletLedger` Durable Object per owner keeps the wallet limits, operations,
+  reservations, approvals, address book and view state in SQLite; `WalletAuth` keeps OAuth clients, codes and tokens.
+- **`apps/wallet-web`** is the owner's app (Privy sign-in, onboarding, activity, limits, connections, the consent and
+  Approve pages) and builds the single-file MCP App views.
+- **`packages/wallet`** holds the contract (tool and route schemas, goblin's `WalletStatus` shape), the chain table,
+  amounts in integer base units, the Privy client and agent signer, delegation encoders, the relay and the rails (x402,
+  MPP on Tempo, transfers, LI.FI swaps, Relay bridges).
+
+A spend is an operation: the wallet freezes its terms, reserves them against the wallet limits in one SQLite
+transaction, asks the owner through a URL request when a limit, recipient or service needs it, signs through the
+agent signer (whose Privy policy refuses what it does not allow), pays, and records the receipt. On-chain, the owner's
+account (EIP-7702 upgraded to MetaMask's DeleGator) grants the agent signer an `ERC20PeriodTransfer` allowance, so the
+chain itself caps what the agent can draw per period.
