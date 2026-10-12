@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react'
 import { Alert, AlertDescription, Button } from '@goblin/ui'
-import { useQuery } from '@tanstack/react-query'
 import { Navigate } from '@tanstack/react-router'
 import { useBilling } from '../account/hooks.ts'
 import { useSession } from '../auth/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { onboardingStateQuery } from '../onboarding/queries.ts'
 import { Authentication } from './authentication.tsx'
 
 /** The session could not be checked: say so, with the reference to quote, and offer to check again. */
@@ -25,42 +23,29 @@ function SessionUnavailable({ error, onRetry }: { readonly error: unknown; reado
 }
 
 /**
- * First-run Start (ADR 0048) stands before the chats while it is open. A state that cannot be read lets the owner in:
- * Start is help, not a lock.
- */
-function StartGate({ children }: { readonly children: ReactNode }) {
-  const start = useQuery(onboardingStateQuery)
-  if (start.data === undefined && start.error === null)
-    return (
-      <p role="status" className="gate-status">
-        Opening your workspace…
-      </p>
-    )
-  if (start.data?.status === 'open') return <Navigate to="/start/$step" params={{ step: 'wallet' }} replace />
-  return children
-}
-
-/**
- * Renders `children` for the signed-in owner, the sign-in form otherwise. `startRequired` sends an owner who has not
- * been through first-run Start there first.
+ * Renders `children` for the signed-in owner, the sign-in form otherwise. `pending` is what shows while the session is
+ * checked (first-run Start shows goblin's splash there). Whether a page waits for Start is the shell's to decide
+ * (`staticData.startRequired`, `useStartDecision`), before anything of the app is drawn.
  */
 export function OwnerGate({
   children,
   planRequired = true,
-  startRequired = false,
+  pending,
 }: {
   readonly children: ReactNode
   readonly planRequired?: boolean
-  readonly startRequired?: boolean
+  readonly pending?: ReactNode
 }) {
   const session = useSession()
   const billing = useBilling()
   const { state } = session
   if (state === 'checking')
     return (
-      <p role="status" className="gate-status">
-        Opening your workspace…
-      </p>
+      pending ?? (
+        <p role="status" className="gate-status">
+          Opening your workspace…
+        </p>
+      )
     )
   if (state === 'unavailable') return <SessionUnavailable error={session.error} onRetry={session.recheck} />
   if (state === 'signed-out') return <Authentication onAuthenticated={session.signedIn} />
@@ -72,5 +57,5 @@ export function OwnerGate({
       </p>
     )
   if (planRequired && billing.state?.active === false) return <Navigate to="/subscribe" replace />
-  return startRequired ? <StartGate>{children}</StartGate> : children
+  return children
 }

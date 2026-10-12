@@ -13,6 +13,7 @@ import { primeOwnerRead } from '../lib/prime.ts'
  */
 export const Route = createFileRoute('/c/$chatId')({
   validateSearch: parsePanelSearch,
+  staticData: { startRequired: true },
   loaderDeps: ({ search }) => ({ thread: search.thread }),
   beforeLoad: ({ params }) => {
     if (!/^\d{1,12}$/u.test(params.chatId)) throw redirect({ to: '/' })
@@ -28,7 +29,7 @@ function ChannelRoute() {
   const { chatId } = Route.useParams()
   const search = Route.useSearch()
   return (
-    <OwnerGate startRequired>
+    <OwnerGate>
       <ChannelPage chat={chatId} search={search} />
     </OwnerGate>
   )

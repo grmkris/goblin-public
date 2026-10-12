@@ -1,4 +1,4 @@
-import { mutationOptions } from '@tanstack/react-query'
+import { mutationOptions, queryOptions, skipToken } from '@tanstack/react-query'
 import type { OnboardingChange, OnboardingConnect, OnboardingState, OnboardingView } from '@goblin/contracts'
 import * as Effect from 'effect/Effect'
 import { owner } from '../lib/api.ts'
@@ -14,6 +14,17 @@ export const onboardingStateQuery = owner.apiQuery({
   queryKey: onboardingKeys.state,
   queryFn: (api) => api.onboarding.state(),
 })
+/**
+ * Start's state, read only once someone is signed in (beside the plan, not after it); before then the key holds
+ * nothing. A refusal never sends anyone to sign in: the page's own gate decides that.
+ */
+export const signedInStartQuery = (signedIn: boolean) =>
+  queryOptions({
+    queryKey: onboardingKeys.state,
+    queryFn: signedIn ? onboardingStateQuery.queryFn : skipToken,
+    meta: { auth: 'optional' },
+  })
+
 /** Every step's state, read live from the wallet and Mercator. */
 export const onboardingQuery = owner.apiQuery({
   queryKey: onboardingKeys.view,

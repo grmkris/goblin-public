@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import {
   HeadContent,
+  Navigate,
   Outlet,
   Scripts,
   createRootRouteWithContext,
@@ -14,9 +15,11 @@ import { LinkConfirmProvider } from '../components/parts/link-confirm.tsx'
 import { EphemeralProvider } from '../components/shell/ephemeral-slot.tsx'
 import { ShellNavigation } from '../components/shell/navigation.tsx'
 import { ShellFrame } from '../components/shell/shell.tsx'
+import { StartSplash } from '../components/start/splash.tsx'
 import { WorkspaceFeedProvider } from '../components/workspace-feed.tsx'
 import { useBilling } from '../account/hooks.ts'
 import { useSession } from '../auth/hooks.ts'
+import { useStartDecision } from '../onboarding/hooks.ts'
 import { startupImages } from '../lib/startup-images.ts'
 import { reportCrash } from '../lib/api.ts'
 import { reportUncaught } from '../lib/query/crash-report.ts'
@@ -73,18 +76,39 @@ function Root() {
   )
 }
 
+/** Where the shown page stands: first-run Start's own, or one that waits for Start (`staticData.startRequired`). */
+type Place = 'start' | 'gated' | 'other'
+
 /**
  * The app around every page: the rail and the sidebar beside the page (`components/shell`), and above it the stages
- * of the live Apps, which outlive moving between a channel and an App's page, once someone is (or may be) signed in. Signing in, and a visitor who is signed out, get the bare page. While the session is still being
- * checked the shell already shows, so a signed-in owner's first paint does not jump.
+ * of the live Apps, which outlive moving between a channel and an App's page, once someone is (or may be) signed in.
+ * Signing in, and a visitor who is signed out, get the bare page. First-run Start (ADR 0048) fills the screen on its
+ * own. A page that waits for Start shows goblin's splash, never the app, until Start's state says where the owner goes,
+ * and goes to Start from the splash; any other page shows the shell while the session is still being checked.
  */
 function Shell({ children }: { readonly children: ReactNode }) {
   const { state } = useSession()
   const billing = useBilling()
   const path = useRouterState({ select: (router) => router.location.pathname })
+  // The shown matches, not the location: while Start loads, the page before it stays what is drawn, so its splash holds.
+  const place = useRouterState({
+    select: (router): Place =>
+      router.matches.some((match) => match.routeId.startsWith('/start'))
+        ? 'start'
+        : router.matches.some((match) => match.staticData.startRequired === true)
+          ? 'gated'
+          : 'other',
+  })
+  const start = useStartDecision(place === 'gated')
   if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
-  // First-run Start (ADR 0048) fills the screen on its own, before the app is there.
-  if (path === '/start' || path.startsWith('/start/')) return <main className="start-root">{children}</main>
+  if (place === 'start') return <main className="start-root">{children}</main>
+  if (start.kind !== 'show')
+    return (
+      <main className="start-root">
+        <StartSplash />
+        {start.kind === 'start' && <Navigate to="/start/$step" params={{ step: start.step }} replace />}
+      </main>
+    )
   const enabled = state === 'signed-in' && billing.state?.active === true
   return (
     <WorkspaceFeedProvider enabled={enabled}>

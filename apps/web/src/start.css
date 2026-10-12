@@ -7,6 +7,23 @@
   background: var(--background);
 }
 
+/*
+ * While goblin finds out whether the owner goes to Start or the app: the mark alone, centred on the page's background,
+ * as the Home Screen app's startup image draws it (scripts/app-icons.ts), so no words appear and change.
+ */
+.start-splash {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+}
+.start-splash-mark {
+  display: grid;
+  color: var(--foreground);
+}
+.start-splash-mark > svg {
+  width: clamp(3rem, 16vmin, 4.5rem);
+  height: clamp(3rem, 16vmin, 4.5rem);
+}
 .start {
   --start-panel: 20rem;
   --start-leave: 320ms;
