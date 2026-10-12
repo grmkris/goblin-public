@@ -185,8 +185,8 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "redeemDelegations",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "Redeem allowance on 8453",
+      "method": "eth_signUserOperation",
+      "name": "Redeem allowance userOp on 8453",
     },
     {
       "action": "ALLOW",
@@ -239,8 +239,91 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x4c4b40",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "USDC transfer on 8453",
+      "method": "eth_signUserOperation",
+      "name": "USDC transfer userOp on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "8453",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x777777777777AeC03fd955926DbF81597e66834C",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x186a0",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "USDC approve paymaster userOp on 8453",
     },
     {
       "action": "ALLOW",
@@ -421,8 +504,8 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "redeemDelegations",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "Redeem allowance on 1",
+      "method": "eth_signUserOperation",
+      "name": "Redeem allowance userOp on 1",
     },
     {
       "action": "ALLOW",
@@ -475,8 +558,91 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x4c4b40",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "USDC transfer on 1",
+      "method": "eth_signUserOperation",
+      "name": "USDC transfer userOp on 1",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "1",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x777777777777AeC03fd955926DbF81597e66834C",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x2dc6c0",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "USDC approve paymaster userOp on 1",
     },
     {
       "action": "ALLOW",
@@ -657,8 +823,8 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "redeemDelegations",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "Redeem allowance on 42161",
+      "method": "eth_signUserOperation",
+      "name": "Redeem allowance userOp on 42161",
     },
     {
       "action": "ALLOW",
@@ -711,8 +877,91 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x4c4b40",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "USDC transfer on 42161",
+      "method": "eth_signUserOperation",
+      "name": "USDC transfer userOp on 42161",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "42161",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x777777777777AeC03fd955926DbF81597e66834C",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x186a0",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "USDC approve paymaster userOp on 42161",
     },
     {
       "action": "ALLOW",
@@ -889,8 +1138,8 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x4c4b40",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "USDC approve LI.FI on 8453",
+      "method": "eth_signUserOperation",
+      "name": "USDC approve LI.FI userOp on 8453",
     },
     {
       "action": "ALLOW",
@@ -914,8 +1163,8 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x0",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "LI.FI call on 8453",
+      "method": "eth_signUserOperation",
+      "name": "LI.FI call userOp on 8453",
     },
     {
       "action": "ALLOW",
@@ -997,8 +1246,8 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x4c4b40",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "USDC approve Relay on 8453",
+      "method": "eth_signUserOperation",
+      "name": "USDC approve Relay userOp on 8453",
     },
     {
       "action": "ALLOW",
@@ -1022,8 +1271,224 @@ exports[`the agent policy > the mainnet document (snapshot) 1`] = `
           "value": "0x0",
         },
       ],
-      "method": "eth_sendTransaction",
-      "name": "Relay call on 8453",
+      "method": "eth_signUserOperation",
+      "name": "Relay call userOp on 8453",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "42161",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "USDC approve Relay userOp on 42161",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "42161",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "Relay call userOp on 42161",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "1",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.spender",
+          "field_source": "ethereum_calldata",
+          "operator": "eq",
+          "value": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        },
+        {
+          "abi": [
+            {
+              "inputs": [
+                {
+                  "name": "spender",
+                  "type": "address",
+                },
+                {
+                  "name": "amount",
+                  "type": "uint256",
+                },
+              ],
+              "name": "approve",
+              "outputs": [
+                {
+                  "name": "",
+                  "type": "bool",
+                },
+              ],
+              "stateMutability": "nonpayable",
+              "type": "function",
+            },
+          ],
+          "field": "approve.amount",
+          "field_source": "ethereum_calldata",
+          "operator": "lte",
+          "value": "0x4c4b40",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "USDC approve Relay userOp on 1",
+    },
+    {
+      "action": "ALLOW",
+      "conditions": [
+        {
+          "field": "chain_id",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "1",
+        },
+        {
+          "field": "to",
+          "field_source": "ethereum_transaction",
+          "operator": "eq",
+          "value": "0x4cD00E387622C35bDDB9b4c962C136462338BC31",
+        },
+        {
+          "field": "value",
+          "field_source": "ethereum_transaction",
+          "operator": "lte",
+          "value": "0x0",
+        },
+      ],
+      "method": "eth_signUserOperation",
+      "name": "Relay call userOp on 1",
     },
     {
       "action": "ALLOW",

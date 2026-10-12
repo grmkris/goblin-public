@@ -4,9 +4,12 @@
  * chain from `@goblin/wallet/chains`, ported from Sidequest's `scripts/privy/policy.ts`.
  *
  * - USDC EIP-3009 `TransferWithAuthorization` (x402 `exact`) from the agent's own wallet, at most the payment cap.
+ * - The agent sends on EVM chains only as UserOperations (`eth_signUserOperation`); Privy checks every call of the
+ *   batch against the rules below. The transitional `transaction` form allows the same calls as plain transactions.
  * - `redeemDelegations` on the MetaMask DelegationManager with no value: the owner's ERC-7710 allowance, whose caveats
  *   (ERC20PeriodTransfer, AllowedTargets, AllowedCalldata, Timestamp) the chain enforces.
  * - USDC `transfer` of at most the payment cap, with no value.
+ * - USDC `approve` to Pimlico's ERC-20 paymaster of at most the chain's gas ceiling: the gas, paid in USDC.
  * - Tempo: a type-118 transaction signed (never sent by Privy) whose call is USDC.e `transfer` or `transferWithMemo`
  *   (MPP's charge), at most the payment cap.
  * - Routes (LI.FI's diamond for swaps, Relay's depository for bridges): a USDC `approve` of at most the cap to the
@@ -16,7 +19,8 @@
  * What Privy cannot see stays with the ledger and the rails: the payee and validity window of an x402 payment, the
  * redemption's delegation and execution, a route call's own calldata, and a Tempo transaction's other calls.
  */
-import { BASE, type Chain } from '../chains/index.ts'
+import { AGENT_GAS_CEILINGS } from '../balances/agent-send.ts'
+import { ARBITRUM, BASE, type Chain, ETHEREUM } from '../chains/index.ts'
 import { canonicalJson } from '../contract/hash.ts'
 
 /** Privy refuses policy names of 50 characters or more. */
@@ -153,10 +157,20 @@ const paymentRule = (chain: Chain, cap: bigint): PolicyRule => {
   }
 }
 
+/** How the agent sends on an EVM chain: a UserOperation, or (transitional) a plain transaction. */
+export type AgentSendForm = 'userop' | 'transaction'
+
+const METHOD: Readonly<Record<AgentSendForm, string>> = {
+  userop: 'eth_signUserOperation',
+  transaction: 'eth_sendTransaction',
+}
+const named = (what: string, form: AgentSendForm, chainId: number): string =>
+  `${what}${form === 'userop' ? ' userOp' : ''} on ${chainId}`
+
 /** The owner's allowance: `redeemDelegations` on the DelegationManager, no value attached. */
-const redeemRule = (chain: Chain): PolicyRule => ({
-  name: `Redeem allowance on ${chain.id}`,
-  method: 'eth_sendTransaction',
+const redeemRule = (chain: Chain, form: AgentSendForm): PolicyRule => ({
+  name: named('Redeem allowance', form, chain.id),
+  method: METHOD[form],
   action: 'ALLOW',
   conditions: [
     tx('chain_id', 'eq', String(chain.id)),
@@ -167,9 +181,9 @@ const redeemRule = (chain: Chain): PolicyRule => ({
 })
 
 /** A plain USDC transfer from the agent wallet, at most the cap. */
-const transferRule = (chain: Chain, cap: bigint): PolicyRule => ({
-  name: `USDC transfer on ${chain.id}`,
-  method: 'eth_sendTransaction',
+const transferRule = (chain: Chain, cap: bigint, form: AgentSendForm): PolicyRule => ({
+  name: named('USDC transfer', form, chain.id),
+  method: METHOD[form],
   action: 'ALLOW',
   conditions: [
     tx('chain_id', 'eq', String(chain.id)),
@@ -179,6 +193,31 @@ const transferRule = (chain: Chain, cap: bigint): PolicyRule => ({
   ],
 })
 
+const GAS_CEILING_BY_CHAIN = new Map<number, bigint>([
+  [BASE.id, AGENT_GAS_CEILINGS.base],
+  [ARBITRUM.id, AGENT_GAS_CEILINGS.arbitrum],
+  [ETHEREUM.id, AGENT_GAS_CEILINGS.ethereum],
+])
+
+/** The gas of a UserOperation, in USDC: an approval to the chain's ERC-20 paymaster of at most its gas ceiling. */
+const paymasterRule = (chain: Chain): PolicyRule[] =>
+  chain.aa === null
+    ? []
+    : [
+        {
+          name: `USDC approve paymaster userOp on ${chain.id}`,
+          method: METHOD.userop,
+          action: 'ALLOW',
+          conditions: [
+            tx('chain_id', 'eq', String(chain.id)),
+            tx('to', 'eq', chain.usdc.address),
+            tx('value', 'lte', '0x0'),
+            calldata(APPROVE_ABI, 'approve.spender', 'eq', chain.aa.paymaster),
+            calldata(APPROVE_ABI, 'approve.amount', 'lte', hex(GAS_CEILING_BY_CHAIN.get(chain.id) ?? 0n)),
+          ],
+        },
+      ]
+
 /** A contract the agent may route USDC through on one chain (a swap or bridge contract), by name for the rule. */
 export interface RouteSpender {
   readonly chain: Chain
@@ -187,10 +226,10 @@ export interface RouteSpender {
 }
 
 /** The route's USDC approval (at most the cap), and calls to the route without native value. */
-const routeRules = (route: RouteSpender, cap: bigint): PolicyRule[] => [
+const routeRules = (route: RouteSpender, cap: bigint, form: AgentSendForm): PolicyRule[] => [
   {
-    name: `USDC approve ${route.name} on ${route.chain.id}`,
-    method: 'eth_sendTransaction',
+    name: named(`USDC approve ${route.name}`, form, route.chain.id),
+    method: METHOD[form],
     action: 'ALLOW',
     conditions: [
       tx('chain_id', 'eq', String(route.chain.id)),
@@ -201,8 +240,8 @@ const routeRules = (route: RouteSpender, cap: bigint): PolicyRule[] => [
     ],
   },
   {
-    name: `${route.name} call on ${route.chain.id}`,
-    method: 'eth_sendTransaction',
+    name: named(`${route.name} call`, form, route.chain.id),
+    method: METHOD[form],
     action: 'ALLOW',
     conditions: [
       tx('chain_id', 'eq', String(route.chain.id)),
@@ -238,6 +277,8 @@ export interface AgentPolicyInput {
   /** Swap and bridge contracts the agent may approve USDC to and call. */
   readonly routes?: readonly RouteSpender[]
   readonly capUnits?: bigint
+  /** How the agent sends: UserOperations only (the default), or both forms while deployments switch over. */
+  readonly forms?: readonly AgentSendForm[]
 }
 
 /** The agent policy document, exactly as Privy stores it (minus ids). */
@@ -245,12 +286,17 @@ export const agentPolicy = (input: AgentPolicyInput): PolicyDocument => {
   const cap = input.capUnits ?? PAYMENT_CAP_UNITS
   const delegators = new Set(input.chains.map((chain) => chain.delegation.delegator))
   if (delegators.size !== 1) throw new Error('invalid_policy: the chains must share one DeleGator deployment')
+  const forms = input.forms ?? ['userop']
+  const sends = (chain: Chain): PolicyRule[] =>
+    forms.flatMap((form) => [
+      redeemRule(chain, form),
+      transferRule(chain, cap, form),
+      ...(form === 'userop' ? paymasterRule(chain) : []),
+    ])
   const perChain = input.chains.flatMap((chain) =>
-    chain.usdc.eip3009 === null
-      ? tempoRules(chain, cap)
-      : [paymentRule(chain, cap), redeemRule(chain), transferRule(chain, cap)],
+    chain.usdc.eip3009 === null ? tempoRules(chain, cap) : [paymentRule(chain, cap), ...sends(chain)],
   )
-  const routes = (input.routes ?? []).flatMap((route) => routeRules(route, cap))
+  const routes = (input.routes ?? []).flatMap((route) => forms.flatMap((form) => routeRules(route, cap, form)))
   return {
     version: '1.0',
     name: AGENT_POLICY_NAME,
@@ -301,8 +347,12 @@ export const writablePolicy = (live: Record<string, unknown>): Record<string, un
 /** Two policy documents are the same policy when their canonical JSON is. */
 export const samePolicy = (a: unknown, b: unknown): boolean => canonicalJson(a) === canonicalJson(b)
 
-/** The swap and bridge contracts the rails use on Base: LI.FI's diamond and Relay's depository. */
-export const BASE_ROUTES: readonly RouteSpender[] = [
+const RELAY_DEPOSITORY = '0x4cD00E387622C35bDDB9b4c962C136462338BC31'
+
+/** The swap and bridge contracts the rails use: LI.FI's diamond on Base, Relay's depository on every EVM origin. */
+export const AGENT_ROUTES: readonly RouteSpender[] = [
   { chain: BASE, name: 'LI.FI', address: '0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE' },
-  { chain: BASE, name: 'Relay', address: '0x4cD00E387622C35bDDB9b4c962C136462338BC31' },
+  { chain: BASE, name: 'Relay', address: RELAY_DEPOSITORY },
+  { chain: ARBITRUM, name: 'Relay', address: RELAY_DEPOSITORY },
+  { chain: ETHEREUM, name: 'Relay', address: RELAY_DEPOSITORY },
 ]

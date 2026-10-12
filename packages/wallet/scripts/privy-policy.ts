@@ -24,7 +24,7 @@ import {
   TEMPO,
   TEMPO_MODERATO,
 } from '../src/chains/index.ts'
-import { BASE_ROUTES, agentPolicy, samePolicy, writablePolicy } from '../src/policy/index.ts'
+import { AGENT_ROUTES, agentPolicy, samePolicy, writablePolicy } from '../src/policy/index.ts'
 import { PrivyClient, PrivyError, authorizationSigner, privyId, walletRpc } from '../src/privy/index.ts'
 
 type Env = Readonly<Record<string, string>>
@@ -58,7 +58,13 @@ const adminId = required(env, 'PRIVY_POLICY_ADMIN_ID')
 const chains = flag('--testnets')
   ? [BASE, ETHEREUM, ARBITRUM, TEMPO, BASE_SEPOLIA, SEPOLIA, ARBITRUM_SEPOLIA, TEMPO_MODERATO]
   : [BASE, ETHEREUM, ARBITRUM, TEMPO]
-const desired = agentPolicy({ ownerId: adminId, chains, routes: BASE_ROUTES })
+// `--with-transactions`: while a deployment still sends plain transactions, allow both forms; then UserOperations only.
+const desired = agentPolicy({
+  ownerId: adminId,
+  chains,
+  routes: AGENT_ROUTES,
+  forms: flag('--with-transactions') ? ['userop', 'transaction'] : ['userop'],
+})
 
 const reader = new PrivyClient({ appId, appSecret })
 const route = `/policies/${privyId(policyId)}`
@@ -217,7 +223,7 @@ const sendProbes = async (probe: Probe): Promise<Record<string, string>> => {
       params: { transaction: { to, data, value: '0x0', chain_id: BASE.id } },
     })
   const approve = (spender: string, amount: bigint) => transferData(spender, amount, '0x095ea7b3')
-  const lifi = BASE_ROUTES[0]?.address ?? ''
+  const lifi = AGENT_ROUTES[0]?.address ?? ''
   return {
     'Base send to another contract (expect refused)': await outcome(send(BASE.delegation.delegator, '0x')),
     'Base USDC transfer 6 USDC (expect refused, or broadcast failure from the simulation)': await outcome(
