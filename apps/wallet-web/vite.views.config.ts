@@ -19,6 +19,8 @@ export default defineConfig(({ mode }) => {
       alias: { '@fontsource-variable/geist': fileURLToPath(new URL('src/views/no-font.css', import.meta.url)) },
     },
     plugins: [tailwindcss(), viteReact(), viteSingleFile()],
+    // The SPA build already copied public/ (icons, manifest); a view needs none of it.
+    publicDir: false,
     build: {
       outDir: 'dist',
       emptyOutDir: false,
