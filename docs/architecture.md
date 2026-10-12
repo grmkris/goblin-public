@@ -26,7 +26,7 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 
 | Path | What happens |
 | --- | --- |
-| `/health` | Stage, service name, sign-up mode, whether mail is configured, and the billing mode. |
+| `/health` | Stage, service name, sign-up mode, whether mail is configured, the billing mode, and whether Pro can be paid from the Goblin Wallet. |
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`, the same document at every path. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
@@ -90,7 +90,7 @@ event streams, the files group and the OAuth callback). It annotates the request
 | `workspace` | `GET /workspace/events` (SSE) | `workspace/api.ts` |
 | `files` | `GET /files`, `GET`/`PUT`/`DELETE /files/content` | `files/api.ts` |
 | `decisions` | `POST /decisions/:id` | `decisions/api.ts` |
-| account (Worker) | `billing`: `/billing/state`, `/billing/checkout`, `/billing/portal`; `clients`: `/clients`, `/clients/:clientId`; `clientErrors`: `/client-errors` | `http/api/account.ts` |
+| account (Worker) | `billing`: `/billing/state`, `/billing/checkout`, `/billing/portal`, `/billing/wallet/start`, `/billing/wallet/confirm`; `clients`: `/clients`, `/clients/:clientId`; `clientErrors`: `/client-errors` | `http/api/account.ts` |
 
 What is not JSON in and out is served through HttpApi's raw handlers, all annotated `RenewsResident: false`: the two
 event streams (SSE), the owner's file bytes (streamed both ways, never buffered), and `mcp.oauthCallback`, a redirect
@@ -1680,7 +1680,7 @@ that is not in `app_conversations` (a routine's run) has no entries page; its tu
 | Agent DO SQLite | `app_run_events` | Drizzle: the run ledger, turns, model attempts and tool calls without content, 30 days (ADR 0024). |
 | Agent DO SQLite | `app_decision_proposals`, `app_decision_labels` | Drizzle: typed decision proposals and the owner's first label of each (ADR 0031). |
 | D1 `goblinAuth` | `user`, `session`, `account`, `verification`, `jwks`, `rateLimit`, `oauth*` | Better Auth, `apps/runtime/migrations`. |
-| D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts` | Drizzle: account payments and durable reconciliation. |
+| D1 `goblinAuth` | `app_billing_accounts`, `app_billing_subscriptions`, `app_billing_inbox`, `app_billing_checkouts`, `app_billing_wallet_subscriptions` | Drizzle: account payments, durable reconciliation and the Goblin Wallet subscriptions' renewals (ADR 0054). |
 
 The withdrawn Members feature left dormant auth D1 tables and DO columns/tables. Applied migration files and keys
 remain intact to preserve real data and migration history; the runtime no longer reads or writes that access metadata.
@@ -1768,8 +1768,24 @@ Each Agent's usage ledger still records its owner's UTC-day spend, while the all
 plan (800 Credits a day for Pro, the stage's free Credits otherwise; ADR 0026), at the Credit rates the stage configures; the defaults are Alibaba's
 example rates and need operator review against the plan's real billing.
 
-The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. The return page
-polls verified state and Settings opens the Dodo portal. `/terms`, `/privacy` and `/refunds` are draft public pages,
+**Pro from the Goblin Wallet (ADR 0054).** Pro is $10 in USDC every 30 days, a subscription the owner signs once in
+the Goblin Wallet: an ERC-7710 delegation to goblin's collector that the chain holds to USDC transfers into the collector
+only, at most $10 a period, for 12 periods. goblin is a merchant of the wallet (`billing/wallet.ts`, the
+`WalletMerchant` service, server to server with the merchant key). `POST /api/billing/wallet/start` asks the wallet for
+the subscription and answers where to sign it; the wallet sends the owner back to `/subscribe/success`, whose
+`POST /api/billing/wallet/confirm` takes the current period's payment once (operation id `pro:<user>:<period>`) and
+answers its receipt. `app_billing_wallet_subscriptions` keeps where each account's renewals stand, and the plan's
+source `wallet` gives Pro through the last period paid, and through the grace while a failed renewal is retried. The
+hourly cron (`billing/renewals.ts`) reminds three days before a payment, collects it when due, retries a failed one
+each day through a seven-day grace and then falls back to free; a subscription the owner revoked runs to what was
+paid. Its notices reach the owner's Personal, Activity and Telegram through the agent's internal
+`/internal/billing-notice` (`billing/notice.ts`), which needs no plan. The card checkout and portal answer
+`card_disabled` unless `CARD_CHECKOUT` is `on`.
+
+The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. Any call refused with
+`SubscriptionRequired` opens one upgrade prompt (`lib/upgrade-prompt.ts`) naming the feature when the error does,
+with See Pro back to the page. The card return page polls verified state and Settings opens the Dodo portal while the
+card checkout is on; a wallet subscription shows its paid-through date and Manage in your wallet. `/terms`, `/privacy` and `/refunds` are draft public pages,
 pending operator identity and legal review. Native workerd tests verify signup, injected checkout, activation,
 replay, stale updates, cancellation, grace and per-account allowances with real D1/Agent storage. They do not prove
 live Dodo delivery or merchant onboarding.

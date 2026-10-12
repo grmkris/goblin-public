@@ -352,6 +352,19 @@ native Agents SDK adapter.
 **Plan**:
 The account's subscription (Pro) that admits it to its agent; the agent keeps an active one for a minute (ADR 0015).
 
+**Wallet subscription**:
+Pro paid from the Goblin Wallet: a permission the owner signs once that lets goblin take at most one payment a period,
+into its collector, for a fixed number of periods; cancelling is revoking it in the wallet, and Pro runs to the end of
+the period paid (ADR 0054).
+_Avoid_: recurring payment, auto-renew (nothing is charged without the signed permission, and the owner revokes it)
+
+**Collector**:
+goblin's own wallet that wallet subscriptions pay into, the only recipient a subscription allows (ADR 0054).
+
+**Grace**:
+The days after a failed renewal while Pro continues and goblin retries the payment each day; past it the account falls
+back to free (ADR 0054).
+
 **Model budget**:
 The estimated Token Plan Credits an agent may spend per UTC day (ADR 0026). Past it, new turns are refused and tools
 inside a running turn are blocked.
