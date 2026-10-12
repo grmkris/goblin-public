@@ -34,3 +34,4 @@ export {
   TabsTrigger,
   Textarea,
 } from '@goblin/ui'
+export { Section, Stat } from './layout.tsx'

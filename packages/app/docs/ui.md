@@ -12,12 +12,12 @@ Make the view look like one of goblin's own pages: calm, roomy, the important nu
 - Root: `mx-auto flex w-full max-w-3xl flex-col gap-6`, with `p-6` on a page and `p-4` in the chat. Read the surface
   with `const { surface } = useHost()` and write `surface === 'page' ? 'p-6' : 'p-4'`.
 - Do not repeat the app's name as a heading: goblin's frame already shows it. Start with what the owner came for.
-- Sections: `<section className="flex flex-col gap-3">` with a small head,
-  `<h2 className="text-sm font-medium text-muted-foreground">Hotels</h2>`, then its content. `gap-6` between them.
+- Each part of the view is a `<Section title="Hotels">` from `@goblin/ui`: a small muted head, an optional `action`
+  (a button) beside it, then its content. The root's `gap-6` spaces them.
 - One `Card` per group. Never a Card inside a Card. Cards side by side: `grid gap-4 sm:grid-cols-2`, each
   `<Card size="sm">`.
-- A number that matters (a price, a count, a total) is big: `text-3xl font-semibold tabular-nums`, with a small muted
-  label above it. Every number that changes gets `tabular-nums`.
+- A number that matters (a price, a count, a total) is a `<Stat label="Best tonight" value="€118" />`: big, with a
+  small muted label above it and an optional `note` under it. Every other number that changes gets `tabular-nums`.
 - Buttons sit in `flex flex-wrap items-center gap-2`. One primary button (the default variant) per section; the rest
   `outline` or `ghost`. Name a button by what it does: "Check now", not "Submit".
 - A state is a `Badge`: `default` for good news ("Under target"), `secondary` for neutral, `destructive` for a problem.
@@ -35,7 +35,18 @@ log of checks.
 ```tsx
 import { useActions, useAppState, useHost } from '@goblin/app'
 import { MapView } from '@goblin/kit/map'
-import { Badge, Button, Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@goblin/ui'
+import {
+  Badge,
+  Button,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Section,
+  Stat,
+} from '@goblin/ui'
 import { RefreshCw } from 'lucide-react'
 import type { State } from './app'
 
@@ -51,19 +62,12 @@ export default function View() {
   const best = hotels.length === 0 ? undefined : Math.min(...hotels.map((hotel) => hotel.price))
   return (
     <div className={`mx-auto flex w-full max-w-3xl flex-col gap-6 ${surface === 'page' ? 'p-6' : 'p-4'}`}>
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Price watch</h2>
+      <Section title="Price watch">
         <Card>
           <CardContent className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Best tonight</p>
-                <p className="text-3xl font-semibold tabular-nums">{best === undefined ? '–' : euros(best)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Your target</p>
-                <p className="text-3xl font-semibold tabular-nums">{euros(state.target)}</p>
-              </div>
+              <Stat label="Best tonight" value={best === undefined ? '–' : euros(best)} />
+              <Stat label="Your target" value={euros(state.target)} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button disabled={pending} onClick={() => void act('check', {})}>
@@ -75,10 +79,9 @@ export default function View() {
             {error && <p className="text-sm text-destructive">{error}</p>}
           </CardContent>
         </Card>
-      </section>
+      </Section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Hotels</h2>
+      <Section title="Hotels">
         {hotels.length === 0 ? (
           <p className="text-sm text-muted-foreground">No hotels yet. Check now to find some.</p>
         ) : (
@@ -107,11 +110,10 @@ export default function View() {
             </div>
           </>
         )}
-      </section>
+      </Section>
 
       {days.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Plan</h2>
+        <Section title="Plan">
           <Card>
             <CardContent>
               <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
@@ -124,11 +126,10 @@ export default function View() {
               </dl>
             </CardContent>
           </Card>
-        </section>
+        </Section>
       )}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Checks</h2>
+      <Section title="Checks">
         {checks.length === 0 ? (
           <p className="text-sm text-muted-foreground">No checks yet.</p>
         ) : (
@@ -141,7 +142,7 @@ export default function View() {
             ))}
           </dl>
         )}
-      </section>
+      </Section>
     </div>
   )
 }
@@ -195,6 +196,7 @@ export type State = {
 - `Alert` (`variant`: default, destructive), `AlertTitle`, `AlertDescription`
 - `Empty`, `EmptyHeader`, `EmptyMedia`, `EmptyTitle`, `EmptyDescription`, `EmptyContent`
 - `Meter` (`value`, `max`)
+- `Section` (`title`, optional `action`), `Stat` (`label`, `value`, optional `note`): the layout pieces of **Design**
 
 ## Charts, maps, diagrams, icons
 
