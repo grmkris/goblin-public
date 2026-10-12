@@ -23,8 +23,24 @@ export const recommendedApplied = (profile: ServerProfile, tools: readonly ToolV
   return run.every((tool) => tool.granted) && ask.every((tool) => tool.granted && tool.askFirst)
 }
 
-/** The wallet in one line: each token's balance and what its limit has left, and when the period ends. */
-export function WalletLine({ wallet, children }: { readonly wallet: WalletStatus; readonly children?: ReactNode }) {
+/** Where the owner adds funds: the profile's top-up link, while the wallet says it needs funds. */
+export const topUpOf = (profile: ServerProfile, wallet: WalletStatus): string | undefined =>
+  wallet.funding === 'blocked' && profile.topUp?.url.startsWith('https://') === true ? profile.topUp.url : undefined
+
+/**
+ * The wallet in one line: each token's balance and what its limit has left, and when the period ends; while it needs
+ * funds, the way to add them.
+ */
+export function WalletLine({
+  wallet,
+  profile,
+  children,
+}: {
+  readonly wallet: WalletStatus
+  readonly profile: ServerProfile
+  readonly children?: ReactNode
+}) {
+  const topUp = topUpOf(profile, wallet)
   const ends = endsOn(wallet.periodEndsAt)
   const tokens = wallet.tokens.map((token) =>
     [
@@ -43,6 +59,11 @@ export function WalletLine({ wallet, children }: { readonly wallet: WalletStatus
         {wallet.funding === 'blocked'
           ? 'Wallet: needs funds before paid work can run.'
           : `Wallet: ${tokens.length === 0 ? 'no balance read' : tokens.join(' · ')}`}{' '}
+        {topUp !== undefined && (
+          <a className="cause-link" href={topUp} target="_blank" rel="noopener noreferrer">
+            Add funds
+          </a>
+        )}{' '}
         {children}
       </span>
     </Receipt>
@@ -64,7 +85,7 @@ export function FirstClassPart({
   const applied = tools !== undefined && recommendedApplied(profile, tools)
   return (
     <section className="server-part" aria-label={profile.title}>
-      {status.data != null && <WalletLine wallet={status.data} />}
+      {status.data != null && <WalletLine wallet={status.data} profile={profile} />}
       {profile.app !== undefined && applied && (
         <Button
           size="sm"

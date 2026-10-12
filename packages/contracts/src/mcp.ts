@@ -211,7 +211,8 @@ export type EventStream = typeof EventStream.Type
 /**
  * goblin's own profile of a server it supports first-class (ADR 0043), matched by endpoint, never by what the server
  * says about itself: our title and words, the grants "Allow recommended" applies, a paid tool and the argument that
- * holds its amount (ADR 0044), the tool that opens the server's own App, and whether it has a status line.
+ * holds its amount (ADR 0044), the tool that opens the server's own App, whether it has a status line, and where its
+ * wallet is topped up.
  */
 export const ServerProfile = Schema.Struct({
   id: Schema.String,
@@ -225,6 +226,8 @@ export const ServerProfile = Schema.Struct({
   app: Schema.optional(Schema.Struct({ tool: Schema.String })),
   /** It has a status line (`GET /api/mcp/:id/status`). */
   status: Schema.Boolean,
+  /** Where the owner adds funds when its status says the wallet needs them: goblin's own https link. */
+  topUp: Schema.optional(Schema.Struct({ url: Schema.String })),
 })
 export type ServerProfile = typeof ServerProfile.Type
 

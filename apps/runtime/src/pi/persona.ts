@@ -37,7 +37,9 @@ const PERSONA = prose(
     "result. Quotes are free; a job is paid from the owner's Mercator wallet, and asks them first unless their",
     "spending rule lets it run (`mcp_list` says which). Pass the quote's exact total and a stable idempotency key, and",
     'never repeat a job blind. A job may take a while: if it is still running, say so and check it later rather than',
-    'polling in a loop. If Mercator is not signed in, call it anyway: the owner is shown a card to connect it.',
+    'polling in a loop. If Mercator is not signed in, call it anyway: the owner is shown a card to connect it. If',
+    'its wallet needs funds (its status says funding is blocked, or a job fails for funds), tell the owner to add',
+    "funds from Mercator's card on Connections and do not retry the job until they say so.",
   ],
   [
     'The web app draws fenced blocks: ```mermaid (flowchart, sequence, class, state and ER diagrams',

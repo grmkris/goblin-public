@@ -619,8 +619,9 @@ eyes only. Configured connections win on ID and cannot be removed. Removing an a
 label, endpoint binding, credentials, pending sign-ins and grants in one transaction. A server goblin supports **first-class** (ADR 0043) has goblin's own profile, matched by exact endpoint
 (`mcp/first-class.ts`, `ServerView.profile`): our title and words, the grants Allow recommended applies (free tools run
 when needed, paid ones ask first), a paid tool with the argument that holds its amount (ADR 0044), the tool that opens
-its own App, and a status tool whose answer goblin decodes with its own schema (`WalletStatus`, bounded, the server's
-claim). Mercator is the first. goblin's own instructions (`pi/persona.ts`) send fresh web data and outside tasks to
+its own App, a status tool whose answer goblin decodes with its own schema (`WalletStatus`, bounded, the server's
+claim), and a top-up link of our own that the wallet line offers as Add funds while that status says funding is
+blocked (Mercator's account page; goblin's instructions send the owner there instead of retrying a job). Mercator is the first. goblin's own instructions (`pi/persona.ts`) send fresh web data and outside tasks to
 it (search, describe, quote, job, result), and a model's call to a connection the owner has not signed in to answers
 `{ kind: 'connect-required' }`, which the web shows as a Connect card. Its card puts goblin's words for it in place of the server's, lists it first, shows its
 wallet (`GET /api/mcp/:id/status`, read from its status tool as the owner, null until that tool is allowed) and offers

@@ -101,6 +101,8 @@ const MERCATOR: Profile = {
   app: { tool: 'open_mercator' },
   status: true,
   statusTool: { name: 'get_connection_status', read: mercatorWallet },
+  // Its `fund_wallet` tool hands the owner off to this page; the Agentic Wallet's top-up takes the slot once it exists.
+  topUp: { url: 'https://mercator.sh/account' },
 }
 
 const PROFILES: readonly Profile[] = [MERCATOR]

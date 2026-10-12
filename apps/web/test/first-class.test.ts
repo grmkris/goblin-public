@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ServerProfile, ToolView } from '@goblin/contracts'
-import { recommendedApplied } from '../src/components/first-class.tsx'
+import { recommendedApplied, topUpOf } from '../src/components/first-class.tsx'
 
 const profile: ServerProfile = {
   id: 'mercator',
@@ -24,5 +24,24 @@ describe('whether a first-class server still offers Allow recommended', () => {
     expect(recommendedApplied(profile, allowed)).toBe(true)
     expect(recommendedApplied(profile, [...allowed.slice(0, 2), tool('create_job', true)])).toBe(false)
     expect(recommendedApplied(profile, [tool('search_services', false), ...allowed.slice(1)])).toBe(false)
+  })
+})
+
+/** A wallet as its status line reads, needing funds or not. */
+const wallet = (funding: 'ready' | 'blocked') => ({
+  kind: 'wallet' as const,
+  paid: 'ready' as const,
+  funding,
+  tokens: [],
+})
+
+describe('where the owner adds funds', () => {
+  const funded = { ...profile, topUp: { url: 'https://mercator.sh/account' } }
+
+  it("offers the profile's link only while the wallet needs funds, and only an https one", () => {
+    expect(topUpOf(funded, wallet('blocked'))).toBe('https://mercator.sh/account')
+    expect(topUpOf(funded, wallet('ready'))).toBeUndefined()
+    expect(topUpOf(profile, wallet('blocked'))).toBeUndefined()
+    expect(topUpOf({ ...profile, topUp: { url: 'javascript:alert(1)' } }, wallet('blocked'))).toBeUndefined()
   })
 })

@@ -57,7 +57,7 @@ export function PaidJob({
         </p>
       )}
       {wallet != null && (
-        <WalletLine wallet={wallet}>
+        <WalletLine wallet={wallet} profile={profile}>
           {profile.app !== undefined && (
             // A plain link: the card also shows outside the router (a Persona's hold, a fixture).
             <a className="cause-link" href={`/connections/${encodeURIComponent(connectionId)}/app`}>

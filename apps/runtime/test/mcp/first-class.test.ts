@@ -46,6 +46,7 @@ describe('first-class servers (ADR 0043)', () => {
       spend: { tool: 'create_job', argument: 'approved_total', currency: 'USD' },
       app: { tool: 'open_mercator' },
       status: true,
+      topUp: { url: 'https://mercator.sh/account' },
     })
     expect(view.recommended.ask).toEqual(['create_job'])
     expect(view.recommended.run).not.toContain('create_job')

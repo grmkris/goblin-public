@@ -28,10 +28,11 @@ supports, matched by endpoint, never by what the server says about itself:
 - an optional status tool and the schema goblin reads its answer with (for Mercator: the wallet's balance, its
   remaining limit and when the period ends);
 - an optional app tool that opens the server's own MCP App from its card;
-- an optional spending argument for a paid tool (ADR 0044).
+- an optional spending argument for a paid tool (ADR 0044);
+- an optional top-up link, our own, offered while the status says the wallet needs funds.
 
-Mercator is the first; the owner's Agentic Wallet server joins when it exists, offered for top-ups when Mercator's
-funding is blocked.
+Mercator is the first. Its top-up is its account page, where its own `fund_wallet` tool sends the owner. The owner's
+Agentic Wallet server joins when it exists and takes the top-up slot when it is connected.
 
 **What comes back is data.** A page, a search result, a job's result or a status answer is untrusted text with its
 source (ADR 0003, ADR 0008). goblin decodes a status answer with its own schema, bounded, and shows it as the server's
