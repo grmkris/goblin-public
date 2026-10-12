@@ -1,31 +1,24 @@
-import { CHAINS } from '@goblin/wallet/chains'
 import type { WalletEnv } from './env.ts'
+import { apiError } from './http.ts'
+import { createRouter } from './router.ts'
 
 export { WalletLedger } from './ledger/durable.ts'
 
-const json = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
-
-/** A singleton for OAuth state. Filled in by the MCP lane. */
+/** A singleton for OAuth state. Filled in by the OAuth lane. */
 export class WalletAuth implements DurableObject {
   fetch(): Response {
-    return json({ error: { code: 'not_found', message: 'The auth store has no routes yet.' } }, 404)
+    return apiError('not_found', 'The auth store has no routes yet.', 404)
   }
 }
 
+const notYet = (): Promise<Response> => Promise.resolve(apiError('not_found', 'No such route.', 404))
+
+const route = createRouter({
+  oauth: () => Promise.resolve(undefined),
+  api: notYet,
+  mcp: notYet,
+})
+
 export default {
-  async fetch(request: Request, env: WalletEnv): Promise<Response> {
-    const { pathname } = new URL(request.url)
-    if (request.method === 'GET' && pathname === '/health') {
-      // Mainnets only when the owner flipped WALLET_LIVE; otherwise testnets.
-      const live = env.WALLET_LIVE === '1'
-      return json({
-        ok: true,
-        live,
-        chains: CHAINS.filter((chain) => chain.testnet !== live).map((chain) => chain.caip2),
-      })
-    }
-    if (request.method === 'GET' && pathname === '/api/config') return json({ privyAppId: env.PRIVY_APP_ID })
-    return json({ error: { code: 'not_found', message: 'No such route.' } }, 404)
-  },
+  fetch: route,
 } satisfies ExportedHandler<WalletEnv>

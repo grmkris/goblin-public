@@ -63,18 +63,27 @@ describe('worker skeleton', () => {
     })
   })
 
-  test('GET /api/config serves the public Privy app id and nothing else', async () => {
-    expect(await (await get('/api/config')).json()).toEqual({ privyAppId: 'app-123' })
+  test('GET /api/config serves the public Privy app id and the stage', async () => {
+    expect(await (await get('/api/config')).json()).toEqual({ privyAppId: 'app-123', stage: 'testnet' })
   })
 
   test('everything else is a JSON 404', async () => {
     for (const [path, method] of [
       ['/nope', 'GET'],
       ['/health', 'POST'],
+      ['/api/unknown', 'GET'],
+      ['/mcp', 'POST'],
     ] as const) {
       const response = await get(path, method)
       expect(response.status).toBe(404)
       expect(response.headers.get('content-type')).toContain('application/json')
     }
+  })
+})
+
+describe('views', () => {
+  test('GET /views/* is served from the assets binding', async () => {
+    const response = await get('/views/dashboard.html')
+    expect(await response.text()).toBe('asset')
   })
 })
