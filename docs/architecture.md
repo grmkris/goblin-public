@@ -1221,9 +1221,11 @@ A stage that sets `GOBLIN_PAID_INFERENCE` also offers models paid per call from 
 `paid:tempo` (Tempo's MPP proxy) and `paid:goblin` (this stage's own paid endpoint), each its own Pi provider
 (`goblin-paid-*`, `pi/model.ts`). A call goes out with no key of goblin's. A 402's MPP challenge is paid by the wallet's
 payment tool through the MCP caller `inference` (`mcp/inference-pay.ts`), which only that tool admits and the model
-never sees, and the request is sent once more with the credential. A refusal comes back as the provider's 402 in the
-wallet's words, and paid streams make no client retries. A paid pick costs no Credits: `Budget.require` lets it through
-and its responses are not recorded. Routines and housekeeping run on goblin's own model instead (`creditsModel`).
+never sees, and the request is sent once more with the credential. The wallet holds the payment as unknown until
+goblin reports the answer's `Payment-Receipt` under the same operation (`inference:<challenge id>`), which it does
+while the answer streams. A refusal, or a spend the wallet holds for approval over a limit, comes back as the
+provider's 402 in the wallet's words, and paid streams make no client retries. A paid pick costs no Credits:
+`Budget.require` lets it through and its responses are not recorded. Routines and housekeeping run on goblin's own model instead (`creditsModel`).
 goblin's own paid endpoint, `POST /v1/chat/completions` (`http/paid-inference.ts`), sells the stage's models behind an
 `mppx` `tempo` charge in USDC.e to `GOBLIN_MPP_RECIPIENT`, priced up front as Tempo's proxy prices (0.6 of a unit per
 output token it may write, 0.1 per input token, at least $0.00075). It forwards a paid call to LiteLLM with the stage's

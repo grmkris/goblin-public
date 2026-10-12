@@ -71,15 +71,23 @@ function tooFull(model: Model<'openai-completions'>, room: number) {
 }
 
 /**
+ * A paid challenge: the credential for `Authorization: Payment …`, and how to report the service's `Payment-Receipt`
+ * so the wallet settles the payment, which it holds as unknown until then. Reporting never rejects.
+ */
+export type PaidChallenge = {
+  readonly credential: string
+  readonly settle: (receipt: string) => Promise<void>
+}
+
+/**
  * Pays one MPP challenge from the owner's Goblin Wallet (ADR 0047): the request it was answered for and the raw
- * `WWW-Authenticate` value, and back the credential for `Authorization: Payment …`. A refusal throws, with words the
- * owner can act on.
+ * `WWW-Authenticate` value. A refusal throws, with words the owner can act on.
  */
 export type PayChallenge = (request: {
   readonly url: string
   readonly method: string
   readonly challenge: string
-}) => Promise<string>
+}) => Promise<PaidChallenge>
 
 /**
  * A request's headers, copied one by one: the runtimes' header types differ (Bun's `HeadersInit` is not the DOM's), so
@@ -102,7 +110,8 @@ export const headersOf = (value: unknown): Headers => {
 
 /**
  * A fetch that pays its way: a 402 with a payment challenge is paid through `pay` and the request sent once more with
- * the credential; anything else is answered as it came. The body is kept for the second send.
+ * the credential; anything else is answered as it came. The body is kept for the second send. The paid answer's
+ * receipt is reported while it streams.
  */
 export const payingFetch = (pay: PayChallenge, inner: FetchFunction = fetch): FetchFunction => {
   const paying = async (input: Parameters<FetchFunction>[0], init?: Parameters<FetchFunction>[1]) => {
@@ -113,16 +122,23 @@ export const payingFetch = (pay: PayChallenge, inner: FetchFunction = fetch): Fe
     const method = init?.method ?? (input instanceof Request ? input.method : 'GET')
     // A refused payment answers as the provider's own refusal would: the client neither retries it (paying again) nor
     // swaps its words for a connection error.
-    const credential = await pay({ url, method, challenge }).catch((error: unknown) => {
+    const paid = await pay({ url, method, challenge }).catch((error: unknown) => {
       // expected: the refusal is not dropped; it becomes the provider's 402, carrying the wallet's words.
       const message = error instanceof Error ? error.message : 'Payment from your Goblin Wallet failed.'
       return Response.json({ error: { message } }, { status: 402 })
     })
-    if (credential instanceof Response) return credential
+    if (paid instanceof Response) return paid
     const headers = headersOf(init?.headers)
-    headers.set('authorization', `Payment ${credential}`)
+    headers.set('authorization', `Payment ${paid.credential}`)
     // The model clients send a string body, so the same init goes out again with the credential.
-    return inner(input, { ...init, headers })
+    const answered = await inner(input, { ...init, headers })
+    const receipt = answered.headers.get('payment-receipt')
+    // Not awaited: the answer streams while the wallet checks the receipt on chain.
+    if (receipt !== null)
+      paid.settle(receipt).catch(() => {
+        // expected: `settle` reports its own failures; an unsettled payment stays unknown in the wallet, never paid twice.
+      })
+    return answered
   }
   // SAFETY: a fetch with the global's call signature; the model clients never use extras such as Bun's `preconnect`.
   // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- needed where Bun's fetch type (with `preconnect`) is in scope: the web project typechecks this file too

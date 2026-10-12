@@ -42,6 +42,9 @@ day. Routines and housekeeping stay on goblin's own models: a paid pick stands i
 - **A refused payment becomes the provider's 402**, carrying the wallet's words ("Payment from your Goblin Wallet
   failed: …"). The model client neither retries it nor reports it as a connection error.
 - **Paid streams make no client retries.** Each send is a new charge.
+- **The wallet settles on the receipt.** It holds a paid call as unknown until goblin reports the answer's
+  `Payment-Receipt` under the same operation id, which goblin does while the answer streams; the wallet checks it on
+  chain. A report that fails leaves the payment unknown in the wallet, never paid twice.
 - **A turn Pi runs again pays again.** A payment is keyed by its challenge, and a re-run gets a new challenge.
 - **Charges are up front.** At goblin's 32,768-token output cap, a call through the proxy costs about $0.02, whatever
   the answer uses.
