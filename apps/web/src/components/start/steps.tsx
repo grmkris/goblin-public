@@ -31,7 +31,7 @@ export const STEP_TEXT: Readonly<Record<OnboardingStep, { label: string; title: 
   pay: {
     label: 'How goblin pays',
     title: 'How goblin pays for its model',
-    why: 'Your daily Credits come first. When they run out, goblin can pay for each call from your wallet.',
+    why: 'Your daily Credits come first; then goblin can pay for each call from your wallet. You can change this in Settings.',
   },
   mercator: {
     label: 'Mercator',
@@ -278,18 +278,10 @@ export function GoblinStep({
   )
 }
 
-/** How goblin pays for its model (ADR 0047): the same choices as Settings, with what each one means first. */
+/** How goblin pays for its model (ADR 0047): the same choices as Settings; each says what it means. */
 export function PayStep() {
-  const billing = useBilling().state
   return (
     <div className="start-action">
-      <p className="start-note">
-        {billing === undefined
-          ? 'Your plan’s daily Credits'
-          : `${String(billing.dailyCredits)} Credits a day on your plan`}{' '}
-        come first. A paid call costs about $0.02, from the address you funded. You can change this any time in
-        Settings.
-      </p>
       <div className="start-pay">
         <PayModeChoices />
       </div>
