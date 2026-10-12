@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mercatorWallet, profileOf, profileView } from '../../src/mcp/first-class.ts'
+import { goblinWallet, mercatorWallet, profileOf, profileView } from '../../src/mcp/first-class.ts'
 
 /** Mercator's `get_connection_status` structured answer, shaped as its output schema says (2026-10-12). */
 const status = (overrides: Record<string, unknown> = {}) => ({
@@ -84,5 +84,75 @@ describe('first-class servers (ADR 0043)', () => {
     expect(read).toMatchObject({ paid: 'blocked', funding: 'blocked' })
     expect(mercatorWallet({ readiness: { funding: 'maybe' } })).toBeUndefined()
     expect(mercatorWallet('ready')).toBeUndefined()
+  })
+})
+
+/** Goblin Wallet's `wallet_status` structured content: goblin's `WalletStatus` under `status`, and what the App shows. */
+const walletAnswer = (overrides: Record<string, unknown> = {}) => ({
+  status: {
+    kind: 'wallet',
+    paid: 'ready',
+    funding: 'ready',
+    tokens: [{ symbol: 'USDC', balance: '25', remaining: '10', spendable: '10' }],
+    periodEndsAt: '2026-10-19T00:00:00Z',
+    ...overrides,
+  },
+  owner: { address: `0x${'a'.repeat(40)}`, upgraded: true },
+  balances: [],
+  limits: [],
+  checkedAt: '2026-10-12T00:00:00Z',
+})
+
+describe('Goblin Wallet (first-class profile)', () => {
+  it('is known at its dev and prod endpoints only, with the owner-facing shape the plan fixes', () => {
+    for (const endpoint of ['https://wallet-dev.goblin.surf/mcp', 'https://wallet.goblin.surf/mcp'])
+      expect(profileOf(endpoint)?.id).toBe('wallet')
+    expect(profileOf('https://wallet.goblin.surf/mcp/')).toBeUndefined()
+    expect(profileOf('https://wallet.goblin.surf.evil.example/mcp')).toBeUndefined()
+    const view = profileView(profileOf('https://wallet.goblin.surf/mcp') ?? expect.fail('no profile'))
+    expect(view).toMatchObject({
+      title: 'Goblin Wallet',
+      offer: 'so goblin can pay for search and outside services within limits you set',
+      spend: { tool: 'paid_fetch', argument: 'max_usd', currency: 'USD' },
+      app: { tool: 'wallet_open' },
+      status: true,
+    })
+    expect(view.recommended.ask).toEqual([
+      'paid_fetch',
+      'transfer',
+      'swap_execute',
+      'bridge_execute',
+      'request_policy_change',
+    ])
+    expect(view.recommended.run).toContain('wallet_open')
+    for (const moving of view.recommended.ask) expect(view.recommended.run).not.toContain(moving)
+    expect(profileOf('https://wallet.goblin.surf/mcp')?.statusTool?.name).toBe('wallet_status')
+  })
+
+  it("reads the wallet's own status shape from structuredContent.status", () => {
+    expect(goblinWallet(walletAnswer())).toEqual({
+      kind: 'wallet',
+      paid: 'ready',
+      funding: 'ready',
+      tokens: [{ symbol: 'USDC', balance: '25', remaining: '10', spendable: '10' }],
+      periodEndsAt: '2026-10-19T00:00:00Z',
+    })
+  })
+
+  it('bounds what the server says, and reads nothing from an answer that does not fit', () => {
+    const read = goblinWallet(
+      walletAnswer({
+        tokens: Array.from({ length: 20 }, () => ({ symbol: 'S'.repeat(500), balance: '9'.repeat(500) })),
+      }),
+    )
+    expect(read?.tokens).toHaveLength(8)
+    expect(read?.tokens[0]?.symbol).toHaveLength(64)
+    expect(read?.tokens[0]?.balance).toHaveLength(64)
+    expect(goblinWallet({ status: { paid: 'ready' } })).toBeUndefined()
+    expect(goblinWallet({ status: walletAnswer().status.tokens })).toBeUndefined()
+    expect(goblinWallet(walletAnswer({ funding: 'maybe' }))).toBeUndefined()
+    expect(goblinWallet({})).toBeUndefined()
+    expect(goblinWallet('ready')).toBeUndefined()
+    expect(goblinWallet(null)).toBeUndefined()
   })
 })

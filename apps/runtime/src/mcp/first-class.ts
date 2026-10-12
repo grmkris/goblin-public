@@ -55,27 +55,75 @@ const short = (value: string): string => value.slice(0, SHORT)
 const optionalShort = (key: string, value: string | null | undefined) =>
   value === undefined || value === null ? {} : { [key]: short(value) }
 
+/** The wallet goblin shows, with every value cut to `SHORT` and at most `TOKENS` tokens. */
+type Reported = {
+  readonly paid: WalletStatus['paid']
+  readonly funding: WalletStatus['funding']
+  readonly tokens: ReadonlyArray<{
+    readonly symbol: string
+    readonly balance?: string | undefined
+    readonly remaining?: string | undefined
+    readonly spendable?: string | undefined
+  }>
+  readonly periodEndsAt?: string | null | undefined
+  readonly expiresAt?: string | null | undefined
+}
+const shaped = ({ paid, funding, tokens, periodEndsAt, expiresAt }: Reported): WalletStatus => ({
+  kind: 'wallet' as const,
+  paid,
+  funding,
+  tokens: tokens.slice(0, TOKENS).map((token) => ({
+    symbol: short(token.symbol),
+    ...optionalShort('balance', token.balance),
+    ...optionalShort('remaining', token.remaining),
+    ...optionalShort('spendable', token.spendable),
+  })),
+  ...optionalShort('periodEndsAt', periodEndsAt),
+  ...optionalShort('expiresAt', expiresAt),
+})
+
 /** Mercator's wallet, read from its status tool: readiness, balances and limits, and when they run out. */
 export const mercatorWallet = (structured: unknown): WalletStatus | undefined =>
   Option.getOrUndefined(
-    Option.map(decodeMercator(structured), ({ readiness, account }) => {
-      const periodEndsAt = account?.tokens?.find((token) => token.authorization?.periodEndsAt !== undefined)
-        ?.authorization?.periodEndsAt
-      return {
-        kind: 'wallet' as const,
+    Option.map(decodeMercator(structured), ({ readiness, account }) =>
+      shaped({
         paid: readiness.paidExecution,
         funding: readiness.funding,
-        tokens: readiness.tokens.slice(0, TOKENS).map((token) => ({
-          symbol: short(token.symbol),
-          ...optionalShort('balance', token.balance),
-          ...optionalShort('remaining', token.remainingAllowance),
-          ...optionalShort('spendable', token.spendableNow),
+        tokens: readiness.tokens.map(({ symbol, balance, remainingAllowance, spendableNow }) => ({
+          symbol,
+          balance,
+          remaining: remainingAllowance,
+          spendable: spendableNow,
         })),
-        ...optionalShort('periodEndsAt', periodEndsAt),
-        ...optionalShort('expiresAt', account?.accessKey?.expiresAt),
-      }
-    }),
+        periodEndsAt: account?.tokens?.find((token) => token.authorization?.periodEndsAt !== undefined)?.authorization
+          ?.periodEndsAt,
+        expiresAt: account?.accessKey?.expiresAt,
+      }),
+    ),
   )
+
+/** The part of Goblin Wallet's `wallet_status` answer goblin reads: its `status`, which has goblin's own shape. */
+const GoblinWalletStatus = Schema.Struct({
+  status: Schema.Struct({
+    paid: Readiness,
+    funding: Readiness,
+    tokens: Schema.Array(
+      Schema.Struct({
+        symbol: Schema.String,
+        balance: Schema.optional(Amount),
+        remaining: Schema.optional(Amount),
+        spendable: Schema.optional(Amount),
+      }),
+    ),
+    periodEndsAt: Schema.optional(Schema.String),
+    expiresAt: Schema.optional(Schema.String),
+  }),
+})
+const decodeGoblinWallet = Schema.decodeUnknownOption(GoblinWalletStatus)
+
+/** Goblin Wallet's status, read from `structuredContent.status` of its status tool. */
+export const goblinWallet = (structured: unknown): WalletStatus | undefined =>
+  Option.getOrUndefined(Option.map(decodeGoblinWallet(structured), ({ status }) => shaped(status)))
 
 /** Mercator (ADR 0043): search and paid outside tasks, paid from the owner's Mercator wallet. */
 const MERCATOR: Profile = {
@@ -125,7 +173,40 @@ const CLOUDFLARE: Profile = {
   scope: ['offline_access', 'user:read', 'account:read', 'workers-scripts.read', 'workers-scripts.write'],
 }
 
-const PROFILES: readonly Profile[] = [MERCATOR, CLOUDFLARE]
+/**
+ * Goblin Wallet: the owner's wallet for the agent, balances on four chains, limits the owner sets, and receipts. It pays
+ * for search and outside services over x402 and MPP; anything that moves funds asks first, and `paid_fetch` is held to
+ * the spending rule by its `max_usd`.
+ */
+const WALLET: Profile = {
+  id: 'wallet',
+  endpoints: ['https://wallet-dev.goblin.surf/mcp', 'https://wallet.goblin.surf/mcp'],
+  title: 'Goblin Wallet',
+  description:
+    "Your agent's wallet: balances on Base, Ethereum, Arbitrum and Tempo, limits you set, and receipts. It pays for search and other services over x402 and MPP, and moves funds only within your limits.",
+  offer: 'so goblin can pay for search and outside services within limits you set',
+  recommended: {
+    run: [
+      'wallet_status',
+      'balances',
+      'allowances',
+      'services',
+      'operation',
+      'receipt',
+      'wallet_open',
+      'wallet_home',
+      'swap_quote',
+      'bridge_quote',
+    ],
+    ask: ['paid_fetch', 'transfer', 'swap_execute', 'bridge_execute', 'request_policy_change'],
+  },
+  spend: { tool: 'paid_fetch', argument: 'max_usd', currency: 'USD' },
+  app: { tool: 'wallet_open' },
+  status: true,
+  statusTool: { name: 'wallet_status', read: goblinWallet },
+}
+
+const PROFILES: readonly Profile[] = [MERCATOR, CLOUDFLARE, WALLET]
 
 /** The profile of the server at `endpoint`, when goblin supports it first-class. */
 export const profileOf = (endpoint: string): Profile | undefined =>

@@ -12,6 +12,16 @@ describe('the suggested servers', () => {
     expect(dev.find((item) => item.id === 'deepwiki')).toMatchObject({ added: false, signIn: false })
     expect(suggestions('test', new Set()).find((item) => item.id === 'myplan')?.endpoint).toBe('https://myplan.lol/mcp')
   })
+  it('shelves Goblin Wallet, signed in over OAuth, and marks it added once the owner has it', () => {
+    const endpoint = 'https://wallet-dev.goblin.surf/mcp'
+    expect(suggestions('dev', new Set()).find((item) => item.id === 'wallet')).toMatchObject({
+      title: 'Goblin Wallet',
+      endpoint,
+      signIn: true,
+      added: false,
+    })
+    expect(suggestions('dev', new Set([endpoint])).find((item) => item.id === 'wallet')?.added).toBe(true)
+  })
   it('suggests only https endpoints, each id once', () => {
     const all = suggestions(undefined, new Set())
     expect(new Set(all.map((item) => item.id)).size).toBe(all.length)

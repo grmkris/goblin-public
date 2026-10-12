@@ -98,6 +98,14 @@ const SUGGESTED: readonly Suggested[] = [
     signIn: true,
   },
   {
+    // Goblin's own wallet service (OAuth); its first-class profile is in first-class.ts.
+    id: 'wallet',
+    title: 'Goblin Wallet',
+    description: 'Balances, limits you set and receipts, and a wallet your agent pays for search and services from.',
+    endpoint: 'https://wallet-dev.goblin.surf/mcp',
+    signIn: true,
+  },
+  {
     id: 'cloudflare-docs',
     title: 'Cloudflare Docs',
     description: "Search Cloudflare's developer documentation.",
