@@ -235,3 +235,18 @@ describe('view state', () => {
     expect(store.putViewState(JSON.stringify({ big: 'x'.repeat(9000) }))).toBe(false)
   })
 })
+
+describe('policy changes', () => {
+  test('only a pending request can be decided, once', () => {
+    const { store } = testStore()
+    store.recordPolicyChange('pc-1', 'raise hourly to $30', 'big batch', 'agent-client')
+    expect(store.decidePolicyChange('pc-1', 'applied')).toMatchObject({
+      ok: true,
+      change: { id: 'pc-1', status: 'applied' },
+    })
+    expect(store.policyChanges()[0]).toMatchObject({ id: 'pc-1', status: 'applied' })
+    expect(store.decidePolicyChange('pc-1', 'dismissed')).toEqual({ ok: false, code: 'policy_change_closed' })
+    expect(store.decidePolicyChange('pc-missing', 'applied')).toEqual({ ok: false, code: 'unknown_policy_change' })
+    expect(store.policyChanges()[0]?.status).toBe('applied')
+  })
+})

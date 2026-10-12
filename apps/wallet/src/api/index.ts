@@ -12,6 +12,7 @@ import { connections, disconnectOne, revokeAll } from './connections.ts'
 import { limits, setLimits } from './limits.ts'
 import { activity, addressBook, services } from './lists.ts'
 import { me, status } from './me.ts'
+import { decidePolicyChange, policyChanges } from './policy-changes.ts'
 import { allowanceConfirm, allowancePrepare, createAgent, upgrade } from './onboarding.ts'
 
 export interface ApiDeps {
@@ -53,6 +54,8 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.addressBook.method, OwnerRoutes.addressBook.path, addressBook),
   compile(OwnerRoutes.connections.method, OwnerRoutes.connections.path, connections),
   compile(OwnerRoutes.disconnect.method, OwnerRoutes.disconnect.path, disconnectOne),
+  compile(OwnerRoutes.policyChanges.method, OwnerRoutes.policyChanges.path, policyChanges),
+  compile(OwnerRoutes.decidePolicyChange.method, OwnerRoutes.decidePolicyChange.path, decidePolicyChange),
   compile(OwnerRoutes.revokeAll.method, OwnerRoutes.revokeAll.path, revokeAll),
 ]
 

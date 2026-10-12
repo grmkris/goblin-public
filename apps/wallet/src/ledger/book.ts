@@ -102,6 +102,19 @@ export function policyChanges(ctx: Ctx): PolicyChange[] {
   return ctx.sql.all<PolicyRow>('SELECT * FROM policy_changes ORDER BY created_at_ms DESC LIMIT 50').map(toPolicy)
 }
 
+export type PolicyDecision =
+  | { readonly ok: true; readonly change: PolicyChange }
+  | { readonly ok: false; readonly code: 'unknown_policy_change' | 'policy_change_closed' }
+
+/** Moves a pending request to applied or dismissed; any other row is left as it is. */
+export function decidePolicyChange(ctx: Ctx, id: string, status: 'applied' | 'dismissed'): PolicyDecision {
+  const row = ctx.sql.all<PolicyRow>('SELECT * FROM policy_changes WHERE id = ?', id)[0]
+  if (row === undefined) return { ok: false, code: 'unknown_policy_change' }
+  if (row.status !== 'pending') return { ok: false, code: 'policy_change_closed' }
+  ctx.sql.run("UPDATE policy_changes SET status = ? WHERE id = ? AND status = 'pending'", status, id)
+  return { ok: true, change: toPolicy({ ...row, status }) }
+}
+
 /** The app's view state: bounded JSON text. Returns false when it is too large. */
 export function writeViewState(ctx: Ctx, json: string): boolean {
   if (new TextEncoder().encode(json).length > VIEW_STATE_MAX_BYTES) return false

@@ -28,6 +28,7 @@ export const LEDGER_METHODS = [
   'setServiceAllowed',
   'recordPolicyChange',
   'policyChanges',
+  'decidePolicyChange',
   'viewState',
   'putViewState',
   'profile',

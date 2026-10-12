@@ -218,4 +218,28 @@ describe('the owner API', () => {
     ).json()
     expect(answer).toEqual({ result: true })
   })
+
+  test('policy changes: list, decide once, then a second decision is 409', async () => {
+    const { call, ledger } = setup()
+    expect(await (await call('GET', '/api/policy-changes')).json()).toEqual([])
+    await ledger.fetch(
+      new Request('https://x/call', {
+        method: 'POST',
+        body: JSON.stringify({
+          method: 'recordPolicyChange',
+          args: ['pc-1', 'raise hourly to $30', 'big batch', 'agent'],
+        }),
+      }),
+    )
+    expect(await (await call('GET', '/api/policy-changes')).json()).toMatchObject([
+      { id: 'pc-1', change: 'raise hourly to $30', client: 'agent', status: 'pending' },
+    ])
+    const decided = await call('POST', '/api/policy-changes/pc-1', { decision: 'dismissed' })
+    expect(decided.status).toBe(200)
+    expect(await decided.json()).toMatchObject({ id: 'pc-1', status: 'dismissed' })
+    expect((await call('POST', '/api/policy-changes/pc-1', { decision: 'applied' })).status).toBe(409)
+    expect((await call('POST', '/api/policy-changes/nope', { decision: 'applied' })).status).toBe(404)
+    expect((await call('POST', '/api/policy-changes/pc-1', { decision: 'maybe' })).status).toBe(400)
+    expect((await call('GET', '/api/policy-changes', undefined, 'stranger')).status).toBe(401)
+  })
 })

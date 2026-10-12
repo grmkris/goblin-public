@@ -10,8 +10,10 @@ import type {
 } from '@goblin/wallet/contract'
 import {
   addRecipient,
+  decidePolicyChange,
   isKnownRecipient,
   type PolicyChange,
+  type PolicyDecision,
   policyChanges,
   readViewState,
   recipients,
@@ -163,6 +165,10 @@ export class LedgerStore {
 
   policyChanges(): PolicyChange[] {
     return policyChanges(this.#ctx)
+  }
+
+  decidePolicyChange(id: string, status: 'applied' | 'dismissed'): PolicyDecision {
+    return decidePolicyChange(this.#ctx, id, status)
   }
 
   viewState(): string {

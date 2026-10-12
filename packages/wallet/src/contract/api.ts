@@ -57,6 +57,20 @@ export const Connection = Schema.Struct({
 })
 export type Connection = typeof Connection.Type
 
+/** A policy change the agent asked for through `request_policy_change`; the owner marks it done or dismisses it. */
+export const PolicyChange = Schema.Struct({
+  id: Text(80),
+  change: Text(400),
+  reason: Text(400),
+  client: Text(120),
+  status: Schema.Literals(['pending', 'applied', 'dismissed']),
+  createdAt: Instant,
+})
+export type PolicyChange = typeof PolicyChange.Type
+
+export const PolicyChangeDecision = Schema.Struct({ decision: Schema.Literals(['applied', 'dismissed']) })
+export type PolicyChangeDecision = typeof PolicyChangeDecision.Type
+
 /** `GET /api/oauth/requests/:id` for the consent page, and the owner's answer. */
 export const OAuthRequestView = Schema.Struct({
   id: Text(80),
@@ -96,6 +110,13 @@ export const OwnerRoutes = {
     path: '/api/oauth/requests/:id',
     request: OAuthDecision,
     response: Schema.Struct({ redirectTo: Text(2048) }),
+  },
+  policyChanges: { method: 'GET', path: '/api/policy-changes', response: Schema.Array(PolicyChange) },
+  decidePolicyChange: {
+    method: 'POST',
+    path: '/api/policy-changes/:id',
+    request: PolicyChangeDecision,
+    response: PolicyChange,
   },
   revokeAll: { method: 'POST', path: '/api/revoke', response: Me },
 } as const
