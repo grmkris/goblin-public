@@ -54,8 +54,12 @@ const beforeSigning = async <A>(read: () => Promise<A>): Promise<A> => {
   try {
     return await read()
   } catch (error) {
+    // The method and the node's answer (an HTTP status or its error text, never the URL) say which read failed.
     if (error instanceof JsonRpcError)
-      throw new TransferError('rpc_unavailable', 'The chain did not answer before signing; nothing was sent.')
+      throw new TransferError(
+        'rpc_unavailable',
+        `The chain did not answer before signing (${error.message.slice(0, 120)}); nothing was sent.`,
+      )
     throw error
   }
 }
