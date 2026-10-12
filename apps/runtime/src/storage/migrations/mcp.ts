@@ -1,6 +1,9 @@
 import { BREAK, type Migration } from './migration.ts'
 
-/** The MCP 2026 client (ADR 0042, keys from `20261030000000_`): added by their own migrations, so dev keeps its data. */
+/**
+ * The MCP 2026 client (ADR 0042, keys from `20261030000000_`) and spending rules (ADR 0044): added by their own
+ * migrations, so dev keeps its data.
+ */
 export const MCP_MIGRATIONS: readonly Migration[] = [
   {
     key: '20261030000000_mcp_url_requests',
@@ -14,5 +17,14 @@ export const MCP_MIGRATIONS: readonly Migration[] = [
     key: '20261031000000_mcp_url_request_tool',
     tables: ['app_mcp_url_requests'],
     sql: 'ALTER TABLE app_mcp_url_requests ADD COLUMN tool_schema TEXT',
+  },
+  {
+    key: '20261031000100_mcp_spend',
+    tables: ['app_mcp_spend_rules', 'app_mcp_spend'],
+    sql: [
+      'CREATE TABLE app_mcp_spend_rules (connection_id TEXT NOT NULL, tool TEXT NOT NULL, per_job_micros INTEGER, daily_micros INTEGER, updated_at INTEGER NOT NULL, PRIMARY KEY (connection_id, tool))',
+      'CREATE TABLE app_mcp_spend (approval_id TEXT PRIMARY KEY NOT NULL, connection_id TEXT NOT NULL, tool TEXT NOT NULL, day TEXT NOT NULL, micros INTEGER NOT NULL, standing INTEGER NOT NULL, at INTEGER NOT NULL)',
+      'CREATE INDEX app_mcp_spend_day ON app_mcp_spend (connection_id, tool, day)',
+    ].join(BREAK),
   },
 ]

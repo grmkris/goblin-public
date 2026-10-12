@@ -155,6 +155,16 @@ OAuth retries cannot reuse it. Reconstruction marks an interrupted dispatch unce
 release their executing slot while waiting and resume the same run. Direct owner console calls are explicit owner
 acts; autonomous App calls to ask-first tools are refused. See [ADR 0028](adr/0028-mcp-call-approvals.md).
 
+A paid tool of a first-class server can have a **spending rule** ([ADR 0044](adr/0044-spending-rules-for-paid-tools.md),
+`mcp/spend.ts`, `app_mcp_spend_rules`): jobs up to an amount run without asking, until the day's total would pass a
+second amount. Amounts are the paid argument's plain decimal read as whole micro-dollars; anything else asks. When the
+model's call fits, the hold step (`holdModelCall`) holds it and approves it at once in the owner's name, recording it
+against the UTC day in the same transaction that checks the day's total (`app_mcp_spend`), and `mcp_call` sends it
+through the approved dispatch above (`sendApproved`) and answers in the same turn. Calls the owner approves on a card
+count toward the day too. Only the model's calls in a conversation reach the hold step; agent apps, the Telegram
+channel and the skills learner are refused an ask-first tool as before. `mcp_list` tells the model each paid tool's
+rule ("asks above $5 a job or past $20 today").
+
 ## Accounts
 
 Email OTP is the sole login method. A six-digit code expires after 600 seconds, permits five attempts and is stored

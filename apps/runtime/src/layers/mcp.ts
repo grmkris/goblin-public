@@ -30,9 +30,11 @@ import {
   type McpGrants,
   McpServers,
   type Resident,
+  Spending,
   UrlRequests,
   requireResident,
 } from '../mcp/service.ts'
+import { SpendStore, dayOf } from '../mcp/spend.ts'
 import type { McpManagerOptions, UrlPrompt } from '../mcp/types.ts'
 import { type HeldUrlRequest, McpUrlRequestStore } from '../mcp/url-requests.ts'
 import type { SingleFlight } from '../observability/single-flight.ts'
@@ -53,7 +55,7 @@ import { mcpReporter } from '../telemetry/report.ts'
 const eventsAuthority = Effect.andThen(requirePlan(), requireResident)
 
 /** Held calls over their one store, sealed with the credential key. */
-const approvalsOver = (store: McpApprovalStore) =>
+export const approvalsOver = (store: McpApprovalStore) =>
   Approvals.of({
     cipher: store.cipher,
     hold: Effect.fn('Approvals.hold')(function* (call: HeldCall) {
@@ -91,6 +93,21 @@ const approvalsOver = (store: McpApprovalStore) =>
   })
 
 /** URL requests over their one store (ADR 0042). */
+/** The spending rules and paid calls over their store (ADR 0044). */
+export const spendingOver = (store: SpendStore) =>
+  Spending.of({
+    rule: (connectionId, tool) => Effect.sync(() => store.rule(connectionId, tool)),
+    setRule: (connectionId, tool, rule) =>
+      Effect.flatMap(Clock.currentTimeMillis, (now) => Effect.sync(() => store.setRule(connectionId, tool, rule, now))),
+    spentToday: (connectionId, tool) =>
+      Effect.flatMap(Clock.currentTimeMillis, (now) =>
+        Effect.sync(() => store.spentOn(connectionId, tool, dayOf(now))),
+      ),
+    standing: (approvalId) => Effect.sync(() => store.standing(approvalId)),
+    record: (call, rule) =>
+      Effect.flatMap(Clock.currentTimeMillis, (now) => Effect.sync(() => store.record(call, now, rule))),
+  })
+
 export const urlRequestsOver = (store: McpUrlRequestStore) =>
   UrlRequests.of({
     hold: Effect.fn('UrlRequests.hold')(function* (request: HeldUrlRequest) {
@@ -169,7 +186,7 @@ const heldCalls =
  * connections, the owner's servers and grants, and held calls.
  */
 export const McpHostLive: Layer.Layer<
-  McpConnections | McpServers | McpGrants | Approvals | UrlRequests | Cipher,
+  McpConnections | McpServers | McpGrants | Approvals | UrlRequests | Spending | Cipher,
   never,
   AgentInput | Db | SingleFlight | Changes
 > = Layer.unwrap(
@@ -209,6 +226,7 @@ export const McpHostLive: Layer.Layer<
       host,
       Layer.succeed(Approvals, approvalsOver(approvals)),
       Layer.succeed(UrlRequests, urlRequestsOver(urlRequests)),
+      Layer.succeed(Spending, spendingOver(new SpendStore(db))),
       Layer.succeed(Cipher, cipher),
     )
   }),

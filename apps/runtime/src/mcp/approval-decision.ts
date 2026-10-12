@@ -13,8 +13,10 @@ import type { ApprovalRow } from './approvals.ts'
 import { redactSecretFields } from './redaction.ts'
 import { named } from './labels.ts'
 import { heldCallChanged } from './approval-request.ts'
-import { Approvals, McpConnections, McpServers, requireResident } from './service.ts'
-import type { HeldCallOutcome } from './types.ts'
+import { profileOf } from './first-class.ts'
+import { Approvals, McpConnections, McpServers, Spending, requireResident } from './service.ts'
+import { microsOf } from './spend.ts'
+import type { HeldCallOutcome, McpRequestOptions } from './types.ts'
 
 /** The call a held row stands for: its conversation (when the model or an App made it), connection and tool. */
 type HeldTarget = { readonly sessionId: string | null; readonly connectionId: string; readonly name: string }
@@ -47,11 +49,29 @@ export const resumeRoutine = (row: { readonly sessionId: string | null; readonly
     yield* runs.resume(session, `mcp-decision-resume:${row.id}`, yield* Clock.currentTimeMillis, 'approved')
   })
 
-const dispatch = (row: ApprovalRow) =>
+/**
+ * A paid call goblin sends counts toward the day (ADR 0044), whoever approved it: the owner's card here, the owner's
+ * rule (recorded when it was approved). Nothing for a tool that is not a first-class server's paid tool.
+ */
+const countSpend = (row: ApprovalRow, args: Record<string, unknown>) =>
+  Effect.gen(function* () {
+    const spec = profileOf(row.endpoint)?.spend
+    const micros = spec?.tool === row.name ? microsOf(args[spec.argument]) : undefined
+    if (micros === undefined) return
+    const call = { approvalId: row.id, connectionId: row.connectionId, tool: row.name, micros, standing: false }
+    yield* (yield* Spending).record(call)
+  })
+
+/**
+ * Sends an approved held call, exactly its frozen arguments, once: the manager checks authority again right before it
+ * dispatches, and a dispatch that did not complete is recorded as failed, or uncertain once it may have taken effect.
+ * `request` carries the caller's signal when the turn waits on it (a call approved by the owner's rule).
+ */
+export const sendApproved = (row: ApprovalRow, request: McpRequestOptions = {}) =>
   Effect.gen(function* () {
     const approvals = yield* Approvals
-    yield* resumeRoutine(row)
     const args = yield* approvals.arguments(row.id)
+    yield* countSpend(row, args)
     const context =
       row.sessionId === null || row.sourceCallId === null || row.taskId === null
         ? undefined
@@ -63,8 +83,9 @@ const dispatch = (row: ApprovalRow) =>
     // The manager checks authority again right before it dispatches, from inside its own guard: the plan, then the rest.
     const authorize = yield* bound(Effect.andThen(requirePlan(), authority(row)))
     const result = yield* (yield* McpConnections).callTool(row.connectionId, row.name, args, {
+      ...request,
       caller: row.caller,
-      // The owner just approved it: their use, which holds the connection's listen stream.
+      // The owner approved it, now or by their rule: their use, which holds the connection's listen stream.
       use: 'foreground',
       approvalId: row.id,
       ...(context === undefined
@@ -73,10 +94,9 @@ const dispatch = (row: ApprovalRow) =>
       authorize,
     })
     yield* approvals.finish(row.id, result)
+    return result
   }).pipe(
-    // expected: a dispatch that did not complete is recorded as failed, or uncertain once it may have taken effect,
-    // which the owner's card and the conversation then show.
-    Effect.catch(() =>
+    Effect.tapError(() =>
       Effect.gen(function* () {
         const approvals = yield* Approvals
         // Only a dispatch intent is uncertain; an earlier local refusal had no external effect.
@@ -84,6 +104,13 @@ const dispatch = (row: ApprovalRow) =>
         yield* approvals.fail(row.id, state === 'dispatching' ? 'uncertain' : 'failed')
       }),
     ),
+  )
+
+/** The owner's approval sends the held call; how it ended is recorded, which their card and the conversation show. */
+const dispatch = (row: ApprovalRow) =>
+  Effect.andThen(resumeRoutine(row), sendApproved(row)).pipe(
+    // expected: a dispatch that did not complete was recorded as failed or uncertain above
+    Effect.ignore,
   )
 
 /** What the model reads once a held call is decided; `connection` is how the call's connection reads (`named`). */

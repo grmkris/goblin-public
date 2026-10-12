@@ -9,8 +9,9 @@ import { NotFound } from '../../../src/http/errors.ts'
 import { ResidentLive } from '../../../src/layers/core.ts'
 import { McpHandlers } from '../../../src/mcp/api.ts'
 import { mcpHost } from '../../../src/mcp/host.ts'
-import { Approvals, Events, UrlRequests } from '../../../src/mcp/service.ts'
-import { urlRequestsOver } from '../../../src/layers/mcp.ts'
+import { Approvals, Events, Spending, UrlRequests } from '../../../src/mcp/service.ts'
+import { SpendStore } from '../../../src/mcp/spend.ts'
+import { spendingOver, urlRequestsOver } from '../../../src/layers/mcp.ts'
 import { CredentialCipher } from '../../../src/mcp/cipher.ts'
 import { McpUrlRequestStore } from '../../../src/mcp/url-requests.ts'
 import { durable } from '../../chats-sqlite.ts'
@@ -122,6 +123,7 @@ const fixture = async () => {
           events,
           approvals,
           urlRequests,
+          Layer.succeed(Spending, spendingOver(new SpendStore(durable(db)))),
           Layer.succeed(Changes, makeChanges()),
           FlowEvents.noop,
           ResidentLive.pipe(Layer.provide(sqliteDb(db))),

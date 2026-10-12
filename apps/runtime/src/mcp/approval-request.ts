@@ -11,7 +11,9 @@ import { Conflict, NotFound } from '../http/errors.ts'
 import { objectOrJson } from '../pi/typed-tool.ts'
 import { Changes } from '../runtime/changes.ts'
 import { named } from './labels.ts'
-import { Approvals, McpConnections, McpGrants, McpServers, requireResident } from './service.ts'
+import { profileOf } from './first-class.ts'
+import { Approvals, McpConnections, McpGrants, McpServers, Spending, requireResident } from './service.ts'
+import { microsOf, withinRule } from './spend.ts'
 
 export const McpCallInput = Schema.Struct({
   connectionId: Schema.String,
@@ -32,7 +34,27 @@ export const heldCallChanged = (session: string | null) =>
     if (Option.isSome(chat)) yield* (yield* Changes).publish('conversations.changed', { ids: [chat.value] })
   })
 
-/** Prepare an exact call in beforeTool; execution repeats this gate because hook failures cannot grant authority. */
+/**
+ * A paid call that runs under the owner's spending rule (ADR 0044): the tool is a first-class server's paid tool, its
+ * amount is a plain decimal, and it fits the rule with what was spent today. Nothing when it must ask.
+ */
+const underRule = (input: McpCallInput, endpoint: string) =>
+  Effect.gen(function* () {
+    const spec = profileOf(endpoint)?.spend
+    if (spec?.tool !== input.name) return undefined
+    const micros = microsOf(input.arguments[spec.argument])
+    const spending = yield* Spending
+    const rule = yield* spending.rule(input.connectionId, input.name)
+    const spent = yield* spending.spentToday(input.connectionId, input.name)
+    if (rule === undefined || micros === undefined || !withinRule(rule, micros, spent)) return undefined
+    return { rule, micros }
+  })
+
+/**
+ * Prepare an exact call in beforeTool; execution repeats this gate because hook failures cannot grant authority. A paid
+ * call within the owner's spending rule is held and approved by that rule at once (the owner's standing decision, ADR
+ * 0044), recorded against the day in the same step that checks the day's total; the caller then sends it.
+ */
 export const holdModelCall = (session: string, callId: string, taskId: string, input: McpCallInput) =>
   Effect.gen(function* () {
     const policy = yield* (yield* McpGrants).policy(input.connectionId, input.name)
@@ -45,7 +67,9 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
     const scope = yield* (yield* Setups).scope(session)
     if (!scope.tool(input.connectionId, input.name)) return undefined
     const server = yield* (yield* McpConnections).server(input.connectionId)
-    const row = yield* (yield* Approvals).hold({
+    const standing = yield* underRule(input, server.endpoint)
+    const approvals = yield* Approvals
+    const row = yield* approvals.hold({
       id: modelApprovalId(session, callId),
       caller: 'model',
       sessionId: session,
@@ -57,7 +81,15 @@ export const holdModelCall = (session: string, callId: string, taskId: string, i
       endpoint: server.endpoint,
       grantVersion: policy.value.version,
     })
+    const spending = yield* Spending
+    // The hook already approved it under the rule: execution sends it.
+    if (row.state === 'approved' && (yield* spending.standing(row.id))) return row
     if (row.state !== 'pending') return yield* new Conflict({ reason: 'Held call has already been decided' })
+    if (standing !== undefined) {
+      const call = { approvalId: row.id, connectionId: input.connectionId, tool: input.name, standing: true }
+      if (yield* spending.record({ ...call, micros: standing.micros }, standing.rule))
+        return (yield* approvals.decide(row.id, true)).row
+    }
     yield* heldCallChanged(session)
     return row
   })
