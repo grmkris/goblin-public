@@ -15,7 +15,8 @@ export default {
       url.pathname.startsWith('/hooks/') ||
       url.pathname.startsWith('/.well-known/') ||
       url.pathname === '/health' ||
-      url.pathname === '/mcp'
+      url.pathname === '/mcp' ||
+      url.pathname === '/v1/chat/completions'
     )
       return runtime.fetch(request, env, ctx)
     return page.fetch(request)

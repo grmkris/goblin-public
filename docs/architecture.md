@@ -1213,6 +1213,10 @@ payment tool through the MCP caller `inference` (`mcp/inference-pay.ts`), which 
 never sees, and the request is sent once more with the credential. A refusal comes back as the provider's 402 in the
 wallet's words, and paid streams make no client retries. A paid pick costs no Credits: `Budget.require` lets it through
 and its responses are not recorded. Routines and housekeeping run on goblin's own model instead (`creditsModel`).
+goblin's own paid endpoint, `POST /v1/chat/completions` (`http/paid-inference.ts`), sells the stage's models behind an
+`mppx` `tempo` charge in USDC.e to `GOBLIN_MPP_RECIPIENT`, priced up front as Tempo's proxy prices (0.6 of a unit per
+output token it may write, 0.1 per input token, at least $0.00075). It forwards a paid call to LiteLLM with the stage's
+key and returns the payment's receipt.
 
 Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `GOBLIN_MEMORY_MODEL`. Set it to a
 cheap offered model; the code does not choose by price. Unset or not offered, it falls back to the default

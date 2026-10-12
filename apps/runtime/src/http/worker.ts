@@ -18,6 +18,7 @@ import { billingDeps } from '../billing/routes.ts'
 import { billingWebhook } from '../billing/webhook.ts'
 import { runBillingCron } from '../billing/cron.ts'
 import { billingMode, accountPlan } from '../billing/gates.ts'
+import { paidCompletion } from './paid-inference.ts'
 
 /** Only the authenticated user ID supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
@@ -103,6 +104,9 @@ async function workerRoute(
   if (path === '/hooks/dodo') return runAtEdge(billingWebhook(billingDeps(env), request, ctx))
   if (path.startsWith('/hooks/mcp-events/')) return mcpEventsRoute(request, env, path, ref)
   if (path.startsWith('/hooks/')) return doorbellRoute(request, env, path, ref)
+  // goblin's own model endpoint, paid per call over MPP (ADR 0047), where the stage sells it.
+  const paid = path === '/v1/chat/completions' ? await paidCompletion(request, env) : undefined
+  if (paid !== undefined) return paid
   throw new NotFound({ what: 'route' })
 }
 

@@ -40,6 +40,10 @@ export interface RuntimeEnv {
    * comma-separated `tempo` (Tempo's MPP proxy) and `goblin` (this deployment's own paid endpoint).
    */
   readonly PAID_INFERENCE?: string
+  /** Who goblin's own paid endpoint is paid to (`paid:goblin`, ADR 0047): a Tempo address. */
+  readonly MPP_RECIPIENT?: string
+  /** The secret goblin's paid endpoint signs its MPP challenges with: at least 32 characters. */
+  readonly MPP_SECRET?: string
   readonly MODEL_BASE_URL: string
   /** The default model; also the first one offered. */
   readonly MODEL_ID: string

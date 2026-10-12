@@ -19,6 +19,8 @@ const modelEnv = {
   FREE_DAILY_CREDITS: Config.String('GOBLIN_FREE_DAILY_CREDITS').pipe(Config.withDefault('0')),
   // Inference paid per call from the owner's Goblin Wallet (ADR 0047): `tempo`, `goblin`, or none.
   PAID_INFERENCE: Config.String('GOBLIN_PAID_INFERENCE').pipe(Config.withDefault('')),
+  MPP_RECIPIENT: Config.String('GOBLIN_MPP_RECIPIENT').pipe(Config.withDefault('')),
+  MPP_SECRET: Config.Redacted('GOBLIN_MPP_SECRET').pipe(Config.withDefault(Redacted.make(''))),
 }
 
 /** What the Website build reads: a change to any of them builds again. */
