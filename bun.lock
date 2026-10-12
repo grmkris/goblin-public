@@ -78,6 +78,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@goblin/wallet": "workspace:*",
+        "effect": "4.0.1",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "5.20260928.1",
