@@ -1,6 +1,6 @@
 import type { Address } from '@goblin/wallet/contract'
-import { type User, usePrivy } from '@privy-io/react-auth'
-import { useMemo } from 'react'
+import { type User, useCreateWallet, usePrivy } from '@privy-io/react-auth'
+import { useEffect, useMemo, useRef } from 'react'
 
 /** The signed-in owner as the pages see them. */
 export interface Owner {
@@ -35,10 +35,35 @@ export const ownerAddress = (user: User | null): Address | undefined => {
   return wallet?.type === 'wallet' ? wallet.address : undefined
 }
 
+/** How long Privy gets to create the owner wallet itself after a sign-in before the app asks for it. */
+const CREATE_AFTER_MS = 4000
+
+/**
+ * Privy creates the owner wallet at sign-in (`createOnLogin`). A sign-in that comes back without one would otherwise
+ * wait forever, so after a few seconds signed in with no owner wallet the app asks Privy to create it, once.
+ */
+function useCreateMissingWallet(missing: boolean): void {
+  const { createWallet } = useCreateWallet()
+  const create = useRef(createWallet)
+  useEffect(() => {
+    create.current = createWallet
+  })
+  useEffect(() => {
+    if (!missing) return
+    const timer = setTimeout(() => {
+      create.current().catch(() => {
+        // expected: the wallet appeared meanwhile or Privy refused; the sign-in page's stall notice covers the rest.
+      })
+    }, CREATE_AFTER_MS)
+    return () => clearTimeout(timer)
+  }, [missing])
+}
+
 /** The owner from Privy's state. Call it below `PrivyRoot`. */
 export function useOwner(): Owner {
   const { ready, authenticated, user, login, logout, getAccessToken } = usePrivy()
   const address = authenticated ? ownerAddress(user) : undefined
+  useCreateMissingWallet(ready && authenticated && address === undefined)
   const email = user?.email?.address ?? user?.google?.email
   return useMemo(
     () => ({

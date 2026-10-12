@@ -1,7 +1,24 @@
 // The real Auth: lane S's Privy hooks behind the port the pages use. Onboarding is on Base; Home adds the other chains.
-import { type ReactNode, useEffect, useMemo, useRef } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useOwner, useSignAllowance, useUpgradeAccount } from '../privy/index.ts'
-import { type Auth, AuthContext } from './auth.tsx'
+import { type Auth, AuthContext, signInStatus } from './auth.tsx'
+
+/** How long a sign-in may stay unfinished before the page offers to try again or sign out. */
+const STALL_AFTER_MS = 20_000
+
+/** True once `waiting` has held for `STALL_AFTER_MS`; it resets when the wait ends. */
+function useStalled(waiting: boolean): boolean {
+  const [stalled, setStalled] = useState(false)
+  useEffect(() => {
+    if (!waiting) return
+    const timer = setTimeout(() => setStalled(true), STALL_AFTER_MS)
+    return () => {
+      clearTimeout(timer)
+      setStalled(false)
+    }
+  }, [waiting])
+  return waiting && stalled
+}
 
 export function PrivyAuthProvider({ children }: { readonly children: ReactNode }) {
   const owner = useOwner()
@@ -12,12 +29,8 @@ export function PrivyAuthProvider({ children }: { readonly children: ReactNode }
   useEffect(() => {
     live.current = { owner, upgrader, allowance }
   })
-  const status =
-    !owner.ready || (owner.authenticated && owner.address === undefined)
-      ? 'loading'
-      : owner.authenticated
-        ? 'ready'
-        : 'signed-out'
+  const stalled = useStalled(signInStatus({ ...owner, stalled: false }) === 'loading')
+  const status = signInStatus({ ...owner, stalled })
   const address = owner.address
   const auth = useMemo<Auth>(
     () => ({

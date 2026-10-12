@@ -13,7 +13,8 @@ export type OwnerChain = EvmChain
 export type UpgradeOutcome = 'confirmed' | 'submitted'
 
 export interface Auth {
-  readonly status: 'loading' | 'signed-out' | 'ready'
+  /** `stalled`: still loading, or signed in without an owner wallet, long after it should have finished. */
+  readonly status: 'loading' | 'stalled' | 'signed-out' | 'ready'
   readonly address?: string
   /** A current access token for the API; null when signed out. */
   readonly getToken: () => Promise<string | null>
@@ -30,6 +31,20 @@ export interface Auth {
     readonly perHour: string
     readonly days: number
   }) => Promise<void>
+}
+
+/**
+ * Where the sign-in stands. Privy loading, or signed in while the owner wallet is still being created, is `loading`
+ * until `stalled` says it has waited too long.
+ */
+export const signInStatus = (state: {
+  readonly ready: boolean
+  readonly authenticated: boolean
+  readonly address: string | undefined
+  readonly stalled: boolean
+}): Auth['status'] => {
+  if (!state.ready || (state.authenticated && state.address === undefined)) return state.stalled ? 'stalled' : 'loading'
+  return state.authenticated ? 'ready' : 'signed-out'
 }
 
 export const AuthContext = createContext<Auth | undefined>(undefined)
