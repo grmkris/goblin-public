@@ -61,6 +61,7 @@ const signer = (): AgentSigner & { sent: string[] } => {
 }
 
 const deps = (overrides: Partial<RailsDeps> = {}): RailsDeps => ({
+  live: true,
   signer: signer(),
   profile: async () => ({ ownerAddress: OWNER, agentAddress: AGENT, chains: [] }),
   rpcFor: () => async () => word(10_000_000n),

@@ -15,9 +15,15 @@ const agentOf = async (deps: RailsDeps): Promise<string> => {
   return address
 }
 
+/** LI.FI and Relay quote mainnets only; on testnets a swap or bridge would sign mainnet calldata, so it is refused. */
+const requireLive = (deps: RailsDeps): void => {
+  if (!deps.live) throw new RailError('Swaps and bridges run on mainnet only; this wallet is on testnets.')
+}
+
 const quoteId = (kind: string): string => `${kind}_${crypto.randomUUID().replaceAll('-', '')}`
 
 export const swapQuote = async (input: SwapQuoteInput, deps: RailsDeps): Promise<FrozenQuote> => {
+  requireLive(deps)
   if (input.chain !== 'base') throw new RailError('Swaps run on Base only for now.')
   const agent = await agentOf(deps)
   const swap = await quoteSwap({
@@ -63,6 +69,7 @@ const paymentOf = (rail: Payment['rail'], explorerUrl: string, txHash: string, n
 export const swapExecute = async (operation: Operation, payload: unknown, deps: RailsDeps): Promise<PayOutcome> => {
   if (deps.signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
   try {
+    requireLive(deps)
     const swap = decodeFrozenSwap(payload)
     const result = await executeSwap({
       swap,
@@ -84,6 +91,7 @@ export const swapExecute = async (operation: Operation, payload: unknown, deps: 
 }
 
 export const bridgeQuote = async (input: BridgeQuoteInput, deps: RailsDeps): Promise<FrozenQuote> => {
+  requireLive(deps)
   const agent = await agentOf(deps)
   const bridge = await quoteBridge({
     from: input.from,
@@ -125,6 +133,7 @@ export const bridgeQuote = async (input: BridgeQuoteInput, deps: RailsDeps): Pro
 export const bridgeExecute = async (operation: Operation, payload: unknown, deps: RailsDeps): Promise<PayOutcome> => {
   if (deps.signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
   try {
+    requireLive(deps)
     const bridge = decodeFrozenBridge(payload)
     const result = await executeBridge({
       bridge,

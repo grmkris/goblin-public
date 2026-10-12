@@ -1,32 +1,36 @@
 import { parseUnits } from '@goblin/wallet/amounts'
 import { transferUsdc, TransferError, type EvmChain } from '@goblin/wallet/balances'
-import { ARBITRUM, BASE, ETHEREUM, TEMPO } from '@goblin/wallet/chains'
-import type { Operation, Payment, Terms, TransferInput } from '@goblin/wallet/contract'
+import { chainByKey } from '@goblin/wallet/chains'
+import type { ChainKey, Operation, Payment, Terms, TransferInput } from '@goblin/wallet/contract'
 import { isTempoAgent, transferTempoUsdc } from '@goblin/wallet/tempo'
 import type { PayOutcome } from '../services/rails.ts'
 import { RailError, type RailsDeps } from './deps.ts'
 
-const CHAINS = { base: BASE, ethereum: ETHEREUM, arbitrum: ARBITRUM, tempo: TEMPO } as const
 const TEN_MINUTES = 600_000
+const TESTNET_TEMPO = 'Tempo transfers run on mainnet only; this wallet is on testnets.'
 
 /** The stablecoin of a chain by symbol: USDC on the EVM chains, USDC.e (or "USDC") on Tempo. */
-const tokenOf = (chain: keyof typeof CHAINS, symbol: string) => {
-  const token = CHAINS[chain].usdc
+const tokenOf = (chain: ChainKey, symbol: string, live: boolean) => {
+  const network = chainByKey(chain, live)
+  const token = network.usdc
   const wanted = symbol.toUpperCase()
   if (wanted !== token.symbol.toUpperCase() && !(chain === 'tempo' && wanted === 'USDC'))
-    throw new RailError(`${symbol} is not a token this wallet transfers on ${CHAINS[chain].name}; use ${token.symbol}.`)
+    throw new RailError(`${symbol} is not a token this wallet transfers on ${network.name}; use ${token.symbol}.`)
   return token
 }
 
-/** A stablecoin transfer is worth its face value in USD. */
-export const quoteTransfer = (input: TransferInput, deps: RailsDeps): Promise<Terms> => {
-  try {
-    const token = tokenOf(input.chain, input.token)
-    parseUnits(input.amount, token.decimals)
-    return Promise.resolve(termsOf(input, token, deps))
-  } catch (error) {
-    return Promise.reject(error)
-  }
+/**
+ * A stablecoin transfer is worth its face value in USD. A zero amount and a payment to the agent itself are refused:
+ * they move nothing the ledger counts while the agent still pays the gas.
+ */
+export const quoteTransfer = async (input: TransferInput, deps: RailsDeps): Promise<Terms> => {
+  if (input.chain === 'tempo' && !deps.live) throw new RailError(TESTNET_TEMPO)
+  const token = tokenOf(input.chain, input.token, deps.live)
+  if (parseUnits(input.amount, token.decimals) <= 0n) throw new RailError('A transfer must move a positive amount.')
+  const agent = deps.signer?.address ?? (await deps.profile()).agentAddress
+  if (agent !== undefined && agent.toLowerCase() === input.to.toLowerCase())
+    throw new RailError('The agent wallet cannot pay itself.')
+  return termsOf(input, token, deps)
 }
 
 const termsOf = (input: TransferInput, token: ReturnType<typeof tokenOf>, deps: RailsDeps): Terms => {
@@ -34,7 +38,7 @@ const termsOf = (input: TransferInput, token: ReturnType<typeof tokenOf>, deps: 
     kind: 'transfer',
     chain: input.chain,
     rail: 'transfer',
-    subject: `Send ${input.amount} ${token.symbol} on ${CHAINS[input.chain].name}`,
+    subject: `Send ${input.amount} ${token.symbol} on ${chainByKey(input.chain, deps.live).name}`,
     token: { symbol: token.symbol, address: token.address, decimals: token.decimals },
     amount: input.amount,
     amountUsd: input.amount,
@@ -65,6 +69,7 @@ const evmTransfer = async (operation: Operation, deps: RailsDeps, chain: EvmChai
   if (signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
   const { terms } = operation
   const result = await transferUsdc({
+    live: deps.live,
     chain,
     to: terms.recipient,
     amount: parseUnits(terms.amount, terms.token.decimals),
@@ -84,6 +89,7 @@ const evmTransfer = async (operation: Operation, deps: RailsDeps, chain: EvmChai
 const tempoTransfer = async (operation: Operation, deps: RailsDeps): Promise<PayOutcome> => {
   const { signer } = deps
   if (signer === undefined) return { outcome: 'failed', reason: 'The owner has not created the agent wallet yet.' }
+  if (!deps.live) return { outcome: 'failed', reason: TESTNET_TEMPO }
   if (!isTempoAgent(signer)) return { outcome: 'failed', reason: 'The agent wallet cannot sign on Tempo yet.' }
   const { terms } = operation
   const result = await transferTempoUsdc({

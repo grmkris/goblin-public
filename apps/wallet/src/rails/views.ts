@@ -1,6 +1,6 @@
 import { formatUnits } from '@goblin/wallet/amounts'
 import { getAllowanceState, getBalances, parsePeriodTerms } from '@goblin/wallet/balances'
-import { CHAINS } from '@goblin/wallet/chains'
+import { chainByKey } from '@goblin/wallet/chains'
 import type { ChainBalance, LimitView } from '@goblin/wallet/contract'
 import type { RailsDeps, StoredAllowance } from './deps.ts'
 
@@ -12,6 +12,7 @@ export const balances = async (deps: RailsDeps): Promise<ChainBalance[]> => {
   const agent = deps.signer?.address ?? profile.agentAddress
   if (agent === undefined) return []
   const rows = await getBalances({
+    live: deps.live,
     agent,
     ...(profile.ownerAddress === undefined ? {} : { owner: profile.ownerAddress }),
     rpcFor: deps.rpcFor,
@@ -54,9 +55,10 @@ const limitOf = async (stored: StoredAllowance, deps: RailsDeps): Promise<LimitV
     delegationHash: stored.delegationHash,
     terms: stored.terms,
     rpcFor: deps.rpcFor,
+    live: deps.live,
   })
   const terms = parsePeriodTerms(stored.terms)
-  const chain = CHAINS.find((candidate) => candidate.name.toLowerCase().startsWith(stored.chain))
+  const chain = chainByKey(stored.chain, deps.live)
   return {
     layer: 'onchain',
     period: periodOf(terms.periodDuration),
@@ -64,7 +66,7 @@ const limitOf = async (stored: StoredAllowance, deps: RailsDeps): Promise<LimitV
     used: formatUnits(state.periodAmount > state.available ? state.periodAmount - state.available : 0n, 6),
     remaining: formatUnits(state.available, 6),
     chain: stored.chain,
-    enforcedBy: `${chain?.name ?? stored.chain}, MetaMask ERC20PeriodTransfer enforcer`,
+    enforcedBy: `${chain.name}, MetaMask ERC20PeriodTransfer enforcer`,
     ...(state.periodEndsAt === undefined
       ? {}
       : { periodEndsAt: new Date(Number(state.periodEndsAt) * 1000).toISOString() }),

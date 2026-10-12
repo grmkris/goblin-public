@@ -63,9 +63,11 @@ export const productionWiring: Wiring = {
     })
   },
   rails: (env, owner, signer) => {
-    const rpcFor = rpcFromEnv(env.RPC_URLS)
+    const live = env.WALLET_LIVE === '1'
+    const rpcFor = rpcFromEnv(env.RPC_URLS, live)
     const relay = relayFor(env, rpcFor)
     return createRails({
+      live,
       signer,
       profile: () => ledgerClient(env.LEDGER.getByName(owner.userId)).profile(),
       rpcFor,

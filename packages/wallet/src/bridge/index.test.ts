@@ -108,8 +108,16 @@ describe('Relay bridge quote', () => {
   })
 })
 
+/** A quiet Base fee market: 100k gas at 0.01 gwei. */
+const FEES: Record<string, unknown> = {
+  eth_estimateGas: '0x186a0',
+  eth_getBlockByNumber: { baseFeePerGas: '0x989680' },
+  eth_maxPriorityFeePerGas: '0x186a0',
+}
+
 const fakeRpc: JsonRpc = async (method) => {
   if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
+  if (method in FEES) return FEES[method]
   if (method === 'eth_call') return '0x'
   throw new Error(`unexpected ${String(field({}, 'x'))}${method}`)
 }

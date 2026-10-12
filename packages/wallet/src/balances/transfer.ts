@@ -6,7 +6,7 @@
  */
 import { encodeFunctionData, parseAbi, type Hex } from 'viem'
 import { formatUnits } from '../amounts/index.ts'
-import { ARBITRUM, BASE, ETHEREUM, type Chain } from '../chains/index.ts'
+import { chainByKey } from '../chains/index.ts'
 import type { AgentSigner } from '../contract/index.ts'
 import { toAddress } from './hex.ts'
 import { erc20Balance } from './erc20.ts'
@@ -15,8 +15,6 @@ import { JsonRpcError, quantity, type JsonRpc, type TxStatus, type WaitOptions }
 
 export type { EvmChain } from './send.ts'
 export { TransferError, type TransferFailure } from './send.ts'
-
-const CHAINS: Readonly<Record<EvmChain, Chain>> = { base: BASE, ethereum: ETHEREUM, arbitrum: ARBITRUM }
 
 /** How the agent pulls from the owner's allowance. Lane S's delegation encoders back this. */
 export interface TopUp {
@@ -27,6 +25,8 @@ export interface TopUp {
 }
 
 export interface EvmTransferInput {
+  /** Mainnets when true (`WALLET_LIVE=1`), their testnets otherwise: the token, manager and explorer follow it. */
+  readonly live: boolean
   readonly chain: EvmChain
   readonly to: string
   /** Base units of the chain's USDC. */
@@ -81,6 +81,8 @@ const requireGas = async (input: { agent: AgentSigner; rpc: JsonRpc }): Promise<
 }
 
 export interface EnsureFundsInput {
+  /** The network (`WALLET_LIVE`); absent means mainnet, for callers that predate the switch. */
+  readonly live?: boolean | undefined
   readonly chain: EvmChain
   /** Base units of the chain's USDC the agent is about to spend. */
   readonly amount: bigint
@@ -93,7 +95,7 @@ export interface EnsureFundsInput {
 
 /** Makes sure the agent holds `amount` USDC, redeeming exactly the shortfall from the owner's allowance if it is short. */
 export const ensureUsdc = async (input: EnsureFundsInput): Promise<{ topUpTxHash?: Hex; topUpAmount?: bigint }> => {
-  const chain = CHAINS[input.chain]
+  const chain = chainByKey(input.chain, input.live ?? true)
   const shortfall = await needTopUp(input, chain.usdc.address)
   if (shortfall === 0n || input.topUp === undefined) return {}
   await requireGas(input)
@@ -114,7 +116,11 @@ export const ensureUsdc = async (input: EnsureFundsInput): Promise<{ topUpTxHash
 
 /** Pays `amount` USDC to `to` from the agent, topping up from the owner's allowance first when it is short. */
 export const transferUsdc = async (input: EvmTransferInput): Promise<EvmTransferResult> => {
-  const chain = CHAINS[input.chain]
+  // A zero transfer moves nothing the ledger counts but still burns the agent's gas.
+  if (input.amount <= 0n) throw new TransferError('invalid_amount', 'A transfer must move a positive amount.')
+  if (input.to.toLowerCase() === input.agent.address.toLowerCase())
+    throw new TransferError('invalid_amount', 'The agent wallet cannot pay itself.')
+  const chain = chainByKey(input.chain, input.live)
   await beforeSigning(() => requireGas(input))
   const funded = await ensureUsdc(input)
   const data = encodeFunctionData({ abi: ERC20, functionName: 'transfer', args: [toAddress(input.to), input.amount] })

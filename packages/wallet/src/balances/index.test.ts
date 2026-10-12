@@ -1,6 +1,6 @@
 import { decodeFunctionData, encodeAbiParameters, encodeFunctionData, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { BASE, TEMPO } from '../chains/index.ts'
+import { BASE, BASE_SEPOLIA, TEMPO, TEMPO_MODERATO } from '../chains/index.ts'
 import { getAllowanceState, getBalances, parsePeriodTerms } from './index.ts'
 import { toHex } from './hex.ts'
 import { field, httpJsonRpc, quantity, type JsonRpc } from './rpc.ts'
@@ -26,13 +26,32 @@ describe('balances', () => {
         expect(call.to).toBe(usdc)
         return word(1_500_000n)
       }
-    const result = await getBalances({ agent: AGENT, owner: OWNER, chains: ['base', 'tempo', 'ethereum'], rpcFor })
+    const result = await getBalances({
+      live: true,
+      agent: AGENT,
+      owner: OWNER,
+      chains: ['base', 'tempo', 'ethereum'],
+      rpcFor,
+    })
     const [base, tempo, ethereum] = result
     expect(base?.agent.native?.formatted).toBe('0.002')
     expect(base?.owner?.usdc.formatted).toBe('1.5')
     expect(tempo?.agent.native).toBeUndefined()
     expect(tempo?.agent.usdc).toMatchObject({ symbol: 'USDC.e', formatted: '1.5' })
     expect(ethereum?.error).toBe('rate limited')
+  })
+
+  test('reads the testnet tokens when the wallet is not live', async () => {
+    const asked: string[] = []
+    const rpcFor = (): JsonRpc => async (method, params) => {
+      if (method === 'eth_getBalance') return word(0n)
+      asked.push(callOf(params[0]).to)
+      return word(1n)
+    }
+    const [base, tempo] = await getBalances({ live: false, agent: AGENT, chains: ['base', 'tempo'], rpcFor })
+    expect(asked).toEqual([BASE_SEPOLIA.usdc.address, TEMPO_MODERATO.usdc.address])
+    expect(base?.agent.usdc.symbol).toBe('USDC')
+    expect(tempo?.agent.usdc.symbol).toBe('pathUSD')
   })
 })
 

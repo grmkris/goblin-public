@@ -81,6 +81,13 @@ interface Sent {
   key: string
 }
 
+/** A quiet Base fee market: 300k gas at 0.01 gwei. */
+const FEES: Record<string, unknown> = {
+  eth_estimateGas: '0x493e0',
+  eth_getBlockByNumber: { baseFeePerGas: '0x989680' },
+  eth_maxPriorityFeePerGas: '0x186a0',
+}
+
 const harness = (options: { held: bigint; allowance?: bigint }) => {
   const sent: Sent[] = []
   const agent: AgentSigner = {
@@ -94,6 +101,7 @@ const harness = (options: { held: bigint; allowance?: bigint }) => {
   }
   const rpc: JsonRpc = async (method, params) => {
     if (method === 'eth_getTransactionReceipt') return { status: '0x1' }
+    if (method in FEES) return FEES[method]
     if (method === 'eth_call') {
       const data = String(field(params[0], 'data'))
       return word(data.startsWith('0xdd62ed3e') ? (options.allowance ?? 0n) : options.held)

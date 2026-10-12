@@ -6,17 +6,10 @@
 import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { erc20Balance } from './erc20.ts'
 import { formatUnits } from '../amounts/index.ts'
-import { ARBITRUM, BASE, ETHEREUM, TEMPO, type Chain } from '../chains/index.ts'
+import { chainByKey, type Chain } from '../chains/index.ts'
 import type { ChainKey } from '../contract/index.ts'
 import { toAddress, toHex } from './hex.ts'
 import { httpJsonRpc, quantity, type JsonRpc } from './rpc.ts'
-
-const CHAIN_BY_KEY: Readonly<Record<ChainKey, Chain>> = {
-  base: BASE,
-  ethereum: ETHEREUM,
-  arbitrum: ARBITRUM,
-  tempo: TEMPO,
-}
 
 export const BALANCE_CHAINS: readonly ChainKey[] = ['base', 'ethereum', 'arbitrum', 'tempo']
 
@@ -51,7 +44,11 @@ export interface ChainBalance {
 
 export type RpcFor = (chain: ChainKey) => JsonRpc
 
-const defaultRpc: RpcFor = (chain) => httpJsonRpc(CHAIN_BY_KEY[chain].rpcUrl)
+/** The public RPC of a chain on the selected network (mainnets when live, their testnets otherwise). */
+const defaultRpc =
+  (live: boolean): RpcFor =>
+  (chain) =>
+    httpJsonRpc(chainByKey(chain, live).rpcUrl)
 
 const token = (symbol: string, address: string, decimals: number, raw: bigint): TokenBalance => ({
   symbol,
@@ -70,6 +67,8 @@ const accountBalance = async (rpc: JsonRpc, chain: Chain, key: ChainKey, holder:
 }
 
 export interface BalancesInput {
+  /** Mainnets when true (`WALLET_LIVE=1`), their testnets otherwise: token addresses and default RPCs follow it. */
+  readonly live: boolean
   readonly agent: string
   readonly owner?: string
   readonly chains?: readonly ChainKey[]
@@ -78,10 +77,10 @@ export interface BalancesInput {
 
 /** Balances of the agent (and the owner, when known) per chain. A failing chain reports an `error`, never throws. */
 export const getBalances = (input: BalancesInput): Promise<readonly ChainBalance[]> => {
-  const rpcFor = input.rpcFor ?? defaultRpc
+  const rpcFor = input.rpcFor ?? defaultRpc(input.live)
   return Promise.all(
     (input.chains ?? BALANCE_CHAINS).map(async (key): Promise<ChainBalance> => {
-      const chain = CHAIN_BY_KEY[key]
+      const chain = chainByKey(key, input.live)
       const rpc = rpcFor(key)
       try {
         const [agent, owner] = await Promise.all([
@@ -134,12 +133,15 @@ export interface AllowanceInput {
   /** The caveat terms the owner signed. */
   readonly terms: string
   readonly rpcFor?: RpcFor
+  /** The network (`WALLET_LIVE`); absent means mainnet. The framework addresses are the same on both. */
+  readonly live?: boolean
 }
 
 /** The remaining on-chain allowance of one delegation, from `ERC20PeriodTransferEnforcer.getAvailableAmount`. */
 export const getAllowanceState = async (input: AllowanceInput): Promise<AllowanceState> => {
-  const chain = CHAIN_BY_KEY[input.chain]
-  const rpc = (input.rpcFor ?? defaultRpc)(input.chain)
+  const live = input.live ?? true
+  const chain = chainByKey(input.chain, live)
+  const rpc = (input.rpcFor ?? defaultRpc(live))(input.chain)
   const data = encodeFunctionData({
     abi: ENFORCER,
     functionName: 'getAvailableAmount',

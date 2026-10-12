@@ -1,6 +1,6 @@
 import { decodeFunctionData, parseAbi } from 'viem'
 import { describe, expect, test } from 'vitest'
-import { BASE } from '../chains/index.ts'
+import { BASE, BASE_SEPOLIA } from '../chains/index.ts'
 import type { AgentSigner } from '../contract/index.ts'
 import { toHex } from './hex.ts'
 import { field, httpJsonRpc, JsonRpcError, type JsonRpc } from './rpc.ts'
@@ -19,7 +19,7 @@ interface Sent {
 
 const down: JsonRpc = () => Promise.reject(new JsonRpcError('eth_getBalance', 'HTTP 429'))
 
-const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; mined?: boolean }) => {
+const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; mined?: boolean; baseFee?: bigint }) => {
   const sent: Sent[] = []
   const agent: AgentSigner = {
     address: AGENT,
@@ -41,6 +41,12 @@ const harness = (options: { held: bigint; gas?: bigint; revertWith?: string; min
       }
       case 'eth_getTransactionReceipt':
         return options.mined === false ? null : { status: '0x1' }
+      case 'eth_estimateGas':
+        return '0x186a0'
+      case 'eth_getBlockByNumber':
+        return { baseFeePerGas: `0x${(options.baseFee ?? 10_000_000n).toString(16)}` }
+      case 'eth_maxPriorityFeePerGas':
+        return '0xf4240'
       default:
         throw new Error(`unexpected ${method}`)
     }
@@ -61,6 +67,7 @@ const topUp = (available: bigint): TopUp & { asked: bigint[] } => {
 }
 
 const base = {
+  live: true,
   chain: 'base',
   to: RECIPIENT,
   operationKey: 'op-tr-evm-1',
@@ -154,5 +161,33 @@ describe('EVM transfer', () => {
       uncertain: true,
     })
     expect(toHex('0x')).toBe('0x')
+  })
+
+  test('refuses a zero transfer and a transfer to the agent itself, before anything is signed', async () => {
+    const h = harness({ held: 5_000_000n })
+    await expect(transferUsdc({ ...base, amount: 0n, agent: h.agent, rpc: h.rpc })).rejects.toMatchObject({
+      code: 'invalid_amount',
+    })
+    await expect(
+      transferUsdc({ ...base, to: AGENT.toLowerCase(), amount: 1n, agent: h.agent, rpc: h.rpc }),
+    ).rejects.toMatchObject({ code: 'invalid_amount' })
+    expect(h.sent).toHaveLength(0)
+  })
+
+  test('refuses a transaction whose fee is above the chain ceiling, before signing', async () => {
+    // 100k gas × 1.3 × (2 × 1000 gwei + tip) is far above Base's ceiling.
+    const h = harness({ held: 5_000_000n, baseFee: 1_000_000_000_000n })
+    await expect(transferUsdc({ ...base, amount: 1n, agent: h.agent, rpc: h.rpc })).rejects.toMatchObject({
+      code: 'fee_ceiling',
+      uncertain: false,
+    })
+    expect(h.sent).toHaveLength(0)
+  })
+
+  test('pays the testnet token on the testnet when the wallet is not live', async () => {
+    const h = harness({ held: 5_000_000n })
+    const result = await transferUsdc({ ...base, live: false, amount: 1n, agent: h.agent, rpc: h.rpc })
+    expect(h.sent[0]?.to).toBe(BASE_SEPOLIA.usdc.address)
+    expect(result.explorerUrl).toContain('sepolia.basescan.org/tx/')
   })
 })

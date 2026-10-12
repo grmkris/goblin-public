@@ -1,8 +1,9 @@
 import type { Hex } from 'viem'
 import * as Data from 'effect/Data'
+import { formatUnits } from '../amounts/index.ts'
 import type { AgentSigner } from '../contract/index.ts'
 import { toHex } from './hex.ts'
-import { waitForReceipt, type JsonRpc, type TxStatus, type WaitOptions } from './rpc.ts'
+import { field, quantity, waitForReceipt, type JsonRpc, type TxStatus, type WaitOptions } from './rpc.ts'
 import type { ChainKey } from '../contract/index.ts'
 
 export type EvmChain = Extract<ChainKey, 'base' | 'ethereum' | 'arbitrum'>
@@ -14,6 +15,8 @@ export type TransferFailure =
   | 'reverted'
   | 'uncertain'
   | 'rpc_unavailable'
+  | 'invalid_amount'
+  | 'fee_ceiling'
 
 export class TransferError extends Data.TaggedError('TransferError')<{
   readonly code: TransferFailure
@@ -53,6 +56,58 @@ export interface SendContext {
   readonly chain: EvmChain
   readonly rpc: JsonRpc
   readonly wait?: WaitOptions | undefined
+  /** Overrides the chain's `AGENT_FEE_CEILINGS` entry (wei). */
+  readonly feeCeiling?: bigint | undefined
+}
+
+const GWEI = 1_000_000_000n
+
+/**
+ * The most one agent transaction may cost in fees (wei: padded gas estimate × max fee per gas): about $0.50 on Base and
+ * Arbitrum and $7.50 on Ethereum at $2,500 ETH; a testnet uses its mainnet's ceiling. Above it nothing is signed. The
+ * ledger does not reserve fees yet, so this ceiling is what bounds the gas one spend can burn.
+ */
+export const AGENT_FEE_CEILINGS: Readonly<Record<EvmChain, bigint>> = {
+  base: 200_000n * GWEI,
+  arbitrum: 200_000n * GWEI,
+  ethereum: 3_000_000n * GWEI,
+}
+
+interface FeeCall {
+  readonly from: string
+  readonly to: string
+  readonly data: Hex
+  readonly value?: bigint | undefined
+}
+
+const readFee = async (rpc: JsonRpc, call: FeeCall): Promise<bigint> => {
+  const { value, ...rest } = call
+  const tx = { ...rest, ...(value === undefined ? {} : { value: `0x${value.toString(16)}` }) }
+  const [gas, block, tip] = await Promise.all([
+    rpc('eth_estimateGas', [tx]).then(quantity),
+    rpc('eth_getBlockByNumber', ['latest', false]),
+    // expected: a node without eth_maxPriorityFeePerGas is assumed to want a 0.1 gwei tip.
+    rpc('eth_maxPriorityFeePerGas', []).then(quantity, () => GWEI / 10n),
+  ])
+  const baseFee = quantity(field(block, 'baseFeePerGas') ?? '0x0')
+  return ((gas * 13n) / 10n) * (baseFee * 2n + tip)
+}
+
+/** Estimates a call's worst-case fee and refuses it above the chain's ceiling, before anything is signed. */
+export const checkFeeCeiling = async (input: SendContext, call: FeeCall): Promise<void> => {
+  const ceiling = input.feeCeiling ?? AGENT_FEE_CEILINGS[input.chain]
+  let fee: bigint
+  try {
+    fee = await readFee(input.rpc, call)
+  } catch {
+    // expected: without a fee estimate the ceiling cannot be checked, so nothing is signed.
+    throw new TransferError('rpc_unavailable', 'The chain did not answer the fee estimate; nothing was sent.')
+  }
+  if (fee > ceiling)
+    throw new TransferError(
+      'fee_ceiling',
+      `The network fee (up to ${formatUnits(fee, 18)} ETH) is above the wallet's ceiling on this chain; nothing was sent.`,
+    )
 }
 
 export interface SendStep {
@@ -63,14 +118,16 @@ export interface SendStep {
   readonly value?: bigint
 }
 
-/** Simulates a call from the agent, signs and broadcasts it, and waits for the receipt. */
+/** Simulates a call from the agent, checks its fee ceiling, signs and broadcasts it, and waits for the receipt. */
 export const sendSimulated = async (input: SendContext, call: SendStep): Promise<{ hash: Hex; status: TxStatus }> => {
-  await simulate(input.rpc, {
+  const probe = {
     from: input.agent.address,
     to: call.to,
     data: call.data,
     ...(call.value === undefined ? {} : { value: call.value }),
-  })
+  }
+  await simulate(input.rpc, probe)
+  await checkFeeCeiling(input, probe)
   let hash: Hex
   try {
     hash = toHex(

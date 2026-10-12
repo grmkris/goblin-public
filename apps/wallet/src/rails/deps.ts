@@ -24,6 +24,8 @@ export interface StoredAllowance {
  * answers `profile`, lane S's delegation code answers `topUp` and `allowances`, the Worker's secrets make the relay.
  */
 export interface RailsDeps {
+  /** Mainnets when true (`WALLET_LIVE=1`), their testnets otherwise. Tokens, RPCs and explorers follow it. */
+  readonly live: boolean
   /** The owner's agent signer; absent until onboarding made the agent wallet. */
   readonly signer: AgentSigner | undefined
   readonly profile: () => Promise<RailsProfile>
