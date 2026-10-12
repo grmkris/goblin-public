@@ -1,15 +1,10 @@
 import { CHAINS } from '@goblin/wallet/chains'
 import type { WalletEnv } from './env.ts'
 
+export { WalletLedger } from './ledger/durable.ts'
+
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
-
-/** One Durable Object per owner: the wallet's ledger. Filled in by the ledger lane. */
-export class WalletLedger implements DurableObject {
-  fetch(): Response {
-    return json({ error: { code: 'not_found', message: 'The ledger has no routes yet.' } }, 404)
-  }
-}
 
 /** A singleton for OAuth state. Filled in by the MCP lane. */
 export class WalletAuth implements DurableObject {
