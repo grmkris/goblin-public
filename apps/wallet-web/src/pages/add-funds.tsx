@@ -18,13 +18,15 @@ import {
 import type { DepositAddress, DepositRequest } from '@goblin/wallet/contract'
 import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { useDeposit, useDepositStatus, useMe, useStatus } from '../api/queries.tsx'
+import { useDeposit, useDepositStatus, useMe, useReturnCheck, useStatus } from '../api/queries.tsx'
+import { useLocation } from '../app/router.tsx'
 import { Async, errorText } from '../ui/async.tsx'
 import { CHAIN_LABEL, formatToken, formatUsd, formatUsdCompact, shortAddress } from '../ui/format.ts'
 import { cn, CopyButton } from '../ui/index.ts'
 import { Page } from '../ui/page.tsx'
 import { QrCode } from '../ui/qr-code.tsx'
 import { usdOf } from '../views/money.ts'
+import { returnParam } from './setup/return.ts'
 import {
   aboutSeconds,
   amountProblem,
@@ -318,8 +320,24 @@ export function AddFundsCard({ owner }: { readonly owner: string }) {
 }
 
 /** `/add-funds`: the owner's address and what they hold on Base, then a deposit from another chain or token. */
+/**
+ * A client that sent the owner here to top up (`/add-funds?return=<url>`) gets a way back, once the Worker vouches the
+ * URL is on one of the owner's own clients, as `/setup` does.
+ */
+function BackToClient({ url }: { readonly url: string }) {
+  const checked = useReturnCheck(url)
+  const { url: href, host } = checked.data ?? {}
+  if (href === undefined || host === undefined) return null
+  return (
+    <Button nativeButton={false} size="cta" variant="outline" className="w-full" render={<a href={href} />}>
+      Back to {host}
+    </Button>
+  )
+}
+
 export function AddFundsPage() {
   const me = useMe()
+  const back = returnParam(useLocation().search)
   return (
     <Page title="Add funds" description="Send USDC on Base to your address. It is the same address on every EVM chain.">
       <Async query={me}>
@@ -328,6 +346,7 @@ export function AddFundsPage() {
             <ReceiveAddress owner={data.owner} />
             <HeldOnBase />
             <FromElsewhere />
+            {back !== undefined && <BackToClient url={back} />}
           </div>
         )}
       </Async>
