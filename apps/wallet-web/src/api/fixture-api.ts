@@ -10,6 +10,7 @@ import {
   type DepositStatus,
   type LimitView,
   type Me,
+  type Operation,
   type PolicyChange,
   termsHash,
   type WalletStatusResult,
@@ -48,6 +49,9 @@ interface World {
   connections: readonly Connection[]
   approval: ApprovalView
   policyChanges: readonly PolicyChange[]
+  /** A fresh owner has no history and only the wallet's default limits. */
+  readonly activity: readonly Operation[]
+  readonly limits: readonly LimitView[]
   readonly deposits: Map<string, FixtureDeposit>
 }
 
@@ -123,8 +127,8 @@ function reads(
   return {
     me: () => delay(world.me),
     status: () => delay(world.status),
-    limits: () => delay(LIMITS),
-    activity: () => delay(OPERATIONS),
+    limits: () => delay(world.limits),
+    activity: () => delay(world.activity),
     approval: async () => delay({ ...world.approval, termsHash: await termsHash(world.approval.terms) }),
     services: () => delay(SERVICES),
     addressBook: () => delay(ADDRESS_BOOK),
@@ -268,6 +272,8 @@ export function createFixtureApi(start: 'fresh' | 'ready' = 'ready'): FixtureApi
     connections: start === 'ready' ? CONNECTIONS : [],
     approval: APPROVAL,
     policyChanges: start === 'ready' ? POLICY_CHANGES : [],
+    activity: start === 'ready' ? OPERATIONS : [],
+    limits: start === 'ready' ? LIMITS : FRESH_STATUS.limits,
     deposits: new Map(),
   }
   return { ...reads(world), ...writes(world), ...deposits(world), simulate: simulate(world) }
