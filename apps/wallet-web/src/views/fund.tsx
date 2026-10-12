@@ -89,12 +89,9 @@ function DepositForm({
     )
   }
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (problem === undefined) submit()
-      }}
-    >
+    // Not a <form>: an App's sandboxed frame may not submit forms (no `allow-forms`), so the submit event never fires.
+    // The button and Enter in the amount ask for the address themselves.
+    <div role="group" aria-label="Add funds from any chain">
       <FieldGroup>
         <div className="grid gap-4 @md/field-group:grid-cols-3">
           <Choice
@@ -116,6 +113,9 @@ function DepositForm({
               value={amount}
               aria-invalid={invalid}
               onChange={(event) => setAmount(event.target.value.trim())}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && problem === undefined && !pending) submit()
+              }}
             />
             {invalid && <FieldError>{problem}</FieldError>}
           </Field>
@@ -125,11 +125,17 @@ function DepositForm({
             {error}
           </p>
         )}
-        <Button type="submit" className="self-start" disabled={problem !== undefined} pending={pending}>
+        <Button
+          type="button"
+          className="self-start"
+          disabled={problem !== undefined}
+          pending={pending}
+          onClick={submit}
+        >
           Get deposit address
         </Button>
       </FieldGroup>
-    </form>
+    </div>
   )
 }
 
