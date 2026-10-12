@@ -4,7 +4,7 @@ import { BridgeError } from '@goblin/wallet/bridge'
 import { SwapError } from '@goblin/wallet/lifi'
 import { chainByKey } from '@goblin/wallet/chains'
 import type { ChainKey, Operation, Payment, Terms, TransferInput } from '@goblin/wallet/contract'
-import { isTempoAgent, transferTempoUsdc } from '@goblin/wallet/tempo'
+import { isTempoAgent, TempoError, transferTempoUsdc } from '@goblin/wallet/tempo'
 import type { PayOutcome } from '../services/rails.ts'
 import { RailError, type RailsDeps } from './deps.ts'
 
@@ -62,8 +62,14 @@ export const outcomeOfError = (error: unknown): PayOutcome => {
     return error.uncertain
       ? { outcome: 'uncertain', reason: error.message }
       : { outcome: 'failed', reason: error.message }
-  // Swap and bridge refusals (expired, bad quote, too little held) are all raised before anything is signed.
-  if (error instanceof RailError || error instanceof SwapError || error instanceof BridgeError)
+  // Swap, bridge and Tempo refusals (expired, bad quote, too little held, a call or fee out of bounds) are all raised
+  // before anything is signed or broadcast.
+  if (
+    error instanceof RailError ||
+    error instanceof SwapError ||
+    error instanceof BridgeError ||
+    error instanceof TempoError
+  )
     return { outcome: 'failed', reason: error.message }
   return { outcome: 'uncertain', reason: 'The wallet could not confirm whether the transfer happened.' }
 }

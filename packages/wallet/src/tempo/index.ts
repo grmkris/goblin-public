@@ -66,7 +66,13 @@ export interface TempoAgent extends AgentSigner {
 export const isTempoAgent = (signer: AgentSigner): signer is TempoAgent =>
   'signTempoTransaction' in signer && typeof signer.signTempoTransaction === 'function'
 
-export type TempoFailure = 'bad_challenge' | 'terms_changed' | 'above_cap' | 'unsafe_call' | 'sign_failed'
+export type TempoFailure =
+  | 'bad_challenge'
+  | 'terms_changed'
+  | 'above_cap'
+  | 'unsafe_call'
+  | 'sign_failed'
+  | 'fee_ceiling'
 
 export class TempoError extends Data.TaggedError('TempoError')<{
   readonly code: TempoFailure
@@ -123,6 +129,29 @@ export const assertCalls = (
 
 const hex = (value: bigint | number | undefined): string => `0x${(value ?? 0).toString(16)}`
 
+/** Tempo prices gas in 18-decimal dollars and TIP-20 tokens have 6 decimals, so a fee in token units is gas × price / 10^12. */
+const FEE_SCALE = 10n ** 12n
+
+/**
+ * The most fee one agent transaction may pay on Tempo, in USDC.e base units ($0.05; a transfer costs well under a cent).
+ * The fee is paid in USDC.e from the agent's balance and the ledger does not reserve it yet, so this bounds what one
+ * signature can burn.
+ */
+export const TEMPO_FEE_CEILING = 50_000n
+
+/** Refuses a transaction whose worst-case fee (gas limit × max fee per gas) is above the ceiling, before it is signed. */
+export const assertFee = (
+  tx: { readonly gas?: bigint | undefined; readonly maxFeePerGas?: bigint | undefined },
+  ceiling: bigint = TEMPO_FEE_CEILING,
+): void => {
+  const fee = ((tx.gas ?? 0n) * (tx.maxFeePerGas ?? 0n) + FEE_SCALE - 1n) / FEE_SCALE
+  if (fee > ceiling)
+    throw new TempoError(
+      'fee_ceiling',
+      `the network fee (up to ${fee} USDC.e base units) is above the wallet's ceiling`,
+    )
+}
+
 interface ViemTempoTx {
   readonly calls?: readonly { to?: string | undefined; data?: string | undefined; value?: bigint | undefined }[]
   readonly chainId?: number
@@ -173,6 +202,7 @@ export const tempoAccount = (
       // SAFETY: mppx and viem hand a Tempo request here; assertCalls rejects anything that is not a USDC.e spend.
       const tx = transaction as ViemTempoTx
       assertCalls(tx.calls ?? [], allow)
+      assertFee(tx)
       return toHex(
         await agent.signTempoTransaction({ operationKey: `${operationKey}:tempo`, transaction: toTransactionJson(tx) }),
       )

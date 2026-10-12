@@ -6,6 +6,7 @@ import { toHex } from '../balances/hex.ts'
 import { TEMPO } from '../chains/index.ts'
 import {
   assertCalls,
+  assertFee,
   payMpp,
   probeMpp,
   transferTempoUsdc,
@@ -259,6 +260,18 @@ describe('Tempo call guard', () => {
       assertCalls([{ to: '0x0000000000000000000000000000000000000001', data: transfer(RECIPIENT, 1n) }], allow),
     ).toThrow(/something other/u)
     expect(() => assertCalls([], allow)).toThrow()
+  })
+})
+
+describe('Tempo fee ceiling', () => {
+  test('refuses a worst-case fee above the ceiling and allows a transfer-sized one', () => {
+    // 0x30000 gas at 600 gwei-scale (the live Tempo price) is about 118 base units of USDC.e.
+    expect(() => assertFee({ gas: 0x30000n, maxFeePerGas: 600_000_000n })).not.toThrow()
+    expect(() => assertFee({ gas: 1_000_000n, maxFeePerGas: 60_000_000_000_000n })).toThrow(
+      /above the wallet's ceiling/u,
+    )
+    expect(() => assertFee({ gas: 1_000_000n, maxFeePerGas: 50_000_000_000n }, 49_999n)).toThrow(/ceiling/u)
+    expect(() => assertFee({})).not.toThrow()
   })
 })
 
