@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ServerView } from '@goblin/contracts'
 import { Button } from '@goblin/ui'
-import { PlugIcon } from 'lucide-react'
+import { PlugIcon, WalletIcon } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { modelQuery } from '../agent/queries.ts'
 import { useConnectNow } from '../mcp/hooks.ts'
 import { serversQuery } from '../mcp/queries.ts'
 import { RowContents } from './shell/pages/chat-link.tsx'
@@ -49,14 +51,68 @@ export const unconnectedProfiles = (servers: readonly ServerView[]): readonly Se
   })
 }
 
-/** The first-class servers the owner has not signed in to and has not put off, and how to put one off. */
-export function useConnectOffers(): { readonly offers: readonly ServerView[]; readonly hide: (id: string) => void } {
+/** The key the offer to choose how goblin pays is put off under, beside the connections' own. */
+const PAY_OFFER = 'inference'
+
+/**
+ * The first-class servers the owner has not signed in to and has not put off, whether to offer choosing how goblin
+ * pays for its model (ADR 0047: while the stage sells paid calls and none is picked), how many rows that is, and how
+ * to put one off.
+ */
+export function useConnectOffers(): {
+  readonly offers: readonly ServerView[]
+  readonly pay: boolean
+  readonly count: number
+  readonly hide: (id: string) => void
+} {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set())
   const servers = useQuery(serversQuery).data ?? []
+  const choice = useQuery(modelQuery).data
   const offers = unconnectedProfiles(servers).filter(
     (server) => !hidden.has(server.connectionId) && !dismissed(server.connectionId),
   )
-  return { offers, hide: (id) => setHidden((current) => new Set([...current, id])) }
+  const pay =
+    choice !== undefined &&
+    choice.options.some((option) => option.id.startsWith('paid:')) &&
+    !choice.current.startsWith('paid:') &&
+    !hidden.has(PAY_OFFER) &&
+    !dismissed(PAY_OFFER)
+  return {
+    offers,
+    pay,
+    count: offers.length + (pay ? 1 : 0),
+    hide: (id) => setHidden((current) => new Set([...current, id])),
+  }
+}
+
+/** The offer to choose how goblin pays for its model: Settings has the choice. */
+function PayOfferRow({ onDismiss }: { readonly onDismiss: () => void }) {
+  return (
+    <li className="list-row" data-static>
+      <RowContents
+        mark={<WalletIcon aria-hidden />}
+        title="Choose how goblin pays for its model"
+        meta="Your plan's Credits, or pay for each call from your Goblin Wallet."
+        end={
+          <span className="row-actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                dismiss(PAY_OFFER)
+                onDismiss()
+              }}
+            >
+              Not now
+            </Button>
+            <Button size="sm" nativeButton={false} render={<Link to="/settings" hash="inference" />}>
+              Choose
+            </Button>
+          </span>
+        }
+      />
+    </li>
+  )
 }
 
 /** One offer: what the server does for goblin, Connect, and Not now. */
@@ -108,10 +164,11 @@ export function ConnectOfferRow({
 
 /** Activity's offers to connect first-class servers, under Get started. */
 export function ConnectOffers({ connects }: { readonly connects: ReturnType<typeof useConnectOffers> }) {
-  if (connects.offers.length === 0) return null
+  if (connects.count === 0) return null
   return (
     <PageSection id="connect" title="Get started">
       <ul className="list-rows">
+        {connects.pay && <PayOfferRow onDismiss={() => connects.hide(PAY_OFFER)} />}
         {connects.offers.map((server) => (
           <ConnectOfferRow
             key={server.connectionId}

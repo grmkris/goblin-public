@@ -2,6 +2,7 @@ import { useBilling } from '../account/hooks.ts'
 import { ClientsCard, DeleteAccountCard } from './account-cards.tsx'
 import { MemoryCard, ResidentCard, UsageCard } from './agent-cards.tsx'
 import { BillingCard } from './billing.tsx'
+import { InferenceCard } from './inference-card.tsx'
 import { PageSection } from './page-section.tsx'
 import { RoutinesSection } from './routines.tsx'
 
@@ -15,6 +16,7 @@ export function Settings() {
     <div className="page-stack">
       <PageSection id="plan" title="Plan and usage">
         <BillingCard />
+        {active && <InferenceCard />}
         {active && <UsageCard />}
       </PageSection>
       {active && (

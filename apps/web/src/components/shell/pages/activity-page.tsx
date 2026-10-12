@@ -236,10 +236,7 @@ export function ActivityPage() {
   const unread = unreadChats(conversations)
   const offers = (useQuery(serversQuery).data ?? []).filter((server) => server.events === 'open')
   const connects = useConnectOffers()
-  if (
-    needs.length + offers.length + connects.offers.length + notifications.length + receipts.length + unread.length ===
-    0
-  )
+  if (needs.length + offers.length + connects.count + notifications.length + receipts.length + unread.length === 0)
     return <p className="page-empty">Nothing needs you.</p>
   return (
     <div className="page-stack">

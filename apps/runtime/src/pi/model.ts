@@ -82,6 +82,25 @@ export type PayChallenge = (request: {
 }) => Promise<string>
 
 /**
+ * A request's headers, copied one by one: the runtimes' header types differ (Bun's `HeadersInit` is not the DOM's), so
+ * they are read as plain values rather than handed between constructors.
+ */
+export const headersOf = (value: unknown): Headers => {
+  const headers = new Headers()
+  const put = (name: unknown, entry: unknown) => {
+    if (typeof name === 'string' && typeof entry === 'string') headers.set(name, entry)
+  }
+  if (value instanceof Headers) {
+    value.forEach((entry, name) => put(name, entry))
+  } else if (Array.isArray(value)) {
+    for (const pair of value) if (Array.isArray(pair)) put(pair[0], pair[1])
+  } else if (value !== null && typeof value === 'object') {
+    for (const [name, entry] of Object.entries(value)) put(name, entry)
+  }
+  return headers
+}
+
+/**
  * A fetch that pays its way: a 402 with a payment challenge is paid through `pay` and the request sent once more with
  * the credential; anything else is answered as it came. The body is kept for the second send.
  */
@@ -100,7 +119,7 @@ export const payingFetch = (pay: PayChallenge, inner: FetchFunction = fetch): Fe
       return Response.json({ error: { message } }, { status: 402 })
     })
     if (credential instanceof Response) return credential
-    const headers = new Headers(init?.headers)
+    const headers = headersOf(init?.headers)
     headers.set('authorization', `Payment ${credential}`)
     // The model clients send a string body, so the same init goes out again with the credential.
     return inner(input, { ...init, headers })

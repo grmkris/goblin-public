@@ -3,7 +3,7 @@ import type { Tool } from '@modelcontextprotocol/client'
 import { challengeId, paymentFailureText } from '../src/mcp/inference-pay.ts'
 import { toolOffered } from '../src/mcp/remote.ts'
 import { creditsModel, offeredModels, paidRoutes } from '../src/models.ts'
-import { modelRef, payingFetch } from '../src/pi/model.ts'
+import { headersOf, modelRef, payingFetch } from '../src/pi/model.ts'
 
 const CHALLENGE = 'Payment id="ch_1", realm="openrouter.mpp.tempo.xyz", method="tempo", intent="charge", request="e30"'
 
@@ -26,6 +26,9 @@ const tool = (visibility: readonly string[]): Tool => ({
   inputSchema: { type: 'object' },
   _meta: { ui: { visibility } },
 })
+
+/** A request's headers as `headersOf` keeps them, in order. */
+const names = (value: unknown) => [...headersOf(value).entries()]
 
 describe('inference paid per call from the wallet (ADR 0047)', () => {
   it('pays a 402 once and sends the same request again with the credential', async () => {
@@ -79,6 +82,13 @@ describe('inference paid per call from the wallet (ADR 0047)', () => {
     expect(modelRef('paid:tempo')).toEqual({ provider: 'goblin-paid-tempo', id: 'deepseek/deepseek-v4.1-flash' })
     expect(modelRef('qwen3.8-flash')).toEqual({ provider: 'goblin-litellm', id: 'qwen3.8-flash' })
     expect([creditsModel('paid:tempo'), creditsModel('glm-5.3')]).toEqual(['deepseek-v4.1-flash', 'glm-5.3'])
+  })
+
+  it("keeps a request's headers in every shape a client passes them, for the paid retry", () => {
+    expect(names({ 'content-type': 'application/json', x: 1 })).toEqual([['content-type', 'application/json']])
+    expect(names([['content-type', 'application/json'], ['bad']])).toEqual([['content-type', 'application/json']])
+    expect(names(new Headers({ accept: 'text/event-stream' }))).toEqual([['accept', 'text/event-stream']])
+    expect(names(undefined)).toEqual([])
   })
 
   it('reads the challenge id the wallet keys a payment by', () => {
