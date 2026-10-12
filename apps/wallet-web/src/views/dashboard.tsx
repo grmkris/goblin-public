@@ -15,7 +15,7 @@ import {
   timeUntil,
 } from '../ui/index.ts'
 import { EmptyState, RowList, Section } from '../ui/page.tsx'
-import { sumUsd } from './money.ts'
+import { isStable, spendableUsd, sumUsd } from './money.ts'
 
 const HOLDER = { owner: 'Your account', agent: 'Agent wallet' } as const
 const LAYER_ORDER = ['onchain', 'tempo', 'signer', 'ledger', 'client'] as const
@@ -48,7 +48,7 @@ function Readiness({ kind, value }: { readonly kind: 'paid' | 'funding'; readonl
 
 /** The figure the whole view exists for: what the agent may spend right now under every layer's limit. */
 function Spendable({ status }: { readonly status: WalletStatusResult }) {
-  const token = status.status.tokens[0]
+  const spendable = spendableUsd(status.status.tokens)
   const held = sumUsd(status.balances)
   const chains = new Set(status.balances.map((row) => row.chain)).size
   const { periodEndsAt, expiresAt } = status.status
@@ -56,7 +56,7 @@ function Spendable({ status }: { readonly status: WalletStatusResult }) {
     <section aria-label="Spendable now" className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
         <span className="text-sm text-muted-foreground">Your agent can spend now</span>
-        <Amount usd={token?.spendable ?? '0'} size="hero" />
+        <Amount usd={spendable} size="hero" />
       </div>
       <p className="text-sm/relaxed text-muted-foreground tabular-nums">
         {formatUsd(held)} held across {chains} {chains === 1 ? 'chain' : 'chains'}
@@ -87,7 +87,7 @@ function Balances({ balances }: { readonly balances: readonly ChainBalance[] }) 
             </span>
           </span>
           <Amount
-            usd={row.balance}
+            usd={isStable(row.symbol) ? row.balance : undefined}
             token={{ symbol: row.symbol, amount: row.balance }}
             align="end"
             className="shrink-0"

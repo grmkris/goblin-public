@@ -1,19 +1,15 @@
 import { Card, CardContent } from '@goblin/ui'
-import type { ChainBalance, Operation, WalletStatusResult } from '@goblin/wallet/contract'
+import type { Operation, WalletStatusResult } from '@goblin/wallet/contract'
 import { ChevronRight } from 'lucide-react'
 import { useActivity, useLimits, useStatus } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
 import { AddressChip, Amount, ChainBadge, formatUsd, LimitMeter, ReceiptRow, timeUntil } from '../ui/index.ts'
 import { Async } from '../ui/async.tsx'
 import { EmptyState, Page, RowList, Section } from '../ui/page.tsx'
+import { isStable, spendableUsd, sumUsd } from '../views/money.ts'
 import { OtherNetworks } from './other-networks.tsx'
 
 const HOLDER = { owner: 'Your account', agent: 'Agent wallet' } as const
-
-const sumUsd = (balances: readonly ChainBalance[]): string => {
-  const micros = balances.reduce((total, row) => total + Math.round(Number(row.balance) * 1_000_000), 0)
-  return (micros / 1_000_000).toFixed(6).replace(/\.?0+$/u, '')
-}
 
 function PendingApproval({ operation }: { readonly operation: Operation }) {
   return (
@@ -37,7 +33,7 @@ function PendingApproval({ operation }: { readonly operation: Operation }) {
 }
 
 function Balance({ status }: { readonly status: WalletStatusResult }) {
-  const spendable = status.status.tokens[0]?.spendable
+  const spendable = spendableUsd(status.status.tokens)
   const chains = new Set(status.balances.map((row) => row.chain)).size
   return (
     <Card>
@@ -45,7 +41,7 @@ function Balance({ status }: { readonly status: WalletStatusResult }) {
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
             <span className="text-sm text-muted-foreground">Your agent can spend now</span>
-            <Amount usd={spendable ?? '0'} size="hero" />
+            <Amount usd={spendable} size="hero" />
             <span className="text-sm text-muted-foreground tabular-nums">
               of {formatUsd(sumUsd(status.balances))} across {chains} {chains === 1 ? 'chain' : 'chains'}
               {status.status.periodEndsAt !== undefined && (
@@ -55,7 +51,10 @@ function Balance({ status }: { readonly status: WalletStatusResult }) {
           </div>
           <ul className="flex flex-col divide-y divide-border border-t border-border">
             {status.balances.map((row) => (
-              <li key={`${row.chain}-${row.holder}`} className="flex items-center justify-between gap-3 py-3">
+              <li
+                key={`${row.chain}-${row.holder}-${row.symbol}`}
+                className="flex items-center justify-between gap-3 py-3"
+              >
                 <span className="flex min-w-0 flex-col gap-1">
                   <span className="text-sm font-medium">{HOLDER[row.holder]}</span>
                   <span className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
@@ -63,7 +62,12 @@ function Balance({ status }: { readonly status: WalletStatusResult }) {
                     <AddressChip address={row.address} chain={row.chain} />
                   </span>
                 </span>
-                <Amount usd={row.balance} token={{ symbol: row.symbol, amount: row.balance }} size="md" align="end" />
+                <Amount
+                  usd={isStable(row.symbol) ? row.balance : undefined}
+                  token={{ symbol: row.symbol, amount: row.balance }}
+                  size="md"
+                  align="end"
+                />
               </li>
             ))}
           </ul>
