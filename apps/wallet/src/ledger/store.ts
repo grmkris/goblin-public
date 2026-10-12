@@ -43,6 +43,7 @@ import {
   type ReserveOptions,
   type ReserveOutcome,
 } from './reserve.ts'
+import { preparedAllowance, putPreparedAllowance, putSignedAllowance, signedAllowances } from './allowances.ts'
 import { type Profile, readProfile, updateProfile } from './profile.ts'
 import { getQuote, putQuote, type StoredQuote } from './quotes.ts'
 import { migrate } from './schema.ts'
@@ -177,6 +178,22 @@ export class LedgerStore {
 
   updateProfile(patch: Partial<Profile>): Profile {
     return updateProfile(this.#ctx, patch)
+  }
+
+  putPreparedAllowance(hash: string, json: string): void {
+    putPreparedAllowance(this.#ctx, hash, json)
+  }
+
+  preparedAllowance(hash: string): string | undefined {
+    return preparedAllowance(this.#ctx, hash)
+  }
+
+  putSignedAllowance(chain: string, json: string): void {
+    putSignedAllowance(this.#ctx, chain, json)
+  }
+
+  signedAllowances(): { chain: string; json: string }[] {
+    return signedAllowances(this.#ctx)
   }
 
   putQuote(stored: StoredQuote): void {

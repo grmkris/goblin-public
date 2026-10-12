@@ -50,7 +50,7 @@ export async function allowancePrepare(call: ApiCall): Promise<Response> {
   if (!body.ok) return body.response
   const parties = await agentOf(call)
   if (parties === undefined) return apiError('not_onboarded', 'Create the agent wallet first.', 409)
-  const draft = await call.wiring.allowance.prepare(parties, body.value)
+  const draft = await call.wiring.allowance.prepare(call.env, parties, body.value)
   return json({ chain: body.value.chain, ...draft })
 }
 
@@ -60,7 +60,7 @@ export async function allowanceConfirm(call: ApiCall): Promise<Response> {
   if (!body.ok) return body.response
   const parties = await agentOf(call)
   if (parties === undefined) return apiError('not_onboarded', 'Create the agent wallet first.', 409)
-  const allowance = await call.wiring.allowance.confirm(parties, body.value)
+  const allowance = await call.wiring.allowance.confirm(call.env, parties, body.value)
   const setup = await chainSetup(call, body.value.chain)
   await call.ledger.updateProfile({ chains: [{ ...setup, allowance }] })
   return json(await readMe(call))

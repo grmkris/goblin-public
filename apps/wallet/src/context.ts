@@ -15,6 +15,7 @@ export interface Owner {
 export interface AllowancePort {
   /** The exact ERC-7710 delegation for the owner to sign; the browser rebuilds and compares it. */
   prepare(
+    env: WalletEnv,
     owner: Owner & { address: Address; agent: Address },
     request: typeof AllowancePrepare.Type,
   ): Promise<{
@@ -23,6 +24,7 @@ export interface AllowancePort {
   }>
   /** Verifies the owner's signature and stores the delegation where the agent redeems it from. */
   confirm(
+    env: WalletEnv,
     owner: Owner & { address: Address; agent: Address },
     request: typeof AllowanceConfirm.Type,
   ): Promise<NonNullable<ChainSetup['allowance']>>

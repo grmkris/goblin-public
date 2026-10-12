@@ -1,6 +1,7 @@
 import { memoryRelayStore, RelaySender, relayAccountFromKey } from '@goblin/wallet/relay'
 import { agentSigner } from '@goblin/wallet/signer'
 import { authorizationSigner, createAgentWallet, PrivyClient } from '@goblin/wallet/privy'
+import { allowanceRails, productionAllowance } from './allowance.ts'
 import { defaultWiring, type Wiring } from './context.ts'
 import type { WalletEnv } from './env.ts'
 import { ledgerClient } from './ledger/durable.ts'
@@ -37,11 +38,12 @@ const relayFor = (env: WalletEnv, rpcFor: ReturnType<typeof rpcFromEnv>): RelayS
 }
 
 /**
- * The deployed wiring: Privy for the agent wallet and its signer. The payment rails (lane D) are wired; the allowance
- * builders join as lane S's adapters land, and until then the rails top up nothing and report no on-chain limits.
+ * The deployed wiring: Privy for the agent wallet and its signer, the owner's on-chain allowance (prepared, confirmed and
+ * stored in the ledger), and the payment rails, which top the agent up from that allowance and report what it has left.
  */
 export const productionWiring: Wiring = {
   ...defaultWiring,
+  allowance: productionAllowance,
   createAgent: async (env, owner) => {
     const wallet = await createAgentWallet(await privyFor(env), {
       userId: owner.userId,
@@ -67,6 +69,7 @@ export const productionWiring: Wiring = {
       signer,
       profile: () => ledgerClient(env.LEDGER.getByName(owner.userId)).profile(),
       rpcFor,
+      ...allowanceRails(env, owner.userId, rpcFor),
       ...(relay === undefined ? {} : { relay }),
     })
   },
