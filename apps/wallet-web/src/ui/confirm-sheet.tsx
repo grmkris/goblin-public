@@ -31,7 +31,8 @@ export function ConfirmSheet({
 }) {
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
+      {/* A phone-width sheet on a wide screen too, under the one column the pages use. */}
+      <DrawerContent className="md:max-w-md">
         <DrawerHeader>
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription>{description}</DrawerDescription>
