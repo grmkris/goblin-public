@@ -9,10 +9,10 @@
  */
 import * as Data from 'effect/Data'
 import * as Schema from 'effect/Schema'
-import { decodeFunctionData, parseAbi } from 'viem'
+import { decodeFunctionData, encodeFunctionData, parseAbi } from 'viem'
 import { formatUnits, parseUnits } from '../amounts/index.ts'
 import { erc20Balance } from '../balances/erc20.ts'
-import { toHex } from '../balances/hex.ts'
+import { toAddress, toHex } from '../balances/hex.ts'
 import { field, type JsonRpc, type WaitOptions } from '../balances/rpc.ts'
 import { sendSimulated, TransferError, type EvmChain } from '../balances/send.ts'
 import { ensureUsdc, type TopUp } from '../balances/transfer.ts'
@@ -343,6 +343,32 @@ const fundDeposit = async (input: ExecuteBridgeInput, origin: Chain): Promise<vo
     )
 }
 
+const ALLOWANCE = parseAbi(['function allowance(address owner, address spender) view returns (uint256)'])
+const pauseFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Waits until the RPC shows the depository's fresh allowance: a load-balanced node behind the approval's block would
+ * answer the deposit's simulation with a revert. Giving up is a plain failure; the deposit is not signed yet.
+ */
+const untilApproved = async (input: ExecuteBridgeInput, origin: Chain): Promise<void> => {
+  const data = encodeFunctionData({
+    abi: ALLOWANCE,
+    functionName: 'allowance',
+    args: [toAddress(input.agent.address), toAddress(RELAY_DEPOSITORY)],
+  })
+  for (let attempt = 0; attempt < (input.wait?.attempts ?? 10); attempt += 1) {
+    // expected: an unanswered or unreadable read counts as not visible yet; the loop asks again.
+    const raw = await input.rpc('eth_call', [{ to: origin.usdc.address, data }, 'latest']).catch(() => '0x')
+    const shown = /^0x[0-9a-fA-F]{64}$/u.test(String(raw)) ? BigInt(String(raw)) : 0n
+    if (shown >= BigInt(input.bridge.amountIn)) return
+    await (input.wait?.sleep ?? pauseFor)(input.wait?.intervalMs ?? 1000)
+  }
+  throw new TransferError(
+    'rpc_unavailable',
+    'The approval landed but the chain did not show it in time; nothing was bridged. Try again.',
+  )
+}
+
 /** Executes a frozen bridge: funding, the approval (if quoted), the deposit, then Relay's delivery status. */
 export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeResult> => {
   const { bridge } = input
@@ -362,6 +388,7 @@ export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeRe
         'The approval did not confirm.',
         sent.status === 'pending',
       )
+    if (step.id === 'approve') await untilApproved(input, origin)
     if (step.id === 'deposit') deposit = sent
   }
   if (deposit === undefined) throw new BridgeError('bad_quote', 'The quote has no deposit step.')
@@ -388,5 +415,121 @@ export const executeBridge = async (input: ExecuteBridgeInput): Promise<BridgeRe
     delivery: landed.delivery,
     detail: landed.detail,
     destinationTxHashes: landed.txHashes,
+  }
+}
+
+const NATIVE = '0x0000000000000000000000000000000000000000'
+const DEPOSIT_ORIGINS = { base: BASE, arbitrum: ARBITRUM, ethereum: ETHEREUM } as const
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/u
+
+export interface DepositQuoteInput {
+  readonly from: keyof typeof DEPOSIT_ORIGINS
+  readonly asset: 'ETH' | 'USDC'
+  /** Decimal amount of `asset` the sender will send. */
+  readonly amount: string
+  readonly receive: 'ETH' | 'USDC'
+  /** The owner's own address: it receives on Base and any refund. */
+  readonly recipient: string
+  readonly fetchFn?: typeof fetch | undefined
+}
+
+export interface DepositQuote {
+  readonly requestId: string
+  readonly depositAddress: string
+  /** Decimal amount received on Base. */
+  readonly expectedOut: string
+  readonly feesUsd: string
+  readonly timeEstimateSeconds: number
+}
+
+const decimalsOf = (asset: 'ETH' | 'USDC'): number => (asset === 'ETH' ? 18 : 6)
+
+/**
+ * A one-off Relay deposit address (`useDepositAddress`, keyless for EVM origins): whatever arrives there in `asset` on
+ * `from` is delivered to `recipient` on Base as `receive`. Nothing is signed; the sender just transfers to the address.
+ */
+export const quoteDepositAddress = async (input: DepositQuoteInput): Promise<DepositQuote> => {
+  if (input.from === 'base' && input.asset === input.receive)
+    throw new BridgeError(
+      'unsupported',
+      `Send ${input.asset} on Base straight to your address; no deposit address is needed.`,
+    )
+  const origin = DEPOSIT_ORIGINS[input.from]
+  const amount = parseUnits(input.amount, decimalsOf(input.asset))
+  if (amount <= 0n) throw new BridgeError('unsupported', 'A deposit must be a positive amount.')
+  const response = await (input.fetchFn ?? fetch)(`${API}/quote`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      user: input.recipient,
+      recipient: input.recipient,
+      refundTo: input.recipient,
+      originChainId: origin.id,
+      destinationChainId: BASE.id,
+      originCurrency: input.asset === 'ETH' ? NATIVE : origin.usdc.address,
+      destinationCurrency: input.receive === 'ETH' ? NATIVE : BASE.usdc.address,
+      amount: amount.toString(),
+      tradeType: 'EXACT_INPUT',
+      useDepositAddress: true,
+    }),
+  })
+  // expected: a body that is not JSON reads as no quote; the checks below turn it into bad_quote.
+  const raw: unknown = await response.json().catch(() => undefined)
+  if (!response.ok) throw new BridgeError('bad_quote', text(field(raw, 'message'), 'the deposit quote').slice(0, 200))
+  const steps = field(raw, 'steps')
+  const step: unknown = Array.isArray(steps) ? steps[0] : undefined
+  const depositAddress = field(step, 'depositAddress')
+  const requestId = field(step, 'requestId')
+  const out = field(field(field(raw, 'details'), 'currencyOut'), 'amount')
+  if (typeof depositAddress !== 'string' || !ADDRESS.test(depositAddress) || typeof requestId !== 'string')
+    throw new BridgeError('bad_quote', 'Relay returned no deposit address.')
+  if (typeof out !== 'string' || !/^\d+$/u.test(out))
+    throw new BridgeError('bad_quote', 'Relay returned no output amount.')
+  const seconds = field(field(raw, 'details'), 'timeEstimate')
+  return {
+    requestId,
+    depositAddress,
+    expectedOut: formatUnits(BigInt(out), decimalsOf(input.receive)),
+    feesUsd: feesUsd(raw),
+    timeEstimateSeconds: typeof seconds === 'number' && Number.isFinite(seconds) ? Math.max(0, Math.round(seconds)) : 0,
+  }
+}
+
+export type DepositState = 'waiting' | 'pending' | 'success' | 'refunded' | 'failed' | 'unknown'
+
+/** Relay's intent statuses as the owner sees them; anything else (submitted, delayed, …) is still pending. */
+const DEPOSIT_STATES: Readonly<Record<string, DepositState>> = {
+  success: 'success',
+  refunded: 'refunded',
+  refund: 'refunded',
+  failure: 'failed',
+  waiting: 'waiting',
+  unknown: 'waiting',
+}
+
+/**
+ * Relay's progress for one deposit address, in the owner API's words. Relay records a fill as its own request whose
+ * user is the deposit address; before anything arrives there is none, which is `waiting`. The keyless `requests/v2`
+ * rate-limits (its keyed successor needs an API key), so a refusal is `unknown`, never a failure.
+ */
+export const depositStatus = async (
+  depositAddress: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<{ status: DepositState; txHashes: string[] }> => {
+  const response = await fetchFn(`${API}/requests/v2?user=${encodeURIComponent(depositAddress)}&limit=1`)
+  if (!response.ok) return { status: 'unknown', txHashes: [] }
+  const body: unknown = await response.json()
+  const requests = field(body, 'requests')
+  const latest: unknown = Array.isArray(requests) ? requests[0] : undefined
+  if (latest === undefined) return { status: 'waiting', txHashes: [] }
+  const status = field(latest, 'status')
+  const data = field(latest, 'data')
+  const hashes = ['inTxs', 'outTxs'].flatMap((key) => {
+    const txs = field(data, key)
+    return Array.isArray(txs) ? txs.map((tx: unknown) => field(tx, 'hash')) : []
+  })
+  return {
+    status: (typeof status === 'string' ? DEPOSIT_STATES[status] : undefined) ?? 'pending',
+    txHashes: hashes.filter((hash): hash is string => typeof hash === 'string' && /^0x[0-9a-fA-F]{1,128}$/u.test(hash)),
   }
 }

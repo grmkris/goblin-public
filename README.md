@@ -69,15 +69,36 @@ history, route a send or grant permission. Each open proposal shows in its chat 
 the dev stage binds Workers AI; elsewhere nothing is judged. See
 [ADR 0031](docs/adr/0031-typed-decisions-through-workers-ai.md).
 
-**Goblin Wallet** (ADR 0045) gives the agent money with limits its owner sets, as a separate Worker with its own MCP
-server at `wallet-dev.goblin.surf` (`apps/wallet`, `apps/wallet-web`, `packages/wallet`). The owner signs in with
-Privy; their account is upgraded with EIP-7702 to MetaMask's DeleGator and signs an ERC-7710 period allowance to an agent
-wallet that Privy holds under a signer policy. The agent pays x402 services on Base and MPP services on Tempo, sends
-USDC, swaps through LI.FI and bridges through Relay. Every limit names the layer that enforces it: the on-chain
-allowance, Privy's policy, the wallet's ledger (per call, hour and week) or goblin's spending rules (ADR 0044). A spend
-over the limit, or to a new recipient, becomes a URL request to the wallet's Approve page, where the owner checks the
-frozen terms; goblin retries the call with the same operation id. goblin connects it like any MCP server, shows its
-status on the connection card and its dashboard App under Services.
+**Goblin Wallet** (ADR 0045) gives the agent money with limits its owner sets. It is a separate Worker with its own MCP
+server at `wallet.goblin.surf` (`wallet-dev.goblin.surf` for dev), built from `apps/wallet`, `apps/wallet-web` and
+`packages/wallet`, and those three are MIT-licensed. The owner signs in with Privy, funds their own address with ETH or
+USDC (Relay deposit addresses convert from Base, Arbitrum or Ethereum), and has the account upgraded with EIP-7702 to
+MetaMask's DeleGator; the relay pays that gas. The owner then signs an ERC-7710 period allowance to an agent wallet that
+Privy holds under a signer policy. The agent pays x402 services on Base and MPP services on Tempo, sends USDC, swaps
+through LI.FI and bridges through Relay, topping up just in time from the allowance.
+
+Every limit names the layer that enforces it: the on-chain allowance, Privy's policy, the wallet's ledger (per call,
+hour and week) or goblin's spending rules (ADR 0044). A spend over the limit, or to a new recipient, becomes a URL
+request to the wallet's Approve page, where the owner checks the frozen terms; goblin then retries the call with the
+same operation id, which never pays twice. goblin connects the wallet like any MCP server, shows its status on the
+connection card and its dashboard App under Services. Try it at goblin.surf → Connections → Goblin Wallet.
+
+Proven on mainnet on 12 October 2026, from goblin dev:
+
+- goblin paid Exa $0.007 for a web search over x402, after topping up from the allowance:
+  [`0xc09ca95d…b0fd`](https://basescan.org/tx/0xc09ca95d5ff071d45e83d09504a4dfa1d367a289d6beabc1ba878029b39cb0fd).
+- A first payment to a new address waited for the owner's approval, then went out:
+  [`0xe4219e53…e3dc`](https://basescan.org/tx/0xe4219e53ec87f363181090b28a2e008f0bc02221dc689fb75068cb8dbab8e3dc).
+- Mercator ran short, so the wallet bridged 2 USDC from Base to Tempo through Relay
+  ([`0x2dce0489…3e7b`](https://basescan.org/tx/0x2dce04899f917d6c3e7aab58ba25ff663fe176d9ab34484b130622a6712f3e7b))
+  and paid Mercator 1.5 USDC.e
+  ([`0xf144e54d…2add`](https://explore.tempo.xyz/tx/0xf144e54d48fd28c1208acbb647275dbbf7fc5f335794d2e37ef79d08fcde2add)).
+
+![goblin paying for a web search through the wallet](docs/images/wallet/paid-search-in-goblin.png)
+![The wallet's Approve page for a first payment to a new address](docs/images/wallet/approve-page.png)
+
+Limits today: Privy runs in development mode with email sign-in, and the mainnet funds behind the demo are capped.
+Swaps and bridges quote mainnet only.
 
 Built on the Cloudflare Agents SDK (`PersonalAgent` Durable Object) with the native Pi harness (Pi Durable owns
 conversations and execution), Effect for the agent's services and its typed owner API (an Effect HttpApi each user's
@@ -100,10 +121,12 @@ Run `bun run check:public` for the complete product and tooling gates after inst
 
 Goblin-owned code is available under the [MIT License](LICENSE). [NOTICE](NOTICE.md) lists author-owned provenance and third-party terms, including React Leaflet's Hippocratic-2.1 license. Feedback is welcome through Issues.
 
-## Hackathon disclosure (draft, for the owner to confirm)
+## Hackathon disclosure
 
-goblin's repository started on 4 October 2026, and most of the resident agent predates the Colosseum Crypto World's
-Fair submission. Goblin Wallet (`apps/wallet`, `apps/wallet-web`, `packages/wallet`, ADR 0045) and its goblin host
-changes were built on 12 October 2026. Patterns for the 7702 upgrade, the Privy signer and policy, the allowance and
-MCP OAuth were ported from the author's earlier project Sidequest. The code was written by AI coding agents (Claude Code
-with Claude Opus and Sonnet, and OpenAI Codex) under the author's direction, with a Codex review of the money paths.
+goblin is the author's entry to the Colosseum Crypto World's Fair (14 September to 12 October 2026), and all of it was
+built within that window: the repository's first commit is 4 October 2026 and Goblin Wallet was built on 12 October.
+goblin reuses patterns (the 7702 upgrade, the Privy signer and policy, the allowance and MCP OAuth) from the author's
+Sidequest, a separate project begun on 25 September that goblin reaches only as an MCP server, and it uses the
+author's myapps services (mygram, myinbox, myplan, mytab; begun 28 September) as connected MCP servers. Built on open
+source and third-party services: Cloudflare Agents SDK, Pi, Effect, Alchemy, Privy, MetaMask Delegation Framework
+v1.3.0, x402, mppx, LI.FI, Relay, viem and shadcn. Built with AI coding agents (Claude Code, Codex).

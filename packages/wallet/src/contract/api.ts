@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { ApprovalDecision, ApprovalView } from './approvals.ts'
-import { Address, ChainKey, Hex, Instant, Text, UsdAmount } from './ids.ts'
+import { Address, ChainKey, Hex, Instant, Text, TokenAmount, UsdAmount } from './ids.ts'
 import { LimitView, WalletLimits } from './limits.ts'
 import { Operation } from './operations.ts'
 import { Recipient, ServiceRule } from './services.ts'
@@ -71,6 +71,47 @@ export type PolicyChange = typeof PolicyChange.Type
 export const PolicyChangeDecision = Schema.Struct({ decision: Schema.Literals(['applied', 'dismissed']) })
 export type PolicyChangeDecision = typeof PolicyChangeDecision.Type
 
+/**
+ * `POST /api/deposits`: a one-off Relay deposit address. Whatever is sent there from `from`, in `asset`, arrives in the
+ * owner's account on Base as `receive`, usually within seconds. The address serves this quote only.
+ */
+export const DepositRequest = Schema.Struct({
+  from: Schema.Literals(['base', 'arbitrum', 'ethereum']),
+  asset: Schema.Literals(['ETH', 'USDC']),
+  /** Decimal amount of `asset` the sender will send. */
+  amount: TokenAmount,
+  receive: Schema.Literals(['ETH', 'USDC']),
+})
+export type DepositRequest = typeof DepositRequest.Type
+
+export const DepositAddress = Schema.Struct({
+  requestId: Text(80),
+  depositAddress: Address,
+  from: DepositRequest.fields.from,
+  asset: DepositRequest.fields.asset,
+  amount: TokenAmount,
+  receive: DepositRequest.fields.receive,
+  /** Decimal amount the owner receives on Base. */
+  expectedOut: TokenAmount,
+  feesUsd: UsdAmount,
+  /** Where it lands: the owner's own address on Base. */
+  recipient: Address,
+  timeEstimateSeconds: Schema.Int,
+})
+export type DepositAddress = typeof DepositAddress.Type
+
+/**
+ * `GET /api/deposits/:depositAddress`: Relay's progress for one deposit address. Relay records the fill as its own
+ * request whose user is the deposit address, so the address, not the quote's request id, is what is followed.
+ */
+export const DepositStatus = Schema.Struct({
+  depositAddress: Address,
+  /** `unknown`: Relay's keyless status API did not answer (it rate-limits); the owner's balance shows the arrival. */
+  status: Schema.Literals(['waiting', 'pending', 'success', 'refunded', 'failed', 'unknown']),
+  txHashes: Schema.Array(Hex),
+})
+export type DepositStatus = typeof DepositStatus.Type
+
 /** `GET /api/oauth/requests/:id` for the consent page, and the owner's answer. */
 export const OAuthRequestView = Schema.Struct({
   id: Text(80),
@@ -119,6 +160,8 @@ export const OwnerRoutes = {
     response: PolicyChange,
   },
   revokeAll: { method: 'POST', path: '/api/revoke', response: Me },
+  deposit: { method: 'POST', path: '/api/deposits', request: DepositRequest, response: DepositAddress },
+  depositStatus: { method: 'GET', path: '/api/deposits/:depositAddress', response: DepositStatus },
 } as const
 
 /** The JSON error envelope of every route. */

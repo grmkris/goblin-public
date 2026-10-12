@@ -252,21 +252,44 @@ export interface SwapResult {
   readonly approvalTxHash?: string
 }
 
-const ensureApproval = async (input: ExecuteSwapInput): Promise<string | undefined> => {
+const readAllowance = async (input: ExecuteSwapInput): Promise<bigint> => {
   const { swap } = input
-  if (swap.sell.address === NATIVE) return undefined
   const data = encodeFunctionData({
     abi: ERC20,
     functionName: 'allowance',
     args: [toAddress(swap.agent), toAddress(swap.approvalAddress)],
   })
   const result = await input.rpc('eth_call', [{ to: swap.sell.address, data }, 'latest'])
-  const current = decodeFunctionResult({ abi: ERC20, functionName: 'allowance', data: toHex(String(result)) })
-  if (current >= BigInt(swap.sellAmount)) return undefined
+  return decodeFunctionResult({ abi: ERC20, functionName: 'allowance', data: toHex(String(result)) })
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Waits until the RPC shows the new approval: a load-balanced node behind the approval's block would answer the swap's
+ * simulation with a revert. Giving up is a plain failure; nothing of the swap itself is signed yet.
+ */
+const untilApproved = async (input: ExecuteSwapInput, amount: bigint): Promise<void> => {
+  for (let attempt = 0; attempt < (input.wait?.attempts ?? 10); attempt += 1) {
+    // expected: an unanswered read counts as not visible yet; the loop asks again.
+    if ((await readAllowance(input).catch(() => 0n)) >= amount) return
+    await (input.wait?.sleep ?? pause)(input.wait?.intervalMs ?? 1000)
+  }
+  throw new TransferError(
+    'rpc_unavailable',
+    'The approval landed but the chain did not show it in time; nothing was swapped. Try again.',
+  )
+}
+
+const ensureApproval = async (input: ExecuteSwapInput): Promise<string | undefined> => {
+  const { swap } = input
+  if (swap.sell.address === NATIVE) return undefined
+  const amount = BigInt(swap.sellAmount)
+  if ((await readAllowance(input)) >= amount) return undefined
   const approve = encodeFunctionData({
     abi: ERC20,
     functionName: 'approve',
-    args: [toAddress(swap.approvalAddress), BigInt(swap.sellAmount)],
+    args: [toAddress(swap.approvalAddress), amount],
   })
   const sent = await sendSimulated(
     { ...input, chain: BASE_KEY },
@@ -278,6 +301,7 @@ const ensureApproval = async (input: ExecuteSwapInput): Promise<string | undefin
       'The approval did not confirm.',
       sent.status === 'pending',
     )
+  await untilApproved(input, amount)
   return sent.hash
 }
 
