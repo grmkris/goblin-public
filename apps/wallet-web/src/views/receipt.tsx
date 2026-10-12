@@ -17,6 +17,7 @@ import {
   timeUntil,
   txUrl,
 } from '../ui/index.ts'
+import { byMicros, microsOf } from './money.ts'
 import { deliveryStep, paymentStep, type Step } from './receipt-model.ts'
 
 const KIND = {
@@ -102,7 +103,7 @@ function Approval({
 function LimitsLeft({ limits }: { readonly limits: readonly LimitView[] }) {
   const metered = limits
     .filter((limit) => limit.remaining !== undefined)
-    .toSorted((a, b) => Number(a.remaining) - Number(b.remaining))
+    .toSorted((a, b) => byMicros(microsOf(a.remaining ?? '0'), microsOf(b.remaining ?? '0')))
   const tightest = metered.slice(0, 2)
   if (tightest.length === 0) return null
   return (

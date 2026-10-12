@@ -1,33 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { spendableUsd, sumUsd } from './money.ts'
+import { byMicros, isStable, microsOf, minMicros, sumMicros, unitsOf, usdOf } from './money.ts'
 
-const row = (balance: string, symbol = 'USDC') => ({
-  chain: 'base' as const,
-  symbol,
-  token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  decimals: 6,
-  balance,
-  holder: 'agent' as const,
-  address: '0x9aC3e1D5b7F20846c1A9d3E5f7B2048a6C1e9D3b',
-})
-
-describe('sumUsd', () => {
-  it('adds exact decimals', () => {
-    expect(sumUsd([row('0.1'), row('0.2')])).toBe('0.3')
-    expect(sumUsd([row('12.5'), row('0.007'), row('5')])).toBe('17.507')
-    expect(sumUsd([])).toBe('0')
+describe('micro-dollars', () => {
+  it('adds exact decimals without floating point', () => {
+    expect(usdOf(sumMicros([microsOf('0.1'), microsOf('0.2')]))).toBe('0.3')
+    expect(usdOf(sumMicros([microsOf('12.5'), microsOf('0.007'), microsOf('5')]))).toBe('17.507')
+    expect(usdOf(sumMicros([]))).toBe('0')
+  })
+  it('keeps a micro-charge exact and a large balance whole', () => {
+    expect(microsOf('0.007')).toBe(7_000n)
+    expect(usdOf(microsOf('0.000001'))).toBe('0.000001')
+    expect(usdOf(microsOf('123456789.123456'))).toBe('123456789.123456')
+  })
+  it('cuts digits past the sixth decimal instead of rounding them up', () => {
+    expect(microsOf('0.0000019')).toBe(1n)
+    expect(microsOf('0.0000009')).toBe(0n)
+  })
+  it('finds the smallest and sorts', () => {
+    expect(minMicros([5n, 2n, 9n])).toBe(2n)
+    expect(minMicros([])).toBeUndefined()
+    expect([3n, 1n, 2n].toSorted(byMicros)).toEqual([1n, 2n, 3n])
   })
 })
 
-describe('dollars are stablecoins only', () => {
-  it('leaves ETH out of the dollars held and the spendable figure', () => {
-    expect(sumUsd([row('10.162533'), row('0.0054', 'ETH'), row('2', 'USDC.e')])).toBe('12.162533')
-    expect(
-      spendableUsd([
-        { symbol: 'ETH', spendable: '0.006' },
-        { symbol: 'USDC', spendable: '10.155533' },
-      ]),
-    ).toBe('10.155533')
-    expect(spendableUsd([{ symbol: 'ETH', spendable: '1' }])).toBe('0')
+describe('what counts as dollars', () => {
+  it('counts the stablecoins and leaves ETH out', () => {
+    expect(isStable('USDC')).toBe(true)
+    expect(isStable('USDC.e')).toBe(true)
+    expect(isStable('pathUSD')).toBe(true)
+    expect(isStable('ETH')).toBe(false)
+  })
+  it('reads gas in its own 18 decimals', () => {
+    expect(unitsOf('0.000597817944927921', 18)).toBe(597_817_944_927_921n)
+    expect(unitsOf('0', 18)).toBe(0n)
   })
 })

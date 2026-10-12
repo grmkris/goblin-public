@@ -1,6 +1,7 @@
 // The pieces every setup action shares, in onboarding and on Home: one signing action's pending and error state, the
 // line that says what failed, and the USDC-per-hour input an allowance starts from.
 import { Alert, AlertDescription, Field, FieldDescription, FieldError, FieldLabel, Input } from '@goblin/ui'
+import { usdToMicros } from '@goblin/wallet/amounts'
 import { useState } from 'react'
 import { errorText } from '../ui/async.tsx'
 import { formatUsd } from '../ui/index.ts'
@@ -11,7 +12,7 @@ const USD = /^(?:0|[1-9]\d{0,8})(?:\.\d{1,6})?$/u
 export const DEFAULT_PER_HOUR = '20'
 
 /** A positive USDC amount with at most six decimals: what `AllowancePrepare.perHour` takes. */
-export const isPerHour = (value: string): boolean => USD.test(value) && Number(value) > 0
+export const isPerHour = (value: string): boolean => USD.test(value) && usdToMicros(value) > 0n
 
 /** One signing action: pending while it runs, the server's or the wallet's sentence when it fails. */
 export function useAction(run: () => Promise<unknown>) {

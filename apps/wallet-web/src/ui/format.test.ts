@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatToken, formatUsd, shortAddress, timeAgo, timeUntil } from './format.ts'
+import {
+  formatToken,
+  formatTokenCompact,
+  formatUsd,
+  formatUsdCompact,
+  shortAddress,
+  timeAgo,
+  timeUntil,
+} from './format.ts'
 
 describe('formatUsd', () => {
   it('shows exactly what was charged', () => {
@@ -19,6 +27,34 @@ describe('formatToken', () => {
   it('drops trailing zeros', () => {
     expect(formatToken('12.500000')).toBe('12.5')
     expect(formatToken('12')).toBe('12')
+  })
+})
+
+describe('formatUsdCompact', () => {
+  it('shows a balance in cents, cut down rather than rounded up', () => {
+    expect(formatUsdCompact('10.155533')).toBe('$10.15')
+    expect(formatUsdCompact('1234.999999')).toBe('$1,234.99')
+    expect(formatUsdCompact('5')).toBe('$5.00')
+    expect(formatUsdCompact('0')).toBe('$0.00')
+  })
+  it('never turns a positive amount below a cent into zero', () => {
+    expect(formatUsdCompact('0.007')).toBe('$0.007')
+    expect(formatUsdCompact('0.000001')).toBe('$0.000001')
+    expect(formatUsdCompact('0.0123')).toBe('$0.01')
+  })
+})
+
+describe('formatTokenCompact', () => {
+  it('keeps four significant digits of a small quantity', () => {
+    expect(formatTokenCompact('0.000597817944927921')).toBe('0.0005978')
+    expect(formatTokenCompact('0.005399666120503803')).toBe('0.005399')
+    expect(formatTokenCompact('0.0054')).toBe('0.0054')
+  })
+  it('keeps four decimals of a larger one and drops trailing zeros', () => {
+    expect(formatTokenCompact('1.23456789')).toBe('1.2345')
+    expect(formatTokenCompact('12.500000')).toBe('12.5')
+    expect(formatTokenCompact('1500')).toBe('1,500')
+    expect(formatTokenCompact('0')).toBe('0')
   })
 })
 
