@@ -4,6 +4,7 @@ import { Address, ChainKey, Hex, Instant, Text, UsdAmount } from './ids.ts'
 import { LimitView, WalletLimits } from './limits.ts'
 import { Operation } from './operations.ts'
 import { Recipient, ServiceRule } from './services.ts'
+import { WalletStatusResult } from './status.ts'
 
 /**
  * The owner API the web app calls with `authorization: Bearer <Privy access token>`. Every route acts for the signed-in
@@ -70,6 +71,7 @@ export const OAuthDecision = Schema.Struct({ decision: Schema.Literals(['approve
 export const OwnerRoutes = {
   config: { method: 'GET', path: '/api/config', response: Config },
   me: { method: 'GET', path: '/api/me', response: Me },
+  status: { method: 'GET', path: '/api/status', response: WalletStatusResult },
   createAgent: { method: 'POST', path: '/api/onboarding/agent', response: Me },
   upgrade: { method: 'POST', path: '/api/onboarding/upgrade', request: UpgradeRequest, response: Operation },
   allowancePrepare: {

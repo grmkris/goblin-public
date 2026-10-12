@@ -1,6 +1,16 @@
 import * as Schema from 'effect/Schema'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SERVICES, OperationId, PaidFetchInput, ServiceRule, TOOLS, UsdAmount, WalletStatus } from './index.ts'
+import {
+  canonicalJson,
+  termsHash,
+  DEFAULT_SERVICES,
+  OperationId,
+  PaidFetchInput,
+  ServiceRule,
+  TOOLS,
+  UsdAmount,
+  WalletStatus,
+} from './index.ts'
 
 const decode = <S extends Schema.Decoder<unknown>>(schema: S, value: unknown) => Schema.decodeUnknownExit(schema)(value)
 
@@ -34,5 +44,24 @@ describe('contract', () => {
     for (const service of DEFAULT_SERVICES) expect(decode(ServiceRule, service)._tag).toBe('Success')
     expect(TOOLS.paidFetch).toBe('paid_fetch')
     expect(TOOLS.status).toBe('wallet_status')
+  })
+  it('hashes terms canonically, whatever the key order', async () => {
+    expect(canonicalJson({ b: 1, a: { d: [2, 'x'], c: null }, z: undefined })).toBe(
+      '{"a":{"c":null,"d":[2,"x"]},"b":1}',
+    )
+    const terms = {
+      kind: 'paid_fetch',
+      chain: 'base',
+      rail: 'x402',
+      subject: 'exa.search',
+      token: { symbol: 'USDC', address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', decimals: 6 },
+      amount: '0.007',
+      amountUsd: '0.007',
+      recipient: '0x6d6E695b09861467c7d462f5AAF31cF3540B9192',
+      expiresAt: '2026-10-12T06:00:00Z',
+    } as const
+    const reordered = { ...terms, token: { decimals: 6, address: terms.token.address, symbol: 'USDC' } }
+    expect(await termsHash(terms)).toBe(await termsHash(reordered))
+    expect(await termsHash(terms)).toMatch(/^0x[0-9a-f]{64}$/u)
   })
 })
