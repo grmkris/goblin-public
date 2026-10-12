@@ -112,10 +112,11 @@ describe('a float run', () => {
     })
     const first = h.run()
     const second = h.run()
-    expect(await second).toEqual({})
+    // Either may claim the flight: the one that does waits at the gate, the other finds it in flight and returns.
+    expect(await Promise.race([first, second])).toEqual({})
     expect((await h.ledger.floatState()).refilling).toBe(true)
     gate.open?.()
-    expect(await first).toEqual({})
+    expect(await Promise.all([first, second])).toEqual([{}, {}])
     expect(h.sent).toHaveLength(1)
   })
 
