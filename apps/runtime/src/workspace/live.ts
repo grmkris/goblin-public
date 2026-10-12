@@ -22,6 +22,7 @@ import { BACKGROUND } from '../pi/context.ts'
 import { PiSessions } from '../pi/sessions.ts'
 import { promiseWith } from '../runtime/boundary.ts'
 import { Changes } from '../runtime/changes.ts'
+import { Sidebar } from '../sidebar/service.ts'
 import { Topics } from '../topics/service.ts'
 import { type Busy, activityOf, moveActivity } from './feed.ts'
 import { Workspace, type WorkspaceEvent } from './service.ts'
@@ -38,6 +39,7 @@ type Sources = {
   readonly receipts: Receipts['Service']
   readonly decisions: Decisions['Service']
   readonly notices: Notices['Service']
+  readonly sidebar: Sidebar['Service']
 }
 
 const sources = Effect.gen(function* () {
@@ -52,6 +54,7 @@ const sources = Effect.gen(function* () {
     receipts: yield* Receipts,
     decisions: yield* Decisions,
     notices: yield* Notices,
+    sidebar: yield* Sidebar,
   } satisfies Sources
 })
 
@@ -71,7 +74,7 @@ const describe = ({ chats, conversations }: Sources, ids: readonly string[]) =>
       views.flatMap((view) => (Option.isNone(view) ? [] : [{ type: 'conversation', conversation: view.value }])),
   )
 
-/** The owner's decisions, Home layout and connections' tool lists, as `followTopics` follows the rest. */
+/** The owner's decisions, Home layout, sidebar pins and connections' tool lists, as `followTopics` follows the rest. */
 const followOwnerState = (
   changes: Changes['Service'],
   read: Sources,
@@ -93,6 +96,12 @@ const followOwnerState = (
       follow(
         'workspace.home',
         Effect.map(read.home.layout, (home): WorkspaceChange[] => [{ type: 'home', home }]),
+      ),
+    ),
+    changes.on('sidebar.changed', () =>
+      follow(
+        'workspace.sidebar',
+        Effect.map(read.sidebar.read, (sidebar): WorkspaceChange[] => [{ type: 'sidebar', sidebar }]),
       ),
     ),
   ])
@@ -230,6 +239,7 @@ export const WorkspaceLive: Layer.Layer<
   | Receipts
   | Decisions
   | Notices
+  | Sidebar
 > = Layer.effect(
   Workspace,
   Effect.gen(function* () {
@@ -264,6 +274,7 @@ export const WorkspaceLive: Layer.Layer<
         receipts: yield* read.receipts.list(),
         proposals: yield* read.decisions.list,
         notifications: yield* read.notices.views,
+        sidebar: yield* read.sidebar.read,
       }
     })
     const stream: Stream.Stream<WorkspaceEvent, AppError> = Stream.unwrap(

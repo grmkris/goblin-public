@@ -4,8 +4,16 @@ import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
 import { requirePlan } from '../billing/gates.ts'
 import { connectedFromStart } from '../onboarding/program.ts'
+import { Changes } from '../runtime/changes.ts'
 import { Events, McpServers, Resident } from './service.ts'
 import type { Stage } from './suggested.ts'
+
+declare module '../runtime/changes.ts' {
+  interface ChangeTopics {
+    /** The owner removed a connection: what was kept for it elsewhere (its sidebar pin, ADR 0053) goes too. */
+    'mcp.removed': { readonly connectionId: string }
+  }
+}
 
 /** The owner's servers, each with the health of its Events. */
 export const ownerServers = Effect.gen(function* () {
@@ -19,11 +27,12 @@ export const ownerServers = Effect.gen(function* () {
 /** The suggested servers the owner has not added yet. */
 export const suggestedServers = (stage: Stage | undefined) => McpServers.use((servers) => servers.suggested(stage))
 
-/** Removes a server, its Events subscriptions first. */
+/** Removes a server, its Events subscriptions first, then tells the change bus it is gone. */
 export const removeOwnerServer = (connectionId: string) =>
   Effect.gen(function* () {
     yield* (yield* Events).disableServer(connectionId)
     yield* (yield* McpServers).remove(connectionId)
+    yield* (yield* Changes).publish('mcp.removed', { connectionId })
     return null
   })
 

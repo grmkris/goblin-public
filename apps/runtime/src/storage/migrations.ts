@@ -9,6 +9,7 @@ import { NOTICE_MIGRATIONS } from './migrations/notices.ts'
 import { ONBOARDING_MIGRATIONS } from './migrations/onboarding.ts'
 import { PAY_MIGRATIONS } from './migrations/pay.ts'
 import { SETUP_MIGRATIONS } from './migrations/setup.ts'
+import { SIDEBAR_MIGRATIONS } from './migrations/sidebar.ts'
 import { Internal } from '../http/errors.ts'
 import { assertApplicationTable } from './vendor.ts'
 
@@ -22,6 +23,7 @@ const MIGRATIONS: readonly Migration[] = [
   ...MCP_MIGRATIONS,
   ...ONBOARDING_MIGRATIONS,
   ...PAY_MIGRATIONS,
+  ...SIDEBAR_MIGRATIONS,
 ].toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 
 /** The migration keys in the order they apply. */

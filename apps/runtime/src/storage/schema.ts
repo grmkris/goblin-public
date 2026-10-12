@@ -1,6 +1,7 @@
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 export { appChatOperations } from './chat-operations.ts'
 export { appHome, appHomeOperations } from './home-schema.ts'
+export { appSidebar } from './sidebar.ts'
 
 /** Pi owns conversations; these tables hold application state only. Every name keeps the `app_` prefix. */
 export const appMetadata = sqliteTable('app_metadata', {

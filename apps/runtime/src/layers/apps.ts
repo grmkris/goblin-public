@@ -30,6 +30,7 @@ import { PiSessions } from '../pi/sessions.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
+import { type Sidebar, SidebarLive } from '../sidebar/service.ts'
 
 /** The owner's Apps over the agent's database: each write tells the change bus which Apps it changed. */
 export const appsOver = (
@@ -118,8 +119,9 @@ export const AppRegistryLive: Layer.Layer<Apps, never, AgentInput | Db | Changes
   }),
 )
 
-/** The agent's apps and the owner's files after the start, native over the one engine the agent object made. */
-export const AppsLive: Layer.Layer<AppEngine | Files, never, AgentInput | KeyedLock> = Layer.mergeAll(
-  AgentAppsLive,
-  FilesLive,
-)
+/**
+ * The agent's apps and the owner's files after the start, native over the one engine the agent object made, and the
+ * owner's sidebar pins (ADR 0053), which follow the Apps and connections they point at.
+ */
+export const AppsLive: Layer.Layer<AppEngine | Files | Sidebar, never, AgentInput | KeyedLock | Db | Changes> =
+  Layer.mergeAll(AgentAppsLive, FilesLive, SidebarLive)

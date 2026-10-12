@@ -22,6 +22,7 @@ import { Invocations, Personas } from '../src/personas/service.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
 import { Changes, makeChanges } from '../src/runtime/changes.ts'
 import { Notices } from '../src/notices/service.ts'
+import { Sidebar } from '../src/sidebar/service.ts'
 import { appConversations } from '../src/storage/schema.ts'
 import { TopicRegistry } from '../src/topics/registry.ts'
 import { Topics } from '../src/topics/service.ts'
@@ -82,6 +83,7 @@ const services = () => {
     stub(Apps, { list: Effect.succeed([]) }),
     stub(Decisions, { list: Effect.succeed([]) }),
     stub(Notices, { views: Effect.succeed([]) }),
+    stub(Sidebar, { read: Effect.succeed({ revision: 0, pins: [], seen: [] }) }),
     stub(PiSessions, { pi: Effect.succeed(pi) }),
   )
   const layer = Layer.provideMerge(WorkspaceLive, Layer.merge(lane, sources))

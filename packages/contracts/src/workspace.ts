@@ -5,6 +5,7 @@ import { DecisionProposal } from './decisions.ts'
 import { HomeLayout } from './home.ts'
 import { NotificationView } from './notices.ts'
 import { PersonaInvocationView, PersonaView } from './personas.ts'
+import { SidebarPins } from './sidebar.ts'
 import { OrganizeReceipt, TopicView } from './topics.ts'
 
 /** The workspace feed's first event: every conversation and App, and the conversations not idle. */
@@ -24,6 +25,8 @@ export const WorkspaceSnapshot = Schema.Struct({
   proposals: Schema.optional(Schema.Array(DecisionProposal)),
   /** The newest notifications of the last thirty days (ADR 0041), newest first. */
   notifications: Schema.optional(Schema.Array(NotificationView)),
+  /** The owner's pinned servers and App views (ADR 0053). */
+  sidebar: Schema.optional(SidebarPins),
 })
 export type WorkspaceSnapshot = typeof WorkspaceSnapshot.Type
 
@@ -45,5 +48,7 @@ export const WorkspaceChange = Schema.Union([
   Schema.Struct({ type: Schema.Literal('notification'), notification: NotificationView }),
   /** A connection's tools changed (ADR 0042): `digest` names the new list, so its tool list is read again. */
   Schema.Struct({ type: Schema.Literal('tools'), connectionId: Schema.String, digest: Schema.String }),
+  /** The owner's pins as they are now (ADR 0053): a pin, unpin or move on any device, or a server or App gone. */
+  Schema.Struct({ type: Schema.Literal('sidebar'), sidebar: SidebarPins }),
 ])
 export type WorkspaceChange = typeof WorkspaceChange.Type

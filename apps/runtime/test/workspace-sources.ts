@@ -11,6 +11,7 @@ import { Home } from '../src/home/service.ts'
 import { Receipts } from '../src/organize/service.ts'
 import { Invocations, Personas } from '../src/personas/service.ts'
 import { PiSessions } from '../src/pi/sessions.ts'
+import { Sidebar } from '../src/sidebar/service.ts'
 import { Topics } from '../src/topics/service.ts'
 import { Workspace, type WorkspaceEvent } from '../src/workspace/service.ts'
 import { stub } from './http/api/fixture.ts'
@@ -38,6 +39,7 @@ export const emptySources = Layer.mergeAll(
   stub(Personas, { list: Effect.succeed([]) }),
   stub(Invocations, { live: Effect.succeed([]) }),
   stub(Receipts, { list: () => Effect.succeed([]) }),
+  stub(Sidebar, { read: Effect.succeed({ revision: 0, pins: [], seen: [] }) }),
   stub(PiSessions, { pi: Effect.succeed(pi) }),
 )
 
