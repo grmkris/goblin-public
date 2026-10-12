@@ -6,7 +6,6 @@ export { formatUsd, PERIOD_LABEL, shortAddress, timeAgo, timeUntil } from './for
 export { LAYERS, LayerBadge } from './layer.tsx'
 export { LimitMeter } from './limit-meter.tsx'
 export { ReceiptRow } from './receipt-row.tsx'
-export { StatusPill, statusLabel } from './status-pill.tsx'
-export { txUrl } from './chains.ts'
+export { StatusPill } from './status-pill.tsx'
 export { CopyButton } from './copy-button.tsx'
 export { ConfirmSheet } from './confirm-sheet.tsx'

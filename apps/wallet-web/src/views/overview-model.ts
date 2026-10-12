@@ -12,18 +12,18 @@ import type {
 import { isStable, microsOf, minMicros, unitsOf } from './money.ts'
 
 /** An amount the wallet read, or one it could not. */
-export type Figure = { readonly known: true; readonly micros: bigint } | { readonly known: false }
+type Figure = { readonly known: true; readonly micros: bigint } | { readonly known: false }
 
 const known = (micros: bigint): Figure => ({ known: true, micros })
 const UNKNOWN: Figure = { known: false }
 
 /** The order networks are listed in: Base first, where the paid services settle. */
-export const NETWORK_ORDER: readonly ChainKey[] = ['base', 'arbitrum', 'ethereum', 'tempo']
+const NETWORK_ORDER: readonly ChainKey[] = ['base', 'arbitrum', 'ethereum', 'tempo']
 const PRIMARY: ChainKey = 'base'
 const EVM: ReadonlySet<ChainKey> = new Set(['base', 'arbitrum', 'ethereum'])
 const NO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
-export const hasAgent = (status: WalletStatusResult): boolean => status.agent.address !== NO_ADDRESS
+const hasAgent = (status: WalletStatusResult): boolean => status.agent.address !== NO_ADDRESS
 
 // --- Balances, grouped by network -------------------------------------------------------------------------------
 
@@ -118,13 +118,13 @@ export function balanceGroups(status: WalletStatusResult): readonly NetworkBalan
 
 // --- What the agent can spend -------------------------------------------------------------------------------------
 
-export type Allowance =
+type Allowance =
   | { readonly kind: 'none' }
   /** The owner has an allowance on this network but its enforcer could not be read. */
   | { readonly kind: 'unknown' }
   | { readonly kind: 'active'; readonly remaining: bigint; readonly limit: LimitView }
 
-export interface NetworkSpend {
+interface NetworkSpend {
   readonly chain: ChainKey
   /** The stablecoin the agent pays with on this network. */
   readonly symbol: string
@@ -241,7 +241,7 @@ function fundsConstraint(spend: NetworkSpend): Constraint {
 }
 
 /** What is available now on one network: what the agent can reach, held back by every limit that applies there. */
-export function availableOn(spend: NetworkSpend, limits: readonly LimitView[]): NetworkAvailable {
+function availableOn(spend: NetworkSpend, limits: readonly LimitView[]): NetworkAvailable {
   if (!spend.reachable.known) return { spend, available: UNKNOWN, constraint: undefined }
   let micros = spend.reachable.micros
   let constraint = fundsConstraint(spend)
@@ -256,7 +256,7 @@ export function availableOn(spend: NetworkSpend, limits: readonly LimitView[]): 
 }
 
 /** The smallest per-payment cap on `chain`, from any layer. */
-export function perPaymentOn(limits: readonly LimitView[], chain: ChainKey): LimitView | undefined {
+function perPaymentOn(limits: readonly LimitView[], chain: ChainKey): LimitView | undefined {
   const caps = limits.filter((limit) => limit.period === 'call' && appliesTo(limit, chain))
   const smallest = minMicros(caps.map((limit) => microsOf(limit.limit)))
   return caps.find((limit) => microsOf(limit.limit) === smallest)
@@ -300,7 +300,7 @@ function emptyReason({ primary, spends, groups }: BlockerInput): Blocker {
 }
 
 /** Why the agent cannot spend on its network now, or undefined when it can. */
-export function blockerOf(input: BlockerInput): Blocker | undefined {
+function blockerOf(input: BlockerInput): Blocker | undefined {
   if (!hasAgent(input.status)) return { kind: 'no_agent' }
   const ended = accessEnded(input)
   if (ended !== undefined) return ended
@@ -336,7 +336,7 @@ function primaryOf(options: readonly NetworkAvailable[]): NetworkAvailable {
   )
 }
 
-export interface SpendingOptions {
+interface SpendingOptions {
   readonly now?: number
   /** The owner's per-network setup (Home has it): tells an allowance that could not be read from none at all. */
   readonly setups?: readonly ChainSetup[]

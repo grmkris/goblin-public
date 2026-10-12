@@ -37,7 +37,7 @@ export const STEP_DOT: Record<Step['tone'], string> = {
 }
 
 /** The explorer page of the operation's transaction, when one was recorded. */
-export const transactionUrl = ({ payment, terms }: Operation): string | undefined =>
+const transactionUrl = ({ payment, terms }: Operation): string | undefined =>
   payment?.explorerUrl ?? (payment?.txHash === undefined ? undefined : txUrl(terms.chain, payment.txHash))
 
 function Detail({ label, children }: { readonly label: string; readonly children: ReactNode }) {

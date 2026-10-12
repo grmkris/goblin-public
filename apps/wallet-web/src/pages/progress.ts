@@ -3,7 +3,7 @@ import { ownerOnBase } from './deposit-model.ts'
 
 export type StepId = 'agent' | 'fund' | 'upgrade' | 'allowance' | 'connect'
 
-export interface SetupState {
+interface SetupState {
   /** An MCP client is connected. */
   readonly connected: boolean
   /** The owner chose to connect later. */
