@@ -33,7 +33,7 @@ export function PinMenuItem({ pin }: { readonly pin: SidebarPin }) {
 export function PinButton({ pin }: { readonly pin: SidebarPin }) {
   const { pinned, label, toggle } = usePinToggle(pin)
   return (
-    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} aria-pressed={pinned} onClick={toggle}>
+    <Button variant="ghost" size="icon-sm" aria-label={label} title={label} onClick={toggle}>
       {pinned ? <PinOffIcon /> : <PinIcon />}
     </Button>
   )

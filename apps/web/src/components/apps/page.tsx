@@ -236,11 +236,7 @@ function AppConversation({ view, onClose }: { readonly view: ConversationView; r
   const channel = channelOf(view.id, conversations, topics)
   const items = useMemo(() => (isChannel(view) ? [] : [{ kind: 'thread' as const, id: view.id }]), [view])
   return (
-    <aside
-      className="app-chat-panel"
-      aria-label={`Conversation: ${threadTitle(view)}`}
-      data-app-overlay
-    >
+    <aside className="app-chat-panel" aria-label={`Conversation: ${threadTitle(view)}`} data-app-overlay>
       <PanelProvider channel={channel} items={items}>
         <ChatView
           view={view}
