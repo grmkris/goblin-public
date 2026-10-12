@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ServerSource } from '@goblin/contracts'
-import { addAndConnectMutation, serversQuery } from './queries.ts'
+import { addAndConnectMutation, connectMutation, serversQuery } from './queries.ts'
 
 /**
  * The owner's label of a connection by its id (ADR 0041), for anything that names one: the id until the list is read,
@@ -9,6 +9,18 @@ import { addAndConnectMutation, serversQuery } from './queries.ts'
 export function useConnectionLabels(): (connectionId: string) => string {
   const servers = useQuery(serversQuery).data
   return (connectionId) => servers?.find((server) => server.connectionId === connectionId)?.label ?? connectionId
+}
+
+/**
+ * Signs a connection the owner already has in, from wherever they said yes: off to its sign-in, or connected at once
+ * if it needs none.
+ */
+export function useConnectNow() {
+  const connecting = useMutation(connectMutation).mutateAsync
+  return async (connectionId: string): Promise<void> => {
+    const { authorizationUrl } = await connecting(connectionId)
+    if (authorizationUrl !== undefined) window.location.assign(authorizationUrl)
+  }
 }
 
 /** How a connection is added: the owner's label for it (a free one is chosen when left out) and where it was found. */

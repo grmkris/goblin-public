@@ -24,7 +24,7 @@ import {
   Receipt,
 } from '@goblin/ui'
 import { serversQuery, stepUpMutation, toolGrantMutation, toolsQuery } from '../mcp/queries.ts'
-import { useAddAndConnect, useConnectionLabels } from '../mcp/hooks.ts'
+import { useAddAndConnect, useConnectNow, useConnectionLabels } from '../mcp/hooks.ts'
 import { messageOf } from '../lib/query/app-error.ts'
 import { answerText, type Interaction, interactionOperation } from '../lib/interactions.ts'
 import { setWorkspaceTopicSetupMutation } from '../lib/workspace/mutations.ts'
@@ -133,13 +133,19 @@ function ServerRequestCard({
       )
       if (yes) await addAndConnect(endpoint, name)
     })
+  const connectNow = useConnectNow()
+  // One the owner has but is not signed in to (a connection every account starts with, say) is signed in first.
   const use = (connection: ServerView) =>
-    void replying(() =>
-      onAnswer(
-        `Use ${connection.label} (${connection.connectionId}), which is already connected to that server.`,
+    void replying(async () => {
+      const signedIn = connection.status === 'connected'
+      await onAnswer(
+        signedIn
+          ? `Use ${connection.label} (${connection.connectionId}), which is already connected to that server.`
+          : `Signing in to ${connection.label} (${connection.connectionId}); continue once it is connected.`,
         interactionOperation(interaction),
-      ),
-    )
+      )
+      if (!signedIn) await connectNow(connection.connectionId)
+    })
   const [first] = mine
   return (
     <AskCard aria-label="Server request">
@@ -168,7 +174,7 @@ function ServerRequestCard({
               Add another connection
             </Button>
             <Button disabled={busy} onClick={() => use(first)}>
-              Use {first.label}
+              {first.status === 'connected' ? `Use ${first.label}` : `Connect ${first.label}`}
             </Button>
           </AskCardActions>
         </>

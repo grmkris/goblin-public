@@ -45,7 +45,7 @@ export interface RuntimeEnv {
    * unset, Alibaba's example rates apply to every model.
    */
   readonly MODEL_CREDIT_RATES?: string
-  /** JSON list of outbound MCP servers: `[{ connectionId, endpoint, issuer?, resource? }]`. */
+  /** JSON list of outbound MCP servers every account has: `[{ connectionId, endpoint, label?, issuer?, resource? }]`. */
   readonly MCP_SERVERS?: string
   /** 32 random bytes, base64: encrypts outbound OAuth credentials at rest. */
   readonly CREDENTIAL_KEY: string
