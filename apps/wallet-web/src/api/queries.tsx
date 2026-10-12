@@ -154,15 +154,6 @@ export function useRevokeAll() {
   })
 }
 
-export function useCreateAgent() {
-  const api = useApi()
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: api.createAgent,
-    onSuccess: (me) => client.setQueryData(['me'], me),
-  })
-}
-
 export function useDeposit() {
   const api = useApi()
   return useMutation({ mutationFn: (request: DepositRequest) => api.deposit(request) })
