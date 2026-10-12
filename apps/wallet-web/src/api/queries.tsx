@@ -55,6 +55,10 @@ export const useConnections = () => {
   const api = useApi()
   return useQuery({ queryKey: ['connections'], queryFn: api.connections })
 }
+export const usePolicyChanges = () => {
+  const api = useApi()
+  return useQuery({ queryKey: ['policy-changes'], queryFn: api.policyChanges })
+}
 export const useOAuthRequest = (id: string) => {
   const api = useApi()
   return useQuery({ queryKey: ['oauth-request', id], queryFn: () => api.oauthRequest(id), retry: false })
@@ -78,6 +82,16 @@ export function useDecide(operationId: string) {
     onSuccess: async (view) => {
       client.setQueryData(['approval', operationId], view)
       await client.invalidateQueries({ queryKey: ['activity'] })
+    },
+  })
+}
+export function useDecidePolicyChange(id: string) {
+  const api = useApi()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (decision: 'applied' | 'dismissed') => api.decidePolicyChange(id, decision),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ['policy-changes'] })
     },
   })
 }

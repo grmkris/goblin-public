@@ -74,7 +74,16 @@ const reads = (
   call: Call,
 ): Pick<
   WalletApi,
-  'me' | 'status' | 'limits' | 'activity' | 'approval' | 'services' | 'addressBook' | 'connections' | 'oauthRequest'
+  | 'me'
+  | 'status'
+  | 'limits'
+  | 'activity'
+  | 'approval'
+  | 'services'
+  | 'addressBook'
+  | 'connections'
+  | 'oauthRequest'
+  | 'policyChanges'
 > => ({
   me: () => call(OwnerRoutes.me),
   status: () => call(OwnerRoutes.status),
@@ -85,16 +94,21 @@ const reads = (
   addressBook: () => call(OwnerRoutes.addressBook),
   connections: () => call(OwnerRoutes.connections),
   oauthRequest: (id) => call(OwnerRoutes.oauthRequest, { params: { id } }),
+  policyChanges: () => call(OwnerRoutes.policyChanges),
 })
 
 const writes = (
   call: Call,
-): Pick<WalletApi, 'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll'> => ({
+): Pick<
+  WalletApi,
+  'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll' | 'decidePolicyChange'
+> => ({
   createAgent: () => call(OwnerRoutes.createAgent),
   setLimits: (limits) => call(OwnerRoutes.setLimits, { body: limits }),
   decide: (operationId, decision) => call(OwnerRoutes.decide, { params: { operationId }, body: decision }),
   disconnect: (id) => call(OwnerRoutes.disconnect, { params: { id } }),
   oauthDecide: (id, decision) => call(OwnerRoutes.oauthDecide, { params: { id }, body: { decision } }),
+  decidePolicyChange: (id, decision) => call(OwnerRoutes.decidePolicyChange, { params: { id }, body: { decision } }),
   revokeAll: () => call(OwnerRoutes.revokeAll),
 })
 

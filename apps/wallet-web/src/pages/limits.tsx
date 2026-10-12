@@ -21,6 +21,7 @@ import { Async, errorText } from '../ui/async.tsx'
 import { AddressChip, Amount, ChainBadge, LAYERS, LimitMeter } from '../ui/index.ts'
 import { EmptyState, Page, RowList, Section } from '../ui/page.tsx'
 import { checkLimits, type LimitDraft } from './limit-draft.ts'
+import { PolicyRequests } from './policy-requests.tsx'
 
 const FIELDS = [
   ['perCall', 'Per call', 'The most one payment can be.'],
@@ -228,6 +229,7 @@ export function LimitsPage() {
           }
         </Async>
       </Section>
+      <PolicyRequests />
       <Section title="Allowed services">
         <Async query={services}>
           {(rows) => (

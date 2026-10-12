@@ -5,6 +5,7 @@ import type {
   LimitView,
   Me,
   Operation,
+  PolicyChange,
   Recipient,
   ServiceRule,
   WalletLimits,
@@ -37,5 +38,7 @@ export interface WalletApi {
   readonly disconnect: (id: string) => Promise<readonly Connection[]>
   readonly oauthRequest: (id: string) => Promise<OAuthRequestView>
   readonly oauthDecide: (id: string, decision: 'approve' | 'deny') => Promise<{ readonly redirectTo: string }>
+  readonly policyChanges: () => Promise<readonly PolicyChange[]>
+  readonly decidePolicyChange: (id: string, decision: 'applied' | 'dismissed') => Promise<PolicyChange>
   readonly revokeAll: () => Promise<Me>
 }

@@ -1,4 +1,4 @@
-import { type ApprovalView, type Connection, type Me, termsHash } from '@goblin/wallet/contract'
+import { type ApprovalView, type Connection, type Me, type PolicyChange, termsHash } from '@goblin/wallet/contract'
 import {
   ADDRESS_BOOK,
   AGENT,
@@ -9,6 +9,7 @@ import {
   OAUTH_REQUEST,
   OPERATIONS,
   OWNER,
+  POLICY_CHANGES,
   SERVICES,
   STATUS,
 } from './fixtures.ts'
@@ -23,6 +24,7 @@ interface World {
   me: Me
   connections: readonly Connection[]
   approval: ApprovalView
+  policyChanges: readonly PolicyChange[]
 }
 
 export interface FixtureApi extends WalletApi {
@@ -57,7 +59,16 @@ function reads(
   world: World,
 ): Pick<
   WalletApi,
-  'me' | 'status' | 'limits' | 'activity' | 'approval' | 'services' | 'addressBook' | 'connections' | 'oauthRequest'
+  | 'me'
+  | 'status'
+  | 'limits'
+  | 'activity'
+  | 'approval'
+  | 'services'
+  | 'addressBook'
+  | 'connections'
+  | 'oauthRequest'
+  | 'policyChanges'
 > {
   return {
     me: () => delay(world.me),
@@ -69,12 +80,16 @@ function reads(
     addressBook: () => delay(ADDRESS_BOOK),
     connections: () => delay(world.connections),
     oauthRequest: () => delay(OAUTH_REQUEST),
+    policyChanges: () => delay(world.policyChanges),
   }
 }
 
 function writes(
   world: World,
-): Pick<WalletApi, 'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll'> {
+): Pick<
+  WalletApi,
+  'createAgent' | 'setLimits' | 'decide' | 'disconnect' | 'oauthDecide' | 'revokeAll' | 'decidePolicyChange'
+> {
   return {
     createAgent: () => {
       world.me = { ...world.me, agent: AGENT }
@@ -93,6 +108,12 @@ function writes(
       return delay(world.connections)
     },
     oauthDecide: () => delay({ redirectTo: '/' }),
+    decidePolicyChange: (id, decision) => {
+      world.policyChanges = world.policyChanges.map((change) =>
+        change.id === id ? { ...change, status: decision } : change,
+      )
+      return delay(world.policyChanges.find((change) => change.id === id) ?? POLICY_CHANGES[0]!)
+    },
     revokeAll: () => {
       world.connections = []
       world.me = { ...world.me, chains: world.me.chains.map(({ chain, upgraded }) => ({ chain, upgraded })) }
@@ -107,6 +128,7 @@ export function createFixtureApi(start: 'fresh' | 'ready' = 'ready'): FixtureApi
     me: start === 'ready' ? ME : { userId: ME.userId, owner: OWNER, chains: [] },
     connections: start === 'ready' ? CONNECTIONS : [],
     approval: APPROVAL,
+    policyChanges: start === 'ready' ? POLICY_CHANGES : [],
   }
   return { ...reads(world), ...writes(world), simulate: simulate(world) }
 }

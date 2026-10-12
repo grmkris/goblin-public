@@ -6,6 +6,7 @@ import type {
   LimitView,
   Me,
   Operation,
+  PolicyChange,
   Recipient,
   ServiceRule,
   Terms,
@@ -220,3 +221,22 @@ export const OAUTH_REQUEST = {
   scopes: ['wallet:read', 'wallet:spend'],
   expiresAt: ahead(8),
 }
+
+export const POLICY_CHANGES: readonly PolicyChange[] = [
+  {
+    id: 'pc_hourly',
+    change: 'Raise the hourly limit to $30',
+    reason: 'A batch of 40 searches is queued and would stall at $20 an hour.',
+    client: 'goblin',
+    status: 'pending',
+    createdAt: ago(12),
+  },
+  {
+    id: 'pc_service',
+    change: 'Allow a new paid service: api.firecrawl.dev',
+    reason: 'I need page contents Exa does not return.',
+    client: 'Claude Desktop',
+    status: 'applied',
+    createdAt: ago(60 * 26),
+  },
+]
