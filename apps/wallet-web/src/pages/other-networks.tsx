@@ -8,7 +8,8 @@ import { useMe } from '../api/queries.tsx'
 import { type OwnerChain, useAuth } from '../app/auth.tsx'
 import { cn, formatUsd, timeUntil } from '../ui/index.ts'
 import { CHAIN_LABEL } from '../ui/format.ts'
-import { RowList, Section } from '../ui/page.tsx'
+import { Fold } from '../ui/fold.tsx'
+import { RowList } from '../ui/page.tsx'
 import { type NetworkState, networkState, OTHER_CHAINS, showsOtherNetworks } from './networks.ts'
 import { ActionError, DEFAULT_PER_HOUR, isPerHour, PerHourField, useAction } from './setup-actions.tsx'
 
@@ -187,12 +188,16 @@ export function OtherNetworks() {
   }, [])
   const data = me.data
   if (data === undefined || !showsOtherNetworks(data)) return null
+  const active = OTHER_CHAINS.filter((chain) => networkState(data, chain).kind === 'active')
   return (
-    <Section id="networks" title="Other networks">
-      <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
-        Your agent can spend on Arbitrum and Ethereum too, once your account is upgraded there and you set an allowance.
-        You sign each step. The one-time upgrade's gas is paid in USDC from your account on that network, so add USDC
-        there first.
+    <Fold
+      id="networks"
+      title="Other networks"
+      summary={active.length === 0 ? 'Off' : active.map((chain) => CHAIN_LABEL[chain]).join(', ')}
+    >
+      <p className="px-1 text-sm/relaxed text-muted-foreground text-pretty">
+        Let your agent spend on Arbitrum and Ethereum too. On each, you upgrade your account once, then set an
+        allowance. The upgrade&apos;s one-time fee is paid in USDC on that network, so add some there first.
       </p>
       <RowList>
         <ul className="divide-y divide-border">
@@ -207,6 +212,6 @@ export function OtherNetworks() {
           ))}
         </ul>
       </RowList>
-    </Section>
+    </Fold>
   )
 }

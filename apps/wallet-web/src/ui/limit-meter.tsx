@@ -8,7 +8,7 @@ import { formatUsd, PERIOD_LABEL, timeUntil } from './format.ts'
 import { LAYERS, LayerBadge } from './layer.tsx'
 
 /** The share of the period used, in percent to one decimal, from integer micro-dollars. A tiny use stays tiny. */
-function shareUsed(limit: LimitView): number {
+export function shareUsed(limit: LimitView): number {
   const total = usdToMicros(limit.limit)
   if (total === 0n) return 0
   const permille = (usdToMicros(limit.used ?? '0') * 1000n) / total
