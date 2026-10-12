@@ -30,6 +30,24 @@ const bundlersFor = (env: WalletEnv, live: boolean) =>
     ? undefined
     : (chain: ChainKey) => httpJsonRpc(pimlicoUrl(chainByKey(chain, live).id, env.PIMLICO_API_KEY))
 
+/** The network, each chain's node and Pimlico's bundler, for a send that is not the agent's (the collector's, ADR 0054). */
+export const chainAccess = (env: WalletEnv) => {
+  const live = env.WALLET_LIVE === '1'
+  return { live, rpcFor: rpcFromEnv(env.RPC_URLS, live), bundlerFor: bundlersFor(env, live) }
+}
+
+/** goblin's collector as a signer: the project's server wallet, held by its Privy policy to redeeming and its gas. */
+export const collectorSigner = async (
+  env: WalletEnv,
+  collector: { readonly walletId: string; readonly address: string },
+): Promise<AgentSigner> =>
+  agentSigner({
+    privy: await privyFor(env),
+    walletId: collector.walletId,
+    address: collector.address,
+    live: env.WALLET_LIVE === '1',
+  })
+
 /** The owner's agent signer, from the agent wallet their ledger records; undefined before onboarding made it. */
 export const ownerSigner = async (env: WalletEnv, ledger: Pick<LedgerApi, 'profile'>) => {
   const profile = await ledger.profile()
@@ -47,9 +65,7 @@ export const ownerSigner = async (env: WalletEnv, ledger: Pick<LedgerApi, 'profi
  * owner's allowance (how the agent tops itself up and what is left), and the Tempo float's single flight.
  */
 export const ownerRailsDeps = (env: WalletEnv, ledger: LedgerApi, signer: AgentSigner | undefined): RailsDeps => {
-  const live = env.WALLET_LIVE === '1'
-  const rpcFor = rpcFromEnv(env.RPC_URLS, live)
-  const bundlerFor = bundlersFor(env, live)
+  const { live, rpcFor, bundlerFor } = chainAccess(env)
   return {
     live,
     signer,

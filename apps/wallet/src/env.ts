@@ -16,4 +16,14 @@ export interface WalletEnv {
   readonly RPC_URLS: string
   /** "1" lets the wallet spend mainnet money; anything else is testnets only. */
   readonly WALLET_LIVE: string
+  /**
+   * Secret: goblin's merchant key (ADR 0054), the bearer of `/api/merchant/*`; empty turns the merchant API off. goblin
+   * holds the same value as `GOBLIN_WALLET_MERCHANT_KEY`.
+   */
+  readonly WALLET_MERCHANT_GOBLIN_KEY: string
+  /** Comma-separated origins goblin's subscription requests may return the owner to (`https://goblin.surf`, …). */
+  readonly MERCHANT_RETURN_ORIGINS: string
+  /** Plain: goblin's collector, the Privy server wallet subscriptions pay into; empty until it is created. */
+  readonly COLLECTOR_WALLET_ID: string
+  readonly COLLECTOR_ADDRESS: string
 }

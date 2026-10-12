@@ -8,6 +8,8 @@ type Handler = (request: Request, env: WalletEnv) => Promise<Response>
 export interface Handlers {
   readonly oauth: (request: Request, env: WalletEnv) => Promise<Response | undefined>
   readonly api: Handler
+  /** The merchant API (`/api/merchant/*`, ADR 0054): a merchant's server with its bearer key, never an owner. */
+  readonly merchant: Handler
   readonly mcp: Handler
 }
 
@@ -34,6 +36,7 @@ export function createRouter(handlers: Handlers): (request: Request, env: Wallet
       const answered = await handlers.oauth(request, env)
       if (answered !== undefined) return answered
     }
+    if (pathname.startsWith('/api/merchant/')) return handlers.merchant(request, env)
     if (pathname.startsWith('/api/')) return handlers.api(request, env)
     if (pathname === '/mcp' || pathname.startsWith('/mcp/')) return handlers.mcp(request, env)
     return fromAssets(request, env, pathname)

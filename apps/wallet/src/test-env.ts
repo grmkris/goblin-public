@@ -26,5 +26,9 @@ export const testEnv = (extra: Partial<WalletEnv> = {}): WalletEnv => ({
   PIMLICO_API_KEY: '',
   RPC_URLS: '',
   WALLET_LIVE: '0',
+  WALLET_MERCHANT_GOBLIN_KEY: '',
+  MERCHANT_RETURN_ORIGINS: '',
+  COLLECTOR_WALLET_ID: '',
+  COLLECTOR_ADDRESS: '',
   ...extra,
 })

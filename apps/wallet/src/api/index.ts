@@ -1,9 +1,9 @@
-import { OwnerRoutes } from '@goblin/wallet/contract'
+import { OwnerRoutes, SubscriptionRoutes } from '@goblin/wallet/contract'
 import { partsFor, type Wiring } from '../context.ts'
 import type { WalletEnv } from '../env.ts'
 import { apiError } from '../http.ts'
 import { type IdentityResult, type IdentityVerifier, refusalStatus } from '../identity.ts'
-import type { AuthApi } from '../oauth/durable.ts'
+import { type AuthApi, type SubscriptionApi, subscriptionStore } from '../oauth/durable.ts'
 import { runWallet } from '../runtime.ts'
 import { walletLayer } from '../services/index.ts'
 import { approval, decide } from './approvals.ts'
@@ -17,10 +17,20 @@ import { me, status } from './me.ts'
 import { decidePolicyChange, policyChanges } from './policy-changes.ts'
 import { returnCheck } from './returns.ts'
 import { allowanceConfirm, allowancePrepare, createAgent, upgrade, upgradePrepare } from './onboarding.ts'
+import {
+  revokeConfirm,
+  revokePrepare,
+  subscriptionConfirm,
+  subscriptionList,
+  subscriptionPrepare,
+  subscriptionView,
+} from './subscriptions.ts'
 
 export interface ApiDeps {
   readonly identity: (env: WalletEnv) => IdentityVerifier
   readonly auth: (env: WalletEnv) => AuthApi
+  /** The merchant subscriptions' store; the singleton beside OAuth unless a test gives another. */
+  readonly subscriptions?: ((env: WalletEnv) => SubscriptionApi) | undefined
   readonly wiring: Wiring
 }
 
@@ -65,6 +75,12 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.depositStatus.method, OwnerRoutes.depositStatus.path, depositStatus),
   compile(OwnerRoutes.revokeAll.method, OwnerRoutes.revokeAll.path, revokeAll),
   compile(OwnerRoutes.returnCheck.method, OwnerRoutes.returnCheck.path, returnCheck),
+  compile(SubscriptionRoutes.list.method, SubscriptionRoutes.list.path, subscriptionList),
+  compile(SubscriptionRoutes.view.method, SubscriptionRoutes.view.path, subscriptionView),
+  compile(SubscriptionRoutes.prepare.method, SubscriptionRoutes.prepare.path, subscriptionPrepare),
+  compile(SubscriptionRoutes.confirm.method, SubscriptionRoutes.confirm.path, subscriptionConfirm),
+  compile(SubscriptionRoutes.revokePrepare.method, SubscriptionRoutes.revokePrepare.path, revokePrepare),
+  compile(SubscriptionRoutes.revoke.method, SubscriptionRoutes.revoke.path, revokeConfirm),
 ]
 
 const match = (
@@ -114,6 +130,7 @@ export function createApi(deps: ApiDeps): (request: Request, env: WalletEnv) => 
       ledger: parts.ledger,
       rails: parts.rails,
       auth: deps.auth(env),
+      subscriptions: (deps.subscriptions ?? ((each: WalletEnv) => subscriptionStore(each.AUTH)))(env),
       wiring: deps.wiring,
       run: (program) => runWallet(program, layer),
     }

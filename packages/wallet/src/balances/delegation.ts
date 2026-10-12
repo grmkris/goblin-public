@@ -1,5 +1,6 @@
 // EIP-7702 reads for an owner's account upgrade: what its code delegates to, who signed an authorization, and the
 // account nonce a new authorization must name. Each is one RPC read or a local recovery; nothing here signs or sends.
+import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import { recoverAuthorizationAddress } from 'viem/utils'
 import type { SignedAuthorization } from '../contract/signer.ts'
 import { toAddress, toHex } from './hex.ts'
@@ -35,3 +36,12 @@ export const authorizationSignedBy = (auth: SignedAuthorization): Promise<string
  */
 export const pendingNonce = async (rpc: JsonRpc, address: string): Promise<bigint> =>
   quantity(await rpc('eth_getTransactionCount', [address, 'pending']))
+
+const MANAGER = parseAbi(['function disabledDelegations(bytes32 delegationHash) view returns (bool)'])
+
+/** Whether the delegator disabled a delegation on the DelegationManager (`disableDelegation`): then nothing redeems it. */
+export const delegationDisabled = async (rpc: JsonRpc, manager: string, delegationHash: string): Promise<boolean> => {
+  const data = encodeFunctionData({ abi: MANAGER, functionName: 'disabledDelegations', args: [toHex(delegationHash)] })
+  const result = await rpc('eth_call', [{ to: manager, data }, 'latest'])
+  return decodeFunctionResult({ abi: MANAGER, functionName: 'disabledDelegations', data: toHex(String(result)) })
+}

@@ -5,7 +5,7 @@ import type { Wiring } from '../context.ts'
 import type { WalletEnv } from '../env.ts'
 import type { OwnerIdentity } from '../identity.ts'
 import type { LedgerApi } from '../ledger/durable.ts'
-import type { AuthApi } from '../oauth/durable.ts'
+import type { AuthApi, SubscriptionApi } from '../oauth/durable.ts'
 import type { WalletResult } from '../runtime.ts'
 import type { WalletFailure } from '../services/errors.ts'
 import type { WalletServices } from '../services/index.ts'
@@ -22,6 +22,8 @@ export interface ApiCall {
   readonly ledger: LedgerApi
   readonly rails: RailsPort
   readonly auth: AuthApi
+  /** Merchant subscriptions (ADR 0054), in the same singleton as OAuth. */
+  readonly subscriptions: SubscriptionApi
   readonly wiring: Wiring
   readonly run: <A>(program: Effect.Effect<A, WalletFailure, WalletServices>) => Promise<WalletResult<A>>
 }

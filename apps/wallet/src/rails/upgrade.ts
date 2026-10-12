@@ -97,7 +97,7 @@ const noUsdc = (network: Chain) =>
   )
 
 /** The bundler's refusals in the owner API's words; it not answering is a 502 to retry. */
-const prepared = async (prepare: () => Promise<PreparedUserOp>, network: Chain): Promise<PreparedUserOp> => {
+export const prepared = async (prepare: () => Promise<PreparedUserOp>, network: Chain): Promise<PreparedUserOp> => {
   try {
     return await prepare()
   } catch (error) {
@@ -131,7 +131,7 @@ const operationOf = async (id: string, terms: Terms, createdAt: string) => ({
 })
 
 /** The DeleGator's typed data over the operation as JSON: its two bigints as decimal strings, as Privy takes them. */
-const typedDataOf = (op: PreparedUserOp, network: Chain): TypedDataJson => {
+export const typedDataOf = (op: PreparedUserOp, network: Chain): TypedDataJson => {
   const typed = delegatorTypedData(op.op, network, op.entryPoint)
   return {
     ...typed,

@@ -2,6 +2,7 @@ import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Config from 'effect/Config'
 import * as Effect from 'effect/Effect'
+import * as Redacted from 'effect/Redacted'
 import { fileURLToPath } from 'node:url'
 import { resolveStage } from '../../scripts/stage-config.ts'
 
@@ -38,6 +39,17 @@ export default Alchemy.Stack(
         PIMLICO_API_KEY: Config.Redacted('PIMLICO_API_KEY'),
         RPC_URLS: Config.String('WALLET_RPC_URLS').pipe(Config.withDefault('')),
         WALLET_LIVE: Config.String('WALLET_LIVE').pipe(Config.withDefault('0')),
+        // goblin as a merchant (ADR 0054): its key, the collector its subscriptions pay into, and where they return.
+        WALLET_MERCHANT_GOBLIN_KEY: Config.Redacted('WALLET_MERCHANT_GOBLIN_KEY').pipe(
+          Config.withDefault(Redacted.make('')),
+        ),
+        MERCHANT_RETURN_ORIGINS: Config.String('WALLET_MERCHANT_RETURN_ORIGINS').pipe(
+          Config.withDefault(
+            stage.name === 'prod' ? 'https://goblin.surf' : 'https://dev.goblin.surf,http://localhost:18971',
+          ),
+        ),
+        COLLECTOR_WALLET_ID: Config.String('WALLET_COLLECTOR_WALLET_ID').pipe(Config.withDefault('')),
+        COLLECTOR_ADDRESS: Config.String('WALLET_COLLECTOR_ADDRESS').pipe(Config.withDefault('')),
       },
     })
     return { url: wallet.url }
