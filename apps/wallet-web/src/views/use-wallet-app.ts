@@ -42,5 +42,22 @@ export function useWalletApp(name: string): WalletApp {
   useEffect(() => {
     applyHostTheme(context)
   }, [context])
+  // The frame may not open windows: a link the views render (an explorer page) goes through the host instead.
+  useEffect(() => {
+    if (app === null) return undefined
+    const onClick = async (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest('a[href]') : null
+      if (link === null || !(link instanceof HTMLAnchorElement) || !link.href.startsWith('https://')) return
+      event.preventDefault()
+      try {
+        await app.openLink({ url: link.href })
+      } catch {
+        // expected: the host may refuse a link; the click then simply does nothing, as it would in any sandboxed frame
+      }
+    }
+    const listener = (event: MouseEvent) => void onClick(event)
+    document.addEventListener('click', listener)
+    return () => document.removeEventListener('click', listener)
+  }, [app])
   return { app, error, context, input, result, cancelled }
 }

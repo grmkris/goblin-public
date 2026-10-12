@@ -1,6 +1,6 @@
 // Tool results arrive from a server we trust but over a channel we do not own: decode, never cast.
 import type { CallToolResult } from '@modelcontextprotocol/client'
-import { SpendResult, WalletStatusResult } from '@goblin/wallet/contract'
+import { Operation, SpendResult, WalletStatusResult } from '@goblin/wallet/contract'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
@@ -26,3 +26,12 @@ export const statusOf = (result: CallToolResult | undefined): WalletStatusResult
 
 export const spendOf = (result: CallToolResult | undefined): SpendResult | undefined =>
   Option.getOrUndefined(decodeSpend(payloadOf(result)))
+
+const decodeRecent = Schema.decodeUnknownOption(Schema.Array(Operation))
+
+/** The few latest operations a result may carry beside the status (`recent`); anything malformed reads as none. */
+export function recentOf(result: CallToolResult | undefined): readonly (typeof Operation.Type)[] {
+  const payload = payloadOf(result)
+  if (typeof payload !== 'object' || payload === null || !('recent' in payload)) return []
+  return Option.getOrElse(decodeRecent(payload.recent), () => [])
+}
