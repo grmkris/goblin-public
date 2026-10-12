@@ -7,7 +7,8 @@ import type { McpAuthenticator } from './auth.ts'
 import { walletServer } from './server.ts'
 
 async function readView(env: WalletEnv, origin: string, name: string): Promise<string> {
-  const response = await env.ASSETS.fetch(new Request(`${origin}/views/${name}.html`))
+  // The assets binding serves `views/<name>.html` at `/views/<name>` and answers the `.html` path with a 307.
+  const response = await env.ASSETS.fetch(new Request(`${origin}/views/${name}`))
   if (!response.ok) throw new Error(`view ${name} is not built: ${response.status}`)
   return response.text()
 }
