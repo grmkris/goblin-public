@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ServerProfile, ToolView } from '@goblin/contracts'
-import { recommendedApplied, recommendedList, topUpOf } from '../src/components/first-class.tsx'
+import {
+  compactAmount,
+  recommendedApplied,
+  recommendedList,
+  topUpOf,
+  walletSummary,
+} from '../src/components/first-class.tsx'
 import { purposeGroups } from '../src/components/tool-grants.tsx'
 
 const profile: ServerProfile = {
@@ -72,5 +78,27 @@ describe('how Connections groups the tools outside an App', () => {
       ['The server says these only read', ['read']],
       ['These may change things or spend', ['write']],
     ])
+  })
+})
+
+describe("the wallet's one line on its card", () => {
+  it('shows amounts at a glance, never rounding a positive amount to zero', () => {
+    expect(compactAmount('0.006375759235598615')).toBe('0.006375')
+    expect(compactAmount('10.155533')).toBe('10.15')
+    expect(compactAmount('5')).toBe('5')
+    expect(compactAmount('0')).toBe('0')
+  })
+  it('says what is left once when every token shares it, and per token otherwise', () => {
+    const shared = {
+      ...wallet('ready'),
+      tokens: [
+        { symbol: 'ETH', balance: '0.006375759235598615', remaining: '5' },
+        { symbol: 'USDC', balance: '0.50039', remaining: '5' },
+      ],
+    }
+    expect(walletSummary(shared, 'Mon, Oct 12')).toBe('0.006375 ETH · 0.5003 USDC; 5 left until Mon, Oct 12')
+    const apart = { ...shared, tokens: [shared.tokens[0]!, { ...shared.tokens[1]!, remaining: '2.5' }] }
+    expect(walletSummary(apart, undefined)).toBe('0.006375 ETH, 5 left · 0.5003 USDC, 2.5 left')
+    expect(walletSummary({ ...shared, tokens: [] }, undefined)).toBe('no balance read')
   })
 })

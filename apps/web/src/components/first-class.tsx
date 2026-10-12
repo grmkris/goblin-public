@@ -27,6 +27,41 @@ export const topUpOf = (profile: ServerProfile, wallet: WalletStatus): string | 
   wallet.funding === 'blocked' && profile.topUp?.url.startsWith('https://') === true ? profile.topUp.url : undefined
 
 /**
+ * An amount at a glance, cut down and never rounded up: two decimals from 1 up ("10.15"), four significant digits
+ * below it ("0.006375"), so a positive amount never reads as zero.
+ */
+export function compactAmount(amount: string): string {
+  const [whole = '0', fraction = ''] = amount.split('.')
+  if (/[1-9]/u.test(whole)) {
+    const cents = fraction.slice(0, 2).replace(/0+$/u, '')
+    return cents === '' ? whole : `${whole}.${cents}`
+  }
+  const first = fraction.search(/[1-9]/u)
+  return first === -1 ? '0' : `0.${fraction.slice(0, first + 4).replace(/0+$/u, '')}`
+}
+
+/**
+ * The wallet's status tool in one line: each token's balance at a glance, then what its limit has left and until when,
+ * said once when every token shares it.
+ */
+export function walletSummary(wallet: WalletStatus, ends: string | undefined): string {
+  if (wallet.tokens.length === 0) return 'no balance read'
+  const until = ends === undefined ? '' : ` until ${ends}`
+  const left = (remaining: string) => `${compactAmount(remaining)} left${until}`
+  const shared = new Set(wallet.tokens.map((token) => token.remaining))
+  const once = shared.size === 1 ? [...shared][0] : undefined
+  const tokens = wallet.tokens.map((token) =>
+    [
+      token.balance === undefined ? token.symbol : `${compactAmount(token.balance)} ${token.symbol}`,
+      once === undefined && token.remaining !== undefined ? left(token.remaining) : undefined,
+    ]
+      .filter((part) => part !== undefined)
+      .join(', '),
+  )
+  return `${tokens.join(' · ')}${once === undefined ? '' : `; ${left(once)}`}`
+}
+
+/**
  * The wallet in one line: each token's balance and what its limit has left, and when the period ends; while it needs
  * funds, the way to add them.
  */
@@ -40,24 +75,12 @@ export function WalletLine({
   readonly children?: ReactNode
 }) {
   const topUp = topUpOf(profile, wallet)
-  const ends = endsOn(wallet.periodEndsAt)
-  const tokens = wallet.tokens.map((token) =>
-    [
-      token.balance === undefined ? token.symbol : `${token.balance} ${token.symbol}`,
-      token.remaining === undefined
-        ? undefined
-        : `${token.remaining} left${ends === undefined ? '' : ` until ${ends}`}`,
-    ]
-      .filter((part) => part !== undefined)
-      .join(', '),
-  )
+  const summary = walletSummary(wallet, endsOn(wallet.periodEndsAt))
   return (
     <Receipt tone={wallet.funding === 'blocked' ? 'error' : 'neutral'}>
       {wallet.funding === 'blocked' ? <CircleAlertIcon aria-hidden /> : <WalletIcon aria-hidden />}
       <span className="tabular-nums">
-        {wallet.funding === 'blocked'
-          ? 'Wallet: needs funds before paid work can run.'
-          : `Wallet: ${tokens.length === 0 ? 'no balance read' : tokens.join(' · ')}`}{' '}
+        {wallet.funding === 'blocked' ? 'Wallet: needs funds before paid work can run.' : `Wallet: ${summary}`}{' '}
         {topUp !== undefined && (
           <a className="cause-link" href={topUp} target="_blank" rel="noopener noreferrer">
             Add funds
