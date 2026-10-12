@@ -194,6 +194,36 @@ Pi, Agents and application tables, its alarm and isolate. Only then does Better 
 sessions, consents and tokens. Agent-erasure failure leaves the account intact for retry. Outbound OAuth tokens are
 forgotten, not revoked remotely. Conversations, credentials, grants and resident authority belong to one user.
 
+### First-run Start
+
+ADR 0048. A signed-in owner whose Start is open meets it before the chats.
+
+**What gates.** The chat routes and Activity carry `OwnerGate startRequired`, which reads `GET /api/onboarding/status`
+and sends the owner to `/start/<step>`. Settings, Connections and the subscribe pages are never gated, and a state that
+cannot be read lets the owner in.
+
+**The page** (`components/start`). One task per screen beside a panel in the rail's own green: the Goblin Wallet, its
+funds, how goblin pays, Mercator, more services, and what the owner wants goblin for. The funds step shows the address
+the wallet pays from (`WalletStatus.payFrom`) as a QR code and as text, and opens the wallet's own App on Add funds
+(`/connections/<id>/app?focus=add_funds`). Finishing narrows the panel into the rail as the chat appears.
+
+**State** (`onboarding/`):
+- `app_onboarding` keeps what only the owner can say: finished, skipped, the pay and more-services steps, the kickoff.
+- Every other step is read live by `GET /api/onboarding` from the connections, the grants (each first-class server's
+  status tool, and the wallet's payment tool) and the wallet's own status.
+- An untouched Start is open until the wallet holds `GOBLIN_FREE_WALLET_USD` and Mercator is in.
+
+**Sign-ins.** `POST /api/onboarding/connect` notes the step and whether to allow the server's recommended tools
+(`app_onboarding_connects`, half an hour). The OAuth callback (`mcp/program.ts` `connectCallback`) takes the note,
+allows the tools and redirects to `/start/<step>` rather than Connections.
+
+**In the chat.**
+- While the day's allowance is none, the dock shows what is left before goblin can answer, with Continue setup
+  (`components/start/setup-cards.tsx`); the message waits in the composer.
+- A skipped Start with something left gets one quiet line back to it. Settings has a Set up goblin card.
+- In main, `pi/onboarding.ts` adds the missing pieces to goblin's context block (none of them read from a server), and
+  for twenty minutes after the kickoff asks the agent to propose Topics and Personas with one `ask_user`.
+
 ## The agent object
 
 `PersonalAgent extends Agent` and registers the native `PiHarness` with the Agent lifecycle. Pi owns transcripts,
