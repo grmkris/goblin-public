@@ -125,6 +125,8 @@ describe('Goblin Wallet (first-class profile)', () => {
       'request_policy_change',
     ])
     expect(view.recommended.run).toContain('wallet_open')
+    // Checking an uncertain spend never pays, so it runs when needed; paying again always asks.
+    expect(view.recommended.run).toContain('operation_check')
     for (const moving of view.recommended.ask) expect(view.recommended.run).not.toContain(moving)
     expect(profileOf('https://wallet.goblin.surf/mcp')?.statusTool?.name).toBe('wallet_status')
   })

@@ -197,6 +197,7 @@ const WALLET: Profile = {
       'allowances',
       'services',
       'operation',
+      'operation_check',
       'receipt',
       'wallet_open',
       'wallet_home',
