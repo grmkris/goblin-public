@@ -1,6 +1,8 @@
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@goblin/ui'
 import { useConnections, useMe } from '../api/queries.tsx'
 import { ActivityPage } from '../pages/activity.tsx'
+import { ApprovePage } from '../pages/approve.tsx'
+import { ConsentPage } from '../pages/consent.tsx'
 import { HomePage } from '../pages/home.tsx'
 import { OnboardingPage, readSkipped } from '../pages/onboarding.tsx'
 import { setupProgress } from '../pages/progress.ts'
@@ -53,6 +55,10 @@ function SignedIn() {
 
 export function App() {
   const auth = useAuth()
+  const { pathname } = useLocation()
   if (auth.status !== 'ready') return <SignInPage />
+  if (pathname === '/consent') return <ConsentPage />
+  if (pathname.startsWith('/approve/'))
+    return <ApprovePage operationId={decodeURIComponent(pathname.slice('/approve/'.length))} />
   return <SignedIn />
 }

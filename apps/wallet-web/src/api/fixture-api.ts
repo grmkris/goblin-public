@@ -1,4 +1,4 @@
-import type { ApprovalView, Connection, Me } from '@goblin/wallet/contract'
+import { type ApprovalView, type Connection, type Me, termsHash } from '@goblin/wallet/contract'
 import {
   ADDRESS_BOOK,
   AGENT,
@@ -64,7 +64,7 @@ function reads(
     status: () => delay(STATUS),
     limits: () => delay(LIMITS),
     activity: () => delay(OPERATIONS),
-    approval: () => delay(world.approval),
+    approval: async () => delay({ ...world.approval, termsHash: await termsHash(world.approval.terms) }),
     services: () => delay(SERVICES),
     addressBook: () => delay(ADDRESS_BOOK),
     connections: () => delay(world.connections),
