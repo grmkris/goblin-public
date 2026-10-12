@@ -1,3 +1,5 @@
+import type { JsonRpc } from '@goblin/wallet/balances'
+import { chainByKey } from '@goblin/wallet/chains'
 import { termsHash, type Operation, type Terms, type UpgradeRequest } from '@goblin/wallet/contract'
 import { delegationOf, RelayError } from '@goblin/wallet/relay'
 import { RailError, type RailsDeps } from './deps.ts'
@@ -17,7 +19,23 @@ const termsOf = (request: UpgradeRequest, owner: string, now: Date): Terms => ({
   expiresAt: new Date(now.getTime() + 3_600_000).toISOString(),
 })
 
-/** Relays the owner's signed EIP-7702 authorization and reports the result as an operation. */
+/** Whether the owner's code delegates to this network's DeleGator; null when the chain could not be read. */
+const delegated = (rpc: JsonRpc, owner: string, delegator: string): Promise<boolean | null> =>
+  delegationOf(
+    rpc,
+    // SAFETY: the ledger's profile schema checked the owner address's `0x` pattern.
+    owner as `0x${string}`,
+  ).then(
+    (current) => current !== null && current.toLowerCase() === delegator.toLowerCase(),
+    // expected: unreadable code is reported as unknown; the caller decides what that means.
+    () => null,
+  )
+
+/**
+ * Relays the owner's signed EIP-7702 authorization and reports the result as an operation. `confirmed` means the
+ * owner's code now delegates to this network's DeleGator, read back from the chain: a mined transaction whose
+ * authorization the chain skipped is `failed`, and one still in flight is `submitted`.
+ */
 export const upgrade = async (request: UpgradeRequest, deps: RailsDeps): Promise<Operation> => {
   const { relay } = deps
   const owner = (await deps.profile()).ownerAddress
@@ -27,27 +45,24 @@ export const upgrade = async (request: UpgradeRequest, deps: RailsDeps): Promise
   const key = `upgrade:${request.chain}:${owner.toLowerCase()}:${request.authorization.nonce}`
   const terms = termsOf(request, owner, now)
   const base = { id: key, terms, termsHash: await termsHash(terms), limitsVersion: 0, createdAt: now.toISOString() }
-  // Already delegated to the contract the owner signed for (a re-run of onboarding): confirm without paying gas again.
-  const current = await delegationOf(
-    deps.rpcFor(request.chain),
-    // SAFETY: the ledger's profile schema checked the owner address's `0x` pattern.
-    owner as `0x${string}`,
-  ).catch(() => {
-    // expected: an unreadable code only means we cannot skip the relay; sending the upgrade is still correct.
-    return null
-  })
-  if (current !== null && current.toLowerCase() === request.authorization.address.toLowerCase())
+  const failed = (reason: string): Operation => ({ ...base, status: 'failed', updatedAt: now.toISOString(), reason })
+  const network = chainByKey(request.chain, deps.live)
+  if (request.authorization.chainId !== network.id)
+    return failed(`The authorization is not for ${network.name}, the network this wallet runs on.`)
+  const rpc = deps.rpcFor(request.chain)
+  const delegator = network.delegation.delegator
+  // Already delegated to the DeleGator (a re-run of onboarding): confirm without paying gas again.
+  if ((await delegated(rpc, owner, delegator)) === true)
     return { ...base, status: 'confirmed', updatedAt: now.toISOString(), payment: { rail: 'relay' } }
   try {
     const sent = await relay.upgrade({ key, chain: request.chain, owner, authorization: request.authorization })
-    const status = sent.status === 'success' ? 'confirmed' : sent.status === 'pending' ? 'submitted' : 'failed'
-    return {
-      ...base,
-      status,
-      updatedAt: now.toISOString(),
-      payment: { rail: 'relay', txHash: sent.txHash, settledAt: now.toISOString() },
-      ...(status === 'failed' ? { reason: 'The upgrade transaction reverted.' } : {}),
-    }
+    const payment = { rail: 'relay' as const, txHash: sent.txHash, settledAt: now.toISOString() }
+    if (sent.status === 'pending') return { ...base, status: 'submitted', updatedAt: now.toISOString(), payment }
+    if (sent.status !== 'success') return { ...failed('The upgrade transaction reverted.'), payment }
+    const applied = await delegated(rpc, owner, delegator)
+    if (applied === true) return { ...base, status: 'confirmed', updatedAt: now.toISOString(), payment }
+    if (applied === null) return { ...base, status: 'submitted', updatedAt: now.toISOString(), payment }
+    return { ...failed('The upgrade landed but the chain did not apply the authorization.'), payment }
   } catch (error) {
     // expected: a relay failure is the operation's `failed` state, not an exception, so the owner API can show it.
     const reason = error instanceof RelayError ? error.message : 'The relay could not send the upgrade.'

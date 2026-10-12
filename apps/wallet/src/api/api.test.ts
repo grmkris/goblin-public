@@ -24,7 +24,7 @@ const sqlHost = () => {
   }
 }
 
-const setup = () => {
+const setup = (upgradeStatus: 'confirmed' | 'submitted' | 'failed' = 'confirmed') => {
   const ledger = new LedgerObject(sqlHost(), () => Date.parse('2026-10-12T10:00:00.000Z'))
   const auth = authClient(new WalletAuth(sqlHost()))
   const upgrades: unknown[] = []
@@ -36,7 +36,7 @@ const setup = () => {
       upgrades.push(request)
       return Promise.resolve({
         id: 'op-upgrade-1',
-        status: 'confirmed',
+        status: upgradeStatus,
         terms: termsFor('0'),
         termsHash: '0xab',
         limitsVersion: 1,
@@ -106,6 +106,17 @@ describe('the owner API', () => {
     expect(upgraded.status).toBe(200)
     expect(upgrades).toHaveLength(1)
     expect(await (await call('GET', '/api/me')).json()).toMatchObject({ chains: [{ chain: 'base', upgraded: true }] })
+  })
+
+  test('a submitted or failed upgrade does not mark the chain upgraded', async () => {
+    for (const status of ['submitted', 'failed'] as const) {
+      const { call } = setup(status)
+      await call('POST', '/api/onboarding/agent')
+      const authorization = { address: OWNER, chainId: 8453, nonce: 0, r: '0x01', s: '0x02', yParity: 0 }
+      const answer = await call('POST', '/api/onboarding/upgrade', { chain: 'base', authorization })
+      expect(await answer.json()).toMatchObject({ status })
+      expect(await (await call('GET', '/api/me')).json()).toMatchObject({ chains: [] })
+    }
   })
 
   test('the allowance routes need the agent first, then record the confirmed allowance', async () => {

@@ -3,6 +3,8 @@ export interface WalletEnv {
   readonly ASSETS: Fetcher
   readonly LEDGER: DurableObjectNamespace
   readonly AUTH: DurableObjectNamespace
+  /** `WalletRelay`: one per network chain id and relay address; the only signer of relay transactions. */
+  readonly RELAY: DurableObjectNamespace
   /** Plain: the Privy app id the browser needs, served at `GET /api/config`. */
   readonly PRIVY_APP_ID: string
   readonly PRIVY_SIGNER_ID: string

@@ -1,7 +1,7 @@
 import * as Data from 'effect/Data'
 import type { EvmChain, JsonRpc, TopUp } from '@goblin/wallet/balances'
 import type { ChainKey, ChainSetup, AgentSigner } from '@goblin/wallet/contract'
-import type { RelaySender } from '@goblin/wallet/relay'
+import type { RelayResult, UpgradeRequest as RelayUpgrade } from '@goblin/wallet/relay'
 
 /** What the wallet knows of its owner: written by onboarding, read from the ledger. */
 export interface RailsProfile {
@@ -33,7 +33,7 @@ export interface RailsDeps {
   readonly topUp?: (chain: EvmChain) => Promise<TopUp | undefined>
   readonly allowances?: () => Promise<readonly StoredAllowance[]>
   /** Sends the owner's EIP-7702 upgrade; absent where no relay key is configured. */
-  readonly relay?: Pick<RelaySender, 'upgrade'>
+  readonly relay?: { upgrade(request: RelayUpgrade): Promise<RelayResult> }
   readonly rpcFor: (chain: ChainKey) => JsonRpc
   readonly fetchFn?: typeof fetch
   readonly now?: () => Date

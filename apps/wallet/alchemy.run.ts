@@ -30,6 +30,7 @@ export default Alchemy.Stack(
       env: {
         LEDGER: Cloudflare.DurableObject('WalletLedger', { className: 'WalletLedger' }),
         AUTH: Cloudflare.DurableObject('WalletAuth', { className: 'WalletAuth' }),
+        RELAY: Cloudflare.DurableObject('WalletRelay', { className: 'WalletRelay' }),
         PRIVY_APP_ID: Config.String('PRIVY_APP_ID'),
         PRIVY_SIGNER_ID: Config.String('PRIVY_SIGNER_ID').pipe(Config.withDefault('')),
         PRIVY_POLICY_ID: Config.String('PRIVY_POLICY_ID').pipe(Config.withDefault('')),

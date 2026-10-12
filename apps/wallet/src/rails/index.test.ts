@@ -294,10 +294,16 @@ describe('upgrade', () => {
   } as const
 
   test('reports the relay result as an operation with a verifiable terms hash', async () => {
+    let landed = false
     const relay = {
-      upgrade: async () => ({ txHash: toHex(`0x${'cd'.repeat(32)}`), status: 'success' as const, nonce: 3 }),
+      upgrade: async () => {
+        landed = true
+        return { txHash: toHex(`0x${'cd'.repeat(32)}`), status: 'success' as const, nonce: 3 }
+      },
     }
-    const operationResult = await createRails(deps({ relay })).upgrade(request)
+    // The owner's code delegates to the DeleGator only once the relayed upgrade has landed.
+    const rpcFor = () => async () => (landed ? delegated()() : word(10_000_000n))
+    const operationResult = await createRails(deps({ relay, rpcFor })).upgrade(request)
     expect(operationResult).toMatchObject({
       status: 'confirmed',
       terms: { kind: 'upgrade', rail: 'relay' },

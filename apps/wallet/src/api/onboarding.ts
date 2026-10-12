@@ -25,15 +25,21 @@ const chainSetup = async (call: ApiCall, chain: ChainSetup['chain']): Promise<Ch
   return profile.chains.find((entry) => entry.chain === chain) ?? { chain, upgraded: false }
 }
 
-/** `POST /api/onboarding/upgrade`: relays the owner's signed EIP-7702 authorization through the rails. */
+/**
+ * `POST /api/onboarding/upgrade`: relays the owner's signed EIP-7702 authorization through the rails. The chain is
+ * recorded as upgraded only once the rails confirmed the owner's code delegates to the DeleGator; a submitted or failed
+ * upgrade leaves it as it was, so the owner's next attempt finds the same stored transaction.
+ */
 export async function upgrade(call: ApiCall): Promise<Response> {
   const body = await readBody(call.request, UpgradeRequest)
   if (!body.ok) return body.response
   if ((await call.ledger.profile()).agentAddress === undefined)
     return apiError('not_onboarded', 'Create the agent wallet first.', 409)
   const operation = await call.rails.upgrade(body.value)
-  const setup = await chainSetup(call, body.value.chain)
-  await call.ledger.updateProfile({ chains: [{ ...setup, upgraded: true }] })
+  if (operation.status === 'confirmed') {
+    const setup = await chainSetup(call, body.value.chain)
+    await call.ledger.updateProfile({ chains: [{ ...setup, upgraded: true }] })
+  }
   return json(operation)
 }
 

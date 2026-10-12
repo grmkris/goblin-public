@@ -18,6 +18,7 @@ export const testEnv = (extra: Partial<WalletEnv> = {}): WalletEnv => ({
   ASSETS: { fetch: () => Promise.resolve(new Response('asset')), connect: unused },
   LEDGER: stubNamespace,
   AUTH: stubNamespace,
+  RELAY: stubNamespace,
   PRIVY_APP_ID: 'app-123',
   PRIVY_SIGNER_ID: '',
   PRIVY_POLICY_ID: '',
