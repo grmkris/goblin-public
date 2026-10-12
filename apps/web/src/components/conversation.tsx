@@ -22,6 +22,7 @@ import { OpenThread } from './parts/text-part.tsx'
 import { type ChatThreads, MessageFooter } from './shell/thread-summary.tsx'
 import { glide } from '../lib/motion.ts'
 import { serversQuery } from '../mcp/queries.ts'
+import { unconnectedProfiles } from './connect-offer.tsx'
 import { type Turn, TurnMap } from './turn-map.tsx'
 
 type ConversationProps = {
@@ -45,10 +46,7 @@ type ConversationProps = {
 
 /** In an empty chat, the first-class servers goblin could use once the owner connects them (ADR 0043). */
 function NotConnectedYet() {
-  const offers = (useQuery(serversQuery).data ?? []).filter(
-    (server) => server.profile !== undefined && server.status !== 'connected',
-  )
-  const [first] = offers
+  const [first] = unconnectedProfiles(useQuery(serversQuery).data ?? [])
   if (first?.profile === undefined) return null
   return (
     <EmptyDescription>
