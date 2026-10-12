@@ -1,8 +1,11 @@
-// "Add funds": the owner's own address for sends on any EVM chain, and a one-off Relay deposit address for money that
-// starts on another chain or in another token and should land in the owner's account on Base. On Home, and as the
-// first funding step of onboarding.
+// "Add funds": the owner's own address as a big QR code, for USDC sent on Base (the same address on every EVM chain),
+// and, folded away, a one-off Relay deposit address for money that starts on another chain or in another token and
+// should land in the owner's account on Base. Its own page in the console, and the first step of setup.
 import {
   Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
   Field,
   FieldDescription,
   FieldError,
@@ -11,14 +14,17 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-  Separator,
 } from '@goblin/ui'
 import type { DepositAddress, DepositRequest } from '@goblin/wallet/contract'
+import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { useDeposit, useDepositStatus, useStatus } from '../api/queries.tsx'
-import { errorText } from '../ui/async.tsx'
-import { CHAIN_LABEL, formatToken, formatUsd, shortAddress } from '../ui/format.ts'
+import { useDeposit, useDepositStatus, useMe, useStatus } from '../api/queries.tsx'
+import { Async, errorText } from '../ui/async.tsx'
+import { CHAIN_LABEL, formatToken, formatUsd, formatUsdCompact, shortAddress } from '../ui/format.ts'
 import { cn, CopyButton } from '../ui/index.ts'
+import { Page } from '../ui/page.tsx'
+import { QrCode } from '../ui/qr-code.tsx'
+import { usdOf } from '../views/money.ts'
 import {
   aboutSeconds,
   amountProblem,
@@ -26,24 +32,20 @@ import {
   DEPOSIT_CHAINS,
   type DepositPhase,
   depositPhase,
+  groupAddress,
   isSettled,
   needsNoDeposit,
   ownerOnBase,
 } from './deposit-model.ts'
 import { ActionError } from './setup-actions.tsx'
 
-function YourAddress({ owner }: { readonly owner: string }) {
+/** The owner's address to send to: a QR code a phone wallet scans, the address in groups of four, and Copy. */
+export function ReceiveAddress({ owner }: { readonly owner: string }) {
   return (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium">Your address</h3>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <code className="min-w-0 font-mono text-sm break-all">{owner}</code>
-        <CopyButton text={owner} label="Copy your address" />
-      </div>
-      <p className="max-w-prose text-sm/relaxed text-muted-foreground text-pretty">
-        Send USDC on Base to this address: it works right away, and its gas is paid in USDC too. It is the same address
-        on every EVM chain. ETH, or USDC on another chain? Get a deposit address below and it arrives as USDC.
-      </p>
+    <div className="flex flex-col items-center gap-4">
+      <QrCode value={owner} label={`QR code of your address ${owner}`} className="size-48 rounded-xl p-2" />
+      <p className="max-w-60 text-center font-mono text-sm/relaxed text-pretty">{groupAddress(owner)}</p>
+      <CopyButton text={owner} label="Copy your address" />
     </div>
   )
 }
@@ -132,7 +134,7 @@ function DepositForm({ onQuote }: { readonly onQuote: (quote: DepositAddress) =>
       }}
     >
       <FieldGroup>
-        <div className="grid gap-4 @md/field-group:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4">
           <Choice
             id="deposit-from"
             label="From"
@@ -149,6 +151,8 @@ function DepositForm({ onQuote }: { readonly onQuote: (quote: DepositAddress) =>
             name={same}
             onChange={setAsset}
           />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
           <AmountField asset={asset} value={amount} problem={problem} onChange={setAmount} />
           <Choice
             id="deposit-receive"
@@ -167,11 +171,12 @@ function DepositForm({ onQuote }: { readonly onQuote: (quote: DepositAddress) =>
         <ActionError message={deposit.isError ? errorText(deposit.error) : undefined} />
         <Button
           type="submit"
-          className="self-start"
+          variant="secondary"
+          size="cta"
           disabled={problem !== undefined || direct}
           pending={deposit.isPending}
         >
-          Get deposit address
+          Get a deposit address
         </Button>
       </FieldGroup>
     </form>
@@ -211,22 +216,27 @@ function DepositProgress({
   const settled = isSettled(phase)
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-base font-medium">
-        Send exactly {formatToken(quote.amount)} {quote.asset} on {CHAIN_LABEL[quote.from]}
+      <p className="text-base font-medium text-balance">
+        Send exactly {formatToken(quote.amount)} {quote.asset} on {CHAIN_LABEL[quote.from]} to
       </p>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted px-3 py-2">
-        <code className="min-w-0 font-mono text-sm break-all">{quote.depositAddress}</code>
+      <div className="flex flex-col items-center gap-3">
+        <QrCode
+          value={quote.depositAddress}
+          label={`QR code of the deposit address ${quote.depositAddress}`}
+          className="size-40 rounded-xl p-2"
+        />
+        <p className="max-w-60 text-center font-mono text-sm/relaxed">{groupAddress(quote.depositAddress)}</p>
         <CopyButton text={quote.depositAddress} label="Copy the deposit address" />
       </div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-1.5 text-sm">
         <dt className="text-muted-foreground">You receive about</dt>
-        <dd className="tabular-nums">
+        <dd className="text-end tabular-nums">
           {formatToken(quote.expectedOut)} {quote.receive} on Base
         </dd>
         <dt className="text-muted-foreground">Fees</dt>
-        <dd className="tabular-nums">{formatUsd(quote.feesUsd)}</dd>
+        <dd className="text-end tabular-nums">{formatUsd(quote.feesUsd)}</dd>
         <dt className="text-muted-foreground">Takes</dt>
-        <dd>{aboutSeconds(quote.timeEstimateSeconds)}</dd>
+        <dd className="text-end">{aboutSeconds(quote.timeEstimateSeconds)}</dd>
       </dl>
       <p className="text-sm text-muted-foreground">This address is for this deposit only.</p>
       <p role="status" className="flex items-baseline gap-2 text-sm">
@@ -243,29 +253,84 @@ function DepositProgress({
           ))}
         </ul>
       )}
-      <Button type="button" variant={settled ? 'default' : 'ghost'} className="self-start" onClick={onReset}>
+      <Button type="button" variant={settled ? 'secondary' : 'ghost'} className="self-start" onClick={onReset}>
         {settled ? 'Add more' : 'Use a different amount'}
       </Button>
     </div>
   )
 }
 
-/** The card: the owner's address, then a deposit address from another chain or token, landing USDC on Base unless picked otherwise. */
-export function AddFundsCard({ owner }: { readonly owner: string }) {
+/** A Relay deposit from another chain or token, folded away until the owner asks for it. */
+export function FromElsewhere() {
   const status = useStatus()
   const [deposit, setDeposit] = useState<{ readonly quote: DepositAddress; readonly before: bigint | undefined }>()
   return (
-    <div className="flex flex-col gap-5 rounded-xl bg-card p-5 text-card-foreground ring-1 ring-foreground/10">
-      <YourAddress owner={owner} />
-      <Separator />
-      <div className="flex flex-col gap-4">
-        <h3 className="text-sm font-medium">From another chain or token</h3>
-        {deposit === undefined ? (
-          <DepositForm onQuote={(quote) => setDeposit({ quote, before: ownerOnBase(status.data, quote.receive) })} />
-        ) : (
-          <DepositProgress quote={deposit.quote} before={deposit.before} onReset={() => setDeposit(undefined)} />
-        )}
-      </div>
+    <Collapsible className="flex flex-col">
+      <CollapsibleTrigger render={<Button type="button" variant="ghost" className="group/fold self-center" />}>
+        From another chain or token
+        <ChevronDown
+          data-icon="inline-end"
+          aria-hidden
+          className="group-data-panel-open/fold:rotate-180 motion-safe:transition-transform"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="flex flex-col gap-4 pt-4">
+          <p className="text-sm/relaxed text-muted-foreground text-pretty">
+            ETH, or USDC on Arbitrum or Ethereum? Get a one-off deposit address, and it arrives here as USDC on Base.
+          </p>
+          {deposit === undefined ? (
+            <DepositForm onQuote={(quote) => setDeposit({ quote, before: ownerOnBase(status.data, quote.receive) })} />
+          ) : (
+            <DepositProgress quote={deposit.quote} before={deposit.before} onReset={() => setDeposit(undefined)} />
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+/** What the owner holds on Base now, read every few seconds while this page is open. */
+function HeldOnBase() {
+  const status = useStatus(10_000)
+  const units = ownerOnBase(status.data, 'USDC')
+  if (status.isPending) return null
+  return (
+    <p role="status" className="text-center text-sm text-muted-foreground tabular-nums">
+      {units === undefined
+        ? 'Your balance on Base could not be read just now.'
+        : `You have ${formatUsdCompact(usdOf(units))} USDC on Base.`}
+    </p>
+  )
+}
+
+/** The card Home shows: the owner's address, then a deposit from another chain or token. */
+export function AddFundsCard({ owner }: { readonly owner: string }) {
+  return (
+    <div className="flex flex-col gap-6 rounded-2xl bg-card p-6 text-card-foreground ring-1 ring-foreground/10">
+      <p className="text-center text-sm/relaxed text-muted-foreground text-pretty">
+        Send USDC on Base to your address. It is the same address on every EVM chain.
+      </p>
+      <ReceiveAddress owner={owner} />
+      <FromElsewhere />
     </div>
+  )
+}
+
+/** `/add-funds`: the owner's address and what they hold on Base, then a deposit from another chain or token. */
+export function AddFundsPage() {
+  const me = useMe()
+  return (
+    <Page title="Add funds" description="Send USDC on Base to your address. It is the same address on every EVM chain.">
+      <Async query={me}>
+        {(data) => (
+          <div className="flex w-full max-w-md flex-col gap-6">
+            <ReceiveAddress owner={data.owner} />
+            <HeldOnBase />
+            <FromElsewhere />
+          </div>
+        )}
+      </Async>
+    </Page>
   )
 }

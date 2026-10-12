@@ -56,6 +56,15 @@ export function depositPhase(input: {
 export const isSettled = (phase: DepositPhase): boolean =>
   phase === 'arrived' || phase === 'refunded' || phase === 'failed'
 
+/**
+ * An address in groups of four after its `0x`, so it can be read and compared at a glance:
+ * "0x4f1B 7c0a 2D9e 3b86 A5c1 E7f0 9d4B 2a6C 8e3F 5a17". Anything that is not a 0x address comes back as it was.
+ */
+export function groupAddress(address: string): string {
+  if (!/^0x[0-9a-fA-F]+$/u.test(address)) return address
+  return `0x${address.slice(2).replace(/(.{4})(?=.)/gu, '$1 ')}`
+}
+
 /** "about 20 seconds", "about 2 minutes". */
 export function aboutSeconds(seconds: number): string {
   if (seconds < 90) return `about ${Math.max(1, Math.round(seconds))} seconds`

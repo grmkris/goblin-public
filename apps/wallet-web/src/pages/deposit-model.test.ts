@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { STATUS } from '../api/fixtures.ts'
-import { aboutSeconds, amountProblem, depositPhase, isSettled, needsNoDeposit, ownerOnBase } from './deposit-model.ts'
+import {
+  aboutSeconds,
+  amountProblem,
+  depositPhase,
+  groupAddress,
+  isSettled,
+  needsNoDeposit,
+  ownerOnBase,
+} from './deposit-model.ts'
+
+describe('an address to read', () => {
+  it('groups the hex after 0x in fours and leaves anything else alone', () => {
+    expect(groupAddress('0x4f1B7c0a2D9e3b86A5c1E7f09d4B2a6C8e3F5a17')).toBe(
+      '0x4f1B 7c0a 2D9e 3b86 A5c1 E7f0 9d4B 2a6C 8e3F 5a17',
+    )
+    expect(groupAddress('0xabcdef')).toBe('0xabcd ef')
+    expect(groupAddress('not an address')).toBe('not an address')
+  })
+})
 
 describe('the amount to send', () => {
   it("takes a plain positive amount within the asset's decimals", () => {

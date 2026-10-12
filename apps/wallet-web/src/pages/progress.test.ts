@@ -36,12 +36,24 @@ const ownerOnBaseZero = (row: (typeof STATUS.balances)[number]) =>
   row.chain === 'base' && row.holder === 'owner' ? { ...row, balance: '0' } : row
 const keepOwner = (symbol: string) => (row: (typeof STATUS.balances)[number]) =>
   row.chain === 'base' && row.holder === 'owner' && row.symbol !== symbol ? { ...row, balance: '0' } : row
+/** The fixture status with the owner's USDC on Base at `balance`. */
+const owning = (balance: string) => ({
+  ...STATUS,
+  balances: STATUS.balances.map((row) =>
+    row.chain === 'base' && row.holder === 'owner' && row.symbol === 'USDC' ? { ...row, balance } : row,
+  ),
+})
 
 describe('fundedOnBase', () => {
   it('counts USDC in the owner account on Base, not ETH: the upgrade pays its gas in USDC', () => {
     expect(fundedOnBase(STATUS)).toBe(true)
     expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('USDC')) })).toBe(true)
     expect(fundedOnBase({ ...STATUS, balances: STATUS.balances.map(keepOwner('ETH')) })).toBe(false)
+  })
+  it('needs enough for the upgrade gas at its most, not just any USDC', () => {
+    expect(fundedOnBase(owning('0.05'))).toBe(false)
+    expect(fundedOnBase(owning('0.099999'))).toBe(false)
+    expect(fundedOnBase(owning('0.1'))).toBe(true)
   })
   it('ignores the agent wallet and other networks', () => {
     const elsewhere = STATUS.balances.map((row) => ownerOnBaseZero({ ...row, balance: '50' }))

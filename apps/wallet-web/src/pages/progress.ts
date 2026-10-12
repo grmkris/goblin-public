@@ -1,10 +1,11 @@
 import type { Me, WalletStatusResult } from '@goblin/wallet/contract'
+import { UPGRADE_FEE_CEILINGS } from '@goblin/wallet/userop'
 import { ownerOnBase } from './deposit-model.ts'
 
 export type StepId = 'agent' | 'fund' | 'upgrade' | 'allowance'
 
 interface SetupState {
-  /** The owner holds USDC on Base, which pays the upgrade's gas; undefined until Base is read. */
+  /** The owner holds enough USDC on Base for the upgrade's gas; undefined until Base is read. */
   readonly funded: boolean | undefined
 }
 
@@ -30,11 +31,14 @@ export function setupProgress(me: Me, state: SetupState): StepId | 'done' {
   return base.allowance === undefined ? 'allowance' : 'done'
 }
 
+/** The most USDC the upgrade's gas may take on Base: what the owner needs there before upgrading. */
+export const UPGRADE_FEE_BOUND = UPGRADE_FEE_CEILINGS.base
+
 /**
- * Any USDC in the owner's account on Base: the account is topped up, and can pay the upgrade's gas (in USDC, not ETH).
- * Undefined until Base is read.
+ * Enough USDC in the owner's account on Base to pay the upgrade's gas (in USDC, not ETH), at its most. Undefined until
+ * Base is read.
  */
 export function fundedOnBase(status: WalletStatusResult | undefined): boolean | undefined {
   const units = ownerOnBase(status, 'USDC')
-  return units === undefined ? undefined : units > 0n
+  return units === undefined ? undefined : units >= UPGRADE_FEE_BOUND
 }

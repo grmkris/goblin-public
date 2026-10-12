@@ -1,43 +1,48 @@
 import { useMe } from '../api/queries.tsx'
 import { ActivityPage } from '../pages/activity.tsx'
+import { AddFundsPage } from '../pages/add-funds.tsx'
 import { ApprovePage } from '../pages/approve.tsx'
 import { ConsentPage } from '../pages/consent.tsx'
 import { ConnectionsPage } from '../pages/connections.tsx'
 import { HomePage } from '../pages/home.tsx'
 import { LimitsPage } from '../pages/limits.tsx'
-import { OnboardingPage } from '../pages/onboarding.tsx'
-import { isSetUp } from '../pages/progress.ts'
+import { SetupPage } from '../pages/setup/setup-page.tsx'
 import { SignInPage } from '../pages/sign-in.tsx'
 import { Async } from '../ui/async.tsx'
 import { useAuth } from './auth.tsx'
 import { useLocation } from './router.tsx'
+import { type ConsolePageName, routeOf } from './routes.ts'
 import { Shell } from './shell.tsx'
 
-function Routes() {
-  const { pathname } = useLocation()
-  if (pathname === '/activity') return <ActivityPage />
-  if (pathname === '/limits') return <LimitsPage />
-  if (pathname === '/connections') return <ConnectionsPage />
-  return <HomePage />
+function ConsolePage({ page }: { readonly page: ConsolePageName }) {
+  switch (page) {
+    case 'activity':
+      return <ActivityPage />
+    case 'limits':
+      return <LimitsPage />
+    case 'connections':
+      return <ConnectionsPage />
+    case 'add-funds':
+      return <AddFundsPage />
+    case 'home':
+      return <HomePage />
+  }
 }
 
 /**
- * Setup first: until the agent has a wallet and the account is upgraded and allowed on Base, every page is the setup
- * screen. Connecting an agent never gates it; the Connections page has the MCP URL whenever the owner wants it.
+ * The console: every page works whether or not setup is finished, so its navigation always goes somewhere. Home says
+ * what setup still needs and links to /setup; the other pages show what there is.
  */
-function SignedIn() {
+function SignedIn({ page }: { readonly page: ConsolePageName }) {
   const auth = useAuth()
   const me = useMe()
   return (
     <Async query={me} rows={2}>
-      {(data) => {
-        const ready = isSetUp(data)
-        return (
-          <Shell owner={data.owner} wide={!ready} onSignOut={auth.logout}>
-            {ready ? <Routes /> : <OnboardingPage me={data} />}
-          </Shell>
-        )
-      }}
+      {(data) => (
+        <Shell owner={data.owner} onSignOut={auth.logout}>
+          <ConsolePage page={page} />
+        </Shell>
+      )}
     </Async>
   )
 }
@@ -46,8 +51,9 @@ export function App() {
   const auth = useAuth()
   const { pathname } = useLocation()
   if (auth.status !== 'ready') return <SignInPage />
-  if (pathname === '/consent') return <ConsentPage />
-  if (pathname.startsWith('/approve/'))
-    return <ApprovePage operationId={decodeURIComponent(pathname.slice('/approve/'.length))} />
-  return <SignedIn />
+  const route = routeOf(pathname)
+  if (route.page === 'setup') return <SetupPage />
+  if (route.page === 'consent') return <ConsentPage />
+  if (route.page === 'approve') return <ApprovePage operationId={route.operationId} />
+  return <SignedIn page={route.page} />
 }

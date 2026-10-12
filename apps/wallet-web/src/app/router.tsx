@@ -1,4 +1,5 @@
-// A small history router: five owner pages and two deep links that goblin and the OAuth flow open.
+// A small history router: the owner pages, and the deep links that goblin and the OAuth flow open (setup, consent,
+// approvals).
 import { type ComponentProps, type MouseEvent, type ReactNode, useSyncExternalStore } from 'react'
 
 const listeners = new Set<() => void>()
@@ -19,11 +20,14 @@ export function navigate(to: string, options: { readonly replace?: boolean } = {
   window.scrollTo(0, 0)
 }
 
-/** The current location, split. Re-renders on navigation. */
+/** `/activity/` is `/activity`: a trailing slash (a pasted or hand-typed link) names the same page. */
+export const normalizePath = (pathname: string): string => pathname.replace(/(?<=.)\/+$/u, '') || '/'
+
+/** The current location, split, its path without a trailing slash. Re-renders on navigation. */
 export function useLocation(): { readonly pathname: string; readonly search: URLSearchParams } {
   const full = useSyncExternalStore(subscribe, snapshot, () => '/')
   const [pathname = '/', query = ''] = full.split('?')
-  return { pathname, search: new URLSearchParams(query) }
+  return { pathname: normalizePath(pathname), search: new URLSearchParams(query) }
 }
 
 /**
