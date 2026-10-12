@@ -1752,3 +1752,9 @@ transaction, asks the owner through a URL request when a limit, recipient or ser
 agent signer (whose Privy policy refuses what it does not allow), pays, and records the receipt. On-chain, the owner's
 account (EIP-7702 upgraded to MetaMask's DeleGator) grants the agent signer an `ERC20PeriodTransfer` allowance, so the
 chain itself caps what the agent can draw per period.
+
+## Release and public source
+
+Private `dev` is the daily source branch, and `prod` records the deliberately promoted SHA. A successful dev push Check triggers exact-tip deployment and authenticated acceptance. Promote verifies the stored dev SHA and live Worker version, advances prod without rewriting history, and deploys/verifies that commit under the existing stage lock and Alchemy state. Promote deploys core Goblin and the separate Wallet production Worker from that same snapshot. Wallet keeps its own stage file, Alchemy state and wallet deploy lock; health, production OAuth issuer and anonymous MCP refusal establish its public smoke receipt. Publication checks both Workers' receipts against their current versions.
+
+After production acceptance, the public exporter creates sanitized Git objects in a separate repository, preserving meaningful history and original author metadata. Full public checkout checks, object/history secret checks and dependency applicability checks precede a fast-forward push to public main. The correspondence map stays private. Export failure can be retried without another deployment. Hosted public CI has read-only repository permissions and no private runner or stage credentials. [ADR 0046](adr/0046-production-promotion-and-public-source.md) records the boundaries.

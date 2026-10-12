@@ -2,6 +2,7 @@
   "name": "goblin",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "workspaces": {
     "packages": [
       "apps/*",
@@ -113,6 +114,5 @@
   "packageManager": "bun@1.4.2",
   "patchedDependencies": {
     "@shadcn/react@0.3.1": "patches/@shadcn%2Freact@0.3.1.patch"
-  },
-  "license": "MIT"
+  }
 }
