@@ -78,6 +78,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@goblin/wallet": "workspace:*",
+        "@modelcontextprotocol/ext-apps": "2.0.3",
         "@modelcontextprotocol/server": "2.2.0",
         "effect": "4.0.1",
       },
