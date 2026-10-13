@@ -251,8 +251,9 @@ Finishing narrows the panel into the rail as the chat appears.
 allows the tools and redirects to `/start/<step>` rather than Connections.
 
 **In the chat.**
-- While the day's allowance is none, the dock shows what is left before goblin can answer, with Continue setup
-  (`components/start/setup-cards.tsx`); the message waits in the composer.
+- Once billing is read and the account has no plan, the dock shows the plan card (`components/plan-needed.tsx`): Pick
+  a plan to start, or Add funds for a day pass that could not pay; the message waits in the composer. Nothing shows
+  while billing is still read.
 - A skipped Start with something left gets one quiet line back to it. Settings has a Set up goblin card.
 - In main, `pi/onboarding.ts` adds to goblin's context block, none of it read from a server: that goblin pays for
   itself from the Goblin Wallet and the wallet's setup page, the pieces not set up yet (Mercator marked optional), and

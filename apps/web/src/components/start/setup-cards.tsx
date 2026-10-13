@@ -1,59 +1,14 @@
-// First-run Start's place in the chat (ADR 0048). An owner whose goblin cannot answer (the free plan's wallet is not
-// funded) sees what is left to set up instead of a refusal, and their message waits in the composer; one who skipped
-// Start with something left gets a quiet way back. Neither asks the model anything.
+// First-run Start's ways back (ADR 0048): a quiet row in the chat for an owner who skipped Start with something left,
+// Settings' card and Activity's checklist. What goblin needs before it answers, a plan, is the plan card's
+// (`plan-needed.tsx`). None of them asks the model anything.
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { OnboardingStep, OnboardingView } from '@goblin/contracts'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@goblin/ui'
-import { CheckIcon, WalletIcon, XIcon } from 'lucide-react'
+import { CheckIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { onboardingQuery } from '../../onboarding/queries.ts'
 import { PageSection } from '../page-section.tsx'
-
-/** What lets goblin answer, in order, as the card names it: each a part of the wallet step, done or not. */
-const ANSWER_PARTS: readonly {
-  readonly text: (wallet: OnboardingView['wallet']) => string
-  readonly done: (wallet: OnboardingView['wallet']) => boolean
-}[] = [
-  { text: () => 'Connect your Goblin Wallet', done: (wallet) => wallet.allowed },
-  { text: () => 'Finish its setup in the wallet', done: (wallet) => wallet.ready },
-  { text: (wallet) => `Add $${wallet.needs} or more to it`, done: (wallet) => wallet.funded },
-]
-
-/** goblin cannot answer yet: what is left, and the way to finish it. The message the owner wrote stays where it is. */
-export function FundGoblinCard() {
-  const view = useQuery(onboardingQuery).data
-  if (view === undefined) return null
-  const { wallet } = view
-  return (
-    <section className="setup-card" aria-labelledby="fund-goblin-title">
-      <p id="fund-goblin-title" className="setup-card-title">
-        <WalletIcon aria-hidden />
-        Fund goblin to get answers
-      </p>
-      <p className="setup-card-why">
-        Your plan&apos;s Credits start once your Goblin Wallet holds ${view.wallet.needs}. Your message stays here.
-      </p>
-      <ol className="setup-card-steps">
-        {ANSWER_PARTS.map((part) => {
-          const done = part.done(wallet)
-          return (
-            <li key={part.text(wallet)} {...(done ? { 'data-done': true } : {})}>
-              <span className="setup-card-mark" aria-hidden>
-                {done && <CheckIcon />}
-              </span>
-              {part.text(wallet)}
-              {done && <span className="sr-only"> (done)</span>}
-            </li>
-          )
-        })}
-      </ol>
-      <Button size="sm" nativeButton={false} render={<Link to="/start/$step" params={{ step: 'wallet' }} />}>
-        Continue setup
-      </Button>
-    </section>
-  )
-}
 
 /** The steps a skipped Start still counts as left: the welcome and the kickoff are no tasks to come back to. */
 const leftOf = (view: OnboardingView) =>

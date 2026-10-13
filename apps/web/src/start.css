@@ -697,7 +697,7 @@
   }
 }
 
-/* Start's place in the chat (components/start/setup-cards.tsx): what is left before goblin answers, or the way back. */
+/* The chat's setup card (components/plan-needed.tsx) and Start's ways back (components/start/setup-cards.tsx). */
 .setup-card {
   display: flex;
   flex-direction: column;
@@ -728,22 +728,6 @@
   font-size: 0.875rem;
   text-wrap: pretty;
 }
-.setup-card-steps {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  font-size: 0.875rem;
-}
-.setup-card-steps > li {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.setup-card-steps > li[data-done] {
-  color: var(--muted-foreground);
-  text-decoration: line-through;
-  text-decoration-color: var(--hairline);
-}
 .setup-card-mark {
   display: grid;
   flex: none;
@@ -752,10 +736,6 @@
   height: 1.125rem;
   border: 1.5px solid var(--border);
   border-radius: 999px;
-}
-li[data-done] > .setup-card-mark {
-  border-color: var(--success);
-  color: var(--success);
 }
 .setup-card-mark > svg {
   width: 0.75rem;

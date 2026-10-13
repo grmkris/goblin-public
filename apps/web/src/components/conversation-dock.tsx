@@ -6,7 +6,7 @@ import { RotateCcwIcon, WalletIcon } from 'lucide-react'
 import { modelQuery, payQuery, usageQuery } from '../agent/queries.ts'
 import { useFollowed, useStoredStates } from '../approvals/hooks.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
-import { WALLET_NEEDED } from '../lib/query/app-error.ts'
+import { useBilling } from '../account/hooks.ts'
 import { openInteractions, stillOpen, waitingOnOwner } from '../lib/interactions.ts'
 import type { Part } from '../lib/parts.ts'
 import { payingPerCall, walletPaysWhenSpent } from '../lib/pay.ts'
@@ -21,7 +21,7 @@ import { QueuedMessages } from './queued-messages.tsx'
 import { InteractionCards } from './interaction-cards.tsx'
 import { ModelPicker } from './model-picker.tsx'
 import { SetupButton } from './topic-setup.tsx'
-import { FinishSetupRow, FundGoblinCard } from './start/setup-cards.tsx'
+import { FinishSetupRow } from './start/setup-cards.tsx'
 import { PLAN_REFUSAL, PlanNeededCard, usePlanNeeded } from './plan-needed.tsx'
 import { UsageIndicator } from './usage-indicator.tsx'
 import type { useConversation } from './use-conversation.ts'
@@ -147,7 +147,7 @@ function DockCards({
 }: {
   readonly queue: Parameters<typeof QueuedMessages>[0]['inputs']
   readonly notices: readonly string[]
-  /** First-run Start's place here: what is left before goblin can answer, or the way back to it (ADR 0048). */
+  /** What goblin needs before it can answer (a plan), or the quiet way back to a skipped Start (ADR 0048). */
   readonly setup: ReactNode
   readonly open: boolean
   readonly waiting: ReturnType<typeof openInteractions>
@@ -204,15 +204,14 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
 }
 
 /**
- * What stands before goblin can answer, in the dock: no plan at all (ADR 0054), the way to pick one or to fund a day pass
- * that could not pay; else Start's card when the day has no Credits and no wallet pays instead (ADR 0047, 0048); else
- * the quiet way back to a skipped Start.
+ * What stands before goblin can answer, in the dock, once the plan is read: without one (ADR 0054), the way to pick one
+ * or to fund a day pass that could not pay; with one, the quiet way back to a skipped Start (ADR 0048). Nothing while
+ * the plan is still read or could not be.
  */
-function DockSetup({ usage, planNeeded }: { readonly usage: UsageToday | undefined; readonly planNeeded: boolean }) {
-  const pay = useQuery(payQuery).data
-  if (planNeeded) return <PlanNeededCard />
-  const cannotAnswer = usage?.limit === 0 && (pay === undefined || !walletPaysWhenSpent(pay))
-  return cannotAnswer ? <FundGoblinCard /> : <FinishSetupRow />
+function DockSetup() {
+  const { state } = useBilling()
+  if (state === undefined) return null
+  return state.active ? <FinishSetupRow /> : <PlanNeededCard />
 }
 
 /**
@@ -258,12 +257,11 @@ export function ConversationDock({
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
       <DockCards
-        // Start's own card says what the free plan waits for, and the plan card why goblin does not answer; their
-        // refusals would only repeat them.
+        // The plan card says why goblin does not answer; the refusal would only repeat it.
         notices={[notice, projection?.queueNotice ?? '', ...notices].filter(
-          (text) => !text.startsWith(WALLET_NEEDED) && !(planNeeded && text.startsWith(PLAN_REFUSAL)),
+          (text) => !(planNeeded && text.startsWith(PLAN_REFUSAL)),
         )}
-        setup={closed === undefined && <DockSetup usage={usage} planNeeded={planNeeded} />}
+        setup={closed === undefined && <DockSetup />}
         open={closed === undefined}
         waiting={waiting}
         id={id}
