@@ -78,11 +78,10 @@ describe('the inspect group served by the agent', () => {
     expect(await route.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
   })
 
-  it('answers 402 from the gate before the handler runs', async () => {
-    const { fetch, resident } = fixture({ active: false })
+  it('serves an owner without a plan: the gate reads none, and inspecting spends nothing (ADR 0054)', async () => {
+    const { fetch } = fixture({ active: false })
     const response = await fetch(get('/api/conversations/12/details?operation=op-1'))
-    expect(response.status).toBe(402)
-    expect(resident.renewals).toEqual([])
+    expect(response.status).not.toBe(402)
   })
 
   it("serves the probes' typed client: details decode, and a refusal decodes as the NotFound class", async () => {

@@ -75,16 +75,11 @@ describe('the owner API served by the agent', () => {
     expect(await archive.json()).toMatchObject({ error: { code: 'invalid_input', reason: 'personal_topic' } })
   })
 
-  it('answers 402 subscription_required from the gate before any handler runs', async () => {
+  it('admits an owner without a plan: the gate reads none, so Start and Settings work before Pro (ADR 0054)', async () => {
     const { fetch, resident } = fixture({ active: false })
-    const response = await fetch(
-      post('/api/topics', { name: 'Work', operationId: 'op-1' }, { 'x-goblin-ref': 'ref-402' }),
-    )
-    expect(response.status).toBe(402)
-    expect(await response.json()).toMatchObject({
-      error: { code: 'subscription_required', subscribe: '/subscribe', ref: 'ref-402' },
-    })
-    expect(resident.renewals).toEqual([])
+    const response = await fetch(post('/api/topics', { name: 'Work', operationId: 'op-1' }))
+    expect(response.status).toBe(201)
+    expect(resident.renewals).toHaveLength(1)
   })
 
   it('answers every path that is no endpoint with the 404 envelope, quoting the reference', async () => {

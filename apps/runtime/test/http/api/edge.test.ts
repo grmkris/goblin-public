@@ -1,4 +1,4 @@
-import { BillingRefused, NotFound, SubscriptionRequired, Unauthenticated, envelopeOf } from '@goblin/contracts/api'
+import { BillingRefused, NotFound, Unauthenticated, envelopeOf } from '@goblin/contracts/api'
 import * as Effect from 'effect/Effect'
 import * as Option from 'effect/Option'
 import { describe, expect, it } from 'vitest'
@@ -61,8 +61,6 @@ const deployment = (
         return Effect.fail(new Unauthenticated({ reason: 'session required' }))
       return Effect.succeed(cookie === 'session=plan-less' ? PLAN_LESS : OWNER)
     },
-    plan: (userId) =>
-      userId === OWNER ? Effect.void : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
     agent: () => ({
       fetch: async (request) => {
         seen.push(request)
@@ -187,18 +185,23 @@ describe('the owner forward', () => {
       'forbidden',
     ],
     ['a write from another site', write('/api/topics', { headers: { origin: 'https://evil.test' } }), 403, 'forbidden'],
-    [
-      'an account without a plan',
-      new Request(`${APP}/api/topics`, { headers: { cookie: 'session=plan-less' } }),
-      402,
-      'subscription_required',
-    ],
   ] as const)('refuses %s without waking the agent', async (_case, request, status, code) => {
     const { seen, edge } = deployment()
     const { response } = await through('owner', request, edge)
     expect(response.status).toBe(status)
     expect(await response.json()).toMatchObject({ error: { code } })
     expect(seen).toHaveLength(0)
+  })
+
+  it('forwards an account without a plan to its agent, which refuses what needs one (ADR 0054)', async () => {
+    const { seen, edge } = deployment()
+    const { response } = await through(
+      'owner',
+      new Request(`${APP}/api/topics`, { headers: { cookie: 'session=plan-less' } }),
+      edge,
+    )
+    expect(response.status).toBe(200)
+    expect(seen).toHaveLength(1)
   })
 
   it('refuses a JSON body over 64 KB without waking the agent, but streams a file upload through', async () => {
@@ -353,10 +356,10 @@ describe('the account API in the Worker', () => {
     })
   })
 
-  it('answers clients only for an account with a plan, and revokes one', async () => {
+  it('answers clients for any signed-in account, and revokes one', async () => {
     const { edge } = deployment()
     const planLess = new Request(`${APP}/api/clients`, { headers: { cookie: 'session=plan-less' } })
-    expect((await through('account', planLess, edge)).response.status).toBe(402)
+    expect((await through('account', planLess, edge)).response.status).toBe(200)
     const list = new Request(`${APP}/api/clients`, { headers: { cookie: 'session=owner' } })
     expect(await (await through('account', list, edge)).response.json()).toEqual([
       { clientId: 'client.1', name: 'Claude' },

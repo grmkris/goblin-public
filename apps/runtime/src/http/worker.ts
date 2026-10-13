@@ -17,7 +17,7 @@ import { canonicalRedirect } from './canonical.ts'
 import { billingDeps, walletBillingDeps } from '../billing/routes.ts'
 import { billingWebhook } from '../billing/webhook.ts'
 import { runBillingCron, runWalletCron } from '../billing/cron.ts'
-import { billingMode, accountPlan } from '../billing/gates.ts'
+import { billingMode } from '../billing/gates.ts'
 import { paidCompletion } from './paid-inference.ts'
 
 /** Only the authenticated user ID supplies the native Agent name. */
@@ -31,7 +31,6 @@ const edgeOf = (env: RuntimeEnv): Edge => ({
       attempt(() => requireUserSession(request, env)),
       (session) => session.userId,
     ),
-  plan: (userId) => Effect.asVoid(accountPlan(env, userId)),
   agent: (userId) => agentOf(env, userId),
   records: accountRecords(env),
 })

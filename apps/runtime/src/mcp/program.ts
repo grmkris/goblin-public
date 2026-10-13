@@ -2,7 +2,6 @@ import * as Cause from 'effect/Cause'
 import * as Effect from 'effect/Effect'
 import * as Exit from 'effect/Exit'
 import * as Option from 'effect/Option'
-import { requirePlan } from '../billing/gates.ts'
 import { connectedFromStart } from '../onboarding/program.ts'
 import { Changes } from '../runtime/changes.ts'
 import { Events, McpServers, Resident } from './service.ts'
@@ -48,8 +47,8 @@ export const disconnectOwnerServer = (connectionId: string) =>
  * Where an outbound sign-in comes back (`GET /api/mcp/oauth/callback`, the `mcp` group's raw `oauthCallback`: it
  * answers a redirect, not JSON). The owner lands on Connections with `connected=<connectionId>`, or with `error=` and the
  * authorization server's own error, `authorization_failed` for an incomplete callback, or the tag of the failure that
- * stopped it. Finishing is an owner request: owner admission checks the plan and, as for every raw endpoint, does not
- * renew resident authority.
+ * stopped it. Finishing is an owner request that needs no plan (Start connects the Goblin Wallet before there is one,
+ * ADR 0054); as for every raw endpoint, owner admission does not renew resident authority, so finishing renews it.
  */
 export const connectCallback = (params: URLSearchParams, appUrl: string) =>
   Effect.gen(function* () {
@@ -62,7 +61,6 @@ export const connectCallback = (params: URLSearchParams, appUrl: string) =>
     }
     const issuer = params.get('iss') ?? undefined
     const finish = Effect.gen(function* () {
-      yield* requirePlan()
       yield* Resident.use((resident) => resident.renew())
       return yield* McpServers.use((servers) => servers.finishConnect(state, code, issuer))
     })

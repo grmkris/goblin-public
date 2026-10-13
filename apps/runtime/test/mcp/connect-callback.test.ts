@@ -66,6 +66,12 @@ describe('the outbound sign-in callback', () => {
     expect(choosing).toMatchObject({ target: 'https://goblin.test/start/services?connected=notes', allowed: [] })
   })
 
+  it('finishes for an owner without a plan: Start connects the Goblin Wallet before Pro is chosen (ADR 0054)', async () => {
+    const planless = await callback('state=s1&code=c1', undefined, false, { step: 'wallet', recommend: true })
+    expect(planless).toMatchObject({ target: 'https://goblin.test/start/wallet?connected=notes', renewals: 1 })
+    expect(planless.finished).toEqual(['s1'])
+  })
+
   it("answers the authorization server's error, or an incomplete callback, without finishing anything", async () => {
     expect((await callback('error=access_denied&state=s1')).target).toBe(
       'https://goblin.test/connections?error=access_denied',
@@ -79,16 +85,9 @@ describe('the outbound sign-in callback', () => {
     })
   })
 
-  it('names the failure that stopped it: a refused finish, the plan, or a defect', async () => {
+  it('names the failure that stopped it: a refused finish or a defect', async () => {
     const refused = await callback('state=s1&code=c1', () => Effect.fail(new InvalidInput({ reason: 'state' })))
     expect(refused.target).toBe('https://goblin.test/connections?error=InvalidInput')
-    const unpaid = await callback('state=s1&code=c1', undefined, false)
-    expect(unpaid).toEqual({
-      target: 'https://goblin.test/connections?error=SubscriptionRequired',
-      renewals: 0,
-      finished: [],
-      allowed: [],
-    })
     const broken = await callback('state=s1&code=c1', () => Effect.die(new Error('broken')))
     expect(broken.target).toBe('https://goblin.test/connections?error=Internal')
   })

@@ -16,15 +16,15 @@ import { RequestContext, type RequestFacts, requestFacts, routeNames, routeTempl
 import { answer, refusal, secured } from './render.ts'
 
 /**
- * The Worker side of the typed API (ADR 0038). The Worker keeps the session, origin, CSRF and fresh plan checks,
- * answers the account API itself and forwards every owner `/api/*` request to the owner's own agent, marked as an owner
- * forward so the agent never takes it for an internal request.
+ * The Worker side of the typed API (ADR 0038). The Worker keeps the session, origin and CSRF checks, answers the
+ * account API itself and forwards every owner `/api/*` request to the owner's own agent, marked as an owner forward so
+ * the agent never takes it for an internal request. It reads no plan: an owner without one reaches their agent (Start
+ * runs before there is a plan), and the agent refuses what needs one, a turn first (ADR 0054, amended 2026-10-13).
  */
 
 /**
- * Runs one of the Worker's own programs to its value (the fresh plan reads, the billing webhook and cron, the edge's own
- * build): with the agent's bridge (runtime/bridge.ts), the only place Effects are run. It rejects with the program's
- * failure.
+ * Runs one of the Worker's own programs to its value (the billing webhook and cron, the edge's own build): with the
+ * agent's bridge (runtime/bridge.ts), the only place Effects are run. It rejects with the program's failure.
  */
 export const runAtEdge = <A, E>(program: Effect.Effect<A, E>): Promise<A> => Effect.runPromise(program)
 
@@ -37,8 +37,6 @@ export interface Edge {
   readonly origin: string
   /** The signed-in user of a request, from its session cookie alone: any `Authorization` header is refused. */
   readonly session: (request: Request) => Effect.Effect<string, AppError>
-  /** Refuses an account without a plan, read fresh on every request (ADR 0015). */
-  readonly plan: (userId: string) => Effect.Effect<void, AppError>
   /** The user's own agent: the only one their requests reach. */
   readonly agent: (userId: string) => AgentFetch
   /** The account's own records, for the account API. */
@@ -76,15 +74,14 @@ const refusedWrite = (request: Request, edge: Edge): Effect.Effect<void, AppErro
     : Effect.void
 
 /**
- * Admission of a signed-in user, in this order: a write from a foreign Origin, the
- * session, the CSRF header on every write, then (when `plan`) the account's plan. The user it admitted.
+ * Admission of a signed-in user, in this order: a write from a foreign Origin, the session, then the CSRF header on
+ * every write. The user it admitted. No plan is read here: the agent checks it where something needs one.
  */
-const admitUser = (request: Request, edge: Edge, plan: boolean): Effect.Effect<string, AppError> =>
+const admitUser = (request: Request, edge: Edge): Effect.Effect<string, AppError> =>
   Effect.gen(function* () {
     if (crossOrigin(request, edge.origin)) return yield* new Forbidden({ reason: 'origin' })
     const userId = yield* edge.session(request)
     yield* refusedWrite(request, edge)
-    if (plan) yield* edge.plan(userId)
     return userId
   })
 
@@ -154,14 +151,14 @@ const under = (path: string, prefix: string): boolean => path === prefix || path
 export const isAccountPath = (path: string): boolean => ACCOUNT_PATHS.some((prefix) => under(path, prefix))
 
 /**
- * Each account group's admission: billing for any signed-in account, clients with a plan, crash reports for anyone.
- * A crash report needs no session, but one that comes with a session names its user (its flow point is indexed by
- * the agent's hash).
+ * Each account group's admission: billing and clients for any signed-in account, crash reports for anyone. A crash
+ * report needs no session, but one that comes with a session names its user (its flow point is indexed by the agent's
+ * hash).
  */
 const admitAccount = (group: string, request: Request, edge: Edge): Effect.Effect<Option.Option<string>, AppError> =>
   group === 'clientErrors'
     ? Effect.andThen(refusedWrite(request, edge), sessionUser(request, edge))
-    : Effect.map(admitUser(request, edge, group === 'clients'), Option.some)
+    : Effect.map(admitUser(request, edge), Option.some)
 
 /** The signed-in user of a request that may come without a session: none for no cookie, or one that does not admit. */
 const sessionUser = (request: Request, edge: Edge): Effect.Effect<Option.Option<string>> =>
@@ -231,7 +228,7 @@ export const makeEdgeHttp: Effect.Effect<EdgeHttp> = Effect.gen(function* () {
       Effect.gen(function* () {
         if (!url.pathname.startsWith(OWNER_PREFIX) || isAccountPath(url.pathname))
           return yield* new NotFound({ what: 'route' })
-        const userId = yield* admitUser(request, edge, true)
+        const userId = yield* admitUser(request, edge)
         known(userId)
         const files = url.pathname === FILES || url.pathname.startsWith(`${FILES}/`)
         const body = files ? request.body : yield* bounded(request, JSON_BODY_LIMIT)

@@ -106,9 +106,3 @@ export const cachedPolicy = Effect.fn('Entitlements.cachedPolicy')(function* (po
     payDay: () => policy.payDay().pipe(Effect.ensuring(Effect.andThen(forgetState, forgetRequire))),
   })
 })
-
-/**
- * The account's plan read fresh from auth D1, as the Worker edge checks it before it resolves an Agent stub:
- * `SubscriptionRequired` unless it is active. Missing provider keys never disable this gate.
- */
-export const accountPlan = (env: RuntimeEnv, userId: string) => accountEntitlements(env, () => userId).require()

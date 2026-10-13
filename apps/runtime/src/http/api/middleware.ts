@@ -36,19 +36,16 @@ const admitted = <A, E, R, E1, R1>(
   })
 
 /**
- * Owner admission (`OwnerAdmission` in the contract): the account's plan, then a renewal of resident authority unless
- * the endpoint says otherwise (`RenewsResident`: changing it must not renew first), then the handler.
+ * Owner admission (`OwnerAdmission` in the contract): a renewal of resident authority unless the endpoint says
+ * otherwise (`RenewsResident`: changing it must not renew first), then the handler. No plan is needed to reach the
+ * agent: Start, Connections, Settings and billing work before there is one. What needs a plan checks it itself: a turn
+ * (`Budget.admit`), a routine, a decision on a held call, a Persona's reply (ADR 0054, amended 2026-10-13).
  */
 export const OwnerAdmissionLive = Layer.effect(
   OwnerAdmission,
   Effect.gen(function* () {
-    const plans = yield* Entitlements
     const resident = yield* Resident
-    const admit = (renews: boolean) =>
-      Effect.gen(function* () {
-        yield* plans.require()
-        if (renews) yield* resident.renew()
-      })
+    const admit = (renews: boolean) => (renews ? resident.renew() : Effect.void)
     return OwnerAdmission.of((handler, names) =>
       admitted(handler, admit(Context.get(names.endpoint.annotations, RenewsResident)), names),
     )
