@@ -1,7 +1,7 @@
 // goblin Pro in the demo (ADR 0054), billed both ways: requests waiting at /subscribe/<id> for a monthly subscription
 // and for a day pass, and in a busy wallet both already signed: the monthly one paid for its first period, the day pass
 // used today. The fixture signer turns a request into a subscription, and a cancellation revokes it.
-import type { MerchantBilling, SubscriptionView } from '@goblin/wallet/contract'
+import type { MerchantBilling, SubscriptionPayment, SubscriptionView } from '@goblin/wallet/contract'
 import { periodCount, subscriptionStart } from '@goblin/wallet/delegation'
 import { OWNER } from './fixtures.ts'
 
@@ -87,3 +87,41 @@ export const fixtureSubscriptions = (busy: boolean, now = Date.now()): Subscript
  */
 export const signedNow = (view: SubscriptionView, now = Date.now()): SubscriptionView =>
   signed(view, now, 0, view.billing === 'day' ? undefined : { period: 1, at: now })
+
+/** A payment the demo collected from `view`, linked to a made-up transaction on Base. */
+export const paymentOf = (view: SubscriptionView, period: number, at: number): SubscriptionPayment => {
+  const txHash = `0x${view.id.slice('sub_'.length)}${period.toString(16).padStart(32, '0')}`
+  return {
+    id: `${view.id}:${String(period)}`,
+    subscriptionId: view.id,
+    merchant: view.merchant,
+    plan: view.plan,
+    billing: view.billing,
+    amountUsd: view.amountUsd,
+    chain: 'base',
+    period,
+    paidAt: new Date(at).toISOString(),
+    txHash,
+    explorerUrl: `https://basescan.org/tx/${txHash}`,
+  }
+}
+
+/**
+ * What the busy wallet's subscriptions paid, newest first: the day pass today and on two earlier days goblin was used,
+ * and the monthly subscription its first period.
+ */
+export function fixturePayments(views: readonly SubscriptionView[], now = Date.now()): SubscriptionPayment[] {
+  return views
+    .filter((view) => view.status === 'active' && view.startsAt !== undefined && view.lastPaidAt !== undefined)
+    .flatMap((view) => {
+      const starts = Date.parse(view.startsAt ?? '')
+      const last = Date.parse(view.lastPaidAt ?? '')
+      if (view.billing !== 'day') return [paymentOf(view, 1, last)]
+      const today = Math.floor((last - starts) / DAY_MS) + 1
+      return [
+        paymentOf(view, today, last),
+        ...[3, 6].map((ago) => paymentOf(view, today - ago, last - ago * DAY_MS - 3_600_000)),
+      ]
+    })
+    .toSorted((a, b) => Date.parse(b.paidAt) - Date.parse(a.paidAt))
+}

@@ -13,6 +13,7 @@ import {
   type Me,
   type Operation,
   type PolicyChange,
+  type SubscriptionPayment,
   type SubscriptionView,
   termsHash,
   type WalletStatusResult,
@@ -34,7 +35,7 @@ import {
   SERVICES,
   STATUS,
 } from './fixtures.ts'
-import { fixtureSubscriptions, signedNow } from './subscription-fixtures.ts'
+import { fixturePayments, fixtureSubscriptions, paymentOf, signedNow } from './subscription-fixtures.ts'
 import type { WalletApi } from './types.ts'
 
 const delay = async <T>(value: T): Promise<T> => {
@@ -77,6 +78,8 @@ interface World {
   readonly deposits: Map<string, FixtureDeposit>
   /** goblin Pro: a request to sign, and in a busy wallet a subscription already running. */
   subscriptions: readonly SubscriptionView[]
+  /** What goblin collected from them: in a busy wallet, the day pass today and earlier, and the monthly one's first. */
+  payments: readonly SubscriptionPayment[]
   /** Balance reads since the agent wallet was created, in `fresh`: the third one sees the send land. */
   reads: number
 }
@@ -104,7 +107,11 @@ function simulate(world: World): FixtureApi['simulate'] {
       world.subscriptions = world.subscriptions.map((view) =>
         view.id !== id ? view : change === 'signed' ? signedNow(view) : { ...view, status: 'revoked' },
       )
-      return world.subscriptions.find((view) => view.id === id)
+      const found = world.subscriptions.find((view) => view.id === id)
+      // A monthly subscription's first payment is taken as it is signed; a day pass waits for goblin's first message.
+      if (change === 'signed' && found?.lastPaidAt !== undefined)
+        world.payments = [paymentOf(found, 1, Date.parse(found.lastPaidAt)), ...world.payments]
+      return found
     },
     upgrade: (chain) => {
       world.me = { ...world.me, chains: withSetup(world.me.chains, chain, { upgraded: true }) }
@@ -359,14 +366,17 @@ export function createFixtureApi(start: FixtureStart = 'ready'): FixtureApi {
     limits: busy ? LIMITS : FRESH_STATUS.limits,
     deposits: new Map(),
     subscriptions: fixtureSubscriptions(busy),
+    payments: [],
     reads: 0,
   }
-  const subscriptions: Pick<WalletApi, 'subscription' | 'subscriptions'> = {
+  world.payments = fixturePayments(world.subscriptions)
+  const subscriptions: Pick<WalletApi, 'subscription' | 'subscriptions' | 'subscriptionPayments'> = {
     subscription: (id) => {
       const found = world.subscriptions.find((view) => view.id === id)
       return found === undefined ? Promise.reject(new Error('This subscription is not known.')) : delay(found)
     },
     subscriptions: () => delay(world.subscriptions.filter((view) => view.status !== 'pending')),
+    subscriptionPayments: () => delay(world.payments),
   }
   return { ...reads(world), ...writes(world), ...deposits(world), ...subscriptions, simulate: simulate(world) }
 }

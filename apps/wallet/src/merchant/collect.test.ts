@@ -1,10 +1,14 @@
 import type { JsonRpc } from '@goblin/wallet/balances'
 import { chainByKey } from '@goblin/wallet/chains'
-import type { AgentSigner, Collection, MerchantSubscription } from '@goblin/wallet/contract'
+import type { AgentSigner, Collection, MerchantSubscription, SubscriptionPayment } from '@goblin/wallet/contract'
 import { prepareSubscription, type SubscriptionTerms } from '@goblin/wallet/delegation'
 import { describe, expect, test } from 'vitest'
+import { createApi } from '../api/index.ts'
+import { defaultWiring } from '../context.ts'
+import type { IdentityVerifier } from '../identity.ts'
+import { LedgerObject } from '../ledger/durable.ts'
 import { alarmHost } from '../ledger/fixtures.ts'
-import { WalletAuth, subscriptionClient, type SubscriptionApi } from '../oauth/durable.ts'
+import { WalletAuth, authClient, subscriptionClient, type SubscriptionApi } from '../oauth/durable.ts'
 import { testEnv } from '../test-env.ts'
 import { type CollectDeps, collect } from './collect.ts'
 import { GOBLIN_MERCHANT } from './config.ts'
@@ -218,5 +222,85 @@ describe('the merchant API', () => {
       expiresAt: '2027-10-13T00:00:00.000Z',
       shortUsd: '0',
     })
+  })
+})
+
+describe("the owner's subscription payments", () => {
+  const identity: IdentityVerifier = {
+    verifyRequest: (request) =>
+      Promise.resolve(
+        request.headers.get('authorization') === 'Bearer owner'
+          ? { ok: true, owner: { userId: 'did:privy:owner', ownerAddress: OWNER } }
+          : { ok: true, owner: { userId: 'did:privy:stranger', ownerAddress: COLLECTOR } },
+      ),
+    verifyToken: () => Promise.resolve({ ok: false, reason: 'invalid_token' }),
+  }
+
+  test('list each paid period for its owner only, newest first, linked to its transaction', async () => {
+    const store = await signedDayPass()
+    await payDayOne(store)
+    await store.beginCollection({
+      subscriptionId: ID,
+      period: 3,
+      operationId: 'pro:user_1:3',
+      now: MIDNIGHT + 2 * DAY_S,
+    })
+    await store.finishCollection({ subscriptionId: ID, period: 3, status: 'paid', now: MIDNIGHT + 2 * DAY_S + 30 })
+    await store.beginCollection({
+      subscriptionId: ID,
+      period: 4,
+      operationId: 'pro:user_1:4',
+      now: MIDNIGHT + 3 * DAY_S,
+    })
+    await store.finishCollection({
+      subscriptionId: ID,
+      period: 4,
+      status: 'failed',
+      reason: 'insufficient_funds',
+      now: MIDNIGHT + 3 * DAY_S,
+    })
+    const auth = authClient(new WalletAuth(alarmHost()))
+    const api = createApi({
+      identity: () => identity,
+      auth: () => auth,
+      wiring: { ...defaultWiring, ledger: () => new LedgerObject(alarmHost(), () => SIGNED_AT * 1000) },
+      subscriptions: () => store,
+    })
+    const read = (token: string) =>
+      api(
+        new Request('https://wallet.test/api/subscription-payments', { headers: { authorization: `Bearer ${token}` } }),
+        testEnv(),
+      )
+    const response = await read('owner')
+    expect(response.status).toBe(200)
+    // SAFETY: the route answers SubscriptionPayment[]; the test reads its fields.
+    const payments = (await response.json()) as SubscriptionPayment[]
+    expect(payments).toEqual([
+      {
+        id: `${ID}:3`,
+        subscriptionId: ID,
+        merchant: 'goblin',
+        plan: 'pro',
+        billing: 'day',
+        amountUsd: '1.00',
+        chain: 'base',
+        period: 3,
+        paidAt: new Date((MIDNIGHT + 2 * DAY_S + 30) * 1000).toISOString(),
+      },
+      {
+        id: `${ID}:1`,
+        subscriptionId: ID,
+        merchant: 'goblin',
+        plan: 'pro',
+        billing: 'day',
+        amountUsd: '1.00',
+        chain: 'base',
+        period: 1,
+        paidAt: new Date((SIGNED_AT + 1800) * 1000).toISOString(),
+        txHash: TX,
+        explorerUrl: `${chain.explorerUrl}/tx/${TX}`,
+      },
+    ])
+    expect(await (await read('stranger')).json()).toEqual([])
   })
 })

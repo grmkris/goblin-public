@@ -32,6 +32,7 @@ export const SUBSCRIPTION_METHODS = [
   'putPrepared',
   'activate',
   'ownerSubscriptions',
+  'ownerPayments',
   'putRevoke',
   'markRevoked',
   'knownCollection',

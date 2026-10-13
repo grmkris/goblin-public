@@ -1,7 +1,8 @@
 import type { Operation } from '@goblin/wallet/contract'
 import { describe, expect, it } from 'vitest'
 import { OPERATIONS } from '../api/fixtures.ts'
-import { dayLabel, groupByDay, rowTime } from './activity-model.ts'
+import { fixtureSubscriptions, paymentOf } from '../api/subscription-fixtures.ts'
+import { dayLabel, feedOf, groupByDay, rowTime } from './activity-model.ts'
 
 // Noon local time, so an hour either way stays on the same day in every time zone the tests run in.
 const NOW = new Date(2026, 9, 12, 12, 0).getTime()
@@ -26,11 +27,23 @@ describe('dayLabel', () => {
 describe('groupByDay', () => {
   it('groups by local day, newest day and newest row first', () => {
     const groups = groupByDay(
-      [opAt('older', at(3)), opAt('today-1', at(0, 5)), opAt('yesterday', at(1)), opAt('today-2', at(0, 1))],
+      feedOf([opAt('older', at(3)), opAt('today-1', at(0, 5)), opAt('yesterday', at(1)), opAt('today-2', at(0, 1))]),
       NOW,
     )
     expect(groups.map((group) => group.label)).toEqual(['Today', 'Yesterday', dayLabel(at(3), NOW)])
-    expect(groups[0]?.operations.map((operation) => operation.id)).toEqual(['today-2', 'today-1'])
+    expect(groups[0]?.rows.map((row) => row.key)).toEqual(['today-2', 'today-1'])
+  })
+
+  it("puts a subscription payment among the agent's operations, by when it was paid", () => {
+    const pass = fixtureSubscriptions(false, NOW).find((view) => view.billing === 'day') ?? expect.fail('a day pass')
+    const paid = paymentOf(pass, 1, Date.parse(at(0, 3)))
+    const groups = groupByDay(feedOf([opAt('today-1', at(0, 5)), opAt('today-2', at(0, 1))], [paid]), NOW)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.rows.map((row) => `${row.kind}:${row.key}`)).toEqual([
+      'operation:today-2',
+      `payment:${paid.id}`,
+      'operation:today-1',
+    ])
   })
 
   it('is empty for no operations', () => {

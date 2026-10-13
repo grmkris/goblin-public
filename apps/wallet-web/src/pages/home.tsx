@@ -1,11 +1,25 @@
 // Home, as a phone wallet opens: the balance, what the agent can spend now, three actions, then what needs the owner,
 // the latest activity and the connected agents. Until setup is finished, one card on top says the next step.
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Skeleton } from '@goblin/ui'
-import type { ChainSetup, Me, Operation, OperationCheck, WalletStatusResult } from '@goblin/wallet/contract'
+import type {
+  ChainSetup,
+  Me,
+  Operation,
+  OperationCheck,
+  SubscriptionPayment,
+  WalletStatusResult,
+} from '@goblin/wallet/contract'
 import type { UseQueryResult } from '@tanstack/react-query'
 import { Bot, ChevronDown, Gauge, History, Plus } from 'lucide-react'
 import type { ComponentType, SVGProps } from 'react'
-import { useActivity, useCheckOperation, useConnections, useMe, useStatus } from '../api/queries.tsx'
+import {
+  useActivity,
+  useCheckOperation,
+  useConnections,
+  useMe,
+  useStatus,
+  useSubscriptionPayments,
+} from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
 import { ActivityRow } from '../ui/activity-row.tsx'
 import { Async } from '../ui/async.tsx'
@@ -15,7 +29,7 @@ import { EmptyState, RowList, Section } from '../ui/page.tsx'
 import { usdOf } from '../views/money.ts'
 import { type Attention, attentionOf } from '../views/overview-model.ts'
 import { reviewOf } from './activity.tsx'
-import { rowTime } from './activity-model.ts'
+import { feedOf, rowTime } from './activity-model.ts'
 import { lastUsedOf } from './agents-model.ts'
 import {
   type Holding,
@@ -28,6 +42,7 @@ import {
   totalOf,
   whereOf,
 } from './home-model.ts'
+import { PaymentRow } from './payment-row.tsx'
 import { fundedOnBase, isSetUp, setupProgress } from './progress.ts'
 import { Subscriptions } from './subscriptions.tsx'
 
@@ -240,9 +255,12 @@ function NeedsYou({
 /** The latest few operations, without the ones already waiting above. */
 function Recent({
   activity,
+  payments,
   shown,
 }: {
   readonly activity: UseQueryResult<readonly Operation[]>
+  /** What the owner's subscriptions paid; listed beside the operations once read, never holding them up. */
+  readonly payments: readonly SubscriptionPayment[] | undefined
   readonly shown: ReadonlySet<string>
 }) {
   return (
@@ -255,19 +273,22 @@ function Recent({
       }
     >
       <Async query={activity} rows={3}>
-        {(rows) => {
-          const recent = rows.filter((operation) => !shown.has(operation.id)).slice(0, RECENT)
+        {(operations) => {
+          const recent = feedOf(
+            operations.filter((operation) => !shown.has(operation.id)),
+            payments,
+          ).slice(0, RECENT)
           return recent.length === 0 ? (
             <EmptyState title="Nothing spent yet" description="When your agent pays for something, it shows up here." />
           ) : (
             <RowList className="overflow-clip">
-              {recent.map((operation) => (
-                <ActivityRow
-                  key={operation.id}
-                  operation={operation}
-                  time={rowTime(operation.createdAt, { dated: true })}
-                />
-              ))}
+              {recent.map((row) =>
+                row.kind === 'payment' ? (
+                  <PaymentRow key={row.key} payment={row.payment} time={rowTime(row.at, { dated: true })} />
+                ) : (
+                  <ActivityRow key={row.key} operation={row.operation} time={rowTime(row.at, { dated: true })} />
+                ),
+              )}
             </RowList>
           )
         }}
@@ -372,6 +393,7 @@ export function HomePage() {
   const me = useMe()
   const status = useStatus()
   const activity = useActivity()
+  const payments = useSubscriptionPayments()
   const check = useCheckOperation()
   const attention = activity.data === undefined ? [] : attentionOf(activity.data)
   const ready = me.data === undefined || isSetUp(me.data)
@@ -385,7 +407,11 @@ export function HomePage() {
       </div>
       {attention.length > 0 && <NeedsYou items={attention} onCheck={(operation) => check.mutateAsync(operation.id)} />}
       <Subscriptions />
-      <Recent activity={activity} shown={new Set(attention.map((item) => item.operation.id))} />
+      <Recent
+        activity={activity}
+        payments={payments.data}
+        shown={new Set(attention.map((item) => item.operation.id))}
+      />
       <Agents />
     </div>
   )

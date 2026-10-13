@@ -165,6 +165,26 @@ export const SubscriptionView = Schema.Struct({
 })
 export type SubscriptionView = typeof SubscriptionView.Type
 
+/**
+ * One payment a merchant collected from the owner's subscription, as their Activity lists it beside the ledger's own
+ * operations (it is not one: it never counts against the agent's limits). `id` is the subscription and the period;
+ * `period` counts from 1 (for a day pass, the UTC day); `explorerUrl` is the transaction's page once it has one.
+ */
+export const SubscriptionPayment = Schema.Struct({
+  id: Text(128),
+  subscriptionId: SubscriptionId,
+  merchant: Text(120),
+  plan: MerchantPlan,
+  billing: MerchantBilling,
+  amountUsd: UsdAmount,
+  chain: Schema.Literal('base'),
+  period: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: SUBSCRIPTION_MAX_PERIODS })),
+  paidAt: Instant,
+  txHash: Schema.optional(Hex),
+  explorerUrl: Schema.optional(Text(2048)),
+})
+export type SubscriptionPayment = typeof SubscriptionPayment.Type
+
 /** The exact delegation to sign; the page rebuilds and compares it before the owner signs. */
 export const SubscriptionDraft = Schema.Struct({ typedData: Schema.Unknown, delegationHash: Hex })
 export const SubscriptionConfirm = Schema.Struct({ delegationHash: Hex, signature: Hex })
@@ -190,7 +210,7 @@ export const RevokeResult = Schema.Struct({
 })
 export type RevokeResult = typeof RevokeResult.Type
 
-/** The owner API of subscriptions: the sign page, and the console's list with Cancel. */
+/** The owner API of subscriptions: the sign page, the console's list with Cancel, and the payments in Activity. */
 export const SubscriptionRoutes = {
   view: { method: 'GET', path: '/api/subscriptions/:id', response: SubscriptionView },
   prepare: { method: 'POST', path: '/api/subscriptions/:id/prepare', response: SubscriptionDraft },
@@ -201,6 +221,8 @@ export const SubscriptionRoutes = {
     response: SubscriptionView,
   },
   list: { method: 'GET', path: '/api/subscriptions', response: Schema.Array(SubscriptionView) },
+  /** The payments collected from the owner's subscriptions, newest first, at most 50. */
+  payments: { method: 'GET', path: '/api/subscription-payments', response: Schema.Array(SubscriptionPayment) },
   revokePrepare: { method: 'POST', path: '/api/subscriptions/:id/revoke/prepare', response: RevokeDraft },
   revoke: { method: 'POST', path: '/api/subscriptions/:id/revoke', request: RevokeConfirm, response: RevokeResult },
 } as const

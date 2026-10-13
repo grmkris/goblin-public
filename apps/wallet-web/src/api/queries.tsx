@@ -69,6 +69,11 @@ export const useSubscriptions = () => {
   const api = useApi()
   return useQuery({ queryKey: ['subscriptions'], queryFn: api.subscriptions })
 }
+/** Payments collected from the owner's subscriptions; a day pass's lands in the background, so this polls as Activity does. */
+export const useSubscriptionPayments = () => {
+  const api = useApi()
+  return useQuery({ queryKey: ['subscription-payments'], queryFn: api.subscriptionPayments, refetchInterval: 15_000 })
+}
 export const useOAuthRequest = (id: string) => {
   const api = useApi()
   return useQuery({ queryKey: ['oauth-request', id], queryFn: () => api.oauthRequest(id), retry: false })

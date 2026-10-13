@@ -38,6 +38,13 @@ export const billingTail = (view: Billing): string =>
 /** "$1.00 a day you use goblin" or "$15.00 every 30 days". */
 export const billingLine = (view: Billing): string => `${formatUsd(view.amountUsd)} ${billingTail(view)}`
 
+/** "Day pass" or "Monthly": how goblin names the two ways to pay for Pro. */
+export const billingName = (billing: MerchantBilling): string => (billing === 'day' ? 'Day pass' : 'Monthly')
+
+/** "goblin Pro · Day pass": a collected payment's title in Activity. */
+export const paymentTitle = (payment: Pick<Billing, 'merchant' | 'billing'>): string =>
+  `${planName(payment)} · ${billingName(payment.billing)}`
+
 /** "goblin Pro · $1.00 a day you use goblin": the subscription in one line, as the signing screen titles it. */
 export const offerLine = (view: Billing): string => `${planName(view)} · ${billingLine(view)}`
 

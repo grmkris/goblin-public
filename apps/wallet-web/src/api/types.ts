@@ -14,6 +14,7 @@ import type {
   Recipient,
   ReturnCheck,
   ServiceRule,
+  SubscriptionPayment,
   SubscriptionView,
   WalletLimits,
   WalletStatusResult,
@@ -60,4 +61,6 @@ export interface WalletApi {
   readonly subscription: (id: string) => Promise<SubscriptionView>
   /** The owner's signed subscriptions, newest first. */
   readonly subscriptions: () => Promise<readonly SubscriptionView[]>
+  /** What merchants collected from the owner's subscriptions, newest first; Activity lists them beside operations. */
+  readonly subscriptionPayments: () => Promise<readonly SubscriptionPayment[]>
 }

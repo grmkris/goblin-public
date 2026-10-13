@@ -1,11 +1,12 @@
 import { Button } from '@goblin/ui'
 import type { Operation } from '@goblin/wallet/contract'
-import { useActivity, useCheckOperation } from '../api/queries.tsx'
+import { useActivity, useCheckOperation, useSubscriptionPayments } from '../api/queries.tsx'
 import { Link } from '../app/router.tsx'
 import { ActivityRow } from '../ui/activity-row.tsx'
 import { Async } from '../ui/async.tsx'
 import { EmptyState, Page, RowList } from '../ui/page.tsx'
-import { groupByDay, rowTime } from './activity-model.ts'
+import { type FeedRow, feedOf, groupByDay, rowTime } from './activity-model.ts'
+import { PaymentRow } from './payment-row.tsx'
 
 /** An approval keeps its way to the approval page in view; everything else opens in place. */
 export const reviewOf = (operation: Operation) =>
@@ -19,15 +20,32 @@ export const reviewOf = (operation: Operation) =>
       }
     : {}
 
-/** Everything the agent paid for or tried to, by day, newest first. A row opens to its details. */
+/**
+ * Everything the agent paid for or tried to, and what the owner's subscriptions paid, by day, newest first. An
+ * operation opens to its details; a payment to its transaction.
+ */
 export function ActivityPage() {
   const activity = useActivity()
+  const payments = useSubscriptionPayments()
   const check = useCheckOperation()
+  const row = (each: FeedRow) =>
+    each.kind === 'payment' ? (
+      <PaymentRow key={each.key} payment={each.payment} time={rowTime(each.at)} />
+    ) : (
+      <ActivityRow
+        key={each.key}
+        operation={each.operation}
+        time={rowTime(each.at)}
+        onCheck={(operation) => check.mutateAsync(operation.id)}
+        {...reviewOf(each.operation)}
+      />
+    )
   return (
     <Page title="Activity">
       <Async query={activity}>
-        {(rows) =>
-          rows.length === 0 ? (
+        {(operations) => {
+          const rows = feedOf(operations, payments.data)
+          return rows.length === 0 ? (
             <EmptyState title="Nothing spent yet" description="When your agent pays for something, it shows up here." />
           ) : (
             <div className="flex flex-col gap-6">
@@ -36,22 +54,12 @@ export function ActivityPage() {
                   <h2 id={`day-${group.key}`} className="ps-1 text-13 font-medium text-muted-foreground">
                     {group.label}
                   </h2>
-                  <RowList className="overflow-clip">
-                    {group.operations.map((operation) => (
-                      <ActivityRow
-                        key={operation.id}
-                        operation={operation}
-                        time={rowTime(operation.createdAt)}
-                        onCheck={(each) => check.mutateAsync(each.id)}
-                        {...reviewOf(operation)}
-                      />
-                    ))}
-                  </RowList>
+                  <RowList className="overflow-clip">{group.rows.map(row)}</RowList>
                 </section>
               ))}
             </div>
           )
-        }
+        }}
       </Async>
     </Page>
   )

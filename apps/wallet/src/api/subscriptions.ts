@@ -7,6 +7,7 @@ import {
   RevokeConfirm,
   type RevokeResult,
   SubscriptionConfirm,
+  type SubscriptionPayment,
   type SubscriptionView,
 } from '@goblin/wallet/contract'
 import {
@@ -19,7 +20,7 @@ import {
 import { UPGRADE_FEE_CEILINGS } from '@goblin/wallet/userop'
 import { apiError, failureResponse, json } from '../http.ts'
 import { GOBLIN_MERCHANT } from '../merchant/config.ts'
-import { OTHER_OWNER, type SubscriptionRow, statusAt } from '../merchant/store.ts'
+import { OTHER_OWNER, type OwnerPayment, type SubscriptionRow, statusAt } from '../merchant/store.ts'
 import { chainAccess } from '../owner-deps.ts'
 import { decodePendingUpgrade, encodePendingUpgrade, prepared, typedDataOf } from '../rails/upgrade.ts'
 import { WalletFailure } from '../services/errors.ts'
@@ -93,6 +94,33 @@ export async function subscriptionView(call: ApiCall): Promise<Response> {
 export async function subscriptionList(call: ApiCall): Promise<Response> {
   const now = nowS()
   return json((await call.subscriptions.ownerSubscriptions(call.owner.userId)).map((row) => viewOf(row, now)))
+}
+
+/** How many payments Activity reads: as many as the ledger's operations it lists beside them. */
+const PAYMENTS_SHOWN = 50
+
+/** A collected payment as the owner's Activity lists it, linked to its transaction on Base. */
+const paymentOf = (payment: OwnerPayment, explorer: string): SubscriptionPayment => ({
+  id: `${payment.subscriptionId}:${String(payment.period)}`,
+  subscriptionId: payment.subscriptionId,
+  merchant: payment.merchant === GOBLIN_MERCHANT ? 'goblin' : payment.merchant,
+  plan: payment.plan,
+  billing: payment.billing,
+  amountUsd: payment.amountUsd,
+  chain: 'base',
+  period: payment.period,
+  paidAt: iso(payment.paidAt),
+  ...(payment.txHash === null ? {} : { txHash: payment.txHash, explorerUrl: `${explorer}/tx/${payment.txHash}` }),
+})
+
+/**
+ * `GET /api/subscription-payments`: what merchants collected from the owner's subscriptions, newest first. They are
+ * the merchant store's collections, not ledger operations: they never count against the agent's limits.
+ */
+export async function subscriptionPayments(call: ApiCall): Promise<Response> {
+  const { explorerUrl } = chainByKey('base', call.env.WALLET_LIVE === '1')
+  const payments = await call.subscriptions.ownerPayments(call.owner.userId, PAYMENTS_SHOWN)
+  return json(payments.map((payment) => paymentOf(payment, explorerUrl)))
 }
 
 const terms = (row: SubscriptionRow) => ({

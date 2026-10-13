@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DAY_PASS_REQUEST_ID,
   SUBSCRIPTION_REQUEST_ID,
+  fixturePayments,
   fixtureSubscriptions,
   signedNow,
 } from '../api/subscription-fixtures.ts'
@@ -11,6 +12,7 @@ import {
   cancelText,
   firstPaymentNote,
   offerLine,
+  paymentTitle,
   shownSubscriptions,
   standingOf,
   termsOf,
@@ -113,5 +115,23 @@ describe('a subscription in words, per billing', () => {
       expiresAt: '2028-01-15T00:00:00.000Z',
     })
     expect(signedNow(dayRequest, NOW).paidThrough).toBeUndefined()
+  })
+
+  it('titles a collected payment by its billing, and the busy wallet has some of each', () => {
+    const payments = fixturePayments(views, NOW)
+    expect(payments.map((payment) => paymentTitle(payment))).toEqual([
+      'goblin Pro · Day pass',
+      'goblin Pro · Day pass',
+      'goblin Pro · Monthly',
+      'goblin Pro · Day pass',
+    ])
+    expect(payments[0]).toMatchObject({ subscriptionId: dayPass.id, period: 10, amountUsd: '1.00' })
+    expect(payments[0]?.explorerUrl).toBe(`https://basescan.org/tx/${payments[0]?.txHash ?? ''}`)
+    expect(payments.map((payment) => payment.paidAt)).toEqual(
+      payments
+        .map((payment) => payment.paidAt)
+        .toSorted()
+        .toReversed(),
+    )
   })
 })

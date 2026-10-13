@@ -1,12 +1,38 @@
-// Activity as a wallet lists it: operations grouped by the local day they started on (Today, Yesterday, then dates),
-// newest first, and each row's time in the form its group makes clear.
-import type { Operation } from '@goblin/wallet/contract'
+// Activity as a wallet lists it: the agent's operations and the payments merchants collected from the owner's
+// subscriptions, grouped by the local day they happened on (Today, Yesterday, then dates), newest first, and each row's
+// time in the form its group makes clear.
+import type { Operation, SubscriptionPayment } from '@goblin/wallet/contract'
+
+/**
+ * One row of Activity: a ledger operation, or a subscription payment (a merchant's collection, which never counts
+ * against the agent's limits). `at` is when it happened: an operation's start, a payment's settlement.
+ */
+export type FeedRow =
+  | { readonly kind: 'operation'; readonly key: string; readonly at: string; readonly operation: Operation }
+  | { readonly kind: 'payment'; readonly key: string; readonly at: string; readonly payment: SubscriptionPayment }
+
+/** Operations and subscription payments as one feed, newest first. */
+export function feedOf(
+  operations: readonly Operation[],
+  payments: readonly SubscriptionPayment[] = [],
+): readonly FeedRow[] {
+  const rows: FeedRow[] = [
+    ...operations.map((operation): FeedRow => ({
+      kind: 'operation',
+      key: operation.id,
+      at: operation.createdAt,
+      operation,
+    })),
+    ...payments.map((payment): FeedRow => ({ kind: 'payment', key: payment.id, at: payment.paidAt, payment })),
+  ]
+  return rows.toSorted((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
 
 export interface DayGroup {
   /** The local calendar day, `YYYY-MM-DD`. */
   readonly key: string
   readonly label: string
-  readonly operations: readonly Operation[]
+  readonly rows: readonly FeedRow[]
 }
 
 const pad = (value: number): string => String(value).padStart(2, '0')
@@ -33,15 +59,15 @@ export function dayLabel(iso: string, now: number = Date.now()): string {
   return dateLabel(at, today)
 }
 
-/** Operations grouped by the day they started, newest day and newest operation first. */
-export function groupByDay(operations: readonly Operation[], now: number = Date.now()): readonly DayGroup[] {
-  const sorted = operations.toSorted((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-  const groups: { key: string; label: string; operations: Operation[] }[] = []
-  for (const operation of sorted) {
-    const key = dayKey(new Date(operation.createdAt))
+/** Rows grouped by the day they happened, newest day and newest row first. */
+export function groupByDay(rows: readonly FeedRow[], now: number = Date.now()): readonly DayGroup[] {
+  const sorted = rows.toSorted((a, b) => Date.parse(b.at) - Date.parse(a.at))
+  const groups: { key: string; label: string; rows: FeedRow[] }[] = []
+  for (const row of sorted) {
+    const key = dayKey(new Date(row.at))
     const last = groups.at(-1)
-    if (last?.key === key) last.operations.push(operation)
-    else groups.push({ key, label: dayLabel(operation.createdAt, now), operations: [operation] })
+    if (last?.key === key) last.rows.push(row)
+    else groups.push({ key, label: dayLabel(row.at, now), rows: [row] })
   }
   return groups
 }

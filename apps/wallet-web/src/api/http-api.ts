@@ -134,9 +134,10 @@ const writes = (
 })
 
 /** Subscriptions a merchant asked the owner to sign (ADR 0054); signing and cancelling go through `src/privy`. */
-const subscriptions = (call: Call): Pick<WalletApi, 'subscription' | 'subscriptions'> => ({
+const subscriptions = (call: Call): Pick<WalletApi, 'subscription' | 'subscriptions' | 'subscriptionPayments'> => ({
   subscription: (id) => call(SubscriptionRoutes.view, { params: { id } }),
   subscriptions: () => call(SubscriptionRoutes.list),
+  subscriptionPayments: () => call(SubscriptionRoutes.payments),
 })
 
 export function createHttpApi(getToken: () => Promise<string | null>): WalletApi {

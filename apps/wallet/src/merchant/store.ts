@@ -166,6 +166,18 @@ export interface Activation {
   readonly now: number
 }
 
+/** A payment collected from one of an owner's subscriptions, with what the subscription sells. Times in seconds. */
+export interface OwnerPayment {
+  readonly subscriptionId: string
+  readonly merchant: string
+  readonly plan: 'pro'
+  readonly billing: MerchantBilling
+  readonly amountUsd: string
+  readonly period: number
+  readonly paidAt: number
+  readonly txHash: string | null
+}
+
 /** A period's payment as recorded: paid, with its transaction, user operation and when. */
 export interface PaidCollection {
   readonly kind: 'paid'
@@ -298,6 +310,40 @@ export class SubscriptionStore {
     return this.#sql
       .all<Row>(`${SELECT} WHERE s.owner=? AND s.status IN ('active','revoked') ORDER BY s.created_at DESC`, owner)
       .map(rowOf)
+  }
+
+  /**
+   * The payments collected from the owner's subscriptions, newest first, at most `limit`: what their Activity lists
+   * beside the ledger's operations. Revoked and ended subscriptions keep theirs.
+   */
+  ownerPayments(owner: string, limit: number): OwnerPayment[] {
+    return this.#sql
+      .all<{
+        subscription_id: string
+        merchant: string
+        billing: string
+        amount_usd: string
+        period: number
+        paid_at: number | null
+        updated_at: number
+        tx_hash: string | null
+      }>(
+        `SELECT c.subscription_id, s.merchant, s.billing, s.amount_usd, c.period, c.paid_at, c.updated_at, c.tx_hash
+          FROM merchant_collections c JOIN merchant_subscriptions s ON s.id=c.subscription_id
+          WHERE s.owner=? AND c.status='paid' ORDER BY COALESCE(c.paid_at,c.updated_at) DESC LIMIT ?`,
+        owner,
+        Math.min(Math.max(limit, 1), 200),
+      )
+      .map((row) => ({
+        subscriptionId: row.subscription_id,
+        merchant: row.merchant,
+        plan: 'pro',
+        billing: row.billing === 'day' ? 'day' : 'month',
+        amountUsd: row.amount_usd,
+        period: row.period,
+        paidAt: row.paid_at ?? row.updated_at,
+        txHash: row.tx_hash,
+      }))
   }
 
   /** Keeps the owner's prepared cancellation (a UserOperation to sign) on their active subscription. */

@@ -22,6 +22,7 @@ import {
   revokePrepare,
   subscriptionConfirm,
   subscriptionList,
+  subscriptionPayments,
   subscriptionPrepare,
   subscriptionView,
 } from './subscriptions.ts'
@@ -76,6 +77,7 @@ const ENTRIES: readonly Entry[] = [
   compile(OwnerRoutes.revokeAll.method, OwnerRoutes.revokeAll.path, revokeAll),
   compile(OwnerRoutes.returnCheck.method, OwnerRoutes.returnCheck.path, returnCheck),
   compile(SubscriptionRoutes.list.method, SubscriptionRoutes.list.path, subscriptionList),
+  compile(SubscriptionRoutes.payments.method, SubscriptionRoutes.payments.path, subscriptionPayments),
   compile(SubscriptionRoutes.view.method, SubscriptionRoutes.view.path, subscriptionView),
   compile(SubscriptionRoutes.prepare.method, SubscriptionRoutes.prepare.path, subscriptionPrepare),
   compile(SubscriptionRoutes.confirm.method, SubscriptionRoutes.confirm.path, subscriptionConfirm),
