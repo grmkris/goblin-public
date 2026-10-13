@@ -196,24 +196,26 @@ const quoting = (text: string, ref: string | undefined): string =>
 export const withRef = (text: string, failure: unknown): string => quoting(text, describeError(failure).ref)
 
 /**
+ * A plan with no daily Credits, which a deployment's catalog may set (ADR 0054): its calls are paid from the wallet or
+ * not at all (ADR 0047). Without a plan a call is refused with `SubscriptionRequired` instead.
+ */
+const NO_CREDITS = 'Your plan includes no model Credits. Choose to pay per call from your Goblin Wallet in Settings.'
+
+/** A spent day that was never open: a budget refusal with no allowance at all. */
+const noCredits = (error: unknown): boolean =>
+  Predicate.isTagged(error, 'BudgetExhausted') && Predicate.hasProperty(error, 'limit') && error.limit === 0
+
+/**
  * Calm action copy, ending with the failure's reference when there is one. Typed server messages are public; exception
  * text and status codes are not.
  */
-/** What the free plan waits for when the day's allowance is none: a funded Goblin Wallet (ADR 0047). */
-export const WALLET_NEEDED =
-  'The free plan needs a Goblin Wallet holding at least $5. Connect one on Connections, or choose to pay per call in Settings.'
-
-/** A spent day that was never open: a budget refusal with no allowance at all. */
-const walletNeeded = (error: unknown): boolean =>
-  Predicate.isTagged(error, 'BudgetExhausted') && Predicate.hasProperty(error, 'limit') && error.limit === 0
-
 export function messageOf(
   error: unknown,
   action: string,
   opts: { readonly showRecovery?: boolean | undefined } = {},
 ): string {
   const view = describeError(error)
-  if (walletNeeded(error)) return quoting(WALLET_NEEDED, view.ref)
+  if (noCredits(error)) return quoting(NO_CREDITS, view.ref)
   if (view.message !== undefined)
     return quoting(
       `${view.message}${opts.showRecovery === true && view.recovery !== undefined ? ` ${view.recovery}` : ''}`,
