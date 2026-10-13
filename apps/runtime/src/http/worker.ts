@@ -18,6 +18,7 @@ import { billingDeps, walletBillingDeps } from '../billing/routes.ts'
 import { billingWebhook } from '../billing/webhook.ts'
 import { runBillingCron, runWalletCron } from '../billing/cron.ts'
 import { billingMode } from '../billing/gates.ts'
+import { planCatalog, publicPlans } from '../billing/plans.ts'
 
 /** Only the authenticated user ID supplies the native Agent name. */
 const agentOf = (env: RuntimeEnv, userId: string): DurableObjectStub<AgentRpc> => env.AGENTS.getByName(userId)
@@ -112,6 +113,10 @@ async function workerRoute(
   throw new NotFound({ what: 'route' })
 }
 
+/** The Goblin Wallet's origin as `/health` says it, when the deployment names a valid one. */
+const walletOriginOf = (value: string | undefined): { readonly walletOrigin: string } | undefined =>
+  value !== undefined && URL.canParse(value) ? { walletOrigin: new URL(value).origin } : undefined
+
 /**
  * The deployed Worker's handlers (`worker.ts` exports them with the agent's class): the billing cron, and every request
  * the web worker forwards (`apps/web/src/worker.ts`): health, auth, the typed API's edge, /mcp and the hooks.
@@ -137,6 +142,9 @@ export const worker = {
           configured: billingDeps(env) !== undefined,
           wallet: walletBillingDeps(env) !== undefined,
         },
+        // Public, for the landing page: Pro's prices, and where the Goblin Wallet is.
+        plans: publicPlans(planCatalog(env.PLAN_CATALOG)),
+        ...walletOriginOf(env.WALLET_ORIGIN),
       })
     if (url.pathname.startsWith('/.well-known/oauth-protected-resource'))
       return secured(Response.json(resourceMetadata(env)), undefined)

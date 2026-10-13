@@ -6,7 +6,7 @@
  *
  * Adapted from myapps@8a69ec64: paid-through cancellation and bounded renewal grace, with no trial.
  */
-import { type BillingId, PlanCatalogSetting, type PlanOffer } from '@goblin/contracts'
+import { type BillingId, PlanCatalogSetting, type PlanOffer, type PublicPlan } from '@goblin/contracts'
 import * as Option from 'effect/Option'
 import * as Schema from 'effect/Schema'
 
@@ -46,6 +46,10 @@ export const planCatalog = (value: string | undefined): PlanCatalog => {
 
 /** The catalog as the owner reads it: the day pass first. */
 export const catalogOffers = (catalog: PlanCatalog): readonly PlanOffer[] => [catalog.day, catalog.month]
+
+/** The catalog as `/health` tells anyone: each way to pay with its price and period, the day pass first. */
+export const publicPlans = (catalog: PlanCatalog): readonly PublicPlan[] =>
+  catalogOffers(catalog).map(({ id, amountUsd, periodDays }) => ({ id, amountUsd, periodDays }))
 
 const MISSING_GRACE_MS = 3 * 86_400_000
 export interface SubscriptionFacts {

@@ -18,6 +18,10 @@ export const PlanOffer = Schema.Struct({
 })
 export type PlanOffer = typeof PlanOffer.Type
 
+/** A way to pay for Pro as `/health` tells anyone, signed in or not: the prices a landing page shows. */
+export const PublicPlan = Schema.Struct({ id: BillingId, amountUsd: Schema.String, periodDays: Schema.Number })
+export type PublicPlan = typeof PublicPlan.Type
+
 /** A price as the setting takes it: 0.01 to 999.99 US dollars, with two decimals. */
 const SettingUsd = Schema.String.check(Schema.isPattern(/^(?:[1-9]\d{0,2}\.\d{2}|0\.(?:0[1-9]|[1-9]\d))$/u))
 

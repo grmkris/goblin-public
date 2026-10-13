@@ -2,7 +2,7 @@ import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { type EntitlementPolicy, Entitlements, cachedPolicy, requirePlan } from '../src/billing/gates.ts'
-import { DEFAULT_CATALOG, catalogOffers, planCatalog } from '../src/billing/plans.ts'
+import { DEFAULT_CATALOG, catalogOffers, planCatalog, publicPlans } from '../src/billing/plans.ts'
 import { type AccountPlan, planOf } from '../src/billing/reconcile.ts'
 import type { WalletSubscription } from '../src/billing/schema.ts'
 import { Internal, SubscriptionRequired } from '../src/http/errors.ts'
@@ -261,6 +261,18 @@ describe('the catalog (GOBLIN_PLAN_CATALOG)', () => {
       { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
       { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
     ])
+  })
+
+  it('tells anyone each price and period, the day pass first, without the Credits', () => {
+    expect(publicPlans(DEFAULT_CATALOG)).toEqual([
+      { id: 'day', amountUsd: '1.00', periodDays: 1 },
+      { id: 'month', amountUsd: '15.00', periodDays: 30 },
+    ])
+    expect(publicPlans(planCatalog('{"month":{"amountUsd":"20.00","periodDays":28}}'))[1]).toEqual({
+      id: 'month',
+      amountUsd: '20.00',
+      periodDays: 28,
+    })
   })
 
   it('changes only the fields it names', () => {

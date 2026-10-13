@@ -1,5 +1,6 @@
 import { mutationOptions, queryOptions } from '@tanstack/react-query'
 import { Data, Option, Schema } from 'effect'
+import { PublicPlan } from '@goblin/contracts'
 import { requestId } from '../lib/api.ts'
 import { authClient, redirectOf } from '../lib/auth-client.ts'
 import { answerRef } from '../lib/query/app-error.ts'
@@ -75,10 +76,15 @@ export const sessionQuery = queryOptions({
 const Health = Schema.Struct({
   signup: Schema.optional(Schema.Literals(['open', 'invite', 'closed'])),
   mail: Schema.optional(Schema.Boolean),
+  plans: Schema.optional(Schema.Array(PublicPlan)),
+  walletOrigin: Schema.optional(Schema.String),
 })
 const decodeHealth = Schema.decodeUnknownOption(Health)
 
-/** How sign-up works here and whether sign-in mail is on; anything the Worker does not say reads as off. */
+/**
+ * How sign-up works here and whether sign-in mail is on, anything the Worker does not say reading as off; and what it
+ * tells anyone: Pro's prices (none when unsaid) and the Goblin Wallet's origin.
+ */
 export const healthQuery = queryOptions({
   queryKey: authKeys.health,
   queryFn: async ({ signal }) => {
@@ -91,7 +97,12 @@ export const healthQuery = queryOptions({
     }
     if (!response.ok) throw new AuthRefused({ status: response.status, ref: refOf(response) ?? sent })
     const health = Option.getOrElse(decodeHealth(await response.json()), (): typeof Health.Type => ({}))
-    return { signup: health.signup ?? 'closed', mail: health.mail === true }
+    return {
+      signup: health.signup ?? 'closed',
+      mail: health.mail === true,
+      plans: health.plans ?? [],
+      ...(health.walletOrigin === undefined ? {} : { walletOrigin: health.walletOrigin }),
+    }
   },
   meta: { auth: 'optional' },
 })

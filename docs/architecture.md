@@ -26,7 +26,7 @@ Runtime paths below are relative to `apps/runtime/src/`; browser paths are relat
 
 | Path | What happens |
 | --- | --- |
-| `/health` | Stage, service name, sign-up mode, whether mail is configured, the billing mode, and whether Pro can be paid from the Goblin Wallet. |
+| `/health` | Stage, service name, sign-up mode, whether mail is configured, the billing mode, whether Pro can be paid from the Goblin Wallet, and what anyone may know: Pro's prices (`plans`: id, amount and period of each way to pay) and the Goblin Wallet's origin (`walletOrigin`, when set), which the landing shows. |
 | `/.well-known/oauth-protected-resource*` | Protected-resource metadata for `/mcp`, the same document at every path. |
 | `/.well-known/*`, `/api/auth/*` | Better Auth: sign-up and sign-in, the OAuth authorization server for inbound clients. |
 | `/mcp` | goblin's own MCP server; a Bearer token from an inbound client reaches the agent of the user who consented, and `goblin:inspect` adds read-only inspection (ADR 0024). |
