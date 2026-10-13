@@ -45,7 +45,7 @@ export function FundStep({
   onContinue,
 }: {
   readonly owner: string
-  /** The agent's client, for "so goblin can work"; "your agent" without one. */
+  /** The agent's client, for "what goblin spends"; "your agent" without one. */
   readonly client: string | undefined
   readonly step: number
   readonly total: number
@@ -70,7 +70,7 @@ export function FundStep({
       <div className="flex flex-col gap-2 text-center">
         <Arrival held={held} unread={unread} arrived={firstRead !== undefined && firstRead < UPGRADE_FEE_BOUND} />
         <p className="text-sm text-muted-foreground text-pretty">
-          Add at least $5 so {client ?? 'your agent'} can work.
+          A few dollars is enough to start. {client ?? 'Your agent'} spends only within the limits you set.
         </p>
       </div>
       <Button type="button" size="cta" className="w-full" disabled={!enough} onClick={onContinue}>
