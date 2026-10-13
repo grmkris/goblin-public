@@ -79,8 +79,9 @@
       "entry": ["scripts/*.ts!"],
     },
     "apps/wallet-web": {
-      // The MCP App views build from views/<name>.html through vite.views.config.ts (`vite build -c`), outside the SPA.
-      "entry": ["src/views/*-main.tsx!"],
+      // The MCP App views build from views/<name>.html through vite.views.config.ts (`vite build -c`), outside the SPA;
+      // test/ui-*.ts are browser scripts run by hand (`bun apps/wallet-web/test/ui-landing.ts`).
+      "entry": ["src/views/*-main.tsx!", "test/ui-*.ts!"],
     },
     // Lanes add `src/views/*.tsx!` (wallet-web) and `scripts/*.ts!` (packages/wallet) with their first files: a
     // pattern that matches nothing is a knip configuration hint, and hints gate.

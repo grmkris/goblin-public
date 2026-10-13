@@ -13,8 +13,8 @@ import { type Browser, type BrowserContextOptions, chromium, type Page } from 'p
 import { createServer } from 'vite'
 
 const STDOUT = 1
-const ROOT = path.resolve(import.meta.dirname, '..')
-const APP = path.join(ROOT, 'apps/wallet-web')
+const ROOT = path.resolve(import.meta.dirname, '../../..')
+const APP = path.resolve(import.meta.dirname, '..')
 const out = path.resolve(process.argv[2] ?? path.join(ROOT, '.local/goblin-acceptance', `wallet-landing-${Date.now()}`))
 mkdirSync(out, { recursive: true, mode: 0o700 })
 
