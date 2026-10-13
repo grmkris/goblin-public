@@ -100,6 +100,8 @@ function Shell({ children }: { readonly children: ReactNode }) {
           : 'other',
   })
   const start = useStartDecision(place === 'gated')
+  // goblin's landing (routes/index.tsx) is a whole page of its own, drawn edge to edge; a signed-in owner never sees it.
+  if (path === '/') return <main className="landing-root">{children}</main>
   if (state === 'signed-out' || AUTH_PAGES.has(path)) return <main className="shell">{children}</main>
   if (place === 'start') return <main className="start-root">{children}</main>
   if (start.kind !== 'show')
@@ -126,15 +128,23 @@ function Shell({ children }: { readonly children: ReactNode }) {
   )
 }
 
+/** The colour at the top of each scheme, which Safari tints its bars with: the page's, or the landing's moss. */
+const THEME_COLORS = {
+  page: { light: '#fafaf9', dark: '#141619' },
+  landing: { light: '#233e27', dark: '#162519' },
+} as const
+
 function Document({ children }: { readonly children: ReactNode }) {
+  const top =
+    THEME_COLORS[useRouterState({ select: (router) => router.location.pathname }) === '/' ? 'landing' : 'page']
   return (
     // The theme script sets the class and color scheme on <html> before React hydrates it.
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
-        {/* The page background of each scheme. Written here because the route head keeps one meta per name. */}
-        <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#141619" media="(prefers-color-scheme: dark)" />
+        {/* The top colour of each scheme. Written here because the route head keeps one meta per name. */}
+        <meta name="theme-color" content={top.light} media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content={top.dark} media="(prefers-color-scheme: dark)" />
         <HeadContent />
       </head>
       <body className="antialiased">

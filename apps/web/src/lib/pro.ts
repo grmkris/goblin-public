@@ -1,7 +1,15 @@
 // goblin Pro and the two ways to pay for it from the Goblin Wallet (ADR 0054, amended 2026-10-13): the day pass and
 // monthly, priced by the deployment (`BillingState.catalog`). What `/subscribe`, its return page, Settings' plan card,
 // the upgrade prompt and the composer say about them, in one place; the pages only lay it out.
-import type { BillingId, BillingState, PlanOffer, ServerView, WalletPlan, WalletStatus } from '@goblin/contracts'
+import type {
+  BillingId,
+  BillingState,
+  PlanOffer,
+  PublicPlan,
+  ServerView,
+  WalletPlan,
+  WalletStatus,
+} from '@goblin/contracts'
 import { dayAndMonth, shortDate } from './format.ts'
 
 /** Whole cents of a decimal dollar string or number; anything unreadable is none. */
@@ -31,7 +39,7 @@ export interface Choice {
   readonly suits: string
 }
 
-export const choiceOf = (offer: PlanOffer): Choice =>
+export const choiceOf = (offer: PublicPlan): Choice =>
   offer.id === 'day'
     ? { name: 'Day pass', price: usd(offer.amountUsd), per: 'a day you use goblin', suits: 'Nothing on idle days.' }
     : {
@@ -42,7 +50,7 @@ export const choiceOf = (offer: PlanOffer): Choice =>
       }
 
 /** Pro's prices in one phrase, day pass first: "$1 a day you use goblin, or $15 every 30 days". */
-export const pricesOf = (catalog: BillingState['catalog']): string =>
+export const pricesOf = (catalog: readonly PublicPlan[]): string =>
   catalog
     .map((offer) => {
       const choice = choiceOf(offer)
