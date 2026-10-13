@@ -34,18 +34,17 @@ function SubscriptionRow({ view }: { readonly view: SubscriptionView }) {
       >
         <GoblinMark className="size-4.5" />
       </span>
+      {/* Where it stands goes under its billing, so a long one ("Paid until 02:00 AM tomorrow") never squeezes it. */}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-sm font-medium">{planName(view)}</span>
         <span className="text-xs text-muted-foreground tabular-nums text-pretty">{billingLine(view)}</span>
+        <span className="text-xs text-muted-foreground tabular-nums text-pretty">{standingOf(view)}</span>
       </span>
-      <span className="flex shrink-0 flex-col items-end gap-1">
-        <span className="text-xs text-muted-foreground tabular-nums">{standingOf(view)}</span>
-        {view.status === 'active' && (
-          <Button type="button" variant="ghost" className="-me-2.5" onClick={() => setOpen(true)}>
-            Cancel
-          </Button>
-        )}
-      </span>
+      {view.status === 'active' && (
+        <Button type="button" variant="ghost" className="-me-2.5 shrink-0" onClick={() => setOpen(true)}>
+          Cancel
+        </Button>
+      )}
       <ConfirmSheet
         open={open}
         onOpenChange={(next) => {
