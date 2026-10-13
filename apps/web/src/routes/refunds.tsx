@@ -5,20 +5,18 @@ function Refunds() {
   return (
     <LegalPage title="Refund and cancellation policy">
       <p>
-        Cancel your recurring subscription in Settings → Billing → Manage subscription. Cancellation stops future
-        renewal and keeps access through the paid period. Deleting a goblin account is separate from cancelling payment.
+        Cancel goblin Pro in your Goblin Wallet: on Home or Limits, choose Cancel and sign. That revokes the permission
+        you signed, so nothing more is taken, and Pro runs to the end of the day or period you paid for. Deleting a
+        goblin account is separate from cancelling payment.
       </p>
       <p>
-        If you were charged incorrectly, paid twice or could not use the service, keep your Dodo checkout receipt and
-        contact the operator. Refund eligibility, request deadlines and the support contact will be finalized before
-        public launch. Approved refunds are returned through Dodo to the original payment method; bank processing time
-        varies.
+        Payments are USDC transfers on the Base blockchain. We cannot reverse a transfer once it is made, but goblin
+        refunds a payment taken in error, such as a day pass charged on a day you did not use goblin: contact the
+        operator with the payment from your Goblin Wallet&apos;s Activity, and the refund is sent in USDC to the wallet
+        it came from. Where card checkout is offered, keep your checkout receipt; approved card refunds go back to the
+        original payment method, and bank processing time varies.
       </p>
-      <p>
-        Mandatory consumer refund and withdrawal rights apply. This draft does not restrict those rights. The operator
-        must review renewal notices, digital-service consent and jurisdiction-specific requirements before live payments
-        are enabled.
-      </p>
+      <p>Mandatory consumer refund and withdrawal rights apply. This policy does not restrict those rights.</p>
     </LegalPage>
   )
 }
