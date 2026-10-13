@@ -1,6 +1,6 @@
 # goblin
 
-Your own goblin, always on. Resident personal agents on Cloudflare. Each user signs up, subscribes to Pro ($10/month), and gets their own agent: they talk to it in the browser,
+Your own goblin, always on. Resident personal agents on Cloudflare. Each user signs up, picks goblin Pro (a $1 day pass or $15 monthly, in USDC), and gets their own agent: they talk to it in the browser,
 it keeps running, holds its own authority to use the MCP servers that user connected, and is itself an MCP server
 other tools can talk to.
 
@@ -21,15 +21,21 @@ copying and a Raw view.
 The agent's replies draw Mermaid diagrams, charts and maps from fenced blocks, in the theme's colours.
 Diagrams offer an explorer with zoom, pan and node connections, shared with agent apps.
 
-Telegram comes through a mygram MCP connection. The owner turns on a server's **Telegram** switch in Connections; signed
-MCP Events wake an authoritative inbox pull into main, and replies go back with `send_message`. Older servers use
-the doorbell fallback until cut-over. Owner-enabled skills libraries use update Events to invalidate their cached
+Telegram comes through mygram, connected directly or through mysi, which brings the owner's own my* apps (notes,
+browsers, Telegram, email, skills, terminals) in one connection with its tools named `<app>_<tool>`. The owner turns on
+a connection's **Telegram** switch in Connections; signed MCP Events wake an authoritative inbox pull (`inbox_read`)
+into main, and replies go back with `message_send`, under either spelling (ADR 0052). A server without Events uses the
+doorbell fallback. The agent's `mcp_list` lists a connection with many tools, such as mysi, by service first.
+Owner-enabled skills libraries use update Events to invalidate their cached
 catalog; the next activation refetches, while retained activations keep their verified version.
 
 Apps run in place in any conversation, several at once, and move to their page (`/a/<id>`, with the way back to its
-channel) and back without reloading. On a phone the navigation is a drawer and a thread is a full view with a back to
-its channel. Owners can add public servers by URL or from MCP registries,
-grant tools explicitly, mark individual tools **Ask first** for approval of every exact call, choose an offered model, and see the per-account daily budget in Credits. The agent uses `ask_user`
+channel and goblin's composer for that conversation at the bottom) and back without reloading. The sidebar's Pinned
+section holds the servers and App views the owner pins, in their order, on every device; a pinned server opens its own
+App full screen in a thread of its own. On a phone the navigation is a drawer and a thread is a full view with a back to
+its channel. Owners can add public servers by URL, from MCP registries, or from goblin's shelf (mysi, goblin's own
+services, and servers that need no sign-in grouped by what they are for: travel, knowledge, crypto data, views in the
+chat, code), grant tools explicitly, mark individual tools **Ask first** for approval of every exact call, choose an offered model, and see the per-account daily budget in Credits. The agent uses `ask_user`
 to ask questions the owner answers in their next message. The owner attaches files to a message with the composer's
 paperclip; the agent reads them and writes its own results beside them, kept per agent in SQLite and R2.
 
@@ -68,6 +74,21 @@ to confirm or dismiss, keep that label, and leave chat working when decisions ar
 history, route a send or grant permission. Each open proposal shows in its chat as an "Only visible to you" row. Only
 the dev stage binds Workers AI; elsewhere nothing is judged. See
 [ADR 0031](docs/adr/0031-typed-decisions-through-workers-ai.md).
+
+goblin Pro is the one plan; there is no free plan, and goblin answers only with it. It includes 800 model Credits
+(about 2 million tokens) per account per UTC day, hand-overs to goblin or a Persona, routines and subagents. It is paid
+from the owner's Goblin Wallet as a subscription they sign once (ADR 0054): an on-chain permission that lets goblin's
+collector take at most the price a period, for 12 months, and that they cancel by revoking it in the wallet. Two ways
+to pay, at prices each deployment sets (`GOBLIN_PLAN_CATALOG`):
+
+- **the day pass**, $1 for each UTC day the owner uses goblin: the first message of a day pays for it in the
+  background, an idle day costs nothing, and a day the wallet cannot pay ends Pro until the owner adds funds;
+- **monthly**, $15 every 30 days: goblin takes the first payment when the owner comes back from signing, reminds them
+  three days before each renewal, and retries a failed one each day through a seven-day grace; cancellation keeps
+  access through the paid period. A day-pass owner can move to monthly.
+
+An account without Pro still signs in, connects its wallet and chooses Pro in Start. The card checkout (Dodo) is off
+unless a deployment turns it on (`GOBLIN_CARD_CHECKOUT`).
 
 **Goblin Wallet** (ADR 0045) gives the agent money with limits its owner sets. It is a separate Worker with its own MCP
 server at `wallet.goblin.surf` (`wallet-dev.goblin.surf` for dev), built from `apps/wallet`, `apps/wallet-web` and
