@@ -10,8 +10,8 @@ import { LayersVisual } from './layers.tsx'
 import { goblinSite, mcpEndpoint } from './origins.ts'
 import { ConnectVisual, GasVisual, KeysVisual, SubscriptionVisual } from './sections.tsx'
 
-/** The public source: linked once the repository is public, never before (a dead link never ships). */
-const SOURCE = { href: 'https://github.com/grmkris/goblin-public', public: false } as const
+/** The public source, public since 13 Oct 2026. */
+const SOURCE = { href: 'https://github.com/grmkris/goblin-public', public: true } as const
 
 /** The moss field at the top of the page, light and dark (`--shell`, and `--shell-rail` in dark), for Safari's bars. */
 const MOSS = { light: '#233e27', dark: '#0e1b11' } as const

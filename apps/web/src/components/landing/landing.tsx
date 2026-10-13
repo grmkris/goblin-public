@@ -30,8 +30,8 @@ import lisbonLight from '../../assets/landing/lisbon-light.webp'
 import lisbonPhoneDark from '../../assets/landing/lisbon-phone-dark.webp'
 import trivagoApp from '../../assets/landing/trivago-app.webp'
 
-/** goblin's public source: its Source link waits for the repository to be public, so a dead link never ships. */
-const SOURCE = { href: 'https://github.com/grmkris/goblin-public', public: false } as const
+/** goblin's public source, public since 13 Oct 2026. */
+const SOURCE = { href: 'https://github.com/grmkris/goblin-public', public: true } as const
 /** Production, which every stage's page names until its own `/health` says otherwise. */
 const PRODUCTION = 'https://goblin.surf'
 const WALLET = 'https://wallet.goblin.surf'
