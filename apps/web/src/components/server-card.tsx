@@ -27,9 +27,11 @@ import {
   setSkillsMutation,
 } from '../mcp/queries.ts'
 import { messageOf } from '../lib/query/app-error.ts'
+import { glide } from '../lib/motion.ts'
+import { routinesQuery } from '../routines/queries.ts'
 import { QueryError } from '../lib/query/query-boundary.tsx'
 import { serverStatus } from '../lib/labels.ts'
-import { ConnectionEvents } from './connection-events.tsx'
+import { ConnectionEvents, eventsAnchor } from './connection-events.tsx'
 import { AppTile } from './apps/app-tile.tsx'
 import { StatusLabel } from './status-label.tsx'
 import { type TelegramChannel, TelegramControl, hasTelegramTools } from './telegram-control.tsx'
@@ -304,27 +306,59 @@ function ServerHeading({
 /** Where a connection's card is on Connections, for a link from Activity. */
 export const connectionAnchor = (connectionId: string): string => `connection-${connectionId}`
 
+/** Brings a connection's Events into view once Manage access has opened them (it mounts on the next frame). */
+function showEvents(connectionId: string): void {
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() =>
+      document.getElementById(eventsAnchor(connectionId))?.scrollIntoView({ block: 'start', behavior: glide() }),
+    ),
+  )
+}
+
 /** "12 of 17 tools allowed", once the tools are read. */
 const allowedCount = (tools: readonly ToolView[] | undefined): string =>
   tools === undefined ? '' : `${tools.filter((tool) => tool.granted).length} of ${tools.length} tools allowed`
 
 /**
- * A connected server at a glance: its first-class line and recommended access, and Manage access, which opens what it
- * offers and what the agent may call. The card a #connection link names opens at once.
+ * That a connected server sends events, on its summary so it is seen without opening Manage access: how many are set
+ * up, and the way to them. Nothing once the owner said they want none of them and none is set up.
+ */
+function EventsLine({ server, onOpen }: { readonly server: ServerView; readonly onOpen: () => void }) {
+  const routines = useQuery(routinesQuery).data?.routines ?? []
+  const set = routines.filter(
+    ({ definition: { trigger } }) => trigger.kind === 'event' && trigger.connectionId === server.connectionId,
+  ).length
+  if (server.events === undefined || (server.events === 'dismissed' && set === 0)) return null
+  return (
+    <div className="server-summary-row">
+      <span className="server-note tabular-nums">{set === 0 ? 'Sends events' : `Sends events, ${set} set up`}</span>
+      <Button size="sm" variant="outline" onClick={onOpen}>
+        {set === 0 ? 'Set up' : 'Change'}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * A connected server at a glance: its first-class line and recommended access, that it sends events, and Manage
+ * access, which opens what it offers and what the agent may call. The card a #connection link names opens at once.
  */
 function ServerSummary({
   server,
   tools,
   open,
+  onEvents,
 }: {
   readonly server: ServerView
   readonly tools: readonly ToolView[] | undefined
   readonly open: boolean
+  readonly onEvents: () => void
 }) {
   return (
     <CardContent>
       <div className="server-summary">
         {server.profile !== undefined && <FirstClassSummary server={server} profile={server.profile} tools={tools} />}
+        <EventsLine server={server} onOpen={onEvents} />
         <div className="server-summary-row">
           <CollapsibleTrigger render={<button type="button" className="server-toggle" />}>
             <ChevronRightIcon aria-hidden />
@@ -379,7 +413,15 @@ export function ServerCard({ server, onReload, onMessage, onDone, channel }: Ser
       />
       {connected && (
         <Collapsible open={open} onOpenChange={setOpen}>
-          <ServerSummary server={server} tools={tools} open={open} />
+          <ServerSummary
+            server={server}
+            tools={tools}
+            open={open}
+            onEvents={() => {
+              setOpen(true)
+              showEvents(server.connectionId)
+            }}
+          />
           <CollapsibleContent>
             <ServerBody
               server={server}

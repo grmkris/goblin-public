@@ -137,6 +137,9 @@ function useConnectionRoutines(server: ServerView) {
   return { routines, named, telegram }
 }
 
+/** Where a connection's Events are on its card, for the card summary's Set up. */
+export const eventsAnchor = (connectionId: string): string => `events-${connectionId}`
+
 /**
  * The Events of a connected server that sends them: its offer while open, what is set up on its events (each editable
  * in place, then confirmed on its card here), the picker for the rest, and its subscriptions' health. A server that
@@ -155,7 +158,7 @@ export function ConnectionEvents({ server }: { readonly server: ServerView }) {
       (stream) => routine.definition.trigger.kind === 'event' && stream.name === routine.definition.trigger.name,
     )
   return (
-    <section className="server-part" aria-label="Events">
+    <section className="server-part" id={eventsAnchor(server.connectionId)} aria-label="Events">
       <h3 className="server-part-title">Events</h3>
       {server.events === 'open' && <OfferNote server={server} />}
       {streams.error !== null && <p className="server-note">{messageOf(streams.error, 'read the events it sends')}</p>}
