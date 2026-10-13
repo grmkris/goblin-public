@@ -51,4 +51,30 @@ describe('the Worker', () => {
     expect(await response.json()).toMatchObject({ error: { code: 'not_found', what: 'route' } })
     expect(asked).toEqual([])
   })
+
+  // The paid endpoint is imported on its first call, so mppx and viem stay out of every isolate's startup.
+  it("loads goblin's paid model endpoint on a call to it: a Tempo charge where the stage sells it, else a 404", async () => {
+    const { env, asked } = deployment()
+    const selling = {
+      ...env,
+      MODEL_BASE_URL: 'https://no-model-calls.invalid/v1',
+      MODEL_KEY: 'test',
+      MODEL_ID: 'deepseek-v4.1-flash',
+      PAID_INFERENCE: 'goblin',
+      MPP_RECIPIENT: '0x6649868b1B87711e405aa6690E3f0245d9510631',
+      MPP_SECRET: 'a-test-secret-of-at-least-thirty-two-chars',
+    }
+    const call = () =>
+      new Request(`${APP}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'deepseek-v4.1-flash', max_tokens: 1, messages: [] }),
+      })
+    const paid = await worker.fetch(call(), selling, { waitUntil: () => undefined })
+    expect(paid.status).toBe(402)
+    expect(paid.headers.get('www-authenticate')).toMatch(/method="tempo"/u)
+    const unsold = await worker.fetch(call(), { ...selling, PAID_INFERENCE: 'tempo' }, { waitUntil: () => undefined })
+    expect(unsold.status).toBe(404)
+    expect(asked).toEqual([])
+  })
 })

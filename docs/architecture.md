@@ -1355,7 +1355,8 @@ paid streams make no client retries. A paid answer names its paid provider, so i
 goblin's own paid endpoint, `POST /v1/chat/completions` (`http/paid-inference.ts`), sells the stage's models behind an
 `mppx` `tempo` charge in USDC.e to `GOBLIN_MPP_RECIPIENT`, priced up front as Tempo's proxy prices (0.6 of a unit per
 output token it may write, 0.1 per input token, at least $0.00075). It forwards a paid call to LiteLLM with the stage's
-key and returns the payment's receipt. Settings' "How goblin pays for its model" card (`inference-card.tsx`) chooses the
+key and returns the payment's receipt. The Worker imports it on the route's first call, keeping `mppx` and `viem` out
+of every isolate's startup, which has a CPU limit. Settings' "How goblin pays for its model" card (`inference-card.tsx`) chooses the
 pay mode and, where the stage sells both, the route; the composer says "Paying per call" while calls are paid, and
 Activity's Get started offers the wallet while a mode would use it and it cannot pay yet.
 Paying per call needs a plan like everything else: without Pro a turn is refused before the pay mode is read.
