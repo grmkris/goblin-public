@@ -76,7 +76,7 @@ function answerWords(route: EventRoute, places: Places): string {
 
 /**
  * Where one picked event goes, as one compact select: Tell me in a Topic, or (Pro) goblin acting on it in a Topic or a
- * Persona acting on it. On the free plan the hand-overs show, but cannot be picked.
+ * Persona acting on it. Without Pro the hand-overs show, but cannot be picked.
  */
 function RouteSelect({
   title,

@@ -54,8 +54,8 @@ export const TELL_MAIN: EventRoute = { kind: 'tell', topic: PERSONAL_TOPIC }
 /**
  * Where a stream goes when the picker opens, from the server's suggestion, or none when it is not picked: a recommended
  * event the server says to tell the owner about goes to Personal; one it recommends without telling (work for the
- * agent) is handed to goblin there on Pro, and left unpicked on the free plan, where telling is all there is. Without
- * a suggestion nothing is picked.
+ * agent) is handed to goblin there when the plan hands over (Pro), and left unpicked when it does not. Without a
+ * suggestion nothing is picked.
  */
 export function suggestedRoute(stream: EventStream, handOver: boolean): EventRoute | undefined {
   if (stream.recommended !== true) return undefined

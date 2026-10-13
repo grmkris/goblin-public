@@ -75,7 +75,7 @@ function Declined({ back }: { readonly back: string | undefined }) {
   )
 }
 
-/** "$10.00". */
+/** "$15.00". */
 const dollars = (amountUsd: string): string => `$${Number(amountUsd).toFixed(2)}`
 
 /** A day pass's receipt: its period is one day (ADR 0054). */

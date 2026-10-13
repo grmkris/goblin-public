@@ -13,7 +13,7 @@ const day = (iso: string): string => new Date(iso).toLocaleDateString(undefined,
 const fullDay = (iso: string): string =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
 
-/** "$10" for whole dollars, "$9.50" otherwise: a price, as the merchant's page says it. */
+/** "$15" for whole dollars, "$9.50" otherwise: a price, as the merchant's page says it. */
 export const priceOf = (amountUsd: string): string => {
   const [whole = '0', cents = ''] = amountUsd.split('.')
   const fraction = cents.padEnd(2, '0').slice(0, 2)

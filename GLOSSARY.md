@@ -350,7 +350,9 @@ native Agents SDK adapter.
 ## Plans and deployment
 
 **Plan**:
-The account's subscription (Pro) that admits it to its agent; the agent keeps an active one for a minute (ADR 0015).
+goblin Pro, the one plan, without which the agent answers nothing; the agent keeps an active one for a minute (ADR
+0015, 0054).
+_Avoid_: free plan, tier (there is no free plan)
 
 **Wallet subscription**:
 Pro paid from the Goblin Wallet: a permission the owner signs once that lets goblin take at most one payment a period,
@@ -358,12 +360,17 @@ into its collector, for a fixed number of periods; cancelling is revoking it in 
 the period paid (ADR 0054).
 _Avoid_: recurring payment, auto-renew (nothing is charged without the signed permission, and the owner revokes it)
 
+**Day pass**:
+Pro paid by the UTC day: the deployment's price (US$1 by default) for each day the owner uses goblin, taken by the first
+message of that day goblin answers, and nothing for an idle day (ADR 0054). The other way to pay is monthly.
+_Avoid_: daily subscription, trial
+
 **Collector**:
 goblin's own wallet that wallet subscriptions pay into, the only recipient a subscription allows (ADR 0054).
 
 **Grace**:
-The days after a failed renewal while Pro continues and goblin retries the payment each day; past it the account falls
-back to free (ADR 0054).
+The days after a failed monthly renewal while Pro continues and goblin retries the payment each day; past it the
+account loses Pro (ADR 0054). A day pass has none.
 
 **Model budget**:
 The estimated Token Plan Credits an agent may spend per UTC day (ADR 0026). Past it, new turns are refused and tools

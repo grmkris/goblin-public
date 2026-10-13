@@ -51,7 +51,7 @@ const OnboardingWallet = Schema.Struct({
   dollars: Schema.optional(Short),
   /** The dollars Start asks the wallet to hold: `0` since goblin Pro is a subscription, not a held sum (ADR 0054). */
   needs: Short,
-  /** Ready, and holding what the plan asks: `needs` on the free plan, anything at all on another. */
+  /** Ready, and holding at least `needs` when that is above `0`, else anything at all (ADR 0054: no free plan). */
   funded: Schema.Boolean,
 })
 

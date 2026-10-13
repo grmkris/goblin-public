@@ -98,7 +98,7 @@ type RoutineAction = 'confirm' | 'confirmAgain' | 'pause' | 'archive'
 
 /**
  * The owner changes one revision of routine `id`. Confirming (or confirming again) needs what its definition needs of
- * the plan, so a free account never switches on a hand-over; pausing or archiving one is always theirs to do.
+ * the plan, so an account without Pro never switches on a hand-over; pausing or archiving one is always theirs to do.
  */
 export const changeRoutine = Effect.fn('routines.changeRevision')(function* (
   id: string,

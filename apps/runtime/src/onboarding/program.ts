@@ -75,8 +75,8 @@ type Wallet = {
 }
 
 /**
- * Ready once its status reads with no setup left and an address goblin pays from; funded once ready and holding what
- * the plan asks (`needs` on the free plan, anything at all on another, which asks `0`).
+ * Ready once its status reads with no setup left and an address goblin pays from; funded once ready and holding at
+ * least `needs` when that is above 0, else anything at all (Start asks `0`: there is no free plan, ADR 0054).
  */
 const walletState = (found: Found, status: WalletStatus | null, needs: number): Wallet => {
   const dollars = status === null ? undefined : stablecoinDollars(status)

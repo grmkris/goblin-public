@@ -42,7 +42,7 @@ export type HandKit = {
   readonly available: readonly Tool[]
   readonly selected: readonly Tool[]
   readonly toggle: (tool: Tool, on: boolean) => void
-  /** The plan hands over (Pro); on the free plan a routine only tells (ADR 0012, amended 2026-10-12). */
+  /** The plan hands over (Pro); without Pro a hand-over cannot be picked (ADR 0012, amended 2026-10-12; ADR 0054). */
   readonly canHandOver: boolean
 }
 
@@ -206,8 +206,8 @@ export const nobodyNote = (tellMe: boolean, locked: boolean): string =>
   tellMe ? 'It only tells you.' : `It does nothing yet. Turn Tell me on${locked ? '' : ', or hand it over'}.`
 
 /**
- * Hand to: nobody, goblin or a Persona; a hand-over says what to do, then with which tools, within which limits. On the
- * free plan a hand-over cannot be picked (one the routine already has stays shown), and Get Pro says why.
+ * Hand to: nobody, goblin or a Persona; a hand-over says what to do, then with which tools, within which limits.
+ * Without Pro a hand-over cannot be picked (one the routine already has stays shown), and Get Pro says why.
  */
 export function HandToFields({ kit }: { readonly kit: HandKit }) {
   const { id, hand, setHand, handOver } = kit
