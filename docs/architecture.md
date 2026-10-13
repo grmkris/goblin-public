@@ -1979,7 +1979,10 @@ MCP server any client can connect; goblin connects it as a first-class server.
   (`/views/*`, from the web app's build). A `WalletLedger` Durable Object per owner keeps the wallet limits, operations,
   reservations, approvals, address book and view state in SQLite; `WalletAuth` keeps OAuth clients, codes and tokens.
 - **`apps/wallet-web`** is the owner's app (Privy sign-in, onboarding, activity, limits, connections, the consent and
-  Approve pages) and builds the single-file MCP App views.
+  Approve pages) and builds the single-file MCP App views. Signed out, `/` is the wallet's public landing
+  (`src/pages/landing`, on the marketing parts it shares with goblin's in `packages/ui/src/marketing`): an agent's
+  payments meeting the owner's limits, played once, then the limit layers, gas in USDC, a subscription signed once and
+  the MCP address, with Privy's Sign in. Every other path signed out keeps the plain sign-in.
 - **`packages/wallet`** holds the contract (tool and route schemas, goblin's `WalletStatus` shape), the chain table,
   amounts in integer base units, the Privy client and agent signer, delegation encoders, UserOperations (`userop`, and
   the server-only `bundler` for Pimlico) and the rails (x402, MPP on Tempo, transfers, LI.FI swaps, Relay bridges).
