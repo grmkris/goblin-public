@@ -18,7 +18,7 @@ import { usePersonas, useTopics } from '../lib/workspace/hooks.ts'
 import { useConnectionLabels } from '../mcp/hooks.ts'
 import { routineStatus } from '../lib/labels.ts'
 import { messageOf } from '../lib/query/app-error.ts'
-import { eventsQuery } from '../mcp/queries.ts'
+import { eventsQuery, serversQuery } from '../mcp/queries.ts'
 import { changeRoutineMutation } from '../routines/queries.ts'
 import { RoutineHistory } from './routine-history.tsx'
 import { StatusLabel } from './status-label.tsx'
@@ -49,11 +49,15 @@ function useWhenOf(definition: RoutineDefinition): string {
 
 /**
  * The event stream a routine waits for, as its server describes it now (its title and filter schema); none for a
- * routine on no event, or while the server has not said.
+ * routine on no event, or while the server has not said. Only a connected connection is asked: one that needs sign-in
+ * refuses (403), and a review is read on every Settings load.
  */
 function useStreamOf(definition: RoutineDefinition) {
   const { trigger } = definition
-  const streams = useQuery(eventsQuery(trigger.kind === 'event' ? trigger.connectionId : undefined))
+  const from = trigger.kind === 'event' ? trigger.connectionId : undefined
+  const servers = useQuery(serversQuery).data
+  const connected = servers?.some((server) => server.connectionId === from && server.status === 'connected') === true
+  const streams = useQuery(eventsQuery(connected ? from : undefined))
   return trigger.kind === 'event' ? streams.data?.find((stream) => stream.name === trigger.name) : undefined
 }
 
