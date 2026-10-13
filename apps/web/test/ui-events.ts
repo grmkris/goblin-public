@@ -127,7 +127,8 @@ async function drive(browser: Browser, origin: string, label: string, options: B
   await page.getByText('Already arrives through Telegram.').waitFor()
   assert(await page.getByRole('checkbox', { name: /Quote requests/u }).isChecked(), `${label}: not picked already`)
   assert(!(await page.getByRole('checkbox', { name: /Sidequest inbox/u }).isChecked()), `${label}: inbox picked`)
-  await page.getByText('You’ll see:').first().waitFor()
+  // A Tell me pick adds no preview: its notice is the title and line its row already shows.
+  assert.equal(await page.getByText('You’ll see:').count(), 0, `${label}: preview repeats the row`)
   await page.screenshot({ path: path.join(out, `${label}-picker.png`), fullPage: true })
   await page.getByRole('button', { name: 'Set up 1 event' }).click()
   await page.getByText('Quote requests: Agent is needed: the server asks for it.').waitFor()

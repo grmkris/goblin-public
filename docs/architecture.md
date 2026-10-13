@@ -1491,7 +1491,8 @@ quiet rate. While the offer is open, a recommended stream the server says to tel
 in Personal; one it recommends without `tellMe` is handed to goblin there on Pro and left unpicked without it.
 Each picked stream has one select for where it goes: Tell me in a Topic, or (Pro) goblin acting on it in a Topic or a
 Persona acting on it (answering in Personal); without Pro those show disabled, with Get Pro
-(`/subscribe?return=<this page>`). A preview line shows the notice ("You'll see: `<title>` · `<summary>`"). **Advanced**
+(`/subscribe?return=<this page>`). A hand-over adds a line saying who answers where; a Tell me pick adds none, since its
+notice is the title and line its row already shows. **Advanced**
 (folded) holds each stream's filters (a nullable or optional string is a plain optional field, with the server's
 default as its hint), an instruction for a hand-over (else goblin's), Tell me and Telegram. One action, **Set up N
 events**, proposes and then confirms each stream's own routine in turn (`setUpEventsMutation`), so each confirmation

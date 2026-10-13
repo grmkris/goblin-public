@@ -18,7 +18,7 @@ import {
   NativeSelectOption,
   Textarea,
 } from '@goblin/ui'
-import { ChevronRightIcon, PlugIcon } from 'lucide-react'
+import { ChevronRightIcon } from 'lucide-react'
 import { useBilling } from '../account/hooks.ts'
 import {
   type EventChoice,
@@ -116,30 +116,12 @@ function RouteSelect({
 }
 
 /**
- * What a picked event will do, in a line: the notice the owner will see, from the server's own words for the event, or
- * who answers where when it only hands over.
+ * What a picked event will do when it hands over, in a line: who answers where. One that only tells shows nothing more:
+ * its notice is the title and line its row already shows, word for word.
  */
-function Preview({
-  stream,
-  choice,
-  places,
-}: {
-  readonly stream: EventStream
-  readonly choice: EventChoice
-  readonly places: Places
-}) {
-  const summary = eventSummary(stream)
-  if (choice.route.kind !== 'tell' && !choice.tellMe)
-    return <p className="event-preview">{answerWords(choice.route, places)}</p>
-  return (
-    <p className="event-preview">
-      <PlugIcon aria-hidden />
-      <span>
-        You’ll see: <span className="event-preview-title">{eventTitle(stream)}</span>
-        {summary !== undefined && ` · ${summary}`}
-      </span>
-    </p>
-  )
+function Preview({ choice, places }: { readonly choice: EventChoice; readonly places: Places }) {
+  if (choice.route.kind === 'tell') return null
+  return <p className="event-preview">{answerWords(choice.route, places)}</p>
 }
 
 /** One event the owner can pick: its title, its line, how often it comes, and, once picked, where it goes. */
@@ -173,7 +155,7 @@ function PickRow({
         </label>
         {choice !== undefined && <RouteSelect title={title} route={choice.route} places={places} onRoute={onRoute} />}
       </div>
-      {choice !== undefined && <Preview stream={stream} choice={choice} places={places} />}
+      {choice !== undefined && <Preview choice={choice} places={places} />}
     </li>
   )
 }
