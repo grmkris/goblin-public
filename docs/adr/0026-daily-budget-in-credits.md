@@ -1,6 +1,6 @@
 # ADR 0026: The daily budget is estimated Token Plan Credits
 
-Accepted 2026-10-06 with the owner; amended 2026-10-10 (see Amendments).
+Accepted 2026-10-06 with the owner; amended 2026-10-10 and 2026-10-13 (see Amendments).
 
 **The budget counts what the model plan charges.** goblin's users share one model key on Alibaba's Token Plan
 (Standard: 45,000 Credits a month, shared with the owner's coding agents and Hermes). The plan bills Credits, and
@@ -40,3 +40,8 @@ Consequences:
 - **2026-10-10, later: one plan for inbound calls and hooks.** An MCP client's ask and a hook reach the Agent on the
   plan it keeps (ADR 0015, amended), so the internal gate's check and the budget's allowance read the same cached
   plan; the Worker reads none before them.
+- **2026-10-13: Pro's Credits come from the catalog, and there is no free plan (ADR 0054, amended).** The daily
+  allowance is the catalog's `dailyCredits` for the way the owner pays (800 for the day pass and monthly by default,
+  `GOBLIN_PLAN_CATALOG`); an override keeps its own. Without a plan the allowance is none, and every budget check
+  refuses with `SubscriptionRequired` rather than `BudgetExhausted`. The free plan's Credits (`GOBLIN_FREE_DAILY_CREDITS`)
+  are gone.

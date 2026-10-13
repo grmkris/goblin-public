@@ -196,11 +196,9 @@ IP per hour; sign-in permits twenty attempts per IP per five minutes. D1 holds r
 per request. `GOBLIN_SIGNUP_MODE=open` admits new addresses; `invite` requires `GOBLIN_SIGNUP_INVITE_CODE` in the
 `x-invite-code` header on both send and verify; `closed` permits only existing accounts. A successful OTP creates an
 email-verified account or signs its owner in. Password, reset, verification-link and passkey endpoints are unavailable.
-A stage that sets `GOBLIN_FREE_DAILY_CREDITS` gives every account without Pro a free plan (`billing/plans.ts`,
-`source: 'free'`): the agent with those Credits a day and routines that only tell the owner (Tell me: a notice, and a
-Telegram copy if asked, with no model call), but no hand-over (`requirePlan('handOver')` refuses it, also from the
-agent's kept answer, as `SubscriptionRequired` with `feature: 'hand_over'`, whose copy says hand-over is part of Pro),
-with Pro still on offer (ADR 0012, amended 2026-10-12).
+There is no free plan (ADR 0054, amended 2026-10-13): goblin answers only with goblin Pro, paid by a day pass or
+monthly. An account without it signs in and reaches its own agent (Start, Connections, Settings, billing), and every
+turn, routine and other piece of work that needs Pro is refused with `SubscriptionRequired` `feature: 'chat'`.
 
 Every stage requires a mail sender. Deployed mail uses Cloudflare Email Sending from `hello@goblin.surf`; local
 workerd captures `.eml` files through Alchemy's simulator. Better Auth 1.7.6 swallows mail callback errors, so a
@@ -243,7 +241,7 @@ Finishing narrows the panel into the rail as the chat appears.
 - Every other step is read live by `GET /api/onboarding` from the connections, the grants (each first-class server's
   status tool, and the wallet's payment tool) and the wallet's own status (`WalletStatus.setup`, `payFrom`).
 - The wallet is ready once its status reads, lists no setup and has an address goblin pays from; funded once ready and
-  holding `GOBLIN_FREE_WALLET_USD` (the free plan) or anything (any other). Its setup page is built from the
+  holding anything. Its setup page is built from the
   connection's configured endpoint origin (`mcp/first-class.ts` `walletSetupUrl`), never from what the server says.
 - A derived Start is open until the wallet is ready and funded; Mercator is optional. A kept status is answered
   without asking any server.
@@ -1359,11 +1357,7 @@ output token it may write, 0.1 per input token, at least $0.00075). It forwards 
 key and returns the payment's receipt. Settings' "How goblin pays for its model" card (`inference-card.tsx`) chooses the
 pay mode and, where the stage sells both, the route; the composer says "Paying per call" while calls are paid, and
 Activity's Get started offers the wallet while a mode would use it and it cannot pay yet.
-Where the stage sets `GOBLIN_FREE_WALLET_USD`, the free plan's Credits apply only while a connected Goblin Wallet holds
-that many dollars of stablecoins: the total its status adds up on every chain (`stablecoinUsd`), else its status
-line's USDC and USDC.e (the server's claim, read as the owner, `layers/budget.ts`):
-a funded answer is kept ten minutes, an unfunded one a minute. Below it the day's allowance is none, and the web says
-a funded wallet is needed instead of that the day is spent.
+Paying per call needs a plan like everything else: without Pro a turn is refused before the pay mode is read.
 
 Housekeeping (thread titles, main's summaries and skill-draft decisions) runs on `GOBLIN_MEMORY_MODEL`. Set it to a
 cheap offered model; the code does not choose by price. Unset or not offered, it falls back to the default
@@ -1494,9 +1488,9 @@ Resume and Edit, which opens the routine editor and then its review), the **pick
 lists the streams by group (the server's, else the service before the first dot of a three-part name, else the
 connection), each by title (else its name in words, `message.received` → "Message received") with its summary and a
 quiet rate. While the offer is open, a recommended stream the server says to tell the owner about is picked, to Tell me
-in Personal; one it recommends without `tellMe` is handed to goblin there on Pro and left unpicked on the free plan.
+in Personal; one it recommends without `tellMe` is handed to goblin there on Pro and left unpicked without it.
 Each picked stream has one select for where it goes: Tell me in a Topic, or (Pro) goblin acting on it in a Topic or a
-Persona acting on it (answering in Personal); on the free plan those show disabled, with Get Pro
+Persona acting on it (answering in Personal); without Pro those show disabled, with Get Pro
 (`/subscribe?return=<this page>`). A preview line shows the notice ("You'll see: `<title>` · `<summary>`"). **Advanced**
 (folded) holds each stream's filters (a nullable or optional string is a plain optional field, with the server's
 default as its hint), an instruction for a hand-over (else goblin's), Tell me and Telegram. One action, **Set up N
@@ -1758,35 +1752,51 @@ body under `webhook-id` before responding 2xx. A leased background run updates t
 retries unfinished receipts and reads stale subscriptions back from Dodo. Provider timestamps prevent old events
 from overwriting newer states. This is durable idempotent reconciliation, not exactly-once provider effects.
 
-The owner API and the account API's `clients` require an active plan, read fresh from auth D1 at the Worker's edge,
-before selecting the user's Agent. Inbound MCP and the user-bound hooks reach the Agent through its internal API,
-whose gate checks the plan the Agent keeps (402 without one); the Worker reads none for them. Inside the Agent, owner
-admission, the internal gate, client and background runs, the model budget and every tool call check its
-`Entitlements` service, which keeps an active plan for 60 seconds (`cachedPolicy` in `billing/gates.ts`, ADR 0015
-amended); a plan that is not active, or a read that failed, is not kept. No lifecycle lock is held around the D1 read.
-A cancelled plan can keep the Agent's own background work, and its hooks and inbound clients, going for up to a minute
-after the edge stops admitting the owner. Pro is $10/month, without trial or free tier; active
-or cancelled subscriptions remain usable only through their recorded paid period. Failed renewals use the provider's
+The Worker's edge reads no plan (ADR 0054, amended 2026-10-13): a signed-in owner reaches their own Agent through the
+owner API, and the account API answers any signed-in account, so Start can connect the Goblin Wallet and choose Pro
+before there is a plan. Inbound MCP and the user-bound hooks reach the Agent through its internal API, whose gate
+checks the plan the Agent keeps (402 without one). Inside the Agent, what needs Pro checks its `Entitlements` service:
+a turn at `Budget.admit` (the composer, Telegram, a Persona, an inbound client's ask), routines and their notices'
+Telegram copies, Events, a decision on a held call, a Persona's reply, app powers, the internal gate and the budget
+every background model call checks. Without a plan each answers `SubscriptionRequired` with `feature: 'chat'`.
+`Entitlements` keeps an active plan for 60 seconds (`cachedPolicy` in `billing/gates.ts`, ADR 0015 amended); a plan
+that is not active, or a read that failed, is not kept, and a day pass's payment drops the kept plan when it ends. No
+lifecycle lock is held around the D1 read. A cancelled plan can keep the Agent's own background work, and its hooks
+and inbound clients, going for up to a minute. Active or cancelled subscriptions remain usable only through their
+recorded paid period. Failed renewals use the provider's
 grace end or three days after the period end; missing dates fail closed. Existing users at the billing migration get a
 dev-only override, which grants nothing on prod. Operator overrides may supply their own allowance.
 
 Each Agent's usage ledger still records its owner's UTC-day spend, while the allowance now comes from that account's
-plan (800 Credits a day for Pro, the stage's free Credits otherwise; ADR 0026), at the Credit rates the stage configures; the defaults are Alibaba's
-example rates and need operator review against the plan's real billing.
+plan (the catalog's Credits a day for the way it pays, 800 by default; none without a plan; ADR 0026), at the Credit
+rates the stage configures; the defaults are Alibaba's example rates and need operator review against the plan's real
+billing.
 
-**Pro from the Goblin Wallet (ADR 0054).** Pro is $10 in USDC every 30 days, a subscription the owner signs once in
-the Goblin Wallet: an ERC-7710 delegation to goblin's collector that the chain holds to USDC transfers into the collector
-only, at most $10 a period, for 12 periods. goblin is a merchant of the wallet (`billing/wallet.ts`, the
-`WalletMerchant` service, server to server with the merchant key). `POST /api/billing/wallet/start` asks the wallet for
-the subscription and answers where to sign it; the wallet sends the owner back to `/subscribe/success`, whose
-`POST /api/billing/wallet/confirm` takes the current period's payment once (operation id `pro:<user>:<period>`) and
-answers its receipt. `app_billing_wallet_subscriptions` keeps where each account's renewals stand, and the plan's
-source `wallet` gives Pro through the last period paid, and through the grace while a failed renewal is retried. The
-hourly cron (`billing/renewals.ts`) reminds three days before a payment, collects it when due, retries a failed one
-each day through a seven-day grace and then falls back to free; a subscription the owner revoked runs to what was
-paid. Its notices reach the owner's Personal, Activity and Telegram through the agent's internal
-`/internal/billing-notice` (`billing/notice.ts`), which needs no plan. The card checkout and portal answer
-`card_disabled` unless `CARD_CHECKOUT` is `on`.
+**Pro from the Goblin Wallet (ADR 0054).** goblin Pro is paid from the Goblin Wallet as a subscription the owner signs
+once: an ERC-7710 delegation to goblin's collector that the chain holds to USDC transfers into the collector only, at
+most the price a period, for 12 months. It is paid by a **day pass** ($1 for each UTC day the owner uses goblin, its
+periods UTC days from the midnight that begins the signing day) or **monthly** ($15 every 30 days, 12 payments). The
+prices and each one's daily Credits are the deployment's setting, `GOBLIN_PLAN_CATALOG` over the defaults in
+`billing/plans.ts`, listed in `BillingState.catalog`. goblin is a merchant of the wallet (`billing/wallet.ts`, the
+`WalletMerchant` service, server to server with the merchant key), asking for `plan: 'pro'` and the `billing`.
+`POST /api/billing/wallet/start` (`{ plan: 'day' | 'month', return? }`) asks the wallet for the subscription and
+answers where to sign it; a day pass may start monthly, any other start while Pro is on is `already_subscribed`. The
+wallet sends the owner back to `/subscribe/success`, whose `POST /api/billing/wallet/confirm`:
+- monthly: takes the current period's payment once (operation id `<billing>:<subscription>:<period>`) and answers its
+  receipt; its first payment supersedes a day pass, which is not collected again;
+- a day pass: turns Pro on and takes nothing (refusing a wallet already short of a day); after a day it could not pay,
+  it takes that day's payment, and Pro is on again.
+
+`app_billing_wallet_subscriptions` keeps each subscription, keyed by subscription, with its `billing`. The plan's source
+`wallet` gives Pro through monthly's last period paid (and its grace while a failed renewal is retried), or while a day
+pass is on. The first owner turn of a UTC day that `Budget.admit` admits takes a day pass's payment in the background
+(`billing/day-pass.ts`, through `Entitlements.payDay`), once a day; a tool's budget check (`Budget.open`) never does, so
+an idle day costs nothing. A day the wallet is short lapses the pass from the next message; revoked or ended, it is
+cancelled and runs to the end of the last day paid. The hourly cron (`billing/renewals.ts`) renews monthly only: it
+reminds three days before a payment, collects it when due, retries a failed one each day through a seven-day grace and
+then ends Pro; a subscription the owner revoked runs to what was paid. Monthly's notices reach the owner's Personal,
+Activity and Telegram through the agent's internal `/internal/billing-notice` (`billing/notice.ts`), which needs no
+plan; a day pass sends none. The card checkout and portal answer `card_disabled` unless `CARD_CHECKOUT` is `on`.
 
 The browser reads billing state before mounting agent pages; unpaid accounts reach `/subscribe`. Any call refused with
 `SubscriptionRequired` opens one upgrade prompt (`lib/upgrade-prompt.ts`) naming the feature when the error does,
@@ -1826,17 +1836,17 @@ an exact configured Origin and `x-goblin-csrf: 1`. Edits clear confirmation and 
 definition (ADR 0041) is a trigger, a timezone, **Tell me** (`tellMe: { on, telegram }`, Telegram only with Tell me) and
 **Hand to** (`handTo`: `none`; `goblin` with its instruction, allowed tools and budget; or `persona` with those and the
 Persona's id and the revision it pins); one that hands nothing over must tell the owner. Only a hand-over makes runs
-(`handOverOf`, `runHandOver`). A routine that only tells is on the free plan too; a hand-over needs Pro: propose,
-edit, confirm (and confirm again), run admission and the run provider check `requirePlan('handOver')`, while pause and
-archive stay the owner's on any plan. Settings shows the instruction, exact
+(`handOverOf`, `runHandOver`). Every routine needs Pro (there is no free plan, ADR 0054): propose, edit, confirm (and
+confirm again) check `requirePlan`, run admission and the run provider `requirePlan('handOver')`, and a scheduled
+reminder or a notice's Telegram copy is not sent without a plan, while pause and archive stay the owner's on any plan. Settings shows the instruction, exact
 tool pairs, timezone, budgets and Telegram policy before confirmation. Its editor (`components/routine-editor.tsx`,
 `routine-when.tsx`, `routine-hand.tsx`) asks what, where (the Topic), when, Tell me (and Telegram) and Hand to
 (nobody, Goblin or a Persona, with the instruction, tools and limits only for a hand-over); an event trigger picks a
 connection that sends events, one of its streams (by title) from `GET /api/mcp/:id/events`, and its filters through a form
 generated from the stream's input schema (`lib/schema-form.ts`, `components/schema-form.tsx`: text, a choice, a
 number, yes or no, a list of texts, required first; a nullable one optional), with raw JSON for anything a flat form
-cannot hold; a routine's card says which events it takes in words ("Every one", or each filter's title and value). On
-the free plan the editor's hand-over tabs are locked with Get Pro. A routine lives in a
+cannot hold; a routine's card says which events it takes in words ("Every one", or each filter's title and value). Without
+Pro the editor's hand-over tabs are locked with Get Pro. A routine lives in a
 Topic, and its runs are bounded by that Topic's setup as well as its allowed tools (ADR 0040): each `RoutineView`
 carries `topic` and `outsideSetup`, the allowed tools the setup does not hold now, read live so a proposal or a
 routine's page can flag them; a run that calls one gets the words-only `not-in-topic` refusal (code `not_in_topic` in

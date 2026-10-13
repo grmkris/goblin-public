@@ -1,7 +1,8 @@
 # 0047: Inference paid per call from the owner's wallet
 
 It builds on ADR 0026 (Credits), 0043 (first-class servers), 0044 (spending rules) and 0045 (Goblin Wallet). Amended the
-same day: a pay mode replaces paid model picks, and the default is Credits first, then the wallet (below).
+same day: a pay mode replaces paid model picks, and the default is Credits first, then the wallet (below). Amended
+2026-10-13: there is no free plan, so the funded-wallet rule below is gone (ADR 0054, amended).
 
 ## Context
 
@@ -69,10 +70,9 @@ once the day's Credits are spent.
 - **A turn Pi runs again pays again.** A payment is keyed by its challenge, and a re-run gets a new challenge.
 - **Charges are up front.** At goblin's 32,768-token output cap, a call through the proxy costs about $0.02, whatever
   the answer uses.
-- **The free plan's Credits ask for a funded wallet.** Where the stage sets `GOBLIN_FREE_WALLET_USD` (5 on dev and
-  prod), a free account's Credits apply only while its Goblin Wallet holds that much in stablecoins, by the total its
-  status adds up over every chain. With Credits first, then the wallet, an unfunded account's turns are paid per call
-  while its wallet can pay.
+- **Paying per call needs a plan.** Until 2026-10-13 a free plan's Credits asked for a funded wallet
+  (`GOBLIN_FREE_WALLET_USD`). There is no free plan now (ADR 0054, amended): an account without Pro is refused a turn
+  before the pay mode is read, so its wallet pays for nothing either.
 
 ## Rejected
 

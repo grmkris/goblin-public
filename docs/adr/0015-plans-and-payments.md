@@ -1,7 +1,7 @@
 # ADR 0015: Plans and payments
 
 Accepted implementation decision, 2026-10-05. Live payment and legal acceptance remain operator gates. Amended
-2026-10-10 and 2026-10-12 (see Amendments).
+2026-10-10, 2026-10-12 and 2026-10-13 (see Amendments).
 
 goblin accounts sign up before paying. Pro costs $10/month through Dodo Payments, with no trial or free tier,
 and grants 2M weighted tokens per account per UTC day. Unsubscribed accounts can sign in and manage account/billing
@@ -61,3 +61,8 @@ webhook receipt remain acceptance gates until test keys and product are supplied
   hourly cron. The Dodo checkout and portal stay in the code behind `GOBLIN_CARD_CHECKOUT` (binding `CARD_CHECKOUT`,
   default `off`): off, they answer `card_disabled` and the web hides them; the webhook and its reconciliation are
   unchanged. A plan's source can now be `wallet`, beside `subscription` (the card), `override` and `free`.
+- **2026-10-13: a day pass or monthly, and no free plan (ADR 0054, amended).** Pro is paid from the Goblin Wallet by a
+  day pass ($1 for each UTC day the owner uses goblin) or monthly ($15 every 30 days), at prices the deployment sets
+  (`GOBLIN_PLAN_CATALOG`). There is no free plan: a plan's source is `override`, `subscription`, `wallet` or `none`.
+  An unsubscribed account now reaches its Agent through the owner API (Start runs before there is a plan), and the
+  Agent refuses its turns, routines, hooks and MCP calls that need Pro with `SubscriptionRequired` `feature: 'chat'`.

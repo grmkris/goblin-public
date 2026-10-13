@@ -4,6 +4,7 @@ Status: scheduled and Event execution implemented; native workerd verified. Phas
 Amended by ADR 0040: a routine run is bounded by its Topic's setup as well as its own allowed tools.
 Amended by ADR 0041: a routine tells the owner, hands over to Goblin or a Persona, or both.
 Amended 2026-10-12 (with the owner): a routine that only tells is on the free plan; a hand-over is Pro. See the end.
+Amended 2026-10-13 by ADR 0054: there is no free plan, so every routine, its reminders and its Telegram copies need Pro.
 
 ## Decision
 
