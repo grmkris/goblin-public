@@ -85,9 +85,9 @@ describe('the agent’s presence', () => {
   })
   it('settles into how the last turn ended; stopping is not an error, a cut-off answer says so', () => {
     expect(presenceOf({ ...base, exhausted: true, projection: projection() }).state).toBe('exhausted')
-    // A day with no allowance at all: the free plan waits for a funded Goblin Wallet (ADR 0047).
-    expect(presenceOf({ ...base, exhausted: true, walletNeeded: true, projection: projection() }).label).toBe(
-      'Needs a funded Goblin Wallet',
+    // No plan at all: goblin answers nothing until the owner picks goblin Pro (ADR 0054).
+    expect(presenceOf({ ...base, exhausted: true, planNeeded: true, projection: projection() }).label).toBe(
+      'Needs goblin Pro',
     )
     expect(presenceOf({ ...base, projection: projection(), parts: [failure()] }).state).toBe('error')
     expect(presenceOf({ ...base, projection: projection(), parts: [failure(true)] }).state).toBe('idle')

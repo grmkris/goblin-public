@@ -186,17 +186,21 @@ function useDockStatus(conversation: ReturnType<typeof useConversation>, parts: 
   const waiting = useMemo(() => stillOpen(asked, states), [asked, states])
   const context = useMemo(() => contextTokens(projection?.messages ?? []), [projection])
   const named = useConnectionLabels()
+  const planNeeded = usePlanNeeded()
   const presence = presenceOf({
     status,
     projection,
     parts,
     named,
     waiting: waitingOnOwner(waiting, states),
-    // A spent day stops goblin only while the owner's wallet does not pay its calls (ADR 0047).
-    exhausted: usage !== undefined && budgetFraction(usage) >= 1 && !(pay !== undefined && walletPaysWhenSpent(pay)),
-    walletNeeded: usage?.limit === 0,
+    // No plan stops goblin whatever would pay its calls (ADR 0054); a spent day only while the owner's wallet does not
+    // pay them (ADR 0047).
+    exhausted:
+      planNeeded ||
+      (usage !== undefined && budgetFraction(usage) >= 1 && !(pay !== undefined && walletPaysWhenSpent(pay))),
+    planNeeded,
   })
-  return { running, usage, waiting, context, presence }
+  return { running, usage, waiting, context, presence, planNeeded }
 }
 
 /**
@@ -250,8 +254,7 @@ export function ConversationDock({
   const personas = usePersonas()
   const { projection, notice, send, stop, removeQueued, report } = conversation
   const sendOwn = withSharedContext(useSharedContext(id), send, onStartThread)
-  const { running, usage, waiting, context, presence } = useDockStatus(conversation, parts)
-  const planNeeded = usePlanNeeded()
+  const { running, usage, waiting, context, presence, planNeeded } = useDockStatus(conversation, parts)
   return (
     <div className="chat-dock" ref={ref} data-app-cover>
       <DockCards
