@@ -1,7 +1,7 @@
-// A marketing page's hero, built as the product's own shell at large scale: the moss field its rail and sidebar are
-// made of (the rail's deeper green in dark), with the headline, one line and the invitation on it, and beside them the
-// off-white message area as a framed panel, where the product's characteristic moment plays. On a phone the copy comes
-// first and the panel runs full width under it.
+// A marketing page's hero, built as the product's own shell at large scale: the moss field its sidebar is made of,
+// with the headline, one line and the invitation on it, and beside them the off-white message area as a framed panel,
+// where the product's characteristic moment plays. On a phone the copy comes first and the panel runs full width under
+// it.
 import { type ReactNode, useId } from 'react'
 
 export interface MossFrameProps {

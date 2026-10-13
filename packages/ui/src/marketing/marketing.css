@@ -68,9 +68,6 @@
     backdrop-filter: blur(20px) saturate(1.5);
     color: var(--shell-foreground);
   }
-  .dark .site-bar[data-tone='moss'] {
-    --site-field: var(--shell-rail);
-  }
   .site-bar[data-tone='moss']::after {
     content: '';
     position: absolute;
@@ -261,19 +258,21 @@
     background: var(--shell);
     color: var(--shell-foreground);
   }
-  .dark .moss-frame {
-    background: var(--shell-rail);
+  /* Under a moss bar the field runs up behind it, so bar and hero are one surface the page scrolls under. */
+  .site-bar[data-tone='moss'] + .moss-frame {
+    margin-block-start: calc(-3.5rem - var(--safe-top));
+    padding-block-start: calc(3.5rem + var(--safe-top));
   }
   .moss-frame-grid {
     display: grid;
     gap: 2.5rem 3rem;
-    padding-block: 2rem 3rem;
+    padding-block: 1.5rem 3rem;
   }
   @media (min-width: 48rem) {
     .moss-frame-grid {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
       align-items: center;
-      padding-block: 4rem 6rem;
+      padding-block: 2rem 5rem;
     }
   }
   .moss-frame-copy {
@@ -342,14 +341,14 @@
   .site-section {
     display: grid;
     gap: 2.5rem 2rem;
-    padding-block: 4rem;
+    padding-block: 3rem;
     scroll-margin-top: 4rem;
   }
   @media (min-width: 48rem) {
     .site-section {
       grid-template-columns: repeat(12, minmax(0, 1fr));
       align-items: center;
-      padding-block: 7rem;
+      padding-block: 5rem;
     }
     .site-section-copy {
       grid-column: 1 / span 5;
