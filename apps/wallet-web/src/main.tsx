@@ -15,15 +15,18 @@ if (container === null) throw new Error('missing_root_element')
 
 /**
  * `?fixtures` shows the demo data instead of calling the API: a busy wallet, or with `=fresh` one just signed in to,
- * `=funded` one with USDC but spending not turned on, `=expired` one whose consent request ran out.
+ * `=funded` one with USDC but spending not turned on, `=expired` one whose consent request ran out, `=signed-out` the
+ * busy wallet behind its sign-in (the landing at `/`).
  */
 const fixtureMode = new URLSearchParams(window.location.search).get('fixtures')
 const fixtureStart: FixtureStart = FIXTURE_STARTS.find((start) => start === fixtureMode) ?? 'ready'
+const fixtureSignedOut = fixtureMode === 'signed-out'
 
 function Fixtures() {
   const world = useMemo(() => createFixtureApi(fixtureStart), [])
   return (
     <FixtureAuthProvider
+      signedOut={fixtureSignedOut}
       onUpgrade={world.simulate.upgrade}
       onAllowance={world.simulate.allowance}
       onSubscription={world.simulate.subscription}

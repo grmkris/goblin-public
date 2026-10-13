@@ -1,0 +1,87 @@
+/*
+ * The wallet's own parts of its public landing at `/` (pages/landing); the frame, type scale, bar, sections and footer
+ * are the shared marketing parts (`@goblin/ui`, marketing.css). The one moving thing is the hero's stream of payments,
+ * which plays once and rests; everything after it is still.
+ */
+.wallet-landing {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * The stream. Every row holds its place from the start, so nothing below moves while it plays; a row arrives with a
+ * short rise and fade, and its verdict fades in where the last one stood.
+ */
+.stream-row {
+  transition-property: opacity, translate, visibility;
+  transition-duration: 320ms, 320ms, 0s;
+  transition-timing-function: var(--ease-out);
+}
+.stream-row[data-verdict='hidden'] {
+  opacity: 0;
+  translate: 0 6px;
+  visibility: hidden;
+}
+
+.stream-verdict {
+  animation: landing-fade 220ms var(--ease-out) both;
+}
+@keyframes landing-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The ask's buttons and its result share one cell, so the row keeps its height when Approve becomes Paid. */
+.stream-swap {
+  display: grid;
+  align-items: center;
+}
+.stream-swap > * {
+  grid-area: 1 / 1;
+}
+
+/* An ask that approves itself shows the press it stands for, on its Approve. */
+.stream-pressed > [data-slot='button'] {
+  scale: 0.97;
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+}
+
+/* The hour's meter fills in moss, the one green in the panel. */
+.stream-meter [data-slot='meter-indicator'] {
+  background-color: var(--moss);
+}
+
+/*
+ * The nested layers: each frame's corner is its child's plus its own padding, so every corner shares a centre, and each
+ * frame inside another takes a little more moss (mixed in oklab, so the hue stays the moss's own).
+ */
+.landing-layers {
+  --layer-pad: 0.75rem;
+  --layer-inner-radius: 0.625rem;
+}
+.landing-layer {
+  padding: var(--layer-pad);
+  border-radius: calc(var(--layer-inner-radius) + var(--layer-depth) * var(--layer-pad));
+  background-color: color-mix(in oklab, var(--moss) calc(3% + var(--layer-step) * 3.5%), var(--background));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--moss) 16%, transparent);
+}
+
+.landing-layer-core {
+  border-radius: var(--layer-inner-radius);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-row,
+  .stream-verdict {
+    transition: none;
+    animation: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .landing-layer {
+    background-color: var(--background);
+    box-shadow: inset 0 0 0 1px var(--foreground);
+  }
+}

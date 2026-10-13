@@ -1,5 +1,6 @@
 @layer theme, base, components, app, utilities;
 @import '@goblin/ui/styles.css';
+@import './pages/landing/landing.css' layer(app);
 
 /* Native feel on a phone: the root paints the theme's background first, the page never bounces behind its fixed bars,
    chrome is not selectable text, and a tap shows no grey flash. */

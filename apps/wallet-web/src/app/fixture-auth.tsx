@@ -5,19 +5,24 @@ import { type Auth, AuthContext, type OwnerChain } from './auth.tsx'
 
 const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 600))
 
-/** Signed in as the demo owner; signing waits a moment and succeeds. Sign out then in again to try the sign-in page. */
+/**
+ * Signed in as the demo owner (or signed out, for the landing at `/`); signing waits a moment and succeeds. Sign out
+ * then in again to try the sign-in page.
+ */
 export function FixtureAuthProvider({
+  signedOut = false,
   onUpgrade,
   onAllowance,
   onSubscription,
   children,
 }: {
+  readonly signedOut?: boolean
   readonly onUpgrade: (chain: OwnerChain) => void
   readonly onAllowance: (input: { readonly chain: OwnerChain; readonly perHour: string }) => void
   readonly onSubscription: (id: string, change: 'signed' | 'cancelled') => SubscriptionView | undefined
   readonly children: ReactNode
 }) {
-  const [signedIn, setSignedIn] = useState(true)
+  const [signedIn, setSignedIn] = useState(!signedOut)
   const auth = useMemo<Auth>(
     () => ({
       status: signedIn ? 'ready' : 'signed-out',
