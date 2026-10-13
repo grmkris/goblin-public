@@ -1,6 +1,7 @@
 import { callAccount, callOwner } from '../owner-client.ts'
 import { call, lever, person, signedIn, type Person } from './owner-requests.ts'
-import { answerOf } from './probe-reads.ts'
+import { PRIMARY_CHAT } from '@goblin/contracts'
+import { answerOf, ownerResult } from './probe-reads.ts'
 import * as Alchemy from 'alchemy'
 import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Test from 'alchemy/Test/Vitest'
@@ -61,13 +62,36 @@ async function active(base: string, who: Person, enabled: boolean) {
     .toBe(enabled)
 }
 
-/** The agent's usage as `who` reads it: `ok`, or the tag of the plan admission's refusal. */
+/**
+ * The agent's usage as `who` reads it: `ok`, or the tag of a refusal. An owner path answers without a plan too (ADR 0054,
+ * amended 2026-10-13); only what needs Pro is refused.
+ */
 const usage = (base: string, who: Person) => answerOf(signedIn(base, who), (api) => api.agent.usage())
 const usageToday = (base: string, who: Person) => callOwner(signedIn(base, who), (api) => api.agent.usage())
 
+/** A message from `who` into main: `ok`, or the refusal's tag and the feature it names. */
+const chat = async (base: string, who: Person) => {
+  const sent = await ownerResult(signedIn(base, who), (api) =>
+    api.conversations.submit({
+      params: { id: PRIMARY_CHAT },
+      payload: { input: 'hello', operationId: `billing-${crypto.randomUUID()}` },
+    }),
+  )
+  return sent.ok ? 'ok' : { tag: sent.error._tag, feature: 'feature' in sent.error ? sent.error.feature : undefined }
+}
+/** What a turn without a plan answers: 402 `SubscriptionRequired` naming chat. */
+const NO_PLAN = { tag: 'SubscriptionRequired', feature: 'chat' } as const
+
+/** Without a plan the owner path answers, with no allowance, and a message is refused. */
+async function withoutPlan(base: string, who: Person) {
+  expect(await usage(base, who)).toBe('ok')
+  expect(await usageToday(base, who)).toMatchObject({ used: 0, limit: 0 })
+  expect(await chat(base, who)).toEqual(NO_PLAN)
+}
+
 async function activationCase(url: string) {
   const who = await person(url)
-  expect(await usage(url, who)).toBe('SubscriptionRequired')
+  await withoutPlan(url, who)
   // The checkout ignores what the browser says about the product and the account.
   const checkout = await call(url, who, '/api/billing/checkout', {
     productId: 'attacker-product',
@@ -78,7 +102,8 @@ async function activationCase(url: string) {
   expect(link.searchParams.get('product')).toBe('pdt_goblin_fixture')
   expect(link.searchParams.get('user')).toBe(who.userId)
   expect(link.searchParams.get('return')).toBe('https://goblin.test/subscribe/success')
-  expect(await usage(url, who)).toBe('SubscriptionRequired')
+  // A checkout opened is no plan: only the verified webhook activates it.
+  expect(await chat(url, who)).toEqual(NO_PLAN)
   const id = crypto.randomUUID()
   expect((await deliver(url, who, {}, id)).status).toBe(200)
   await active(url, who, true)
@@ -126,7 +151,7 @@ async function cancellationCase(url: string) {
   const expired = crypto.randomUUID()
   await deliver(url, who, { status: 'cancelled', next_billing_date: new Date(Date.now() - DAY).toISOString() }, expired)
   await active(url, who, false)
-  expect(await usage(url, who)).toBe('SubscriptionRequired')
+  await withoutPlan(url, who)
   const grace = Date.now() + DAY
   await deliver(url, who, {
     status: 'on_hold',
@@ -163,7 +188,7 @@ async function allowanceCase(url: string) {
   expect(await usageToday(url, second)).toMatchObject({ used: 0, limit: 1234 })
   expect(await billing(url, first, 'as-prod')).toMatchObject({ active: false, dailyCredits: 0 })
   const stranger = await person(url)
-  expect(await usage(url, stranger)).toBe('SubscriptionRequired')
+  await withoutPlan(url, stranger)
 }
 
 harness.test(
@@ -188,7 +213,8 @@ async function recoveryCase(url: string) {
     },
   })
   await billing(url, who, 'pending', { eventId: id, body })
-  expect(await usage(url, who)).toBe('SubscriptionRequired')
+  // Accepted but not yet processed: no plan until the cron applies it.
+  expect(await chat(url, who)).toEqual(NO_PLAN)
   await billing(url, who, 'cron')
   await active(url, who, true)
   expect(await billing(url, who, 'inbox', { eventId: id })).toMatchObject({ state: 'processed', attempts: 1 })

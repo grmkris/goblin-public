@@ -91,7 +91,7 @@ export const signedIn = (base: string, who: Person, headers: Record<string, stri
 export const lever = (base: string, who: Person, name: string, body?: unknown) =>
   call(base, who, `/__test/${name}`, body)
 
-/** Gives `who` a plan (an override of `dailyCredits` a day), so the Worker admits them to their agent. */
+/** Gives `who` a plan (an override of `dailyCredits` a day), so their agent takes turns (ADR 0054). */
 export const grantPlan = async (base: string, who: Person, dailyCredits = 1000): Promise<void> => {
   await lever(base, who, 'billing/override', { userId: who.userId, dailyCredits })
 }
