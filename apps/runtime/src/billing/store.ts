@@ -1,5 +1,5 @@
 /** Adapted from myapps@8a69ec64: D1 customer, subscriptions, checkout quota and leased durable webhook inbox. */
-import { and, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/d1'
 import * as Effect from 'effect/Effect'
 import { Internal } from '../http/errors.ts'
@@ -188,20 +188,31 @@ const inboxProgress = (db: Database) => ({
     }),
 })
 
-/** The accounts' Goblin Wallet subscriptions (ADR 0054): one row each, written only by billing's own programs. */
+/**
+ * The accounts' Goblin Wallet subscriptions (ADR 0054), one row each, written only by billing's own programs. An account
+ * has one live subscription, and two only while a day pass moves to monthly.
+ */
 const walletStore = (db: Database) => ({
-  walletSubscription: (userId: string) =>
-    operation(() => db.select().from(walletSubscriptions).where(eq(walletSubscriptions.userId, userId)).get()),
-  /** The account's subscription as it now stands; a new one replaces the one before it. */
+  /** The account's subscriptions, the newest first. */
+  walletSubscriptions: (userId: string) =>
+    operation(() =>
+      db
+        .select()
+        .from(walletSubscriptions)
+        .where(eq(walletSubscriptions.userId, userId))
+        .orderBy(desc(walletSubscriptions.createdAt))
+        .limit(20)
+        .all(),
+    ),
+  /** The subscription as it now stands. */
   writeWalletSubscription: (row: WalletSubscription) =>
     operation(() =>
       db
         .insert(walletSubscriptions)
         .values(row)
         .onConflictDoUpdate({
-          target: walletSubscriptions.userId,
+          target: walletSubscriptions.subscriptionId,
           set: {
-            subscriptionId: row.subscriptionId,
             status: row.status,
             amountUsd: row.amountUsd,
             periodDays: row.periodDays,
@@ -216,10 +227,29 @@ const walletStore = (db: Database) => ({
             lastFailure: row.lastFailure,
             updatedAt: row.updatedAt,
           },
+          where: eq(walletSubscriptions.userId, row.userId),
         })
         .run(),
     ),
-  /** Subscriptions with a payment to take or retry, or a reminder to send, by `now`; the oldest first. */
+  /**
+   * `kept` is the account's plan now: every other subscription of theirs that could still be collected is superseded,
+   * so nothing more is taken from it. The chain still holds its delegation; the owner may revoke it in the wallet.
+   */
+  supersedeWalletSubscriptions: (userId: string, kept: string, now: number) =>
+    operation(() =>
+      db
+        .update(walletSubscriptions)
+        .set({ status: 'superseded', nextAttemptAt: null, graceUntil: null, updatedAt: now })
+        .where(
+          and(
+            eq(walletSubscriptions.userId, userId),
+            ne(walletSubscriptions.subscriptionId, kept),
+            inArray(walletSubscriptions.status, ['pending', 'active', 'grace', 'lapsed']),
+          ),
+        )
+        .run(),
+    ),
+  /** Monthly subscriptions with a payment to take or retry, or a reminder to send, by `now`; the oldest first. */
   dueWalletSubscriptions: (now: number) =>
     operation(() =>
       db
@@ -227,6 +257,7 @@ const walletStore = (db: Database) => ({
         .from(walletSubscriptions)
         .where(
           and(
+            eq(walletSubscriptions.billing, 'month'),
             inArray(walletSubscriptions.status, ['pending', 'active', 'grace']),
             lte(walletSubscriptions.nextAttemptAt, now),
           ),

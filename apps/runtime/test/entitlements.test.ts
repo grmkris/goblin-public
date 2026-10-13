@@ -2,13 +2,16 @@ import { describe, expect, it } from '@effect/vitest'
 import * as Effect from 'effect/Effect'
 import * as TestClock from 'effect/testing/TestClock'
 import { type EntitlementPolicy, Entitlements, cachedPolicy, requirePlan } from '../src/billing/gates.ts'
-import { freeCredits } from '../src/billing/plans.ts'
+import { DEFAULT_CATALOG, catalogOffers, planCatalog } from '../src/billing/plans.ts'
 import { type AccountPlan, planOf } from '../src/billing/reconcile.ts'
+import type { WalletSubscription } from '../src/billing/schema.ts'
 import { Internal, SubscriptionRequired } from '../src/http/errors.ts'
 
 const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 800,
   status: 'active',
@@ -30,9 +33,15 @@ const counted = (answers: readonly (AccountPlan | 'fail')[]) => {
       : Effect.succeed(answer)
   })
   const require = Effect.flatMap(state, (plan) =>
-    plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
+    plan.active
+      ? Effect.succeed(plan)
+      : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe', feature: 'chat' })),
   )
-  const policy: EntitlementPolicy = { state: () => state, require: () => require }
+  const policy: EntitlementPolicy = {
+    state: () => state,
+    require: () => require,
+    payDay: () => Effect.succeed('settled'),
+  }
   return { policy, reads: () => reads }
 }
 
@@ -89,6 +98,7 @@ describe('requirePlan', () => {
           asked.push(feature)
           return plan.active ? Effect.succeed(plan) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' }))
         },
+        payDay: () => Effect.succeed('settled'),
       })
       expect(yield* requirePlan('routines').pipe(Effect.provideService(Entitlements, policy(PLAN)))).toBe(PLAN)
       const lapsed = yield* requirePlan().pipe(
@@ -100,25 +110,35 @@ describe('requirePlan', () => {
     }),
   )
 
-  it.effect(
-    'lets a free plan use the agent and routines that tell, but never a hand-over, also from the kept answer',
-    () =>
-      Effect.gen(function* () {
-        const free: AccountPlan = { ...PLAN, source: 'free', dailyCredits: 50, status: 'free' }
-        const plans = yield* cachedPolicy(counted([free]).policy)
-        expect(yield* plans.require()).toEqual(free)
-        expect(yield* plans.require('agent')).toEqual(free)
-        expect(yield* plans.require('routines')).toEqual(free)
-        // The refusal names the hand-over, so the owner reads that it is part of Pro.
-        expect(yield* Effect.flip(plans.require('handOver'))).toMatchObject({
+  it.effect('refuses an account without a plan as `chat`, also from the kept answer, and Pro keeps every feature', () =>
+    Effect.gen(function* () {
+      const none: AccountPlan = { ...PLAN, active: false, plan: null, source: 'none', dailyCredits: 0 }
+      const plans = yield* cachedPolicy(counted([none]).policy)
+      for (const feature of [undefined, 'routines', 'handOver', 'subagents'] as const)
+        expect(yield* Effect.flip(plans.require(feature))).toMatchObject({
           _tag: 'SubscriptionRequired',
-          feature: 'hand_over',
+          subscribe: '/subscribe',
+          feature: 'chat',
         })
-        // Pro keeps both.
-        const pro = yield* cachedPolicy(counted([PLAN]).policy)
-        expect(yield* pro.require('routines')).toEqual(PLAN)
-        expect(yield* pro.require('handOver')).toEqual(PLAN)
-      }),
+      const pro = yield* cachedPolicy(counted([PLAN]).policy)
+      for (const feature of [undefined, 'routines', 'handOver', 'subagents'] as const)
+        expect(yield* pro.require(feature)).toEqual(PLAN)
+    }),
+  )
+
+  it.effect('drops the kept plan once a day pass has tried its day, so a day it could not pay ends Pro at once', () =>
+    Effect.gen(function* () {
+      const day: AccountPlan = { ...PLAN, source: 'wallet', billing: 'day' }
+      const lapsed: AccountPlan = { ...day, active: false, plan: null, source: 'none', billing: null }
+      const { policy, reads } = counted([day, lapsed])
+      const plans = yield* cachedPolicy({ ...policy, payDay: () => Effect.succeed('ended') })
+      expect(yield* plans.require()).toEqual(day)
+      expect(yield* plans.require()).toEqual(day)
+      expect(reads()).toBe(1)
+      expect(yield* plans.payDay()).toBe('ended')
+      expect(yield* Effect.flip(plans.require())).toMatchObject({ _tag: 'SubscriptionRequired', feature: 'chat' })
+      expect(reads()).toBe(2)
+    }),
   )
 })
 
@@ -128,26 +148,140 @@ const newAccount = {
   subscriptions: () => Effect.succeed([]),
 }
 
-describe('the free plan (FREE_DAILY_CREDITS)', () => {
-  it('reads the setting as whole Credits up to Pro, and anything else as no free plan', () => {
-    expect([freeCredits('50'), freeCredits('800'), freeCredits('5000')]).toEqual([50, 800, 800])
-    for (const none of [undefined, '', '0', '-5', '2.5', 'fifty']) expect(freeCredits(none), String(none)).toBe(0)
-  })
+const DAY = 86_400_000
+/** A wallet subscription row as billing keeps it; a day pass by default, signed on day 10 and never used. */
+const row = (change: Partial<WalletSubscription> = {}): WalletSubscription => ({
+  subscriptionId: `sub_${'a'.repeat(32)}`,
+  userId: 'u1',
+  billing: 'day',
+  status: 'active',
+  amountUsd: '1.00',
+  periodDays: 1,
+  startsAt: 10 * DAY,
+  period: 0,
+  paidThrough: null,
+  nextAttemptAt: null,
+  graceUntil: null,
+  remindedPeriod: 0,
+  lastOperation: null,
+  lastTx: null,
+  lastFailure: null,
+  createdAt: 10 * DAY,
+  updatedAt: 10 * DAY,
+  ...change,
+})
+const withWallet = (rows: readonly WalletSubscription[]) => ({
+  ...newAccount,
+  walletSubscriptions: () => Effect.succeed([...rows]),
+})
 
-  it.effect('gives an account without Pro the free plan only when the deployment sets one', () =>
+describe('the plan an account has (ADR 0054)', () => {
+  it.effect('is none for a new account: there is no free plan', () =>
     Effect.gen(function* () {
-      const store = newAccount
-      expect(yield* planOf(store, 'u1', 'prod', 'live_mode', { at: 0 })).toMatchObject({
+      expect(yield* planOf(newAccount, 'u1', 'prod', 'live_mode', { at: 0 })).toEqual({
         active: false,
+        plan: null,
         source: 'none',
+        billing: null,
+        until: null,
         dailyCredits: 0,
-      })
-      expect(yield* planOf(store, 'u1', 'prod', 'live_mode', { at: 0, free: 50 })).toMatchObject({
-        active: true,
-        source: 'free',
-        dailyCredits: 50,
-        status: 'free',
+        status: 'unsubscribed',
+        hasCustomer: false,
+        cancelAtPeriodEnd: false,
       })
     }),
   )
+
+  it.effect("is Pro on a day pass while it is on, with the catalog's Credits, and none once a day could not pay", () =>
+    Effect.gen(function* () {
+      const catalog = { ...DEFAULT_CATALOG, day: { ...DEFAULT_CATALOG.day, dailyCredits: 300 } }
+      const at = 40 * DAY
+      expect(yield* planOf(withWallet([row()]), 'u1', 'prod', 'live_mode', { at, catalog })).toMatchObject({
+        active: true,
+        plan: 'pro',
+        source: 'wallet',
+        billing: 'day',
+        until: null,
+        dailyCredits: 300,
+      })
+      const lapsed = row({ status: 'lapsed', lastFailure: 'insufficient_funds' })
+      expect(yield* planOf(withWallet([lapsed]), 'u1', 'prod', 'live_mode', { at })).toMatchObject({
+        active: false,
+        plan: null,
+      })
+      // Revoked after a day was paid: Pro to the end of that UTC day, then none.
+      const cancelled = row({ status: 'cancelled', period: 30, paidThrough: 41 * DAY })
+      expect(yield* planOf(withWallet([cancelled]), 'u1', 'prod', 'live_mode', { at })).toMatchObject({
+        active: true,
+        until: 41 * DAY,
+        cancelAtPeriodEnd: true,
+      })
+      expect(yield* planOf(withWallet([cancelled]), 'u1', 'prod', 'live_mode', { at: 41 * DAY })).toMatchObject({
+        active: false,
+      })
+    }),
+  )
+
+  it.effect('comes from monthly once it is paid, and never from a superseded day pass or one not paid yet', () =>
+    Effect.gen(function* () {
+      const at = 40 * DAY
+      const monthly = row({
+        subscriptionId: `sub_${'b'.repeat(32)}`,
+        billing: 'month',
+        amountUsd: '15.00',
+        periodDays: 30,
+        startsAt: 39 * DAY,
+        period: 1,
+        paidThrough: 69 * DAY,
+        nextAttemptAt: 69 * DAY,
+        createdAt: 39 * DAY,
+      })
+      const switching = [{ ...monthly, status: 'pending' as const, period: 0, paidThrough: null }, row()]
+      expect(yield* planOf(withWallet(switching), 'u1', 'test', 'test_mode', { at })).toMatchObject({
+        active: true,
+        billing: 'day',
+      })
+      const switched = [monthly, row({ status: 'superseded' })]
+      expect(yield* planOf(withWallet(switched), 'u1', 'test', 'test_mode', { at })).toMatchObject({
+        active: true,
+        billing: 'month',
+        until: 69 * DAY,
+      })
+      expect(
+        yield* planOf(withWallet([row({ status: 'superseded' })]), 'u1', 'test', 'test_mode', { at }),
+      ).toMatchObject({ active: false })
+    }),
+  )
+})
+
+describe('the catalog (GOBLIN_PLAN_CATALOG)', () => {
+  it('is the day pass at $1 a day and monthly at $15 every 30 days, with 800 Credits a day, when unset', () => {
+    for (const unset of [undefined, '', '  ']) expect(planCatalog(unset)).toEqual(DEFAULT_CATALOG)
+    expect(catalogOffers(DEFAULT_CATALOG)).toEqual([
+      { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
+      { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
+    ])
+  })
+
+  it('changes only the fields it names', () => {
+    expect(planCatalog('{"day":{"amountUsd":"2.00"},"month":{"amountUsd":"20.00","periodDays":28}}')).toEqual({
+      day: { id: 'day', amountUsd: '2.00', periodDays: 1, dailyCredits: 800 },
+      month: { id: 'month', amountUsd: '20.00', periodDays: 28, dailyCredits: 800 },
+    })
+  })
+
+  it('keeps the defaults for a setting that does not decode or goes past its caps', () => {
+    for (const bad of [
+      'not json',
+      '[]',
+      '{"day":{"amountUsd":"1"}}',
+      '{"day":{"amountUsd":"0.00"}}',
+      '{"day":{"amountUsd":"1000.00"}}',
+      '{"day":{"periodDays":2}}',
+      '{"month":{"periodDays":31}}',
+      '{"month":{"dailyCredits":10001}}',
+      '{"month":{"dailyCredits":2.5}}',
+    ])
+      expect(planCatalog(bad), bad).toEqual(DEFAULT_CATALOG)
+  })
 })

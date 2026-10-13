@@ -14,7 +14,8 @@ export type BudgetVerdict = 'open' | 'exhausted' | 'unsubscribed' | 'failed'
 export const BUDGET_BLOCKS: Readonly<Record<Exclude<BudgetVerdict, 'open'>, string>> = {
   exhausted:
     "Today's model budget is used up, so this tool was not run. Tell the user, and that the budget resets at 00:00 UTC.",
-  unsubscribed: 'The account has no active plan, so this tool was not run. Tell the user to subscribe to Pro.',
+  unsubscribed:
+    'The account has no plan, so this tool was not run. Tell the user to pick goblin Pro (a day pass or monthly).',
   failed: "Today's model budget could not be checked, so this tool was not run. Tell the user, then try again later.",
 }
 
@@ -25,8 +26,9 @@ export const BUDGET_BLOCKS: Readonly<Record<Exclude<BudgetVerdict, 'open'>, stri
  */
 export const budgetVerdict: Effect.Effect<BudgetVerdict, never, Budget> = Effect.gen(function* () {
   const budget = yield* Budget
-  // `admit` refuses a spent day unless the owner's pay mode lets their wallet pay the calls (ADR 0047).
-  yield* budget.admit(yield* epochSeconds)
+  // `open` refuses a spent day unless the owner's pay mode lets their wallet pay the calls (ADR 0047). It never pays a
+  // day pass's day: a routine's tool call is not the owner using goblin (ADR 0054).
+  yield* budget.open(yield* epochSeconds)
   return 'open' as const
 }).pipe(
   Effect.catchTags({

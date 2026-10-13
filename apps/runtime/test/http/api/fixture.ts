@@ -22,7 +22,9 @@ export { type ChatDatabase as Database, sqliteDb } from '../../chats-sqlite.ts'
 /** The account's plan in these tests: an active override with 100 Credits a day. */
 export const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 100,
   status: 'active',
@@ -37,8 +39,11 @@ export const plans = (active = true): Layer.Layer<Entitlements> => {
     state: () => plan,
     require: () =>
       Effect.flatMap(plan, (current) =>
-        current.active ? Effect.succeed(current) : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe' })),
+        current.active
+          ? Effect.succeed(current)
+          : Effect.fail(new SubscriptionRequired({ subscribe: '/subscribe', feature: 'chat' })),
       ),
+    payDay: () => Effect.succeed('settled'),
   }
   return Layer.succeed(Entitlements, policy)
 }

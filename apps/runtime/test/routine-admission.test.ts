@@ -11,7 +11,9 @@ import { fake } from './fake.ts'
 
 const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 800,
   status: 'active',
@@ -33,6 +35,7 @@ const skipOf = (
         Layer.succeed(Entitlements, {
           state: () => Effect.succeed(PLAN),
           require: () => answers.plan ?? Effect.succeed(PLAN),
+          payDay: () => Effect.succeed('settled'),
         }),
         Layer.succeed(Resident, fake<typeof Resident.Service>({ require: () => answers.resident ?? Effect.void })),
         Layer.succeed(Budget, fake<typeof Budget.Service>({ require: () => answers.budget ?? Effect.void })),

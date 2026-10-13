@@ -86,7 +86,9 @@ const PROBES = registry(
 const fixturePlan = () =>
   Effect.succeed({
     active: true,
+    plan: 'pro' as const,
     source: 'override' as const,
+    billing: null,
     until: null,
     dailyCredits: 300_000,
     status: 'fixture',
@@ -129,7 +131,7 @@ export class PersonalAgentProbe extends PersonalAgent {
           ? Effect.fail(new Internal({ reason: 'fixture plan lookup failed' }))
           : fixturePlan()
       })
-    return { state, require }
+    return { state, require, payDay: () => Effect.succeed('settled' as const) }
   }
 
   protected override mcpFetch(): typeof fetch {

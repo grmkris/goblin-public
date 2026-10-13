@@ -21,22 +21,29 @@ export type PlanOffer = typeof PlanOffer.Type
 /** A price as the setting takes it: 0.01 to 999.99 US dollars, with two decimals. */
 const SettingUsd = Schema.String.check(Schema.isPattern(/^(?:[1-9]\d{0,2}\.\d{2}|0\.(?:0[1-9]|[1-9]\d))$/u))
 
-/** What the setting may change of one way to pay; anything it leaves out keeps the default in code. */
-const OfferSetting = Schema.Struct({
-  amountUsd: Schema.optionalKey(SettingUsd),
-  /** 1 to 30 days. */
-  periodDays: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 30 }))),
-  /** 0 to 10,000 Credits a day. */
-  dailyCredits: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10_000 }))),
-})
+/** 0 to 10,000 Credits a day. */
+const SettingCredits = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10_000 }))
 
 /**
  * `GOBLIN_PLAN_CATALOG`, the deployment's prices (ADR 0054): JSON with `day` and `month`, each optional, each giving any
- * of `amountUsd`, `periodDays` and `dailyCredits`. Deploying with a setting that does not decode fails.
+ * of `amountUsd`, `periodDays` and `dailyCredits`; what it leaves out keeps the default in code. The day pass's period
+ * is one day; monthly's is 1 to 30 days. Deploying with a setting that does not decode fails.
  */
 export const PlanCatalogSetting = Schema.Struct({
-  day: Schema.optionalKey(OfferSetting),
-  month: Schema.optionalKey(OfferSetting),
+  day: Schema.optionalKey(
+    Schema.Struct({
+      amountUsd: Schema.optionalKey(SettingUsd),
+      periodDays: Schema.optionalKey(Schema.Literal(1)),
+      dailyCredits: Schema.optionalKey(SettingCredits),
+    }),
+  ),
+  month: Schema.optionalKey(
+    Schema.Struct({
+      amountUsd: Schema.optionalKey(SettingUsd),
+      periodDays: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 30 }))),
+      dailyCredits: Schema.optionalKey(SettingCredits),
+    }),
+  ),
 })
 export type PlanCatalogSetting = typeof PlanCatalogSetting.Type
 

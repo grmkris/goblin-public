@@ -1,37 +1,52 @@
 /**
- * Adapted from myapps@8a69ec64: paid-through cancellation and bounded renewal grace, with no trial. A deployment may
- * give accounts without Pro a free plan (`FREE_DAILY_CREDITS`): the agent with fewer Credits, and routines that only
- * tell the owner (ADR 0012, amended 2026-10-12).
+ * goblin Pro (ADR 0015, 0054): the one plan, with every feature. It is paid from the Goblin Wallet by a day pass or
+ * monthly (or by card, while the deployment turns that on). There is no free plan: an account without Pro is refused
+ * chat (ADR 0054, amended 2026-10-13). The prices are the deployment's setting, `GOBLIN_PLAN_CATALOG`, over the
+ * defaults here.
+ *
+ * Adapted from myapps@8a69ec64: paid-through cancellation and bounded renewal grace, with no trial.
  */
-export const PRO = {
-  id: 'pro',
-  priceCents: 1000,
-  interval: 'monthly',
-  /** Estimated Token Plan Credits a day (ADR 0026): about 2 million tokens at Alibaba's example rates. */
-  dailyCredits: 800,
-  routines: true,
-  /** A routine may hand its work to Goblin or a Persona, which runs the agent (ADR 0041). */
-  handOver: true,
-  subagents: true,
-} as const
+import { type BillingId, PlanCatalogSetting, type PlanOffer } from '@goblin/contracts'
+import * as Option from 'effect/Option'
+import * as Schema from 'effect/Schema'
 
 /** A feature the plan gates: the agent itself, routines (Tell me), a routine's hand-over, and subagents. */
 export type Feature = 'agent' | 'routines' | 'handOver' | 'subagents'
 
+/** The ways to pay for Pro on a deployment, with their prices and Credits. */
+export type PlanCatalog = Readonly<Record<BillingId, PlanOffer>>
+
 /**
- * What the free plan has of Pro's features: the agent, routines that tell the owner (Tell me: a notice in a Topic, and
- * on Telegram if they want, with no model call) and subagents, but no hand-over, which runs the agent on its own.
+ * The defaults (Kris, 2026-10-13): the day pass is $1 for each UTC day the owner uses goblin, monthly $15 every 30 days.
+ * Either gives Pro's 800 Credits a day, about 2 million tokens at Alibaba's example rates (ADR 0026).
  */
-const FREE: Readonly<Record<Feature, boolean>> = { agent: true, routines: true, handOver: false, subagents: true }
-
-/** Whether the free plan includes `feature`; with none named, it is the agent. */
-export const freeIncludes = (feature: Feature | undefined): boolean => FREE[feature ?? 'agent']
-
-/** The free plan's daily Credits from the deployment's setting: a whole number up to Pro's, else none. */
-export const freeCredits = (value: string | undefined): number => {
-  const credits = Number(value ?? '0')
-  return Number.isInteger(credits) && credits > 0 ? Math.min(credits, PRO.dailyCredits) : 0
+export const DEFAULT_CATALOG: PlanCatalog = {
+  day: { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
+  month: { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
 }
+
+/** How long a subscription the owner signs runs, whichever way they pay: twelve months. */
+export const SUBSCRIPTION_MONTHS = 12
+
+const decodeSetting = Schema.decodeUnknownOption(Schema.fromJsonString(PlanCatalogSetting))
+
+/**
+ * The deployment's catalog: `GOBLIN_PLAN_CATALOG` over the defaults, field by field. A setting that does not decode
+ * keeps the defaults; the deploy refuses one (`apps/web/alchemy.run.ts`), so a running Worker never meets it.
+ */
+export const planCatalog = (value: string | undefined): PlanCatalog => {
+  if (value === undefined || value.trim() === '') return DEFAULT_CATALOG
+  const setting = Option.getOrUndefined(decodeSetting(value))
+  if (setting === undefined) return DEFAULT_CATALOG
+  return {
+    day: { ...DEFAULT_CATALOG.day, ...setting.day },
+    month: { ...DEFAULT_CATALOG.month, ...setting.month },
+  }
+}
+
+/** The catalog as the owner reads it: the day pass first. */
+export const catalogOffers = (catalog: PlanCatalog): readonly PlanOffer[] => [catalog.day, catalog.month]
+
 const MISSING_GRACE_MS = 3 * 86_400_000
 export interface SubscriptionFacts {
   readonly status: string

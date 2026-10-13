@@ -3,10 +3,28 @@ import * as Cloudflare from 'alchemy/Cloudflare'
 import * as Config from 'effect/Config'
 import * as Effect from 'effect/Effect'
 import * as Redacted from 'effect/Redacted'
+import * as Schema from 'effect/Schema'
+import { PlanCatalogSetting } from '@goblin/contracts'
 import { fileURLToPath } from 'node:url'
 import { resolveStage } from '../../scripts/stage-config.ts'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
+
+/**
+ * `GOBLIN_PLAN_CATALOG`, the prices of goblin Pro's day pass and monthly (ADR 0054); unset, the defaults in
+ * `billing/plans.ts`. A setting that does not decode stops the deploy rather than sell at the defaults.
+ */
+const planCatalog = Config.String('GOBLIN_PLAN_CATALOG').pipe(
+  Config.withDefault(''),
+  Config.mapEffect((value) =>
+    value.trim() === ''
+      ? Effect.succeed(value)
+      : Schema.decodeUnknownEffect(Schema.fromJsonString(PlanCatalogSetting))(value).pipe(
+          Effect.as(value),
+          Effect.mapError((error) => new Config.ConfigError(error)),
+        ),
+  ),
+)
 
 /** The model gateway, model choice and daily budget the Worker reads (docs/development.md). */
 const modelEnv = {
@@ -16,16 +34,18 @@ const modelEnv = {
   MODEL_KEY: Config.Redacted('GOBLIN_MODEL_KEY').pipe(Config.withDefault(Redacted.make(''))),
   MODEL_CREDIT_RATES: Config.String('GOBLIN_MODEL_CREDIT_RATES').pipe(Config.withDefault('')),
   MEMORY_MODEL: Config.String('GOBLIN_MEMORY_MODEL').pipe(Config.withDefault('')),
-  FREE_DAILY_CREDITS: Config.String('GOBLIN_FREE_DAILY_CREDITS').pipe(Config.withDefault('0')),
-  FREE_WALLET_USD: Config.String('GOBLIN_FREE_WALLET_USD').pipe(Config.withDefault('0')),
   // Inference paid per call from the owner's Goblin Wallet (ADR 0047): `tempo`, `goblin`, or none.
   PAID_INFERENCE: Config.String('GOBLIN_PAID_INFERENCE').pipe(Config.withDefault('')),
   MPP_RECIPIENT: Config.String('GOBLIN_MPP_RECIPIENT').pipe(Config.withDefault('')),
   MPP_SECRET: Config.Redacted('GOBLIN_MPP_SECRET').pipe(Config.withDefault(Redacted.make(''))),
 }
 
-/** goblin Pro paid as a USDC subscription in the Goblin Wallet (ADR 0054); the card checkout stays off unless `on`. */
+/**
+ * goblin Pro paid as a USDC subscription in the Goblin Wallet, a day pass or monthly, at the catalog's prices (ADR
+ * 0054); the card checkout stays off unless `on`.
+ */
 const billingEnv = {
+  PLAN_CATALOG: planCatalog,
   CARD_CHECKOUT: Config.String('GOBLIN_CARD_CHECKOUT').pipe(Config.withDefault('off')),
   WALLET_ORIGIN: Config.String('GOBLIN_WALLET_ORIGIN').pipe(Config.withDefault('')),
   WALLET_MERCHANT_KEY: Config.Redacted('GOBLIN_WALLET_MERCHANT_KEY').pipe(Config.withDefault(Redacted.make(''))),

@@ -102,18 +102,24 @@ export class ModelBudget {
 export class Budget extends Context.Service<
   Budget,
   {
-    /** Today's spend and allowance; the allowance is the account plan's. */
+    /** Today's spend and allowance; the allowance is the account plan's, none without a plan. */
     readonly today: (now: number) => Effect.Effect<UsageToday, AppError>
     /** One model response's tokens, priced at `model`'s rate. */
     readonly record: (use: TokenUse, now: number, model?: string) => Effect.Effect<void>
     /**
-     * `BudgetExhausted` once today's spend has reached the allowance: work goblin pays for (routines, housekeeping)
-     * runs only while Credits are left.
+     * `SubscriptionRequired` without a plan, `BudgetExhausted` once today's spend has reached the allowance: work
+     * goblin pays for (routines, housekeeping) runs only on a plan and while Credits are left.
      */
     readonly require: (now: number) => Effect.Effect<void, AppError>
     /**
-     * Whether the owner's turn may start: while Credits are left, and after that while the owner's pay mode lets their
-     * Goblin Wallet pay (ADR 0047); in `wallet` mode, always. Else `BudgetExhausted`.
+     * Whether a model call may go on now: with a plan (else `SubscriptionRequired`), while Credits are left, and after
+     * that while the owner's pay mode lets their Goblin Wallet pay (ADR 0047); in `wallet` mode, always. Else
+     * `BudgetExhausted`. A tool call inside a turn asks this.
+     */
+    readonly open: (now: number) => Effect.Effect<void, AppError>
+    /**
+     * Whether an owner's turn may start: `open`. On a day pass, the first turn of a UTC day also takes that day's
+     * payment, in the background (ADR 0054), so only an owner's message ever pays for a day.
      */
     readonly admit: (now: number) => Effect.Effect<void, AppError>
   }
@@ -124,7 +130,10 @@ export const requireBudget: Effect.Effect<void, AppError, Budget> = Effect.flatM
   Budget.use((budget) => budget.require(now)),
 )
 
-/** `BudgetExhausted` when the owner's turn may not start: Credits spent, and the wallet does not pay (ADR 0047). */
+/**
+ * `SubscriptionRequired` without a plan, `BudgetExhausted` when the owner's turn may not start (Credits spent, and the
+ * wallet does not pay, ADR 0047); on a day pass, the day's payment starts in the background (ADR 0054).
+ */
 export const admitTurn: Effect.Effect<void, AppError, Budget> = Effect.flatMap(epochSeconds, (now) =>
   Budget.use((budget) => budget.admit(now)),
 )

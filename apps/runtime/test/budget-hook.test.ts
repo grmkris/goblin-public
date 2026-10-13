@@ -22,7 +22,8 @@ const verdictOf = (today: Effect.Effect<UsageToday, AppError>, paid = false) => 
         today: () => today,
         record: () => Effect.void,
         require: () => spent,
-        admit: () => (paid ? Effect.void : spent),
+        open: () => (paid ? Effect.void : spent),
+        admit: () => Effect.die('a tool call never admits a turn, so it never pays a day pass'),
       }),
     ),
   )

@@ -1,9 +1,8 @@
 import type { WalletStatus } from '@goblin/contracts'
-import * as Duration from 'effect/Duration'
 import * as Effect from 'effect/Effect'
-import * as Exit from 'effect/Exit'
 import * as Layer from 'effect/Layer'
 import * as Option from 'effect/Option'
+import * as Ref from 'effect/Ref'
 import { Entitlements } from '../billing/gates.ts'
 import { Budget, recordUse, usageLedger, utcDay } from '../budget.ts'
 import { creditRates } from '../budget-credits.ts'
@@ -13,14 +12,8 @@ import { Pay, PayModeStore, choosePay, payChoiceOf, walletPaysWhenSpent } from '
 import { Db } from '../runtime/db.ts'
 import { AgentInput } from '../runtime/input.ts'
 import { profileOf } from '../mcp/first-class.ts'
-import { serverStatus } from '../mcp/first-class-owner.ts'
-import { McpConnections, McpGrants, McpServers } from '../mcp/service.ts'
-
-/** The dollars a wallet must hold for the free plan's Credits (`FREE_WALLET_USD`); 0 asks for none. */
-export const freeWalletUsd = (value: string | undefined): number => {
-  const dollars = Number(value ?? '0')
-  return Number.isFinite(dollars) && dollars > 0 ? dollars : 0
-}
+import { McpGrants, McpServers } from '../mcp/service.ts'
+import { background } from '../observability/background.ts'
 
 /** A decimal amount as dollars; anything unreadable is none. */
 const dollars = (value: string | undefined): number => {
@@ -38,24 +31,6 @@ export const stablecoinDollars = (status: WalletStatus): number =>
     : status.tokens
         .filter((token) => token.symbol === 'USDC' || token.symbol === 'USDC.e')
         .reduce((sum, token) => sum + dollars(token.balance), 0)
-
-/**
- * Whether a connected Goblin Wallet holds at least `needs` dollars of stablecoins, by its status tool (the server's
- * claim). A wallet that cannot be read counts as not funded.
- */
-const walletFunded = (needs: number) =>
-  Effect.gen(function* () {
-    const servers = yield* McpServers.use((owner) => owner.list())
-    for (const server of servers)
-      if (server.status === 'connected' && server.profile?.id === 'wallet') {
-        const status = yield* serverStatus(server.connectionId)
-        if (status !== null && stablecoinDollars(status) >= needs) return true
-      }
-    return false
-  }).pipe(
-    // expected: an unreadable wallet is an unfunded one; the next check, a minute on, reads it again
-    Effect.catch(() => Effect.succeed(false)),
-  )
 
 type Method<Args extends readonly unknown[], A> = (...args: Args) => A
 
@@ -114,7 +89,8 @@ const PayLive: Layer.Layer<Pay, never, AgentInput | Db | McpServers | McpGrants>
 
 /**
  * The daily model budget in Credits (ADR 0026) over the agent's usage ledger. The allowance is the plan's, read from
- * the plan the agent keeps (`Entitlements`), so a tool call no longer reads auth D1 each time.
+ * the plan the agent keeps (`Entitlements`), so a tool call no longer reads auth D1 each time. Without a plan nothing
+ * spends: there is no free plan (ADR 0054, amended 2026-10-13), so every check refuses with `SubscriptionRequired`.
  */
 const BudgetLive = Layer.effect(
   Budget,
@@ -125,27 +101,48 @@ const BudgetLive = Layer.effect(
     const pay = yield* Pay
     const { env } = yield* AgentInput
     const rates = creditRates(env.MODEL_CREDIT_RATES)
-    // The free plan's Credits ask for a funded Goblin Wallet where the stage says so (ADR 0047): a funded answer is
-    // kept ten minutes, an unfunded one a minute, so a top-up counts soon.
-    const needs = freeWalletUsd(env.FREE_WALLET_USD)
-    const reading = walletFunded(needs).pipe(
-      Effect.provideService(McpServers, yield* McpServers),
-      Effect.provideService(McpConnections, yield* McpConnections),
-    )
-    const [funded] = yield* Effect.cachedInvalidateWithTTL(reading, (exit) =>
-      Exit.isSuccess(exit) && exit.value ? Duration.minutes(10) : Duration.minutes(1),
-    )
-    const today = Effect.fn('Budget.today')(function* (now: number) {
+    /** The UTC day (epoch seconds over a day) whose day-pass payment is taken care of or under way, once a day. */
+    const paying = yield* Ref.make<number | undefined>(undefined)
+    const spent = Effect.fn('Budget.spent')(function* (now: number, limit: number) {
       const { day, resetsAt } = utcDay(now)
-      const plan = yield* plans.require()
-      const unfunded = plan.source === 'free' && needs > 0 && !(yield* funded)
       const milli = yield* attemptSync(() => ledger.milliCredits(day))
-      return { used: milli / 1000, limit: unfunded ? 0 : plan.dailyCredits, resetsAt }
+      return { used: milli / 1000, limit, resetsAt }
+    })
+    // Without a plan the allowance is none. The plan is read through `require`, whose answer the agent keeps a minute.
+    const today = Effect.fn('Budget.today')(function* (now: number) {
+      const allowance = yield* plans.require().pipe(
+        Effect.map((plan) => plan.dailyCredits),
+        Effect.catchTag('SubscriptionRequired', () => Effect.succeed(0)),
+      )
+      return yield* spent(now, allowance)
     })
     const require = Effect.fn('Budget.require')(function* (now: number) {
-      const current = yield* today(now)
+      const current = yield* spent(now, (yield* plans.require()).dailyCredits)
       if (current.used >= current.limit)
         return yield* new BudgetExhausted({ limit: current.limit, resetsAt: current.resetsAt })
+    })
+    // Past the Credits a call goes on while the owner's pay mode lets their wallet pay it (ADR 0047): always in `wallet`
+    // mode, whose calls never draw on the Credits. The pay mode is read only once they are spent.
+    const open = Effect.fn('Budget.open')(function* (now: number) {
+      return yield* require(now).pipe(
+        Effect.catchTag('BudgetExhausted', (exhausted) =>
+          Effect.flatMap(pay.choice, (choice) => (walletPaysWhenSpent(choice) ? Effect.void : Effect.fail(exhausted))),
+        ),
+      )
+    })
+    /**
+     * A day pass's day (ADR 0054): the first admitted message of a UTC day takes its payment in the background, so the
+     * answer never waits for it. Only a payment that may go through later (still landing, or the wallet not reached)
+     * is tried again with the next message.
+     */
+    const payToday = Effect.fn('Budget.payToday')(function* (now: number) {
+      const day = Math.floor(now / 86_400)
+      const claimed = yield* Ref.modify(paying, (current) => [current !== day, day] as const)
+      if (!claimed) return
+      yield* plans.payDay().pipe(
+        Effect.flatMap((outcome) => (outcome === 'retry' ? Ref.set(paying, undefined) : Effect.void)),
+        background('billing.payDay'),
+      )
     })
     return Budget.of({
       today,
@@ -153,14 +150,10 @@ const BudgetLive = Layer.effect(
         yield* Effect.sync(() => recordUse(ledger, rates, use, now, model))
       }),
       require,
+      open,
       admit: Effect.fn('Budget.admit')(function* (now) {
-        // Past the Credits a turn goes on while the owner's pay mode lets their wallet pay its calls (ADR 0047): always
-        // in `wallet` mode, whose calls never draw on the Credits. The pay mode is read only once they are spent.
-        return yield* require(now).pipe(
-          Effect.catchTag('BudgetExhausted', (spent) =>
-            Effect.flatMap(pay.choice, (choice) => (walletPaysWhenSpent(choice) ? Effect.void : Effect.fail(spent))),
-          ),
-        )
+        yield* open(now)
+        if ((yield* plans.require()).billing === 'day') yield* payToday(now)
       }),
     })
   }),
@@ -183,11 +176,10 @@ const ModelsLive: Layer.Layer<Models, never, AgentInput | Db> = Layer.effect(
 /**
  * The daily model budget, over the plan the core layer keeps, how goblin pays for its calls, and the model picker, over
  * the agent's SQLite (they keep no state of their own). A send's admission reads them, so `layers/index.ts` builds them
- * before the conversation layer; the free plan's wallet check and the pay mode read the MCP host, built at the start's
- * step 2.
+ * before the conversation layer; the pay mode reads the MCP host, built at the start's step 2.
  */
 export const ModelBudgetLive: Layer.Layer<
   Budget | Pay | Models,
   never,
-  AgentInput | Db | Entitlements | McpServers | McpConnections | McpGrants
+  AgentInput | Db | Entitlements | McpServers | McpGrants
 > = Layer.mergeAll(BudgetLive.pipe(Layer.provideMerge(PayLive)), ModelsLive)

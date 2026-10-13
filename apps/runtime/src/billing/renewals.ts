@@ -1,87 +1,68 @@
 /**
- * goblin Pro paid as a signed USDC subscription (ADR 0054). The owner signs it once in the Goblin Wallet; goblin takes
- * the first period's payment when they come back, then one payment each period from the hourly cron. Three days
- * before a payment goblin reminds them (with what their wallet lacks, if anything); a failed payment is retried each
- * day through a seven-day grace, after which the account falls back to free; a subscription the owner revoked in the
- * wallet runs to the end of what was paid. The chain caps every payment, whatever this code does.
+ * goblin Pro paid as a signed USDC subscription (ADR 0054), started and confirmed here, and renewed here when it is
+ * monthly. The owner signs it once in the Goblin Wallet. Monthly: goblin takes the first period's payment when they
+ * come back, then one payment each period from the hourly cron. Three days before a payment goblin reminds them (with
+ * what their wallet lacks, if anything); a failed payment is retried each day through a seven-day grace, after which
+ * the account has no plan; a subscription the owner revoked in the wallet runs to the end of what was paid. A day pass
+ * is paid as it is used (`day-pass.ts`). The chain caps every payment, whatever this code does.
  */
-import type { WalletReceipt } from '@goblin/contracts'
+import type { BillingId } from '@goblin/contracts'
 import type { BillingNotice } from '@goblin/contracts/internal'
 import * as Clock from 'effect/Clock'
 import * as Effect from 'effect/Effect'
 import { reportAndRecover } from '../observability/report.ts'
+import { confirmDayPass } from './day-pass.ts'
+import {
+  DAY_MS,
+  EXPLORER,
+  PAYMENT_REFUSAL,
+  PENDING_RETRY_MS,
+  afterPaid,
+  newSubscription,
+  operationOf,
+  periodAt,
+  receiptOf,
+  referenceOf,
+} from './periods.ts'
+import type { PlanCatalog } from './plans.ts'
 import { planOf } from './reconcile.ts'
 import type { WalletSubscription } from './schema.ts'
 import type { BillingStore } from './store.ts'
-import { type WalletCollection, WalletMerchant, type WalletSubscriptionView } from './wallet.ts'
+import { WalletMerchant, type WalletSubscriptionView } from './wallet.ts'
 
-const DAY_MS = 86_400_000
-/** How long a failed renewal is retried before the account falls back to free. */
+/** How long a failed monthly renewal is retried before the account has no plan. */
 export const GRACE_MS = 7 * DAY_MS
-/** How long before a payment the owner is reminded of it. */
+/** How long before a monthly payment the owner is reminded of it. */
 export const REMIND_MS = 3 * DAY_MS
-/** A payment still landing is asked about again after this. */
-const PENDING_RETRY_MS = 3_600_000
-/** Base's explorer: the wallet collects on Base. */
-const EXPLORER = 'https://basescan.org/tx/'
 
 export interface WalletBillingDeps {
   readonly store: Pick<
     BillingStore,
     | 'account'
     | 'subscriptions'
-    | 'walletSubscription'
+    | 'walletSubscriptions'
     | 'writeWalletSubscription'
+    | 'supersedeWalletSubscriptions'
     | 'dueWalletSubscriptions'
     | 'checkoutCount'
     | 'recordCheckout'
   >
   /** goblin's own origin: where the wallet sends the owner back. */
   readonly appUrl: string
+  /** The deployment's prices: what a new subscription asks the owner to sign. */
+  readonly catalog: PlanCatalog
   /** Tells the owner, in Personal, Activity and Telegram, once per notice id. */
   readonly notify: (userId: string, notice: BillingNotice) => Effect.Effect<void>
 }
-
-/** How goblin names an account to the wallet, and a period's payment: the same each retry, so the wallet pays it once. */
-export const referenceOf = (userId: string): string => `goblin:${userId}`
-export const operationOf = (userId: string, period: number): string => `pro:${userId}:${String(period)}`
-
-const periodMs = (row: Pick<WalletSubscription, 'periodDays'>): number => row.periodDays * DAY_MS
-const throughOf = (row: WalletSubscription, period: number): number => row.startsAt + period * periodMs(row)
-/** The period (1-based) `now` falls in. */
-const periodAt = (row: WalletSubscription, now: number): number =>
-  Math.max(1, Math.floor((now - row.startsAt) / periodMs(row)) + 1)
 
 const shortDate = (ms: number): string =>
   new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 const price = (amountUsd: string): string => `$${amountUsd.replace(/\.00?$/u, '')}`
 
-/** A paid period: the subscription runs through its end, and the next payment is due then. */
-export const afterPaid = (
-  row: WalletSubscription,
-  period: number,
-  collection: WalletCollection,
-  now: number,
-): WalletSubscription => {
-  const through = throughOf(row, period)
-  return {
-    ...row,
-    status: row.status === 'cancelled' ? 'cancelled' : 'active',
-    period,
-    paidThrough: through,
-    nextAttemptAt: row.status === 'cancelled' ? null : through,
-    graceUntil: null,
-    lastOperation: operationOf(row.userId, period),
-    lastTx: collection.txHash ?? null,
-    lastFailure: null,
-    updatedAt: now,
-  }
-}
-
 /**
- * A failed payment. Revoked or ended in the wallet: nothing more is taken, Pro runs to what was paid. Otherwise the
- * grace starts (from the end of the paid period, or for a first payment from when it was signed) and the payment is
- * tried again each day; past the grace the account lapses to free.
+ * A failed monthly payment. Revoked or ended in the wallet: nothing more is taken, Pro runs to what was paid. Otherwise
+ * the grace starts (from the end of the paid period, or for a first payment from when it was signed) and the payment is
+ * tried again each day; past the grace it lapses, and the account has no plan.
  */
 export const afterFailed = (row: WalletSubscription, reason: string, now: number): WalletSubscription => {
   if (reason === 'revoked' || reason === 'expired')
@@ -106,16 +87,6 @@ export const afterFailed = (row: WalletSubscription, reason: string, now: number
     updatedAt: now,
   }
 }
-
-/** The receipt of the row's last paid period, as the return page shows it. */
-export const receiptOf = (row: WalletSubscription): WalletReceipt => ({
-  status: row.period > 0 ? 'paid' : 'pending',
-  amountUsd: row.amountUsd,
-  periodDays: row.periodDays,
-  paidFrom: row.period > 0 ? throughOf(row, row.period - 1) : null,
-  paidThrough: row.paidThrough,
-  ...(row.lastTx === null ? {} : { explorerUrl: `${EXPLORER}${row.lastTx}` }),
-})
 
 /** Where the owner adds funds in their wallet. */
 const addFundsUrl = (origin: string): string => `${origin}/add-funds`
@@ -150,7 +121,7 @@ const notices = {
       row.status === 'cancelled'
         ? 'goblin Pro is cancelled; nothing more is taken from your wallet'
         : 'goblin Pro has ended: the payment did not go through',
-    body: 'Your account is on the free plan once the paid period ends. Subscribe again any time.',
+    body: 'Once the paid period ends, goblin stops answering until you subscribe again: a day pass or monthly.',
     url: new URL('/subscribe', appUrl).href,
   }),
 }
@@ -170,10 +141,7 @@ const collect = Effect.fn('billing.walletCollect')(function* (
   period: number,
 ) {
   const merchant = yield* WalletMerchant
-  const collection = yield* merchant.collect(row.subscriptionId, {
-    period,
-    operationId: operationOf(row.userId, period),
-  })
+  const collection = yield* merchant.collect(row.subscriptionId, { period, operationId: operationOf(row, period) })
   const now = yield* Clock.currentTimeMillis
   if (collection.status === 'pending') {
     const waiting = { ...row, nextAttemptAt: now + PENDING_RETRY_MS, updatedAt: now }
@@ -185,6 +153,9 @@ const collect = Effect.fn('billing.walletCollect')(function* (
       ? afterPaid(row, period, collection, now)
       : afterFailed(row, collection.reason ?? 'chain', now)
   yield* deps.store.writeWalletSubscription(next)
+  // The first payment makes this the account's plan: a day pass it replaces stops being collected.
+  if (collection.status === 'paid' && row.period === 0)
+    yield* deps.store.supersedeWalletSubscriptions(row.userId, row.subscriptionId, now)
   if (collection.status === 'paid') yield* deps.notify(row.userId, notices.paid(next))
   else if (next.status === 'lapsed' || next.status === 'cancelled')
     yield* deps.notify(row.userId, notices.ended(next, deps.appUrl))
@@ -210,10 +181,10 @@ const remind = Effect.fn('billing.walletRemind')(function* (deps: WalletBillingD
   yield* deps.notify(row.userId, notices.remind(row, merchant.origin, view?.shortUsd))
 })
 
-/** One subscription's turn of the cron: a reminder when a payment is near, the payment when it is due. */
+/** One monthly subscription's turn of the cron: a reminder when a payment is near, the payment when it is due. */
 const renew = Effect.fn('billing.walletRenew')(function* (deps: WalletBillingDeps, row: WalletSubscription) {
   const now = yield* Clock.currentTimeMillis
-  if (row.nextAttemptAt === null) return
+  if (row.nextAttemptAt === null || row.billing !== 'month') return
   if (now < row.nextAttemptAt) {
     if (row.status === 'active' && row.remindedPeriod <= row.period) yield* remind(deps, row)
     return
@@ -221,7 +192,7 @@ const renew = Effect.fn('billing.walletRenew')(function* (deps: WalletBillingDep
   yield* collect(deps, row, row.status === 'pending' ? periodAt(row, now) : row.period + 1)
 })
 
-/** The hourly cron's share: every subscription with a payment due or near, each on its own. */
+/** The hourly cron's share: every monthly subscription with a payment due or near, each on its own. */
 export const runWalletRenewals = Effect.fn('billing.walletRenewals')(function* (deps: WalletBillingDeps) {
   const now = yield* Clock.currentTimeMillis
   for (const row of yield* deps.store.dueWalletSubscriptions(now + REMIND_MS))
@@ -233,66 +204,58 @@ const returnPath = (value: string | undefined): string =>
   value !== undefined && value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') ? value : '/'
 
 /**
- * Asks the wallet for a Pro subscription the owner signs once, coming back to `/subscribe/success` and then `back`.
- * An account that has Pro already is refused, as is a sixth request within a minute.
+ * Asks the wallet for Pro as a subscription the owner signs once, paid by `billing` (the day pass or monthly) at the
+ * deployment's price, coming back to `/subscribe/success` and then `back`. An account that has Pro is refused, except
+ * a day pass moving to monthly; so is a sixth request within a minute.
  */
 export const startWalletSubscription = Effect.fn('billing.walletStart')(function* (
   deps: WalletBillingDeps,
   userId: string,
-  { back, stage }: { readonly back: string | undefined; readonly stage: string },
+  { back, stage, billing }: { readonly back: string | undefined; readonly stage: string; readonly billing: BillingId },
 ) {
   const now = yield* Clock.currentTimeMillis
-  const plan = yield* planOf(deps.store, userId, stage, stage === 'prod' ? 'live_mode' : 'test_mode', { at: now })
-  if (plan.active && plan.source !== 'free') return { error: 'already_subscribed' } as const
+  const plan = yield* planOf(deps.store, userId, stage, stage === 'prod' ? 'live_mode' : 'test_mode', {
+    at: now,
+    catalog: deps.catalog,
+  })
+  if (plan.active && !(plan.billing === 'day' && billing === 'month')) return { error: 'already_subscribed' } as const
   if ((yield* deps.store.checkoutCount(userId, now - 60_000)) >= 5) return { error: 'checkout_limit' } as const
   const target = new URL('/subscribe/success', deps.appUrl)
   target.searchParams.set('return', returnPath(back))
-  const created = yield* (yield* WalletMerchant).create({ reference: referenceOf(userId), returnUrl: target.href })
+  const created = yield* (yield* WalletMerchant).create({
+    offer: deps.catalog[billing],
+    reference: referenceOf(userId),
+    returnUrl: target.href,
+  })
   yield* deps.store.recordCheckout(created.id, userId, now)
   return { signUrl: created.signUrl } as const
 })
 
-/** The account's row for a subscription the wallet says is active and theirs: kept, or new and unpaid. */
-const rowFor = (
-  existing: WalletSubscription | undefined,
+/**
+ * The owner came back from signing a monthly subscription: it must be active. Its current period's payment is taken
+ * once (a repeat answers the same receipt) and Pro starts; a payment still landing answers `pending`, and the cron
+ * finishes it.
+ */
+const confirmMonthly = Effect.fn('billing.confirmMonthly')(function* (
+  deps: WalletBillingDeps,
   userId: string,
-  view: WalletSubscriptionView & { readonly startsAt: string },
-  now: number,
-): WalletSubscription =>
-  existing?.subscriptionId === view.id
-    ? existing
-    : {
-        userId,
-        subscriptionId: view.id,
-        status: 'pending',
-        amountUsd: view.amountUsd,
-        periodDays: view.periodDays,
-        startsAt: Date.parse(view.startsAt),
-        period: 0,
-        paidThrough: null,
-        nextAttemptAt: now + PENDING_RETRY_MS,
-        graceUntil: null,
-        remindedPeriod: 0,
-        lastOperation: null,
-        lastTx: null,
-        lastFailure: null,
-        createdAt: now,
-        updatedAt: now,
-      }
-
-/** The refusal a failed first payment answers as. */
-const FIRST_PAYMENT_REFUSAL = {
-  insufficient_funds: 'payment_short',
-  revoked: 'subscription_ended',
-  expired: 'subscription_ended',
-  not_due: 'payment_failed',
-  chain: 'payment_failed',
-} as const
+  view: WalletSubscriptionView,
+  existing: WalletSubscription | undefined,
+) {
+  if (existing !== undefined && existing.period > 0) return { receipt: receiptOf(existing) } as const
+  if (view.status === 'pending') return { error: 'subscription_unsigned' } as const
+  const { startsAt } = view
+  if (view.status !== 'active' || startsAt === undefined) return { error: 'subscription_ended' } as const
+  const now = yield* Clock.currentTimeMillis
+  const row = existing ?? newSubscription(userId, { ...view, startsAt }, 'pending', now)
+  const { row: after, collection } = yield* collect(deps, row, periodAt(row, now))
+  if (collection.status === 'failed') return { error: PAYMENT_REFUSAL[collection.reason ?? 'chain'] } as const
+  return { receipt: receiptOf(after) } as const
+})
 
 /**
- * The owner came back from signing: the subscription must be the wallet's, theirs and active. Its current period's
- * payment is taken once (a repeat answers the same receipt) and Pro starts; a payment still landing answers `pending`,
- * and the cron finishes it.
+ * The owner came back from signing (or from adding funds for a day pass): the subscription must be the wallet's and
+ * theirs. A monthly one takes its first payment; a day pass turns on (`confirmDayPass`).
  */
 export const confirmWalletSubscription = Effect.fn('billing.walletConfirm')(function* (
   deps: WalletBillingDeps,
@@ -301,15 +264,8 @@ export const confirmWalletSubscription = Effect.fn('billing.walletConfirm')(func
 ) {
   const view = yield* (yield* WalletMerchant).get(subscriptionId)
   if (view.reference !== referenceOf(userId)) return { error: 'subscription_unknown' } as const
-  const existing = yield* deps.store.walletSubscription(userId)
-  if (existing?.subscriptionId === subscriptionId && existing.period > 0)
-    return { receipt: receiptOf(existing) } as const
-  if (view.status === 'pending') return { error: 'subscription_unsigned' } as const
-  const { startsAt } = view
-  if (view.status !== 'active' || startsAt === undefined) return { error: 'subscription_ended' } as const
-  const now = yield* Clock.currentTimeMillis
-  const row = rowFor(existing, userId, { ...view, startsAt }, now)
-  const { row: after, collection } = yield* collect(deps, row, periodAt(row, now))
-  if (collection.status === 'failed') return { error: FIRST_PAYMENT_REFUSAL[collection.reason ?? 'chain'] } as const
-  return { receipt: receiptOf(after) } as const
+  const existing = (yield* deps.store.walletSubscriptions(userId)).find((row) => row.subscriptionId === subscriptionId)
+  return view.billing === 'day'
+    ? yield* confirmDayPass(deps.store, userId, view, existing)
+    : yield* confirmMonthly(deps, userId, view, existing)
 })

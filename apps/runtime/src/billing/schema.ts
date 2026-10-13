@@ -44,14 +44,17 @@ export const checkouts = sqliteTable('app_billing_checkouts', {
   createdAt: integer('created_at').notNull(),
 })
 /**
- * goblin Pro paid as a signed USDC subscription (ADR 0054): the account's subscription in the Goblin Wallet and its
- * renewals. `period` is the last period paid (0 before the first), `paid_through` its end; a failed collection sets
- * `grace_until` and the cron tries again each day until then. Times are epoch milliseconds.
+ * goblin Pro paid as a signed USDC subscription (ADR 0054): the account's subscriptions in the Goblin Wallet and where
+ * their payments stand, one row each. `billing` says how it is paid: `day`, a day pass taken on each UTC day the owner
+ * uses goblin (no cron, no grace), or `month`, renewed by the cron. `period` is the last period paid (0 before the
+ * first), `paid_through` its end; a failed monthly collection sets `grace_until` and the cron tries again each day until
+ * then. A day pass that monthly replaced is `superseded`. Times are epoch milliseconds.
  */
 export const walletSubscriptions = sqliteTable('app_billing_wallet_subscriptions', {
-  userId: text('user_id').primaryKey().notNull(),
-  subscriptionId: text('subscription_id').notNull(),
-  status: text('status', { enum: ['pending', 'active', 'grace', 'cancelled', 'lapsed'] }).notNull(),
+  subscriptionId: text('subscription_id').primaryKey().notNull(),
+  userId: text('user_id').notNull(),
+  billing: text('billing', { enum: ['day', 'month'] }).notNull(),
+  status: text('status', { enum: ['pending', 'active', 'grace', 'cancelled', 'lapsed', 'superseded'] }).notNull(),
   amountUsd: text('amount_usd').notNull(),
   periodDays: integer('period_days').notNull(),
   startsAt: integer('starts_at').notNull(),

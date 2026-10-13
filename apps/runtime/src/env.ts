@@ -31,13 +31,6 @@ export interface RuntimeEnv {
   readonly SIGNUP_MODE?: string
   readonly SIGNUP_INVITE_CODE?: string
   /**
-   * The free plan's daily model Credits for an account without Pro (ADR 0026); unset or 0, there is no free plan and
-   * such an account must subscribe.
-   */
-  readonly FREE_DAILY_CREDITS?: string
-  /** The dollars a connected Goblin Wallet must hold for the free plan's Credits (ADR 0047); unset or 0, none. */
-  readonly FREE_WALLET_USD?: string
-  /**
    * The routes of inference paid per call from the owner's Goblin Wallet a deployment sells (ADR 0047), which the
    * owner's pay mode chooses between: comma-separated `goblin` (this deployment's own paid endpoint, every offered
    * model) and `tempo` (Tempo's MPP proxy).
@@ -77,4 +70,9 @@ export interface RuntimeEnv {
   readonly WALLET_ORIGIN?: string
   /** Secret: goblin's merchant key at that wallet, the bearer of its `/api/merchant/*`. */
   readonly WALLET_MERCHANT_KEY?: string
+  /**
+   * JSON prices of goblin Pro's two ways to pay (`billing/plans.ts`, ADR 0054): `{ day?, month? }`, each any of
+   * `amountUsd`, `periodDays` and `dailyCredits`; unset, the day pass is $1 a day and monthly $15 every 30 days.
+   */
+  readonly PLAN_CATALOG?: string
 }

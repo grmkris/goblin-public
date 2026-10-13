@@ -82,4 +82,51 @@ describe('auth store migrations (unit)', () => {
       { user_id: 'unlimited', daily_credits: 400_000_000 },
     ])
   })
+
+  it('keys wallet subscriptions by subscription, keeps the ones before as monthly, and lets a day pass beside one', () => {
+    const billing = migrations.findIndex((name) => name.startsWith('0012_wallet_billing'))
+    expect(billing).toBeGreaterThan(0)
+    const db = new DatabaseSync(':memory:')
+    apply(db, migrations.slice(0, billing))
+    db.prepare('INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, ?, ?)').run(
+      'u1',
+      'u1',
+      'u1@goblin.test',
+      NOW,
+      NOW,
+    )
+    db.prepare(
+      `INSERT INTO app_billing_wallet_subscriptions (user_id, subscription_id, status, amount_usd, period_days, starts_at,
+        period, paid_through, next_attempt_at, created_at, updated_at) VALUES ('u1', 'sub_m', 'active', '10.00', 30, 5,
+        1, 50, 50, 5, 6)`,
+    ).run()
+
+    apply(db, migrations.slice(billing))
+
+    expect(
+      db
+        .prepare(
+          'SELECT subscription_id, user_id, billing, status, amount_usd, period, paid_through FROM app_billing_wallet_subscriptions',
+        )
+        .all(),
+    ).toEqual([
+      {
+        subscription_id: 'sub_m',
+        user_id: 'u1',
+        billing: 'month',
+        status: 'active',
+        amount_usd: '10.00',
+        period: 1,
+        paid_through: 50,
+      },
+    ])
+    const insert = db.prepare(
+      `INSERT INTO app_billing_wallet_subscriptions (subscription_id, user_id, billing, status, amount_usd, period_days,
+        starts_at, created_at, updated_at) VALUES (?, 'u1', ?, ?, '1.00', 1, 0, 7, 7)`,
+    )
+    insert.run('sub_d', 'day', 'superseded')
+    expect(() => insert.run('sub_x', 'week', 'active')).toThrow()
+    expect(() => insert.run('sub_y', 'day', 'free')).toThrow()
+    expect(db.prepare('SELECT COUNT(*) AS rows FROM app_billing_wallet_subscriptions').get()).toEqual({ rows: 2 })
+  })
 })

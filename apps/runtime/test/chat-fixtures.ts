@@ -39,6 +39,7 @@ export const portServices = ({ db, harness, budget, models, flows = FlowEvents.n
         record: (use, now, model) => Effect.sync(() => budget.record(use, now, model)),
         require: (now) => attempt(() => budget.require(now)),
         // These probes have no pay mode: a turn is admitted on Credits alone.
+        open: (now) => attempt(() => budget.require(now)),
         admit: (now) => attempt(() => budget.require(now)),
       }),
     ),

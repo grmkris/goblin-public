@@ -5,6 +5,7 @@ import { internalCall } from '../inbound/client.ts'
 import { reportAndRecover } from '../observability/report.ts'
 import { configuredDodo } from './dodo.ts'
 import type { BillingDeps } from './events.ts'
+import { planCatalog } from './plans.ts'
 import { planOf } from './reconcile.ts'
 import type { WalletBillingDeps } from './renewals.ts'
 import { makeBillingStore } from './store.ts'
@@ -22,6 +23,7 @@ export const walletBillingDeps = (
   const deps: WalletBillingDeps = {
     store: makeBillingStore(env.AUTH_DB),
     appUrl: env.APP_URL,
+    catalog: planCatalog(env.PLAN_CATALOG),
     notify: (userId, notice) =>
       internalCall(env.AGENTS.getByName(userId), (api) => api.inbound.billingNotice({ payload: notice })).pipe(
         Effect.asVoid,

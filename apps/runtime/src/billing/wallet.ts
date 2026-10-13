@@ -1,9 +1,10 @@
 /**
  * goblin as a merchant of the Goblin Wallet (ADR 0054): the wallet's merchant API, server to server with goblin's
  * bearer merchant key (`WALLET_MERCHANT_KEY`, the wallet's `WALLET_MERCHANT_GOBLIN_KEY`). goblin asks for a
- * subscription the owner signs once in the wallet, reads it, and collects one period at a time. The schemas mirror
- * `@goblin/wallet/contract`'s `merchant.ts`, which this Worker may not import.
+ * subscription to Pro the owner signs once in the wallet (a day pass or monthly), reads it, and collects one period at a
+ * time. The schemas mirror `@goblin/wallet/contract`'s `merchant.ts`, which this Worker may not import.
  */
+import type { PlanOffer } from '@goblin/contracts'
 import * as Context from 'effect/Context'
 import * as Effect from 'effect/Effect'
 import * as Schema from 'effect/Schema'
@@ -11,20 +12,22 @@ import * as FetchHttpClient from 'effect/http/FetchHttpClient'
 import * as HttpClient from 'effect/http/HttpClient'
 import * as HttpClientRequest from 'effect/http/HttpClientRequest'
 import type { RuntimeEnv } from '../env.ts'
-import { PRO } from './plans.ts'
+import { SUBSCRIPTION_MONTHS } from './plans.ts'
 
 /** The wallet did not answer, or answered something other than the contract: the caller may retry. */
 export class WalletMerchantError extends Schema.TaggedError<WalletMerchantError>()('WalletMerchantError', {
   message: Schema.String,
 }) {}
 
-/** Pro's terms as the owner signs them: the plan's price every 30 days, for 12 payments. */
-export const WALLET_TERMS = {
-  plan: 'pro',
-  amountUsd: `${String(Math.floor(PRO.priceCents / 100))}.${String(PRO.priceCents % 100).padStart(2, '0')}`,
-  periodDays: 30,
-  months: 12,
-} as const
+/** Pro's terms as the owner signs them, for a way to pay: its price every period, for twelve months. */
+export const termsOf = (offer: PlanOffer) =>
+  ({
+    plan: 'pro',
+    billing: offer.id,
+    amountUsd: offer.amountUsd,
+    periodDays: offer.periodDays,
+    months: SUBSCRIPTION_MONTHS,
+  }) as const
 
 const Id = Schema.String.check(Schema.isPattern(/^sub_[0-9a-f]{32}$/u))
 const Hex = Schema.String.check(Schema.isPattern(/^0x[0-9a-fA-F]*$/u))
@@ -35,6 +38,7 @@ export type WalletRequestCreated = typeof Created.Type
 const Subscription = Schema.Struct({
   id: Id,
   reference: Schema.String,
+  billing: Schema.Literals(['day', 'month']),
   status: Schema.Literals(['pending', 'active', 'revoked', 'expired']),
   owner: Schema.optional(Schema.String),
   chain: Schema.Literal('base'),
@@ -60,8 +64,12 @@ export type WalletCollection = typeof Collection.Type
 export interface WalletMerchantApi {
   /** The wallet's origin: where the owner signs, and Manage in the wallet goes. */
   readonly origin: string
-  /** A subscription request for `reference` (goblin's account); the owner signs it at `signUrl`, then returns. */
+  /**
+   * A subscription request to pay for Pro by `offer` (the day pass or monthly) for `reference` (goblin's account); the
+   * owner signs it at `signUrl`, then returns.
+   */
   readonly create: (request: {
+    readonly offer: PlanOffer
     readonly reference: string
     readonly returnUrl: string
   }) => Effect.Effect<WalletRequestCreated, WalletMerchantError>
@@ -121,11 +129,11 @@ const subscriptionPath = (id: string): string => `/api/merchant/subscriptions/${
 /** The live client of the wallet at `origin`, with goblin's merchant key. */
 export const liveMerchant = (origin: string, key: string): WalletMerchantApi => ({
   origin,
-  create: ({ reference, returnUrl }) =>
+  create: ({ offer, reference, returnUrl }) =>
     call(origin, key, {
       method: 'POST',
       path: '/api/merchant/subscriptions',
-      body: { ...WALLET_TERMS, reference, returnUrl },
+      body: { ...termsOf(offer), reference, returnUrl },
     }).pipe(Effect.flatMap(decodeCreated)),
   get: (id) =>
     call(origin, key, { method: 'GET', path: subscriptionPath(id) }).pipe(Effect.flatMap(decodeSubscription)),

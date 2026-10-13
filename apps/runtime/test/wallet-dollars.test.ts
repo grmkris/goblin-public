@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WalletStatus } from '@goblin/contracts'
-import { freeWalletUsd, stablecoinDollars } from '../src/layers/budget.ts'
+import { stablecoinDollars } from '../src/layers/budget.ts'
 
 const status = (tokens: WalletStatus['tokens']): WalletStatus => ({
   kind: 'wallet',
@@ -9,12 +9,7 @@ const status = (tokens: WalletStatus['tokens']): WalletStatus => ({
   tokens,
 })
 
-describe('the free plan asks for a funded Goblin Wallet (ADR 0047)', () => {
-  it('reads the dollars a stage asks for, and anything unreadable as none', () => {
-    expect([freeWalletUsd('5'), freeWalletUsd('2.5')]).toEqual([5, 2.5])
-    for (const none of [undefined, '', '0', '-1', 'five']) expect(freeWalletUsd(none), String(none)).toBe(0)
-  })
-
+describe('the dollars a Goblin Wallet holds, as Start reads them (ADR 0048)', () => {
   it("counts a wallet's USDC and USDC.e only, owner and agent together as its status line sums them", () => {
     expect(
       stablecoinDollars(

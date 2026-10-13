@@ -33,7 +33,9 @@ const KEY = 'Z29ibGluLXRlc3QtZml4dHVyZS1rZXkhISEhISEhISE='
 const fixturePlan = () =>
   Effect.succeed({
     active: true,
+    plan: 'pro' as const,
     source: 'override' as const,
+    billing: null,
     until: null,
     dailyCredits: 300_000,
     status: 'fixture',
@@ -104,7 +106,7 @@ async function setupNotifications(storage: DurableObjectStorage) {
     host.pipe(Layer.provide(SingleFlight.layer)),
     ResidentLive,
   ).pipe(Layer.provide(Layer.succeed(Db, db)))
-  const plans = { state: fixturePlan, require: fixturePlan }
+  const plans = { state: fixturePlan, require: fixturePlan, payDay: () => Effect.succeed('settled' as const) }
   // The bridge's `local`, which the copies run their last-moment check through, over the same services.
   const input: AgentInputs = Object.assign(Object.create(null), {
     local: (program: Effect.Effect<void, AppError, LaneServices>) =>

@@ -18,7 +18,9 @@ const complete = () => Effect.succeed('an answer')
 
 const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 800,
   status: 'active',

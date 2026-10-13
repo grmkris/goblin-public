@@ -13,7 +13,9 @@ import { fake } from './fake.ts'
 
 const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 800,
   status: 'active',
@@ -48,6 +50,7 @@ const services = (gate: Gate = {}) => {
     Layer.succeed(Entitlements, {
       state: () => Effect.succeed(PLAN),
       require: () => gate.plan ?? Effect.succeed(PLAN),
+      payDay: () => Effect.succeed('settled'),
     }),
     Layer.succeed(Resident, fake<typeof Resident.Service>({ require: () => gate.resident ?? Effect.void })),
     Layer.succeed(

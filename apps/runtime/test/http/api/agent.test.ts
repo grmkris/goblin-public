@@ -29,7 +29,11 @@ const fixture = () => {
   const budget = new ModelBudget(usageLedger(sqlite), 100)
   const pinned: string[] = []
   const applied: Applied = new Map()
-  const entitlements: EntitlementPolicy = { state: () => Effect.succeed(PLAN), require: () => Effect.succeed(PLAN) }
+  const entitlements: EntitlementPolicy = {
+    state: () => Effect.succeed(PLAN),
+    require: () => Effect.succeed(PLAN),
+    payDay: () => Effect.succeed('settled'),
+  }
   const legacy = Layer.mergeAll(
     Layer.effect(
       Channel,

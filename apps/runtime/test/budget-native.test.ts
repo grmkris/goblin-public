@@ -19,7 +19,9 @@ import { chatDatabase, durable, sqliteDb } from './chats-sqlite.ts'
 
 const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 2,
   status: 'active',
@@ -50,16 +52,30 @@ type Grant = 'run' | 'ask' | 'none'
  * routes, and the owner's wallet as `wallet` says (none by default).
  */
 const lane = (
-  options: { readonly paid?: string; readonly wallet?: ServerView['status']; readonly grant?: Grant } = {},
+  options: {
+    readonly paid?: string
+    readonly wallet?: ServerView['status']
+    readonly grant?: Grant
+    readonly plan?: AccountPlan
+  } = {},
 ) => {
   const { db, close } = chatDatabase()
   closes.push(close)
   let reads = 0
+  let days = 0
   const state = Effect.sync(() => {
     reads += 1
-    return PLAN
+    return options.plan ?? PLAN
   })
-  const plans: EntitlementPolicy = { state: () => state, require: () => state }
+  const plans: EntitlementPolicy = {
+    state: () => state,
+    require: () => state,
+    payDay: () =>
+      Effect.sync(() => {
+        days += 1
+        return 'settled' as const
+      }),
+  }
   const servers = options.wallet === undefined ? [] : [walletServer(options.wallet)]
   const grant = options.grant ?? 'none'
   const layer = ModelBudgetLive.pipe(
@@ -67,7 +83,6 @@ const lane = (
     Layer.provide(
       Layer.mergeAll(
         sqliteDb(db),
-        // A plan that is not free never asks for a funded wallet (ADR 0047).
         stub(McpServers, { list: () => Effect.succeed(servers) }),
         stub(McpConnections),
         stub(McpGrants, {
@@ -86,7 +101,7 @@ const lane = (
       ),
     ),
   )
-  return { layer, reads: () => reads, db }
+  return { layer, reads: () => reads, days: () => days, db }
 }
 
 const NOW = 86_400 * 20_000 + 60
@@ -113,6 +128,50 @@ const spentDay = (mode: PayMode | undefined) =>
   })
 
 describe('the model budget the agent checks (R5)', () => {
+  it.effect(
+    'refuses a turn, a tool and routine work without a plan as `chat`, and shows no allowance (ADR 0054)',
+    () => {
+      const none: AccountPlan = { ...PLAN, active: false, plan: null, source: 'none', dailyCredits: 0 }
+      const { layer, days } = lane({ plan: none })
+      return Effect.gen(function* () {
+        const budget = yield* Budget
+        for (const check of [budget.admit(NOW), budget.open(NOW), budget.require(NOW)])
+          expect(yield* Effect.flip(check)).toMatchObject({ _tag: 'SubscriptionRequired', feature: 'chat' })
+        expect(yield* budget.today(NOW)).toMatchObject({ used: 0, limit: 0 })
+        expect(days()).toBe(0)
+      }).pipe(Effect.provide(layer))
+    },
+  )
+
+  it.effect(
+    "pays a day pass's day on the first turn of a UTC day, once, and never on a tool's check (ADR 0054)",
+    () => {
+      const { layer, days } = lane({ plan: { ...PLAN, source: 'wallet', billing: 'day' } })
+      return Effect.gen(function* () {
+        const budget = yield* Budget
+        yield* budget.open(NOW)
+        yield* Effect.yieldNow
+        expect(days()).toBe(0)
+        yield* budget.admit(NOW)
+        yield* budget.admit(NOW + 3600)
+        yield* Effect.yieldNow
+        expect(days()).toBe(1)
+        yield* budget.admit(NOW + 86_400)
+        yield* Effect.yieldNow
+        expect(days()).toBe(2)
+      }).pipe(Effect.provide(layer))
+    },
+  )
+
+  it.effect('never pays a day on monthly or an override', () => {
+    const { layer, days } = lane({ plan: { ...PLAN, source: 'wallet', billing: 'month' } })
+    return Effect.gen(function* () {
+      yield* Budget.use((budget) => budget.admit(NOW))
+      yield* Effect.yieldNow
+      expect(days()).toBe(0)
+    }).pipe(Effect.provide(layer))
+  })
+
   it.effect("counts today's spend against the plan's allowance, reading the plan once a minute", () => {
     const { layer, reads } = lane()
     return Effect.gen(function* () {

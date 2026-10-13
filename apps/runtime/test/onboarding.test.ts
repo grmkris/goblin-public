@@ -91,8 +91,8 @@ const start = (
         stub(Entitlements, {
           state: () => Effect.succeed({ source: pro ? 'wallet' : 'none', active: pro } as AccountPlan),
         }),
-        // SAFETY: Start reads only the stage's free-plan dollars and the app's address from the instance input.
-        Layer.succeed(AgentInput, { env: { FREE_WALLET_USD: '5', APP_URL: 'https://goblin.test' } } as AgentInputs),
+        // SAFETY: Start reads only the app's address from the instance input.
+        Layer.succeed(AgentInput, { env: { APP_URL: 'https://goblin.test' } } as AgentInputs),
         // Main is session `s1`; the day's allowance is none until the wallet holds the free plan's dollars.
         // SAFETY: the setup note reads only main's chat id and its session from the directory.
         stub(Chats, { primary: '1', session: (chat: string) => Effect.succeed(chat === '1' ? 's1' : 's2') } as never),

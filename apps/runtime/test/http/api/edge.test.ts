@@ -22,7 +22,10 @@ const STATE = {
   cancelAtPeriodEnd: false,
   mode: null,
   plan: null,
-  priceCents: 1000,
+  catalog: [
+    { id: 'day', amountUsd: '1.00', periodDays: 1, dailyCredits: 800 },
+    { id: 'month', amountUsd: '15.00', periodDays: 30, dailyCredits: 800 },
+  ],
 } as const
 
 /** The account's records, keeping the crash points asked for: each one's user, if the report came with a session. */

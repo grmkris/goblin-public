@@ -37,7 +37,9 @@ import { EVERYTHING, PERSONAL_TOPIC } from '@goblin/contracts'
 
 const PLAN: AccountPlan = {
   active: true,
+  plan: 'pro',
   source: 'override',
+  billing: null,
   until: null,
   dailyCredits: 800,
   status: 'active',
@@ -122,6 +124,7 @@ const fixture = (
     Layer.succeed(Entitlements, {
       state: () => Effect.succeed(PLAN),
       require: () => gate.plan ?? Effect.succeed(PLAN),
+      payDay: () => Effect.succeed('settled'),
     }),
     stub(Resident, { require: () => Effect.void }),
     stub(Budget, { require: () => gate.budget ?? Effect.void }),
