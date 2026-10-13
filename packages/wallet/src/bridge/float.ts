@@ -13,6 +13,11 @@ export const FLOAT_LOW = 1_000_000n
 export const FLOAT_TARGET = 3_000_000n
 /** A smaller refill is not worth its gas and Relay's fee, so none is sent: $0.50. */
 export const FLOAT_MIN_BRIDGE = 500_000n
+/**
+ * Kept on the owner's Base whatever the float needs: a subscription (goblin's day pass, ADR 0054) is pulled from Base
+ * only, so a refill never takes the money it needs: $1.00.
+ */
+export const FLOAT_BASE_RESERVE = 1_000_000n
 /** The most one refill bridges: the Privy policy's cap on a USDC approval to Relay's depository ($5). */
 export const FLOAT_MAX_BRIDGE = PAYMENT_CAP_UNITS
 
@@ -27,6 +32,8 @@ export interface FloatInput {
   readonly allowance: bigint
   /** The owner's USDC on Base: the allowance moves real money, so it cannot release more than this. */
   readonly owner: bigint
+  /** Left on the owner's Base for what is pulled from there (`FLOAT_BASE_RESERVE` unless given). */
+  readonly reserve?: bigint
   /** The agent's own USDC on Base, which a send spends before it redeems anything. */
   readonly agent: bigint
   /** Kept back for the UserOperation's gas, which the same source pays (the chain's gas ceiling). */
@@ -51,11 +58,13 @@ const ceilCents = (units: bigint): bigint => ((units + CENT - 1n) / CENT) * CENT
 const floorCents = (units: bigint): bigint => (units / CENT) * CENT
 
 /**
- * What the source can put into one bridge: the allowance up to the owner's balance, plus the agent's own Base USDC,
- * less the gas margin and never above the policy's cap; whole cents.
+ * What the source can put into one bridge: the allowance up to the owner's balance less the reserve kept on Base, plus
+ * the agent's own Base USDC, less the gas margin and never above the policy's cap; whole cents.
  */
 export const floatSource = (input: FloatInput): bigint => {
-  const pull = min(input.allowance, input.owner) + input.agent
+  const reserve = input.reserve ?? FLOAT_BASE_RESERVE
+  const spare = input.owner > reserve ? input.owner - reserve : 0n
+  const pull = min(input.allowance, spare) + input.agent
   return pull <= input.feeMargin ? 0n : floorCents(min(pull - input.feeMargin, input.maxBridge))
 }
 
