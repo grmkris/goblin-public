@@ -1,0 +1,592 @@
+/*
+ * The marketing pages (goblin's `/` and Goblin Wallet's `/`): the shared parts in `src/marketing`. One content width
+ * with safe-area gutters, a type scale set in Geist alone (weight, size and tracking carry the hierarchy; tracking
+ * tightens as type grows), the moss field the hero is made of, and the controls on it. Hover only shifts colour and only
+ * where something hovers; a press answers at once. Colours are the theme's tokens, so light and dark follow the app.
+ *
+ * Classes for an app's own marketing parts: `site-width` (the content column), `site-display` (the one headline),
+ * `site-heading` (a section's heading), `site-body` (running copy).
+ */
+@layer components {
+  .site-width {
+    width: 100%;
+    max-width: 76rem;
+    margin-inline: auto;
+    padding-inline: var(--page-gutter-left) var(--page-gutter-right);
+  }
+  @media (min-width: 48rem) {
+    .site-width {
+      padding-inline: max(2rem, var(--safe-left)) max(2rem, var(--safe-right));
+    }
+  }
+  .site-display {
+    font-size: clamp(2.75rem, 7vw, 5.5rem);
+    font-weight: 680;
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    text-wrap: balance;
+  }
+  .site-heading {
+    font-size: clamp(1.75rem, 3.6vw, 2.75rem);
+    font-weight: 640;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .site-body {
+    max-width: 64ch;
+    font-size: 1.0625rem;
+    line-height: 1.55;
+    text-wrap: pretty;
+  }
+  .site-small {
+    font-size: 0.875rem;
+    line-height: 1.45;
+    letter-spacing: 0.005em;
+    text-wrap: pretty;
+  }
+
+  /* The top bar: translucent chrome the page scrolls under, 56px plus the notch, with a soft lower edge. */
+  .site-bar {
+    position: sticky;
+    z-index: var(--z-chrome);
+    top: 0;
+    width: 100%;
+    padding-block-start: var(--safe-top);
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  .site-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 3.5rem;
+  }
+  .site-bar[data-tone='moss'] {
+    --site-field: var(--shell);
+    background-color: color-mix(in oklab, var(--site-field) 84%, transparent);
+    backdrop-filter: blur(20px) saturate(1.5);
+    color: var(--shell-foreground);
+  }
+  .dark .site-bar[data-tone='moss'] {
+    --site-field: var(--shell-rail);
+  }
+  .site-bar[data-tone='moss']::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 100%;
+    height: 0.75rem;
+    pointer-events: none;
+    background: linear-gradient(to bottom, color-mix(in oklab, var(--site-field) 35%, transparent), transparent);
+  }
+  @supports not (backdrop-filter: blur(1px)) {
+    .site-bar[data-tone='moss'] {
+      background-color: var(--site-field);
+    }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .site-bar[data-tone='moss'] {
+      background-color: var(--site-field);
+      backdrop-filter: none;
+    }
+  }
+  @media (prefers-contrast: more) {
+    .site-bar[data-tone='moss'] {
+      background-color: var(--site-field);
+      backdrop-filter: none;
+    }
+    .site-bar[data-tone='moss']::after {
+      display: none;
+    }
+  }
+
+  /* The product's mark on its tile, and its name: the way home. */
+  .site-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    min-height: 2.75rem;
+    margin-inline-start: -0.25rem;
+    padding-inline: 0.25rem 0.5rem;
+    border-radius: 0.75rem;
+    font-size: 1.0625rem;
+    font-weight: 640;
+    letter-spacing: -0.015em;
+    -webkit-touch-callout: none;
+  }
+  .site-brand-tile {
+    display: grid;
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: 0.625rem;
+    background: var(--moss);
+    color: var(--moss-foreground);
+  }
+  .site-brand-tile > svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  [data-tone='moss'] .site-brand-tile {
+    background: var(--shell-active);
+    color: var(--shell-active-foreground);
+  }
+  .site-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-inline-start: auto;
+  }
+  .site-nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding-inline: 0.75rem;
+    border-radius: 0.5rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: color 150ms var(--ease-out);
+  }
+  [data-tone='moss'] .site-nav-link {
+    color: var(--shell-muted);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .site-nav-link:hover {
+      color: var(--foreground);
+    }
+    [data-tone='moss'] .site-nav-link:hover {
+      color: var(--shell-foreground);
+    }
+  }
+  @media (max-width: 47.99rem) {
+    .site-nav-link {
+      display: none;
+    }
+  }
+  /* On a phone the hero carries the invitation; the bar keeps Sign in. */
+  @media (max-width: 39.99rem) {
+    .site-nav > .site-button[data-emphasis='primary'] {
+      display: none;
+    }
+  }
+
+  /*
+   * The page's controls: `primary` (lichen on the moss field, moss on the page) and `quiet`. 44px tall, 40 where the
+   * bar is dense and the pointer is fine; a press scales them down at once and they spring back.
+   */
+  .site-button {
+    --site-button-bg: transparent;
+    --site-button-fg: var(--foreground);
+    --site-button-hover: var(--muted);
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding-inline: 1.125rem;
+    border-radius: 0.75rem;
+    background: var(--site-button-bg);
+    color: var(--site-button-fg);
+    font-size: 0.9375rem;
+    font-weight: 560;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    user-select: none;
+    transition:
+      background-color 150ms var(--ease-out),
+      scale 120ms var(--ease-out);
+  }
+  .site-button[data-size='bar'] {
+    padding-inline: 0.875rem;
+    font-size: 0.875rem;
+  }
+  @media (pointer: fine) {
+    .site-button[data-size='bar'] {
+      height: 2.25rem;
+      border-radius: 0.625rem;
+    }
+  }
+  .site-button[data-emphasis='primary'] {
+    --site-button-bg: var(--moss);
+    --site-button-fg: var(--moss-foreground);
+    --site-button-hover: color-mix(in oklch, var(--moss), var(--foreground) 14%);
+  }
+  [data-tone='moss'] .site-button,
+  .moss-frame .site-button {
+    --site-button-fg: var(--shell-foreground);
+    --site-button-hover: var(--shell-hover);
+  }
+  [data-tone='moss'] .site-button[data-emphasis='primary'],
+  .moss-frame .site-button[data-emphasis='primary'] {
+    --site-button-bg: var(--shell-active);
+    --site-button-fg: var(--shell-active-foreground);
+    --site-button-hover: color-mix(in oklch, var(--shell-active), var(--shell-foreground) 16%);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .site-button:hover {
+      background: var(--site-button-hover);
+    }
+  }
+  .site-button:active {
+    scale: 0.96;
+  }
+  .site-button[aria-busy='true'] {
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .site-button > svg {
+    width: 1rem;
+    height: 1rem;
+  }
+  .site-button:focus-visible,
+  .site-brand:focus-visible,
+  .site-nav-link:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  [data-tone='moss'] :is(.site-button, .site-brand, .site-nav-link):focus-visible,
+  .moss-frame .site-button:focus-visible {
+    outline-color: var(--shell-ring);
+  }
+
+  /* The hero: the moss field, the copy on it, and the off-white panel beside it. */
+  .moss-frame {
+    isolation: isolate;
+    background: var(--shell);
+    color: var(--shell-foreground);
+  }
+  .dark .moss-frame {
+    background: var(--shell-rail);
+  }
+  .moss-frame-grid {
+    display: grid;
+    gap: 2.5rem 3rem;
+    padding-block: 2rem 3rem;
+  }
+  @media (min-width: 48rem) {
+    .moss-frame-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+      align-items: center;
+      padding-block: 4rem 6rem;
+    }
+  }
+  .moss-frame-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.5rem;
+  }
+  .moss-frame-lede {
+    max-width: 34ch;
+    color: var(--shell-muted);
+    font-size: 1.1875rem;
+    line-height: 1.5;
+    text-wrap: pretty;
+  }
+  .moss-frame-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .moss-frame-note {
+    max-width: 40ch;
+    color: var(--shell-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .moss-frame-panel {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: clip;
+    border-radius: 1.25rem;
+    background: var(--background);
+    color: var(--foreground);
+    box-shadow:
+      0 0 0 1px oklch(0 0 0 / 0.18),
+      0 2px 4px oklch(0 0 0 / 0.12),
+      0 24px 48px -16px oklch(0 0 0 / 0.45);
+  }
+  .moss-frame-panel-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.5rem;
+    height: 3rem;
+    padding-inline: 1rem 0.75rem;
+    border-block-end: 1px solid var(--border);
+  }
+  .moss-frame-panel-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .moss-frame-panel-body {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* A section: copy (five columns) beside its visual (seven), swapped by `data-flip`; stacked on a phone. */
+  .site-section {
+    display: grid;
+    gap: 2.5rem 2rem;
+    padding-block: 4rem;
+    scroll-margin-top: 4rem;
+  }
+  @media (min-width: 48rem) {
+    .site-section {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      align-items: center;
+      padding-block: 7rem;
+    }
+    .site-section-copy {
+      grid-column: 1 / span 5;
+    }
+    .site-section-visual {
+      grid-column: 6 / span 7;
+    }
+    .site-section[data-flip] > .site-section-copy {
+      grid-row: 1;
+      grid-column: 8 / span 5;
+    }
+    .site-section[data-flip] > .site-section-visual {
+      grid-row: 1;
+      grid-column: 1 / span 7;
+    }
+  }
+  .site-section-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .site-section-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    color: color-mix(in oklab, var(--foreground) 80%, var(--background));
+  }
+  .site-section-visual {
+    min-width: 0;
+  }
+
+  /* The foot: the mark and a line, then the link groups in as many columns as fit. */
+  .site-footer {
+    padding-block: 3rem max(2.5rem, var(--safe-bottom));
+    border-block-start: 1px solid var(--border);
+  }
+  .site-footer-grid {
+    display: grid;
+    gap: 2.5rem 2rem;
+  }
+  @media (min-width: 48rem) {
+    .site-footer-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    }
+  }
+  .site-footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .site-footer-name {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 1.0625rem;
+    font-weight: 640;
+    letter-spacing: -0.015em;
+  }
+  .site-footer-note {
+    max-width: 36ch;
+    color: var(--muted-foreground);
+  }
+  .site-footer-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+    gap: 1.5rem 2rem;
+  }
+  .site-footer-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .site-footer-group > h2 {
+    font-size: 0.875rem;
+    font-weight: 560;
+  }
+  .site-footer-group > ul {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .site-footer-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    transition: color 150ms var(--ease-out);
+  }
+  @media (pointer: fine) {
+    .site-footer-link {
+      min-height: 2rem;
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .site-footer-link:hover {
+      color: var(--foreground);
+    }
+  }
+  .site-footer-link:focus-visible {
+    border-radius: 0.25rem;
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* What a subscription signs, in the wallet's look: concentric corners (28 = 12 + 16), the terms ticked in moss. */
+  .permission-card {
+    display: flex;
+    width: 100%;
+    max-width: 30rem;
+    flex-direction: column;
+    gap: 1.25rem;
+    margin: 0;
+    padding: 1rem;
+    border-radius: 1.75rem;
+    background: var(--card);
+    color: var(--card-foreground);
+    box-shadow:
+      0 0 0 1px var(--hairline),
+      0 1px 2px oklch(0 0 0 / 0.04),
+      0 16px 40px -20px oklch(0 0 0 / 0.18);
+  }
+  .permission-card-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.25rem 0.25rem 0;
+  }
+  .permission-card-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .permission-card-chain {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.5rem;
+    padding-inline: 0.625rem;
+    border-radius: var(--radius-pill);
+    background: var(--moss-soft);
+    color: var(--moss);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .permission-card-chain > svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+  .permission-card-price {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.5rem;
+    color: var(--muted-foreground);
+    font-size: 0.9375rem;
+  }
+  .permission-card-figure {
+    display: flex;
+    align-items: baseline;
+    color: var(--card-foreground);
+    font-size: 2.75rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  .permission-card-figure > small {
+    font-size: 1.625rem;
+    font-weight: inherit;
+  }
+  .permission-card-asker {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+  }
+  .permission-card-terms {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0 1rem;
+    border-radius: 0.75rem;
+    background: var(--muted);
+    list-style: none;
+  }
+  .permission-card-terms > li {
+    display: grid;
+    grid-template-columns: 1.25rem 1fr;
+    gap: 0.75rem;
+    padding-block: 0.75rem;
+  }
+  .permission-card-terms > li + li {
+    border-block-start: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+  .permission-card-tick {
+    display: grid;
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-block-start: 0.0625rem;
+    place-items: center;
+    border-radius: var(--radius-pill);
+    background: var(--moss);
+    color: var(--moss-foreground);
+  }
+  .permission-card-tick > svg {
+    width: 0.75rem;
+    height: 0.75rem;
+    stroke-width: 3;
+  }
+  .permission-card-term {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+  .permission-card-term > b {
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .permission-card-term > span {
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    line-height: 1.375;
+    text-wrap: pretty;
+  }
+  .permission-card-foot {
+    padding: 0 0.25rem 0.25rem;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    text-wrap: pretty;
+  }
+}
