@@ -111,10 +111,21 @@ function codeActions(inviteCode: string, onAuthenticated: () => void) {
     },
   }
 }
-export function Authentication({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
+/**
+ * Signing in, or creating an account (`creating` opens on it, as the landing's Meet your goblin asks): an account can
+ * be created only where sign-up is open or by invite, so a deployment with sign-up closed shows sign-in once it says so.
+ */
+export function Authentication({
+  onAuthenticated,
+  creating: startCreating = false,
+}: {
+  readonly onAuthenticated: () => void
+  readonly creating?: boolean
+}) {
   const config = useAuthConfig()
   const [inviteCode, setInviteCode] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [wantsToCreate, setCreating] = useState(startCreating)
+  const creating = wantsToCreate && !(config.status === 'loaded' && config.signup === 'closed')
   return (
     <AuthShell
       title={creating ? 'Meet your goblin' : 'Sign in to goblin'}
