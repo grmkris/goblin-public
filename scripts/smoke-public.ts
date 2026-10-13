@@ -2,7 +2,8 @@ import { internalChecks } from './smoke-edge.ts'
 
 /**
  * Production without a signed-in session: public health, admission, page, metadata, internal-route and canonical
- * redirect checks. Sign-up is invite-only, refused without the code, or open (owner, 2026-10-12: open with a free plan).
+ * redirect checks. Sign-up is invite-only, refused without the code, or open (owner, 2026-10-12: open; goblin Pro is the
+ * one plan, with no free plan).
  */
 type Client = {
   readonly origin: string
@@ -25,7 +26,8 @@ export async function publicSmoke(
   if (signup === 'invite') await refusedSignup()
   const metadata = await dev.json('/.well-known/oauth-protected-resource', { owner: false })
   if (metadata['resource'] !== `${dev.origin}/mcp`) throw new Error('prod_mcp_resource_mismatch')
-  // Home opens the last channel (ADR 0036): follow one redirect, only within the origin.
+  // Signed out, Home is goblin's landing (routes/index.tsx); a redirect, as a session would get, is followed once,
+  // only within the origin.
   const home = await dev.send('/', { owner: false })
   const location = home.headers.get('location')
   const target = location === null ? undefined : new URL(location, dev.origin)

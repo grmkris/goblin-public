@@ -212,6 +212,28 @@ Pi, Agents and application tables, its alarm and isolate. Only then does Better 
 sessions, consents and tokens. Agent-erasure failure leaves the account intact for retry. Outbound OAuth tokens are
 forgotten, not revoked remotely. Conversations, credentials, grants and resident authority belong to one user.
 
+### A public landing at `/`
+
+Home (`routes/index.tsx`) decides before anything is drawn. On the server, a request carrying Better Auth's session
+cookie (`__Secure-better-auth.session_token`, or `better-auth.session_token` on the local stack; `lib/home.ts`) gets a
+307 to Personal's channel, `/c/1`; in the browser the session the cache already holds decides, without waiting on the
+network, and the landing leaves for the tab's last channel if a check under way says signed in. The cookie is only a
+hint: `OwnerGate` still decides on every owner page. Everyone else gets goblin's landing (`components/landing`), which
+the root draws as a page of its own (`main.landing-root`: no shell, no splash) with Safari's bars tinted moss. The
+rail's Home and mark link to `/`, which the cached session turns into the owner's channel; signing in, signing out and
+deleting the account `assign('/')`, so the server's cookie check sends each to their chat or to the landing.
+
+The landing is built from `@goblin/ui`'s marketing parts (`src/marketing`: `SiteBar`, `MossFrame`, `Section`,
+`PermissionCard`, `SiteFooter`), which Goblin Wallet's own front door shares. Its hero plays one scripted session in
+goblin's panel (`hero-session.tsx`): the entrances are CSS, timed from the first paint, and the script follows the same
+animation clock for the presence orb and owns the answer to its question, which the visitor may give or which gives
+itself after about six seconds in view; under reduced motion it starts at the question. Its prices and the Goblin
+Wallet's address come from `/health` (`plans`, `walletOrigin`), production's until it answers; Claude Code's command
+names the page's own origin. The Source link waits behind a constant until the public repository is public. The head
+carries Open Graph and Twitter tags with `public/og.png` (`bun run icons`) and the canonical `https://goblin.surf/`, and
+the web Worker serves `/robots.txt` by stage: production allows everything but `/api/` and `/mcp`, other stages
+nothing. `Meet your goblin` opens `/login?new=1`, `Authentication` in create mode where sign-up is open or by invite.
+
 ### First-run Start
 
 ADR 0048. A signed-in owner whose Start is open meets it before the chats, and never sees the app first.
