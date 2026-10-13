@@ -1,6 +1,7 @@
 import page from './server.tsx'
 import runtime from '@goblin/runtime/worker'
 import { canonicalRedirect } from '@goblin/runtime/canonical'
+import { robotsTxt } from './lib/robots.ts'
 export { PersonalAgent } from '@goblin/runtime/agent'
 
 export default {
@@ -19,6 +20,10 @@ export default {
       url.pathname === '/v1/chat/completions'
     )
       return runtime.fetch(request, env, ctx)
+    if (url.pathname === '/robots.txt')
+      return new Response(robotsTxt(env.STAGE), {
+        headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' },
+      })
     return page.fetch(request)
   },
 }
