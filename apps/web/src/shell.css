@@ -782,6 +782,8 @@
   min-height: 0;
 }
 .app-page-main {
+  /* Its chat bar's composer follows the chat's width, as in a conversation: narrow, its secondary labels fold. */
+  container: conversation / inline-size;
   --chat-gutter: 1rem;
   --chat-column: 46rem;
   --message-scroller-inset-x: max(var(--chat-gutter), var(--safe-left), var(--safe-right));

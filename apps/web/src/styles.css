@@ -2356,10 +2356,22 @@
       display: flex;
     }
   }
-  /* Where the chat is narrow the orb alone says what the agent does (its label is the orb's name), never a cut word. */
+  /*
+   * Where the chat is narrow the orb alone says what the agent does (its label is the orb's name), never a cut word, and
+   * the wallet alone says it pays per call (its words stay for a screen reader), so the usage ring keeps its room
+   * beside Send instead of sliding under it.
+   */
   @container conversation (max-width: 36rem) {
     .composer-context > span:first-child > span:not([data-slot='presence-orb']) {
       display: none;
+    }
+    .pay-chip-words {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
   }
   @media (min-width: 75rem) {

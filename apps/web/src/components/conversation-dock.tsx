@@ -116,9 +116,9 @@ function ComposerContext({
       </span>
       <ModelPicker onError={onError} />
       {payingPerCall(pay, usage) && (
-        <span className="pay-chip">
+        <span className="pay-chip" title="Paying per call">
           <WalletIcon aria-hidden />
-          Paying per call
+          <span className="pay-chip-words">Paying per call</span>
         </span>
       )}
       <SetupButton chat={id} />
