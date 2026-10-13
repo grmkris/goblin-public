@@ -172,13 +172,11 @@ function PayLine() {
 
 const OFFER_NAME: Readonly<Record<BillingId, string>> = { day: 'Day pass', month: 'Monthly' }
 
-/** "$1.00 a day you use goblin", "$15.00 a month": one way to pay for Pro, in words. */
-const offerWords = (offer: PlanOffer): string => {
-  if (offer.periodDays === 1) return `${dollars(offer.amountUsd)} a day you use goblin`
-  return offer.periodDays === 30
-    ? `${dollars(offer.amountUsd)} a month`
+/** "$1.00 a day you use goblin", "$15.00 every 30 days": one way to pay for Pro, in words, as `lib/pro.ts` says it. */
+const offerWords = (offer: PlanOffer): string =>
+  offer.periodDays === 1
+    ? `${dollars(offer.amountUsd)} a day you use goblin`
     : `${dollars(offer.amountUsd)} every ${String(offer.periodDays)} days`
-}
 
 /** Has goblin Pro, however it is paid (ADR 0054): without it goblin does not answer. */
 const hasPro = (billing: BillingState | undefined): boolean => billing?.active === true && billing.plan === 'pro'
