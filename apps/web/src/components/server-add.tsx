@@ -90,7 +90,7 @@ function SuggestionRow({
   onAdd,
 }: {
   readonly item: ServerSuggestion
-  /** Whether it needs sign-in, said on the row when its group does not say it for all of them. */
+  /** Whether it says if it needs sign-in: always when it does, and "No sign-in" where its group does not say it. */
   readonly meta: boolean
   /** Which suggestion is being added, if one is. */
   readonly busy: string
@@ -105,7 +105,7 @@ function SuggestionRow({
       {meta && <span className="pick-meta">{item.signIn ? 'Sign-in' : 'No sign-in'}</span>}
       <Button
         size="sm"
-        variant={item.added ? 'ghost' : 'outline'}
+        variant="outline"
         disabled={busy !== '' && busy !== item.id}
         pending={busy === item.id}
         onClick={() => onAdd(item)}
@@ -169,7 +169,13 @@ export function SuggestedServers({
             </div>
             <ul className="pick-list">
               {section.items.map((item) => (
-                <SuggestionRow key={item.id} item={item} meta={mixed} busy={busy} onAdd={(next) => void add(next)} />
+                <SuggestionRow
+                  key={item.id}
+                  item={item}
+                  meta={mixed || item.signIn}
+                  busy={busy}
+                  onAdd={(next) => void add(next)}
+                />
               ))}
             </ul>
           </section>
