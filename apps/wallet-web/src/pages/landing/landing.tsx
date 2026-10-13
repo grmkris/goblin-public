@@ -144,7 +144,6 @@ export function WalletLanding() {
         links={[
           { label: 'Limits', href: '#limits' },
           { label: 'Connect', href: '#connect' },
-          { label: 'goblin', href: goblin },
         ]}
         signIn={signIn('Sign in')}
       />
