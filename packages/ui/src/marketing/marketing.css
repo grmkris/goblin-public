@@ -64,8 +64,11 @@
   }
   .site-bar[data-tone='moss'] {
     --site-field: var(--shell);
-    background-color: color-mix(in oklab, var(--site-field) 84%, transparent);
-    backdrop-filter: blur(20px) saturate(1.5);
+    /*
+     * Solid: the bar sits on the same moss as the hero, so translucency shows nothing but the hero's own buttons
+     * ghosting through as a second line of text. Its soft lower edge (::after) still marks where the page slides under.
+     */
+    background-color: var(--site-field);
     color: var(--shell-foreground);
   }
   .site-bar[data-tone='moss']::after {
@@ -77,22 +80,7 @@
     pointer-events: none;
     background: linear-gradient(to bottom, color-mix(in oklab, var(--site-field) 35%, transparent), transparent);
   }
-  @supports not (backdrop-filter: blur(1px)) {
-    .site-bar[data-tone='moss'] {
-      background-color: var(--site-field);
-    }
-  }
-  @media (prefers-reduced-transparency: reduce) {
-    .site-bar[data-tone='moss'] {
-      background-color: var(--site-field);
-      backdrop-filter: none;
-    }
-  }
   @media (prefers-contrast: more) {
-    .site-bar[data-tone='moss'] {
-      background-color: var(--site-field);
-      backdrop-filter: none;
-    }
     .site-bar[data-tone='moss']::after {
       display: none;
     }
