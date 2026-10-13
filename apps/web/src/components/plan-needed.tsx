@@ -46,10 +46,10 @@ export function PlanNeededCard() {
           message stays here.
         </p>
         <div className="card-actions">
-          <Button size="sm" nativeButton={false} render={<a href={fundsUrl} />}>
+          <Button nativeButton={false} render={<a href={fundsUrl} />}>
             Add funds
           </Button>
-          <Button size="sm" variant="ghost" nativeButton={false} render={plans}>
+          <Button variant="ghost" nativeButton={false} render={plans}>
             Pick a plan
           </Button>
         </div>
@@ -62,7 +62,7 @@ export function PlanNeededCard() {
         goblin answers with Pro
       </p>
       <p className="setup-card-why">{proPrices(state.catalog)} Your message stays here.</p>
-      <Button size="sm" nativeButton={false} render={plans}>
+      <Button nativeButton={false} render={plans}>
         Pick a plan to start
       </Button>
     </section>

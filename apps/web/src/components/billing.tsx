@@ -230,24 +230,30 @@ function ChoiceCard({ offer, action, pending, disabled, hint, hintUrl, fundsUrl,
       </p>
       <p className="sub-choice-suits">{choice.suits}</p>
       {(action === 'subscribe' || action === 'switch') && (
-        <div className="sub-choice-act">
-          <Button size="cta" className="w-full" pending={pending} disabled={disabled} onClick={() => onStart(offer.id)}>
+        <>
+          <Button
+            size="cta"
+            className="mbs-2 w-full"
+            pending={pending}
+            disabled={disabled}
+            onClick={() => onStart(offer.id)}
+          >
             {label}
           </Button>
           {hint !== undefined && (
             <p className="sub-choice-hint">{hintUrl === undefined ? hint : <a href={hintUrl}>{hint}</a>}</p>
           )}
-        </div>
+        </>
       )}
       {action === 'fund' && fundsUrl !== undefined && (
-        <div className="sub-choice-act">
-          <Button size="cta" className="w-full" nativeButton={false} render={<a href={fundsUrl} />}>
+        <>
+          <Button size="cta" className="mbs-2 w-full" nativeButton={false} render={<a href={fundsUrl} />}>
             Add funds
           </Button>
           <p className="sub-choice-hint">
             Your day pass is signed. goblin takes the day&apos;s {choice.price} when you are back.
           </p>
-        </div>
+        </>
       )}
     </li>
   )
@@ -307,9 +313,11 @@ function Choices({
         })}
       </ul>
       <p className="sub-cta-note">
-        {state.walletPay === true
-          ? 'You review and sign it in your Goblin Wallet.'
-          : 'Paying from the Goblin Wallet is being set up. Please try again later.'}
+        {state.walletPay !== true
+          ? 'Paying from the Goblin Wallet is being set up. Please try again later.'
+          : choiceAction(state, 'month') === 'switch'
+            ? 'You review and sign it in your Goblin Wallet. Your day pass stops once the first monthly payment goes through.'
+            : 'You review and sign it in your Goblin Wallet.'}
       </p>
       {!state.active && state.cardCheckout === true && state.mode !== null && (
         <Button size="lg" variant="outline" className="w-full" pending={checkout.isPending} onClick={card}>

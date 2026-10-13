@@ -99,7 +99,8 @@
 }
 /*
  * The two ways to pay: side by side where the column holds both, one above the other on a phone, with no breakpoint.
- * Each card's action sits at its foot, so the two buttons line up; the card's corner is its button's plus the padding.
+ * Each card's five rows (name, price, who it suits, its button, the line under it) share the row's subgrid, so the two
+ * buttons line up whatever each says; the card's corner is its button's plus the padding.
  */
 .sub-choose {
   display: flex;
@@ -115,9 +116,11 @@
   list-style: none;
 }
 .sub-choice {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  row-gap: 0.375rem;
+  align-content: start;
   padding: 0.875rem;
   border-radius: calc(var(--radius-lg) + 0.875rem);
   background: var(--card);
@@ -164,13 +167,6 @@
   color: var(--muted-foreground);
   font-size: var(--text-13);
   text-wrap: pretty;
-}
-.sub-choice-act {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-block-start: auto;
-  padding-block-start: 0.625rem;
 }
 .sub-choice-hint {
   color: var(--muted-foreground);
