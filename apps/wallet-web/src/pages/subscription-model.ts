@@ -12,9 +12,6 @@ const DAY_MS = 86_400_000
 const day = (iso: string): string => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 const fullDay = (iso: string): string =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-/** A day pass runs to the end of a UTC day: when that is on the owner's own clock, "02:00". */
-const time = (iso: string): string =>
-  new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 
 /** "$10" for whole dollars, "$9.50" otherwise: a price, as the merchant's page says it. */
 export const priceOf = (amountUsd: string): string => {
@@ -88,17 +85,73 @@ export function termsOf(view: SubscriptionView, now: number = Date.now()): reado
   ]
 }
 
-/** The end of the period paid, while it lasts: a time for a day pass (it ends with the UTC day), a date otherwise. */
-function paidUntil(view: SubscriptionView, now: number): { readonly time: string; readonly date: string } | undefined {
+/** A moment on the owner's clock (or `timeZone`'s, in tests): its calendar day, and whether it is that day's start. */
+function localParts(ms: number, timeZone: string | undefined): { readonly day: string; readonly midnight: boolean } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(ms)
+  const part = (type: Intl.DateTimeFormatPartTypes): string => parts.find((each) => each.type === type)?.value ?? ''
+  return {
+    day: `${part('year')}-${part('month')}-${part('day')}`,
+    midnight: part('hour') === '00' && part('minute') === '00',
+  }
+}
+
+/** The day `ms` falls on, said from `now` on the owner's clock: "today", "tomorrow", or its date, "14 Oct". */
+function dayFrom(ms: number, now: number, timeZone: string | undefined): string {
+  const { day: target } = localParts(ms, timeZone)
+  if (target === localParts(now, timeZone).day) return 'today'
+  if (target === localParts(now + DAY_MS, timeZone).day) return 'tomorrow'
+  return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone })
+}
+
+/** "today", "tomorrow" or "on 14 Oct", after a time. */
+const onDay = (when: string): string => (when === 'today' || when === 'tomorrow' ? when : `on ${when}`)
+
+/**
+ * When the paid period ends, while it lasts: a date for a month; for a day pass, which runs to midnight UTC, the
+ * owner's own day when that is where their day ends too (on UTC time), else their local time and day ("02:00
+ * tomorrow", "20:00 today"), never a bare time that reads as their own midnight.
+ */
+type PaidEnd =
+  | { readonly kind: 'date'; readonly date: string }
+  | { readonly kind: 'day'; readonly day: string }
+  | { readonly kind: 'time'; readonly at: string }
+
+function paidEnd(view: SubscriptionView, now: number, timeZone: string | undefined): PaidEnd | undefined {
   const { paidThrough } = view
-  if (paidThrough === undefined || Date.parse(paidThrough) <= now) return undefined
-  return { time: time(paidThrough), date: day(paidThrough) }
+  const end = paidThrough === undefined ? Number.NaN : Date.parse(paidThrough)
+  if (paidThrough === undefined || !(end > now)) return undefined
+  if (view.billing !== 'day') return { kind: 'date', date: day(paidThrough) }
+  if (localParts(end, timeZone).midnight) return { kind: 'day', day: dayFrom(end - 1, now, timeZone) }
+  const clock = new Date(end).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone })
+  return { kind: 'time', at: `${clock} ${onDay(dayFrom(end, now, timeZone))}` }
+}
+
+/** "Paid through 8 Nov", "Paid for today" or "Paid until 02:00 tomorrow". */
+function paidLine(end: PaidEnd): string {
+  if (end.kind === 'date') return `Paid through ${end.date}`
+  if (end.kind === 'day') return end.day === 'today' ? 'Paid for today' : `Paid through ${end.day}`
+  return `Paid until ${end.at}`
+}
+
+/** How long Pro runs on once cancelled: "to 8 Nov", "to the end of today" or "until 02:00 tomorrow". */
+function runsLine(end: PaidEnd): string {
+  if (end.kind === 'date') return `to ${end.date}`
+  if (end.kind === 'day') return `to the end of ${end.day}`
+  return `until ${end.at}`
 }
 
 /** Where an active subscription stands: paid for now, or for a day pass when it was last used, or waiting or due. */
-function activeStanding(view: SubscriptionView, now: number): string {
-  const until = paidUntil(view, now)
-  if (until !== undefined) return view.billing === 'day' ? `Paid until ${until.time}` : `Paid through ${until.date}`
+function activeStanding(view: SubscriptionView, now: number, timeZone: string | undefined): string {
+  const end = paidEnd(view, now, timeZone)
+  if (end !== undefined) return paidLine(end)
   if (view.billing === 'day')
     return view.lastPaidAt === undefined ? 'Nothing taken yet' : `Last paid ${day(view.lastPaidAt)}`
   return view.paidThrough === undefined ? 'Waiting for the first payment.' : 'Payment due'
@@ -106,27 +159,29 @@ function activeStanding(view: SubscriptionView, now: number): string {
 
 /**
  * Where a subscription stands, in a line: paid for now, cancelled with Pro running on, or ended. A day pass is paid
- * until the end of the UTC day it was last used, and owes nothing on a day it is not.
+ * until the end of the UTC day it was last used, and owes nothing on a day it is not. `timeZone` is the owner's own
+ * unless a test names one.
  */
-export function standingOf(view: SubscriptionView, now: number = Date.now()): string {
+export function standingOf(view: SubscriptionView, now: number = Date.now(), timeZone?: string): string {
   if (view.status === 'revoked') {
-    const until = paidUntil(view, now)
-    if (until === undefined) return 'Cancelled.'
-    return `Cancelled. ${planName(view)} runs ${view.billing === 'day' ? `until ${until.time}` : `to ${until.date}`}.`
+    const end = paidEnd(view, now, timeZone)
+    return end === undefined ? 'Cancelled.' : `Cancelled. ${planName(view)} runs ${runsLine(end)}.`
   }
   if (view.status === 'expired') return 'Ended.'
-  return activeStanding(view, now)
+  return activeStanding(view, now, timeZone)
 }
 
 /** What cancelling leaves: Pro until the paid period ends, nothing taken after it, and the gas of the cancellation. */
-export function cancelText(view: SubscriptionView, now: number = Date.now()): string {
-  const until = paidUntil(view, now)
+export function cancelText(view: SubscriptionView, now: number = Date.now(), timeZone?: string): string {
+  const end = paidEnd(view, now, timeZone)
   const left =
-    until === undefined
+    end === undefined
       ? 'Nothing more is taken.'
-      : view.billing === 'day'
-        ? `${planName(view)} runs until ${until.time}, the end of the day you paid for.`
-        : `${planName(view)} runs to ${until.date}, the end of the period you paid for.`
+      : end.kind === 'date'
+        ? `${planName(view)} runs ${runsLine(end)}, the end of the period you paid for.`
+        : end.kind === 'day'
+          ? `${planName(view)} runs ${runsLine(end)}, the day you paid for.`
+          : `${planName(view)} runs ${runsLine(end)}, when the day you paid for ends at midnight UTC.`
   return `${left} You sign one operation from your account; its gas, a few cents, is paid in USDC.`
 }
 

@@ -24,8 +24,9 @@ const HOUR = 3_600_000
 const date = (iso: string): string => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 const fullDate = (iso: string): string =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-const time = (iso: string): string =>
-  new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+/** The UTC day's end on a clock in `timeZone`, as the model says a time: "02:00" in Berlin in winter is 01:00. */
+const clockIn = (iso: string, timeZone: string): string =>
+  new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone })
 
 const views = fixtureSubscriptions(true, NOW)
 const find = (predicate: (view: SubscriptionView) => boolean): SubscriptionView =>
@@ -65,24 +66,37 @@ describe('a subscription in words, per billing', () => {
 
   it('says a day pass is paid until tonight, or when it was last used, and a month through its period', () => {
     expect(dayPass.paidThrough).toBe(TONIGHT)
-    expect(standingOf(dayPass, NOW)).toBe(`Paid until ${time(TONIGHT)}`)
     expect(standingOf(dayPass, Date.parse(TONIGHT) + 2 * HOUR)).toBe(`Last paid ${date(dayPass.lastPaidAt ?? '')}`)
     expect(standingOf(signedNow(dayRequest, NOW), NOW)).toBe('Nothing taken yet')
     expect(standingOf(monthly, NOW)).toBe(`Paid through ${date(monthly.paidThrough ?? '')}`)
     expect(standingOf(monthly, Date.parse(monthly.paidThrough ?? '') + HOUR)).toBe('Payment due')
-    expect(standingOf({ ...dayPass, status: 'revoked' }, NOW)).toBe(
-      `Cancelled. goblin Pro runs until ${time(TONIGHT)}.`,
-    )
     expect(shownSubscriptions(views, NOW).map((view) => view.billing)).toEqual(['month', 'day'])
   })
 
-  it('says what cancelling leaves, and what the first payment needs, per billing', () => {
-    expect(cancelText(dayPass, NOW)).toMatch(
-      new RegExp(
-        `^goblin Pro runs until ${time(TONIGHT)}, the end of the day you paid for\\. You sign one operation`,
-        'u',
-      ),
+  it("says where a paid UTC day ends on the owner's clock: the end of today on UTC, else a local time and day", () => {
+    // On UTC time the paid day is the owner's own today.
+    expect(standingOf(dayPass, NOW, 'UTC')).toBe('Paid for today')
+    expect(standingOf({ ...dayPass, status: 'revoked' }, NOW, 'UTC')).toBe(
+      'Cancelled. goblin Pro runs to the end of today.',
     )
+    expect(cancelText(dayPass, NOW, 'UTC')).toMatch(/^goblin Pro runs to the end of today, the day you paid for\. /u)
+    // East of UTC it ends after the owner's own midnight: tomorrow, at their time.
+    const berlin = clockIn(TONIGHT, 'Europe/Berlin')
+    expect(berlin).toMatch(/^0?1:00/u)
+    expect(standingOf(dayPass, NOW, 'Europe/Berlin')).toBe(`Paid until ${berlin} tomorrow`)
+    expect(cancelText(dayPass, NOW, 'Europe/Berlin')).toBe(
+      `goblin Pro runs until ${berlin} tomorrow, when the day you paid for ends at midnight UTC. You sign one ` +
+        'operation from your account; its gas, a few cents, is paid in USDC.',
+    )
+    // West of UTC it ends this evening.
+    const newYork = clockIn(TONIGHT, 'America/New_York')
+    expect(standingOf(dayPass, NOW, 'America/New_York')).toBe(`Paid until ${newYork} today`)
+    expect(standingOf({ ...dayPass, status: 'revoked' }, NOW, 'America/New_York')).toBe(
+      `Cancelled. goblin Pro runs until ${newYork} today.`,
+    )
+  })
+
+  it('says what cancelling leaves, and what the first payment needs, per billing', () => {
     expect(cancelText(signedNow(dayRequest, NOW), NOW)).toMatch(/^Nothing more is taken\. /u)
     expect(firstPaymentNote(dayRequest, '$0.60')).toEqual({
       title: 'Add $0.60 for your first day',
