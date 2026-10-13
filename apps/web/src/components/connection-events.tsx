@@ -73,29 +73,31 @@ function SetUpRow({
           </span>
         )}
       </span>
-      <StatusLabel label={routineStatus(routine)} />
-      <span className="row-actions">
-        {next !== undefined && (
-          <Button
-            type="button"
-            size="xs"
-            variant={next.action === 'pause' ? 'ghost' : 'outline'}
-            pending={changing.isPending}
-            onClick={() =>
-              changing.mutate({
-                action: next.action,
-                id: routine.id,
-                revision: routine.revision,
-                operationId: crypto.randomUUID(),
-              })
-            }
-          >
-            {next.label}
+      <span className="event-set-side">
+        <StatusLabel label={routineStatus(routine)} />
+        <span className="row-actions">
+          {next !== undefined && (
+            <Button
+              type="button"
+              size="xs"
+              variant={next.action === 'pause' ? 'ghost' : 'outline'}
+              pending={changing.isPending}
+              onClick={() =>
+                changing.mutate({
+                  action: next.action,
+                  id: routine.id,
+                  revision: routine.revision,
+                  operationId: crypto.randomUUID(),
+                })
+              }
+            >
+              {next.label}
+            </Button>
+          )}
+          <Button type="button" size="xs" variant="ghost" disabled={changing.isPending} onClick={onEdit}>
+            Edit
           </Button>
-        )}
-        <Button type="button" size="xs" variant="ghost" disabled={changing.isPending} onClick={onEdit}>
-          Edit
-        </Button>
+        </span>
       </span>
     </li>
   )

@@ -1647,6 +1647,14 @@
     color: var(--muted-foreground);
     font-weight: 400;
   }
+  /* Where it stands, Pause and Edit stay together: beside the words on a wide row, on one line under them on a phone. */
+  .event-set-side {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.75rem;
+    margin-inline-start: auto;
+  }
   /*
  * Settings-list rows: what a switch allows on the left, the switch on the right, hairlines between. A row the agent
  * may use (a tool) and a row the owner picks (a suggestion) share the layout.
